@@ -30,7 +30,7 @@ export function TimelineCodeDialog({ project, scene, apply, close }: {
     try { apply(next); close(); }
     catch (error) { setError(error instanceof Error ? error.message : 'Could not apply the scene.'); }
   }
-  return <Modal title="Timeline code" description="Your timeline is editable JSON. Changes here update the same scene used by the visual editor and animation engine." close={close}>
+  return <Modal wide title="Timeline code" description="Your timeline is editable JSON. Changes here update the same scene used by the visual editor and animation engine." close={close}>
     <div className="dialog-fields">
       <div className="film-tools">
         <button type="button" className="quiet" onClick={() => void copy(sceneContext(project, scene), 'AI scene-building context')}><ClipboardCopy size={15}/> Copy AI context</button>
