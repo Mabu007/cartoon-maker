@@ -1,5 +1,6 @@
 import { clamp } from '../engine/animation.ts';
 import { builtinVoiceNames, soundNames, type Project, type Scene, type SoundClip } from '../engine/schema.ts';
+import { applyGainEnvelope } from '../engine/audioMix.ts';
 
 const builtinVoices = new Set<string>(builtinVoiceNames);
 const soundTypes = new Set<string>(soundNames);
@@ -106,19 +107,23 @@ export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is 
 export const projectAssets = (project: Project) => [...new Set(project.scenes.flatMap(scene =>
   sceneSounds(scene).flatMap(clip => [clip.asset, ...(clip.track === 'dialogue' ? (clip.versions ?? []).map(item => item.asset) : [])])
 ).filter(asset => asset.startsWith('asset:')).map(asset => asset.slice(6)))];
-function soundEvents(scenes: Scene[]) {
+export function soundEvents(scenes: Scene[]) {
   let sceneStart = 0;
   return scenes.flatMap(scene => {
     const start = sceneStart;
     sceneStart += scene.duration;
-    return sceneSounds(scene).filter(clip => !clip.muted && !scene.trackSettings?.[clip.track]?.muted).map(clip => ({ clip, position: start + clip.start }));
+    const audioTracks = ['dialogue','audio','music'] as const;
+    const solo = audioTracks.filter(track => scene.trackSettings?.[track]?.solo);
+    return sceneSounds(scene).filter(clip => !clip.muted && !scene.trackSettings?.[clip.track]?.muted &&
+      (!solo.length || solo.includes(clip.track))).map(clip => ({ clip, position: start + clip.start }));
   });
 }
 export function soundPlayback(clip: SoundClip, position: number, bufferDuration: number, cursor = 0) {
   const skip = Math.max(0, cursor - position);
   const offset = clip.offset + skip;
-  const duration = Math.min(clip.length - skip, bufferDuration - offset);
-  return duration > 0 ? { delay: Math.max(0, position - cursor), offset, duration } : undefined;
+  const duration = clip.loop ? clip.length-skip : Math.min(clip.length - skip, bufferDuration - offset);
+  return duration > 0 && bufferDuration > 0 ? { delay: Math.max(0, position - cursor),
+    offset: clip.loop ? offset % bufferDuration : offset, duration } : undefined;
 }
 
 export function dialogueAmplitude(scene: Scene, actor: string, time: number, envelopeFor: (asset: string) => Float32Array | undefined) {
@@ -148,19 +153,25 @@ export function createAudioMixer() {
   function monitor() { if (!monitoring) { limiter.connect(context.destination); monitoring = true; } }
   function stop() { for (const source of sources) { try { source.stop(); } catch { /* already ended */ } source.disconnect(); } sources = []; }
   async function prepare(scenes: Scene[]) {
-    const assets = new Set(scenes.flatMap(scene => sceneSounds(scene).filter(clip => !clip.muted && !scene.trackSettings?.[clip.track]?.muted).map(clip => clip.asset)));
+    const assets = new Set(soundEvents(scenes).map(event=>event.clip.asset));
     await Promise.all([...assets].map(async asset => { prepared.set(asset, await readSound(asset)); }));
   }
   function schedule(scenes: Scene[], offset: number, when = context.currentTime) {
     stop();
-    for (const { clip, position } of soundEvents(scenes)) {
+    const events = soundEvents(scenes);
+    const dialogue = events.filter(event=>event.clip.track==='dialogue').map(event=>({
+      start:event.position,end:event.position+event.clip.length }));
+    for (const { clip, position } of events) {
       const audio = prepared.get(clip.asset);
       if (!audio) continue;
       const playback = soundPlayback(clip, position, audio.buffer.duration, offset);
       if (!playback) continue;
       const source = context.createBufferSource(), gain = context.createGain();
-      gain.gain.value = clip.volume;
-      source.buffer = audio.buffer; source.connect(gain); gain.connect(master);
+      source.buffer = audio.buffer;
+      if(clip.loop){source.loop=true;source.loopStart=0;source.loopEnd=audio.buffer.duration;}
+      source.connect(gain); gain.connect(master);
+      const start=Math.max(position,offset), end=start+playback.duration;
+      applyGainEnvelope(gain,clip,position,start,end,when,offset,dialogue);
       source.onended = () => { source.disconnect(); gain.disconnect(); };
       source.start(when + playback.delay, playback.offset, playback.duration);
       sources.push(source);
@@ -182,7 +193,10 @@ export async function mixOffline(scenes: Scene[], duration: number, signal: Abor
   const master = context.createGain();
   const limiter = context.createDynamicsCompressor();
   master.connect(limiter).connect(context.destination);
-  await Promise.all(soundEvents(scenes).map(async ({ clip, position }) => {
+  const events = soundEvents(scenes);
+  const dialogue = events.filter(event=>event.clip.track==='dialogue').map(event=>({
+    start:event.position,end:event.position+event.clip.length }));
+  await Promise.all(events.map(async ({ clip, position }) => {
     const { buffer } = await readSound(clip.asset);
     signal.throwIfAborted();
     const playback = soundPlayback(clip, position, buffer.duration);
@@ -190,8 +204,9 @@ export async function mixOffline(scenes: Scene[], duration: number, signal: Abor
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = buffer;
-    gain.gain.value = clip.volume;
+    if(clip.loop){source.loop=true;source.loopStart=0;source.loopEnd=buffer.duration;}
     source.connect(gain).connect(master);
+    applyGainEnvelope(gain,clip,position,position,position+playback.duration,0,0,dialogue);
     source.start(playback.delay, playback.offset, playback.duration);
   }));
   signal.throwIfAborted();
