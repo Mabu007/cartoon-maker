@@ -77,9 +77,15 @@ export function drawWorld(g: Graphics, environment: Scene['environment']) {
     for (let i = 0; i < 19; i++) { const bar = 13 + (i * 11 % 49); rect(g, 332 + i * 16, 158 - bar / 2, 6, bar, i % 2 ? '#e9a4aa' : '#bba7ef', 3); }
   }
 }
-export const propSize: Record<Prop['kind'], [number, number]> = { sofa: [326, 126], chair: [104, 126], table: [188, 68], desk: [185, 99], door: [128, 245], window: [215, 120], television: [145, 96], lamp: [103, 200], cup: [33, 28], book: [55, 12], phone: [25, 33], plant: [76, 113], microphone: [36, 71], streetlight: [85, 223], counter: [155, 110] };
+export const propSize: Record<Prop['kind'], [number, number]> = { sofa: [326, 126], chair: [104, 126], table: [188, 68], desk: [185, 99], door: [128, 245], window: [215, 120], television: [145, 96], lamp: [103, 200], cup: [33, 28], book: [55, 12], phone: [25, 33], plant: [76, 113], microphone: [36, 71], streetlight: [85, 223], counter: [155, 110], image: [140, 140] };
 export function drawProp(g: Graphics, { kind, color }: Pick<Prop, 'kind' | 'color'>) {
   switch (kind) {
+    case 'image':
+      rect(g, -68, -135, 136, 133, '#383047', 10, 3, '#d5a8e5');
+      segment(g, -49, -37, -10, -82, '#c995e2', 6);
+      segment(g, -10, -82, 42, -26, '#c995e2', 6);
+      ellipse(g, 29, -100, 13, 13, '#f1c475');
+      break;
     case 'sofa':
       ellipse(g, 9, -1, 158, 16, '#9e785f');
       for (const x of [-124, 112]) rect(g, x, -28, 19, 28, '#654b4a', 5, 3);
