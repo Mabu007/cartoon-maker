@@ -68,7 +68,11 @@ export function evaluate(scene: Scene, time: number) {
       view = view === 'front' ? 'side' : 'back-quarter';
       flip = direction !== viewForward(view);
     }
-    if (!body && (locomotion === 'walk' || locomotion === 'run')) ({ pose, lift } = sample(animations[locomotion], gaitTime));
+    if (!body && (locomotion === 'walk' || locomotion === 'run')) {
+      const step=sample(animations[locomotion],gaitTime);
+      pose=blend(idle.pose,step.pose,gaitWeight);
+      lift=mix(idle.lift,step.lift,gaitWeight);
+    }
     for (const clip of [body, gesture]) {
       if (!clip) continue;
       const isGesture = clip.layer === 'gesture';

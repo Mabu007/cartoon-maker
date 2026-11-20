@@ -3,7 +3,7 @@ import { armIK, gaitLeg, rig, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
 import { drawIllustratedHair, drawIllustratedFacialHair, drawIllustratedHand, drawIllustratedHead, drawIllustratedTorso, shade, type HandPose } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
-import { drawExpressionMouth } from './mouthArt.ts';
+import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { performanceHandPose } from './handPerformance.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
@@ -123,7 +123,7 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: Fa
     ellipse(g, 0, -h + 5, w + 1, 21, c.shirt, 3);
     rect(g, -w + 2, -h + 6, w * 2 + (rear ? -2 : 20), 10, c.shirt, 4, 2.5);
   }
-  if (rear) return;
+  if (rear) { hideExpressionMouth(g); return; }
   // Constrain cheek shading inside the actual head silhouette, including Sbu's
   // shifted 3/4 face. These are subtle color planes, never detached circles.
   const faceCenter = Math.max(-w * .12, Math.min(w * .16, face));

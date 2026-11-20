@@ -20,6 +20,11 @@ function getLayer(face:Graphics):MouthLayer {
   layers.set(face,result);
   return result;
 }
+/** Clearing Graphics paths does not remove cached children on rear views. */
+export function hideExpressionMouth(face:Graphics){
+  const layer=layers.get(face);
+  if(layer)layer.root.visible=false;
+}
 export function traceMouthCavity(g:Graphics,shape:MouthGeometry):Graphics {
   const {rx,top,bottom,cornerLeft,cornerRight}=shape;
   return g.moveTo(-rx,cornerLeft)
@@ -35,6 +40,7 @@ export function traceMouthCavity(g:Graphics,shape:MouthGeometry):Graphics {
  */
 export function drawExpressionMouth(face:Graphics,character:Character,mood:FacialPerformance,x:number,view:View='front') {
   const layer=getLayer(face),model=mouthGeometry(character,mood,view);
+  layer.root.visible=true;
   layer.root.position.set(x,27);
   layer.root.scale.set(model.profileScale,1);
   layer.cavity.clear();layer.mask.clear();layer.lips.clear();
