@@ -10,7 +10,7 @@ export const dimensions = (format: Format, scale = 1): [number, number] => sizes
 
 type Entity = { group: Container; art: Graphics; face?: Graphics; shadow?: Graphics; color?: string; kind?: string;
   sprite?: Sprite; heldSprite?: Sprite; imageData?: string };
-export type RenderOptions = { characterPreview?: boolean; selected?: string; staged?: Record<string, { x: number; y: number }>; edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
+export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: number; y: number }; selected?: string; staged?: Record<string, { x: number; y: number }>; edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
   const app = new Application();
   const [width, height] = sizes[format];
@@ -184,7 +184,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       drawActor(entity.art.clear(), entity.face!.clear(), character, (options.edit ? source.view : camera.view) ?? actor.view,
         options.edit ? {} : actor.pose, options.edit ? source.expression : actor.expression,
         options.amplitude?.(actor.id, time) ?? 0, options.edit ? undefined : actor.held,
-        time, actor.action, actor.id, actor.speaking, actor.viseme, actor.focus);
+        time, actor.action, actor.id, actor.speaking, actor.viseme, options.characterPreview ? options.previewFocus : actor.focus, actor.locomotion, actor.lift);
       entity.face!.y -= lift;
       if (actor.held?.imageData && !options.edit) {
         const url = actor.held.imageData;
