@@ -7,12 +7,13 @@ import { changeClipTiming, type Selection } from '../studio.ts';
 import { resizeSceneTimeline } from '../engine/timelineEditing.ts';
 import { VoiceClipControls } from './VoiceClipControls.tsx';
 
-export function Inspector({ scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, regenerateVoice, restoreVoiceVersion }: {
+export function Inspector({ scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, regenerateVoice, restoreVoiceVersion, alignVoiceClip }: {
   scene: Scene; actors: Record<string, string>; characters: Character[]; selection: Selection; select: (value: Selection) => void;
   patchActor: (actor: ActorData) => void; patchObject: (object: Prop) => void; patchClip: (clip: Clip) => void; patchScene: (patch: Partial<Scene>) => void;
   editCharacter: (character: Character) => void; addDialogue: () => void; addAction: () => void; scenes: number; sceneIndex: number; openScenes: () => void; remove: () => void; duplicate: () => void;
   snap: boolean; setSnap: (value: boolean) => void; subtitles: boolean; setSubtitles: (value: boolean) => void; quality: boolean; setQuality: (value: boolean) => void; regenerateVoice: (clip: Extract<Clip, {track: 'dialogue'}>, text: string, voice: string, force?:boolean) => Promise<string>;
   restoreVoiceVersion: (clip: Extract<Clip, {track:'dialogue'}>, index:number)=>Promise<string>;
+  alignVoiceClip: (clip: Extract<Clip,{track:'dialogue'}>, recognizer:'pocketSphinx'|'phonetic')=>Promise<string>;
 }) {
   const actor = scene.actors.find(item => item.id === selection?.id);
   const character = actor && characters.find(item => item.id === actor.characterId);
@@ -69,7 +70,7 @@ export function Inspector({ scene, actors, characters, selection, select, patchA
           <NumberField text="Fade out (s)" value={clip.fadeOut??0} min={0} max={clip.length} step={.05} onChange={fadeOut=>patchClip({...clip,fadeOut})}/></div>
         {clip.track!=='dialogue'&&<label className="check"><input type="checkbox" checked={!!clip.loop} onChange={event=>patchClip({...clip,loop:event.target.checked})}/> Loop audio throughout this clip</label>}
         <label className="check"><input type="checkbox" checked={clip.muted} onChange={e => patchClip({ ...clip, muted: e.target.checked })}/> Mute clip</label>
-        {clip.track==='dialogue' && <VoiceClipControls key={clip.id} clip={clip} character={characters.find(character=>character.id===scene.actors.find(actor=>actor.id===clip.actor)?.characterId)} generate={regenerateVoice} restore={restoreVoiceVersion}/>}</>}
+        {clip.track==='dialogue' && <VoiceClipControls key={clip.id} clip={clip} character={characters.find(character=>character.id===scene.actors.find(actor=>actor.id===clip.actor)?.characterId)} generate={regenerateVoice} restore={restoreVoiceVersion} align={alignVoiceClip}/>}</>}
         {clip.track === 'camera' && <>
           <p className="small-text camera-inspector-hint">One active camera at a time. Extending or moving this shot trims and splits covered shots without affecting dialogue, movement or music.</p>
           <label className="field">Shot<Select aria="Camera shot" value={clip.shot} onChange={shot => patchClip({ ...clip, shot })} options={shots}/></label>

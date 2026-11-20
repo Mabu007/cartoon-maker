@@ -479,3 +479,11 @@
 .professional-timeline .track-name .track-solo-active {color:#f9d887;background:#65452e;}
 .professional-timeline .track-name {gap:2px;}
 @media(max-width:790px){.professional-timeline .track-name button {width:13px;}}
+
+/* Part 6: distinguish proven audio alignment from text-based fallbacks. */
+.voice-alignment-production {display:grid;gap:8px;border-left:3px solid #a080d5;
+ background:#8065af1e;border-radius:8px;margin:9px 0;padding:10px;}
+.voice-alignment-production strong{font-size:12px;}
+.voice-alignment-production small{font-size:11px;opacity:.81;}
+.voice-alignment-production select{flex:1;min-width:135px;max-width:100%;}
+.voice-alignment-production .voice-generation-actions{align-items:center;}

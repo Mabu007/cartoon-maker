@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
-import { RotateCcw, Sparkles, Volume2, History, PlayCircle } from 'lucide-react';
+import { RotateCcw, Sparkles, History, PlayCircle, AudioLines } from 'lucide-react';
 import { getOrFetchAudio } from '../services/audio.ts';
 import { voices } from '../services/speech.ts';
 import { type Clip, type Character } from '../engine/schema.ts';
 type Dialogue = Extract<Clip, { track:'dialogue' }>;
-export function VoiceClipControls({ clip, character, generate, restore }: {
+export function VoiceClipControls({ clip, character, generate, restore, align }: {
   clip: Dialogue; character?: Character;
   generate:(clip:Dialogue,text:string,voice:string,force?:boolean)=>Promise<string>;
   restore:(clip:Dialogue,index:number)=>Promise<string>;
+  align:(clip:Dialogue,recognizer:'pocketSphinx'|'phonetic')=>Promise<string>;
 }) {
   const [text,setText]=useState(clip.text);
   const [voice,setVoice]=useState<string>(clip.voicePreset??character?.voicePreset??'warm');
   const [busy,setBusy]=useState(false),[status,setStatus]=useState(''),[error,setError]=useState('');
   const [url,setUrl]=useState(''),[versionIndex,setVersionIndex]=useState(-1);
+  const [recognizer,setRecognizer]=useState<'pocketSphinx'|'phonetic'>('pocketSphinx');
   useEffect(()=>{setText(clip.text);setVoice(clip.voicePreset??character?.voicePreset??'warm');setVersionIndex(-1);},[clip.asset,clip.id,character?.voicePreset]);
   useEffect(()=>{
     let canceled=false;let objectUrl='';
@@ -57,6 +59,23 @@ export function VoiceClipControls({ clip, character, generate, restore }: {
       <button type="button" className="quiet" disabled={busy||!text.trim()} onClick={()=>void execute(()=>generate(clip,text,voice,true))}>
         <RotateCcw size={15}/> Regenerate Voice
       </button>
+    </div>
+    <div className="voice-alignment-production" role="group" aria-label="Audio-driven lip-sync">
+      <strong>{clip.lipSync?.source==='rhubarb'?'Rhubarb · Audio aligned':
+        clip.lipSync?.source==='estimated'?'Estimated cues · NOT audio aligned':
+        clip.visemes?.length?'Legacy cues · Unverified origin':
+        'Not analyzed · Text estimate during playback'}</strong>
+      <small>{clip.lipSync?.engine??'Rhubarb analyses source audio once and caches the resulting cues.'}</small>
+      <div className="voice-generation-actions">
+        <select aria-label="Audio recognizer" value={recognizer}
+          onChange={event=>setRecognizer(event.target.value as 'pocketSphinx'|'phonetic')}>
+          <option value="pocketSphinx">English · PocketSphinx</option>
+          <option value="phonetic">Other languages · Phonetic</option>
+        </select>
+        <button type="button" className="quiet" disabled={busy}
+          onClick={()=>void execute(()=>align(clip,recognizer))}><AudioLines size={14}/> Analyze Recording</button>
+      </div>
+      <small>Moving, trimming, seeking or changing clip offset does not repeat analysis.</small>
     </div>
     {url&&<div className="voice-clip-preview"><label><PlayCircle size={14}/> Preview this recording</label>
       <audio controls preload="metadata" src={url} aria-label="Dialogue audio playback preview"/></div>}
