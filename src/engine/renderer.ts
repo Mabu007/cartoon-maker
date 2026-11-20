@@ -207,7 +207,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       drawActor(entity.art.clear(), entity.face!.clear(), character, view,
         options.edit ? {} : actor.pose, options.edit ? source.expression : actor.expression,
         options.amplitude?.(actor.id, time) ?? 0, options.edit ? undefined : actor.held,
-        time, actor.action, actor.id, actor.speaking, actor.viseme, options.characterPreview ? options.previewFocus : actor.focus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime);
+        time, actor.action, actor.id, actor.speaking, actor.viseme, options.characterPreview ? options.previewFocus : actor.focus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening);
       entity.face!.y -= lift;
       if (actor.held?.imageData && !options.edit) {
         const url = actor.held.imageData;

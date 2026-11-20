@@ -1,11 +1,13 @@
-import { animations, blend, clamp, ease, mix, sample, viewForward } from './animation.ts';
+import { animations, blend, clamp, ease, mix, sample, viewForward, travelProgress, travelSpeed, motionBlend } from './animation.ts';
 import { anchorFor } from './interactions.ts';
 import { audibleAudioTrack } from './audioMix.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
-  speaking: boolean; actionTime: number; locomotion: Action; gaitTime: number; gaitVelocity?: number; viseme?: { shape: Viseme; weight: number }; focus?: { x: number; y: number }; held?: Prop };
+  speaking: boolean; actionTime: number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
+  gaitWeight:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
+  focus?: { x: number; y: number }; held?: Prop };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -15,7 +17,7 @@ export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, pro
   const t = clamp(progress);
   const keys = clip.keyframes;
   if (!keys) {
-    const weight = clip.gait ? t : ease(t);
+    const weight = clip.gait ? travelProgress(t) : ease(t);
     return { x: mix(clip.fromX, clip.toX, weight), y: mix(clip.fromY, clip.toY, weight) };
   }
   const rightIndex = keys.findIndex(key => key.time >= t);
@@ -52,7 +54,16 @@ export function evaluate(scene: Scene, time: number) {
     const locomotion: Action = body?.action ?? travelling?.gait ?? (travelling ? 'walk' : 'idle');
     let action: Action = locomotion;
     const gaitTime = t - (travelling?.start ?? body?.start ?? t);
-    const gaitVelocity = travelling ? Math.hypot(travelling.toX - travelling.fromX, travelling.toY - travelling.fromY) / travelling.length / actor.scale : undefined;
+    const gaitVelocity = travelling ? (() => {
+      // Finite difference samples the actual authored path, including user
+      // keyframes and the same ease ramp used by visual position.
+      const sampleWindow=.001;
+      const p1=movementPosition(travelling,clamp(progress+sampleWindow));
+      const p0=movementPosition(travelling,clamp(progress-sampleWindow));
+      const delta=Math.max(.00001,(clamp(progress+sampleWindow)-clamp(progress-sampleWindow))*travelling.length);
+      return Math.hypot(p1.x-p0.x,p1.y-p0.y)/delta/actor.scale;
+    })() : undefined;
+    const gaitWeight = travelling ? motionBlend(t,travelling.start,travelling.length) : 1;
     if (travelling && (view === 'front' || view === 'back') && direction && (locomotion === 'walk' || locomotion === 'run')) {
       view = view === 'front' ? 'side' : 'back-quarter';
       flip = direction !== viewForward(view);
@@ -109,13 +120,14 @@ export function evaluate(scene: Scene, time: number) {
     if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? scene.objects.find(item => item.id === propCue.target) : undefined;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking: Boolean(spoken), actionTime: action === gesture?.action ? t - gesture.start : t - (body?.start ?? t), locomotion, gaitTime, gaitVelocity, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held };
+      speaking: Boolean(spoken), actionTime: action === gesture?.action ? t - gesture.start : t - (body?.start ?? t), locomotion, gaitTime, gaitVelocity, gaitWeight, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
   // This evaluation is pure, so exporting frame 240 matches preview frame 240.
   const activeSpeakers = actors.filter(actor => (actor.speaking || actor.action === 'talk') && actor.visible);
   for (const actor of actors) {
+    actor.listening = !actor.speaking && activeSpeakers.some(other=>other.id!==actor.id&&other.visible);
     const targetId = actor.gazeTarget;
     if (actor.action === 'look-away') {
       actor.focus = { x: -viewForward(actor.view), y: -.2 };

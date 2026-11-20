@@ -1,9 +1,10 @@
 import type { Graphics } from 'pixi.js';
 import { armIK, gaitLeg, rig, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
-import { drawIllustratedHair, drawIllustratedFacialHair, drawIllustratedHand, drawIllustratedHead, drawIllustratedTorso, shade } from './illustration.ts';
+import { drawIllustratedHair, drawIllustratedFacialHair, drawIllustratedHand, drawIllustratedHead, drawIllustratedTorso, shade, type HandPose } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
 import { drawExpressionMouth } from './mouthArt.ts';
+import { performanceHandPose } from './handPerformance.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
@@ -30,7 +31,8 @@ export function heldGripPoint(character: Character, view: View, pose: JointPose)
 }
 export function drawActor(g: Graphics, face: Graphics, c: Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
-  locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view), actionTime = time) {
+  locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
+  actionTime = time, gaitWeight=1, listening=false) {
   const art = viewArt[view];
   const r = rig(c, pose, art.width);
   const limbWidth = 10 * c.thickness;
@@ -39,10 +41,10 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
     const [elbow, hand] = carrying ? armIK(joint.shoulder, { x: r.head.x + (art.rear ? -26 : 45), y: r.head.y + 43 }, 28 * c.arms, 28 * c.arms, 1) : [joint.elbow, joint.hand];
     stroke(g, [joint.shoulder, elbow, hand], limbWidth, c.skin);
     stroke(g, [joint.shoulder, { x: (joint.shoulder.x + elbow.x) / 2, y: (joint.shoulder.y + elbow.y) / 2 }], limbWidth + 5, c.shirt);
-    const handMode = carrying ? 'grip' :
-      action === 'point' && side === 'right' ? 'point' :
-      ['wave', 'talk', 'celebrate', 'open-hand', 'hand-to-face'].includes(action) && side === 'right' ? 'open' :
-      (action === 'fist' && side === 'right') || locomotion === 'walk' || locomotion === 'run' ? 'fist' : 'relaxed';
+    const handMode:HandPose = performanceHandPose({
+      action,locomotion,side,carrying,time,expression,
+      speechWeight:speaking?(viseme?.weight??0):0
+    });
     drawIllustratedHand(g, hand.x, hand.y, limbWidth, c.skin, handMode, side === 'right' ? 1 : -1);
     // Gentle curved sleeve-cuff instead of a rigid straight seam.
     segment(g, (joint.shoulder.x + elbow.x) / 2 - 3, (joint.shoulder.y + elbow.y) / 2, (joint.shoulder.x + elbow.x) / 2 + 3, (joint.shoulder.y + elbow.y) / 2 + 2, shade(c.shirt, -.27), 1.5);
@@ -61,7 +63,14 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
     const joint = r[side];
     let knee = joint.knee, foot = joint.foot;
     const moving = locomotion === 'walk' || locomotion === 'run';
-    if (moving) [knee, foot] = gaitLeg(joint.upper, c.legs * c.height, gaitTime, locomotion, side, forward, lift, velocity);
+    if (moving) {
+      const [walkingKnee,walkingFoot]=gaitLeg(joint.upper,c.legs*c.height,gaitTime,
+        locomotion,side,forward,lift,velocity);
+      knee={x:joint.knee.x+(walkingKnee.x-joint.knee.x)*gaitWeight,
+        y:joint.knee.y+(walkingKnee.y-joint.knee.y)*gaitWeight};
+      foot={x:joint.foot.x+(walkingFoot.x-joint.foot.x)*gaitWeight,
+        y:joint.foot.y+(walkingFoot.y-joint.foot.y)*gaitWeight};
+    }
     stroke(g, [joint.upper, knee, foot], limbWidth + 1, c.pants);
     const shoeDir = moving || (view !== 'front' && view !== 'back') ? forward * 6 : (side === 'left' ? -4 : 4);
     const toe = Math.sign(shoeDir);
@@ -81,7 +90,7 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
   }
   arm('right', Boolean(held));
   face.position.set(r.head.x, r.head.y);
-  face.angle = r.angle;
+  face.angle = r.angle + (listening ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
   face.scale.set(c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
   const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus);

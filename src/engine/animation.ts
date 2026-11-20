@@ -14,6 +14,26 @@ const radians = Math.PI / 180;
 const key = (time: number, pose: JointPose = {}, lift = 0) => ({ time, pose, lift });
 export const gaitSpeeds = { walk: 82, run: 225 } as const;
 export type Gait = keyof typeof gaitSpeeds;
+/** Integrates a short trapezoidal velocity profile so feet and pelvis
+ * accelerate/decelerate together instead of snapping to full speed.
+ */
+export function travelProgress(progress:number,ramp=.14) {
+  const t=clamp(progress),r=clamp(ramp,.01,.35),total=1-r;
+  if(t<r)return t*t/(2*r*total);
+  if(t>1-r)return 1-(1-t)*(1-t)/(2*r*total);
+  return (t-r*.5)/total;
+}
+export function travelSpeed(progress:number,ramp=.14) {
+  const t=clamp(progress),r=clamp(ramp,.01,.35),total=1-r;
+  if(t<r)return t/(r*total);
+  if(t>1-r)return (1-t)/(r*total);
+  return 1/total;
+}
+export function motionBlend(time:number,start:number,length:number,fadeIn=.2,fadeOut=.24) {
+  if(time<=start||time>=start+length)return 0;
+  return Math.min(ease(clamp((time-start)/Math.min(fadeIn,length*.4))),
+    ease(clamp((start+length-time)/Math.min(fadeOut,length*.4))));
+}
 export const viewForward = (view: string) => view === 'back-quarter' ? -1 : 1;
 
 const gait = (running: boolean) => {
