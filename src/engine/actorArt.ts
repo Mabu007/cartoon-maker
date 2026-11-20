@@ -7,6 +7,10 @@ import { drawExpressionMouth } from './mouthArt.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
+function viewFromArt(art:typeof viewArt[View]):View {
+  return art.rear?(art.profile?'back':'back-quarter'):art.profile?'side':
+    art.face?'three-quarter':'front';
+}
 export const viewArt: Record<View, { width: number; face: number; far: boolean; rear: boolean; profile: boolean }> = {
   front: { width: 1, face: 0, far: true, rear: false, profile: false },
   'three-quarter': { width: .88, face: 12, far: true, rear: false, profile: false },
@@ -160,5 +164,5 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: Fa
   ellipse(g, noseX, 8, noseWidth, c.nose === 'long' ? 6 : 3.4, c.skin, 1.7);
   const mouthX = profile ? face + 3 : face;
   drawIllustratedFacialHair(g, c, art, mouthX, w);
-  drawExpressionMouth(g, c, mood, mouthX);
+  drawExpressionMouth(g, c, mood, mouthX, viewFromArt(art));
 }
