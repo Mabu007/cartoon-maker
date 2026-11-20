@@ -1,6 +1,6 @@
 import { authorize } from '../server/authorize.ts';
 
-export async function POST(request: Request) {
+async function post(request: Request) {
   const key = process.env.SPEECH_API_KEY;
   if (!key) return Response.json({ error: 'Hosted speech is unavailable.' }, { status: 503 });
   try {
@@ -13,3 +13,10 @@ export async function POST(request: Request) {
     return new Response(result.body, { headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } });
   } catch { return Response.json({ error: 'Speech generation could not be completed.' }, { status: 502 }); }
 }
+
+export default {
+  fetch(request: Request) {
+    if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } });
+    return post(request);
+  }
+};

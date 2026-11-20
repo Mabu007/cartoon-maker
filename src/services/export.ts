@@ -1,3 +1,4 @@
+import setDuration from 'fix-webm-duration';
 import { createRenderer, type Format } from '../engine/renderer.ts';
 import { locate, projectDuration } from '../engine/evaluate.ts';
 import type { Project } from '../engine/schema.ts';
@@ -61,7 +62,6 @@ export const browserExporter: VideoExporter = {
       });
       if (!movie.size) throw new Error('The encoder returned an empty recording.');
       if (movie.type.includes('mp4')) return { blob: movie, extension: 'mp4' };
-      const { default: setDuration } = await import('fix-webm-duration');
       const blob = await setDuration(movie, duration * 1000, { logger: false });
       signal.throwIfAborted();
       return { blob, extension: 'webm' };

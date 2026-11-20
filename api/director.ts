@@ -1,7 +1,7 @@
 import { directorSchema, directorJSONSchema } from '../src/engine/directorSchema.ts';
 import { authorize } from '../server/authorize.ts';
 
-export async function POST(request: Request) {
+async function post(request: Request) {
   const key = process.env.DIRECTOR_API_KEY, model = process.env.DIRECTOR_MODEL;
   if (!key || !model) return Response.json({ error: 'Hosted story generation is unavailable.' }, { status: 503 });
   try {
@@ -17,3 +17,10 @@ export async function POST(request: Request) {
     return Response.json(plan.data);
   } catch { return Response.json({ error: 'Story generation could not be completed.' }, { status: 502 }); }
 }
+
+export default {
+  fetch(request: Request) {
+    if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } });
+    return post(request);
+  }
+};
