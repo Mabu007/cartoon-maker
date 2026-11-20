@@ -93,17 +93,18 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: Fa
   // Constrain cheek shading inside the actual head silhouette, including Sbu's
   // shifted 3/4 face. These are subtle color planes, never detached circles.
   const faceCenter = Math.max(-w * .12, Math.min(w * .16, face));
-  if (!profile && (expression === 'happy' || expression === 'sad')) {
+  if (!profile && (expression === 'happy' || expression === 'excited' || expression === 'sad')) {
     for (const offset of [-24, 24]) {
       const x = Math.max(-w + 12, Math.min(w - 12, faceCenter + offset));
-      g.ellipse(x, 15, 7, 3.7).fill({ color: expression === 'happy' ? '#d17b6f' : '#9d6f83', alpha: .19 });
+      g.ellipse(x, 15, 7, 3.7).fill({ color: expression === 'happy' || expression === 'excited' ? '#d17b6f' : '#9d6f83', alpha: .19 });
     }
   }
   const eyeX = profile ? face - 3 : face - 13 * c.eyeSpacing;
   const secondX = face + (art.face ? 10 : 14) * c.eyeSpacing;
   const eyeY = -5;
   const eye = (x: number, narrow: boolean, isLeft: boolean) => {
-    const baseHeight = expression === 'surprised' ? 11.5 : expression === 'angry' ? 5.5 :
+    const baseHeight = expression === 'surprised' || expression === 'excited' ? 11.5 : expression === 'angry' ? 5.5 :
+      expression === 'sleepy' ? 3 : expression === 'smug' ? 5.5 :
       expression === 'happy' ? 6.6 : c.eyes === 'relaxed' ? 5.5 : c.eyes === 'wide' ? 9.2 : 7.7;
     const halfW = narrow ? 5.1 : 7.4;
     const open = Math.max(.06, 1 - blink);
@@ -117,14 +118,15 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: Fa
       ellipse(g, x, eyeY, halfW, eyeHeight, '#fff5e9', 1.55);
       ellipse(g, pupilX, pupilY, 2.8, Math.min(3.3, eyeHeight * .66), '#27213a');
       if (eyeHeight > 3.4) ellipse(g, pupilX - 1.15, pupilY - 1.3, 1.1, 1.2, '#ffffff');
-      if (expression === 'happy') {
+      if (expression === 'happy' || expression === 'excited') {
         g.moveTo(x - halfW, eyeY + eyeHeight * .57).quadraticCurveTo(x, eyeY + eyeHeight + 1.2, x + halfW, eyeY + eyeHeight * .57)
           .stroke({ color: shade(c.skin, -.17), width: 1.15 });
       }
     }
     const slant = expression === 'angry' ? (isLeft ? -4.5 : 4.5) :
-      expression === 'sad' ? (isLeft ? 4 : -4) : expression === 'thinking' ? (isLeft ? -3 : 2) : 0;
-    const browY = eyeY - baseHeight - (expression === 'surprised' ? 11 : expression === 'angry' ? 2.3 : 5);
+      expression === 'sad' ? (isLeft ? 4 : -4) : expression === 'confused' ? (isLeft ? 5 : -5) :
+      expression === 'smug' ? (isLeft ? -2 : 4) : expression === 'thinking' ? (isLeft ? -3 : 2) : 0;
+    const browY = eyeY - baseHeight - (expression === 'surprised' || expression === 'excited' ? 10 : expression === 'angry' ? 2.3 : 5);
     g.moveTo(x - halfW - 1, browY + slant).quadraticCurveTo(x, browY - (c.brows === 'arched' ? 6 : 1.5), x + halfW + 1, browY - slant)
       .stroke({ color: INK, width: c.brows === 'bold' ? 4.1 : 2.6, cap: 'round' });
     if (c.glasses) rect(g, x - halfW - 4, eyeY - baseHeight - 4, (halfW + 4) * 2, (baseHeight + 4) * 2, '#ffffff00', 4, 2, '#45344e');
@@ -142,18 +144,27 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: Fa
     ellipse(g, mouthX, y + 1.5, 7.5, 10.2, '#38233d', 1.4);
     ellipse(g, mouthX - 1.3, y + 6, 3, 2.2, '#c47776');
   } else if (mouthOpen > .16) {
-    const openHeight = 2.2 + mouthOpen * (expression === 'happy' ? 9.8 : 7.6);
-    const openWidth = expression === 'happy' ? widthM + 3 : widthM;
+    const openHeight = 2.2 + mouthOpen * (expression === 'happy' || expression === 'excited' ? 9.8 : 7.6);
+    const openWidth = expression === 'happy' || expression === 'excited' ? widthM + 3 : widthM;
     ellipse(g, mouthX, y + 1, openWidth, openHeight, '#39243b', 1.5);
     if (openHeight > 5) {
       g.roundRect(mouthX - openWidth + 2, y - openHeight + 1, (openWidth - 2) * 2, 3.6, 1.3).fill('#fff0dd');
       g.ellipse(mouthX + 1, y + openHeight * .6, openWidth * .43, 2).fill('#cc7b81');
     }
-  } else if (expression === 'happy') {
+  } else if (expression === 'happy' || expression === 'excited') {
     g.moveTo(mouthX - widthM - 1, y - 2).quadraticCurveTo(mouthX, y + 17, mouthX + widthM + 1, y - 2)
       .quadraticCurveTo(mouthX, y + 6, mouthX - widthM - 1, y - 2)
       .fill('#38283a');
     g.roundRect(mouthX - widthM + 4, y + 1.8, (widthM - 4) * 2, 3.2, 1).fill('#fceee1');
+  } else if (expression === 'smug') {
+    g.moveTo(mouthX - widthM, y + 2).quadraticCurveTo(mouthX + 1, y + 5, mouthX + widthM + 1, y - 4)
+      .stroke({ color: INK, width: 2.6, cap: 'round' });
+  } else if (expression === 'confused') {
+    g.moveTo(mouthX - widthM, y + 2).quadraticCurveTo(mouthX - 3, y - 2, mouthX + widthM, y + 4)
+      .stroke({ color: INK, width: 2.6, cap: 'round' });
+  } else if (expression === 'sleepy') {
+    g.moveTo(mouthX - 8, y + 1).quadraticCurveTo(mouthX, y + 4, mouthX + 8, y + 1)
+      .stroke({ color: INK, width: 2, cap: 'round' });
   } else if (expression === 'sad') {
     g.moveTo(mouthX - widthM, y + 4).quadraticCurveTo(mouthX, y - 6, mouthX + widthM, y + 4)
       .stroke({ color: INK, width: 2.8, cap: 'round' });
