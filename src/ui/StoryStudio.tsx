@@ -14,11 +14,11 @@ const sceneFields = ['title', 'location', 'summary', 'purpose', 'act', 'sequence
 const sceneLabels = { title: 'Scene title', location: 'Location', summary: 'Summary', purpose: 'Narrative purpose', act: 'Act', sequence: 'Sequence', continuity: 'Continuity', requirements: 'Production requirements' };
 const approved = (status: string) => status === 'approved' || status === 'locked';
 
-export function StoryStudio({ project, production, update, ai, write, loadExample }: {
-  project: Project; production: Production; update: Update; ai: AiAccess; write: (draft: boolean) => void; loadExample: () => void;
+export function StoryStudio({ project, production, update, ai, write, loadExample, initialIdea = '' }: {
+  project: Project; production: Production; update: Update; ai: AiAccess; write: (draft: boolean) => void; loadExample: () => void; initialIdea?: string;
 }) {
   const { bible } = production;
-  const [prompt, setPrompt] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [prompt, setPrompt] = useState(initialIdea), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [proposal, setProposal] = useState<Production['bible']>();
   const [dragId, setDragId] = useState('');
   const [person, setPerson] = useState('');
