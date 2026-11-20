@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles } from 'lucide-react';
+import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles, Pencil, Check, X } from 'lucide-react';
 import { animations, clamp, gaitSpeeds } from '../engine/animation.ts';
 import { soundNames } from '../engine/presets.ts';
 import { anchorFor, compatibleObjects, nearestObject } from '../engine/interactions.ts';
@@ -191,10 +191,57 @@ export function ProjectsDialog({ items, current, close, create, open, duplicate,
     <footer className="modal-footer"><button className="quiet" onClick={backup}>Download backup</button><button className="quiet" onClick={restore}>Restore backup</button><span className="spacer"/><button className="primary" onClick={create}><Plus size={16}/> New project</button></footer>
   </Modal>;
 }
-export function ScenesDialog({ scenes, active, close, add, open, reorder, copy, drop, savePreset }: { scenes: Scene[]; active: string; close: () => void; add: () => void; open: (scene: Scene) => void; reorder: (id: string, direction: number) => void; copy: (scene: Scene) => void; drop: (scene: Scene) => void; savePreset: (scene: Scene) => void }) {
-  return <Modal title="Manage scenes" description="Arrange scenes in the order they’ll play and export." close={close}>
-    <div className="dialog-fields"><div className="project-list">{scenes.map((scene, index) => <div className="project-row" key={scene.id}><button className="project-title" onClick={() => open(scene)}><Clapperboard size={19}/><span><strong>{scene.name}</strong><small>{scene.duration}s · {scene.id === active ? 'Currently open' : scene.environment}</small></span></button><IconButton title="Move scene up" disabled={index === 0} onClick={() => reorder(scene.id, -1)}><ArrowUp size={15}/></IconButton><IconButton title="Move scene down" disabled={index === scenes.length - 1} onClick={() => reorder(scene.id, 1)}><ArrowDown size={15}/></IconButton><IconButton title="Save furnished world" onClick={() => savePreset(scene)}><Save size={15}/></IconButton><IconButton title="Duplicate scene" disabled={scenes.length >= 30} onClick={() => copy(scene)}><Copy size={15}/></IconButton><IconButton title="Delete scene" disabled={scenes.length === 1} onClick={() => drop(scene)}><Trash2 size={15}/></IconButton></div>)}</div></div>
-    <footer className="modal-footer"><span className="spacer"/><button className="primary" disabled={scenes.length >= 30} onClick={add}><Plus size={16}/> Add scene</button></footer>
+export function ScenesDialog({ scenes, active, close, add, open, rename, reorder, copy, drop, savePreset }: {
+  scenes: Scene[];active:string;close:()=>void;add:()=>void;open:(scene:Scene)=>void;
+  rename:(id:string,name:string)=>void;reorder:(id:string,direction:number)=>void;
+  copy:(scene:Scene)=>void;drop:(scene:Scene)=>void;savePreset:(scene:Scene)=>void;
+}) {
+  const [renaming,setRenaming]=useState<string>();
+  const [name,setName]=useState(''),[error,setError]=useState('');
+  const total=scenes.reduce((sum,scene)=>sum+scene.duration,0);
+  function begin(scene:Scene){setRenaming(scene.id);setName(scene.name);setError('');}
+  function commit(){
+    if(!renaming)return;
+    const title=name.trim();
+    if(!title||title.length>70){setError('Enter a scene name (1–70 characters).');return;}
+    try{rename(renaming,title);setRenaming(undefined);setError('');}
+    catch(e){setError(e instanceof Error?e.message:'Could not rename scene.');}
+  }
+  return <Modal wide title="Your movie scenes"
+    description={`${scenes.length} scenes · ${Math.round(total)} seconds of storytelling. Reorder scenes to change playback and export order.`}
+    close={close}>
+    <div className="dialog-fields"><div className="scene-manage-list">
+      {scenes.map((scene,index)=><article className={scene.id===active?'scene-manage-card is-current':'scene-manage-card'} key={scene.id}>
+        <button className="scene-manage-number" onClick={()=>open(scene)} title={`Open scene ${index+1}`}>
+          {String(index+1).padStart(2,'0')}</button>
+        <div className="scene-manage-details">
+          {renaming===scene.id?<form className="scene-manage-rename" onSubmit={event=>{event.preventDefault();commit();}}>
+            <input autoFocus value={name} maxLength={70} aria-label="Scene name"
+              onChange={event=>setName(event.target.value)}
+              onKeyDown={event=>{if(event.key==='Escape')setRenaming(undefined);}}/>
+            <button className="quiet" type="submit" aria-label="Save scene name"><Check size={15}/></button>
+            <button className="quiet" type="button" aria-label="Cancel rename" onClick={()=>setRenaming(undefined)}><X size={15}/></button>
+          </form>:<button className="scene-manage-title" onClick={()=>open(scene)}>
+            <strong>{scene.name}</strong>
+            <small>{scene.environment} · {scene.duration}s · {scene.clips.length} clips
+              {scene.id===active?' · Currently open':''}</small></button>}
+        </div>
+        <div className="scene-manage-actions">
+          <IconButton title="Rename scene" onClick={()=>begin(scene)}><Pencil size={15}/></IconButton>
+          <IconButton title="Move scene earlier" disabled={index===0} onClick={()=>reorder(scene.id,-1)}><ArrowUp size={15}/></IconButton>
+          <IconButton title="Move scene later" disabled={index===scenes.length-1} onClick={()=>reorder(scene.id,1)}><ArrowDown size={15}/></IconButton>
+          <IconButton title="Save this furnished world" onClick={()=>savePreset(scene)}><Save size={15}/></IconButton>
+          <IconButton title="Duplicate scene" disabled={scenes.length>=30} onClick={()=>copy(scene)}><Copy size={15}/></IconButton>
+          <IconButton title="Delete scene" disabled={scenes.length===1} onClick={()=>drop(scene)}><Trash2 size={15}/></IconButton>
+        </div>
+      </article>)}
+    </div>{!!error&&<p className="form-error" role="alert">{error}</p>}
+      <p className="small-text">Each scene keeps its own world, actors, camera and clips. The film plays them in this order. Undo restores a deleted or rearranged scene.</p>
+    </div>
+    <footer className="modal-footer"><span className="spacer"/>
+      <button className="quiet" onClick={close}>Close</button>
+      <button className="primary" disabled={scenes.length>=30} onClick={add}><Plus size={16}/> Add scene</button>
+    </footer>
   </Modal>;
 }
 export function AccountDialog({ available, account, login, logout, close }: { available: boolean; account: Account | null; login: (email: string, password: string, register: boolean) => Promise<void>; logout: () => Promise<void>; close: () => void }) {
