@@ -38,8 +38,16 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
   // The toolbar updates its playhead via custom events instead of causing
   // a full React render on every animation frame.
   const getTimeRef=useRef(getTime);getTimeRef.current=getTime;
+  const lastDisplayedTime=useRef(clockTime);
   useEffect(()=>{
-    const update=()=>setClockTime(getTimeRef.current());
+    const update=()=>{
+      const next=getTimeRef.current(),previous=lastDisplayedTime.current;
+      // Avoid rerendering the entire Director inspector 30 times/second.
+      // Requests always sample the exact audio playhead via getTimeRef.
+      if(next>previous&&next-previous<.12)return;
+      lastDisplayedTime.current=next;
+      setClockTime(next);
+    };
     window.addEventListener('toonroom-time',update);
     return ()=>window.removeEventListener('toonroom-time',update);
   },[]);
