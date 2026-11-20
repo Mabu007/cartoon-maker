@@ -3,13 +3,13 @@ import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Clo
 import { animations, clamp, gaitSpeeds } from '../engine/animation.ts';
 import { soundNames } from '../engine/presets.ts';
 import { anchorFor, compatibleObjects, nearestObject } from '../engine/interactions.ts';
-import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track } from '../engine/schema.ts';
+import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track, type Character } from '../engine/schema.ts';
 import { type Format } from '../engine/renderer.ts';
 import { evaluate, projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
 import { analyzeLipSync } from '../services/lipSync.ts';
-import { speechProvider, voices } from '../services/speech.ts';
+import { speechProvider, voices, synthesizeCached } from '../services/speech.ts';
 import { browserExporter, exportCodec } from '../services/export.ts';
 import type { SavedProject } from '../services/projects.ts';
 import { clipLabel, clock, formats, IconButton, Modal, Select, trackIcon } from './shared.tsx';
@@ -82,9 +82,12 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
 }
 
 export type AudioRequest = { track: 'dialogue' | 'audio' | 'music'; actor?: string; start: number };
-export function AudioDialog({ request, actors, scene, account, add, close }: { request: AudioRequest; actors: Record<string, string>; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
+export function AudioDialog({ request, actors, characters, scene, account, add, close }: { request: AudioRequest; actors: Record<string, string>; characters: Character[]; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
   const isDialogue = request.track === 'dialogue';
-  const [actor, setActor] = useState(request.actor || Object.keys(actors)[0] || ''), [text, setText] = useState(''), [voice, setVoice] = useState('warm');
+  const getVoice = (actorId:string) => characters.find(c=>c.id===scene.actors.find(a=>a.id===actorId)?.characterId);
+  const initialActor=request.actor || Object.keys(actors)[0] || '';
+  const [actor, setActor] = useState(initialActor), [text, setText] = useState(''),
+    [voice, setVoice] = useState(getVoice(initialActor)?.voicePreset ?? 'warm');
   const [start, setStart] = useState(clamp(request.start, 0, scene.duration - .1)), [name, setName] = useState('');
   const [recording, setRecording] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [asset, setAsset] = useState<{ blob: Blob; url: string; length: number }>();
@@ -128,7 +131,7 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
       const analysis = await analyzeLipSync(asset.blob, text.trim(), asset.length);
       if (!alive.current) return;
       setLipStatus(analysis.source === 'rhubarb' ? 'Audio-aligned mouth animation ready.' : 'Estimated mouth animation; Rhubarb unavailable.');
-      add({ ...common, track: 'dialogue', text: text.trim(), actor, visemes: analysis.cues });
+      add({ ...common, track: 'dialogue', text: text.trim(), actor, voicePreset:voice as 'warm'|'bright'|'deep', visemes: analysis.cues });
     } else {
       if (!alive.current) return;
       const title = name.trim().slice(0, 80);
@@ -137,7 +140,7 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
     }
   });
   return <Modal title={isDialogue ? 'Add dialogue' : request.track === 'music' ? 'Add music' : 'Add sound effect'} description={isDialogue ? 'Generate a voice, record your own, or attach an audio file.' : request.track === 'music' ? 'Import a soundtrack or music loop.' : 'Import a sound effect or recording.'} close={close}>
-    <div className="dialog-fields">{isDialogue && <><label className="field">Actor<Select aria="Dialogue actor" value={actor} onChange={setActor} options={Object.keys(actors)} render={id => actors[id]}/></label>{!actor && <p className="form-error">Add an actor to the scene first.</p>}<label className="field">Dialogue<textarea value={text} maxLength={400} onChange={e => setText(e.target.value)} placeholder="What does your character say?"/></label><div className="field-row"><label className="field">Voice<Select aria="Voice" value={voice} onChange={setVoice} options={voices.map(item => item.id)} render={id => voices.find(item => item.id === id)!.name}/></label><button disabled={!text.trim() || busy || recording} className="quiet generate-voice" onClick={() => work(async () => load(await speechProvider(account).synthesize(text, voice), 'Generated voice'))}><Sparkles size={16}/> Generate voice</button></div>{(!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') && <p className="small-text">Voice generation runs on this device. The first use downloads the voice engine.</p>}</>}
+    <div className="dialog-fields">{isDialogue && <><label className="field">Actor<Select aria="Dialogue actor" value={actor} onChange={value=>{setActor(value);setVoice(getVoice(value)?.voicePreset??'warm');}} options={Object.keys(actors)} render={id => actors[id]}/></label>{!actor && <p className="form-error">Add an actor to the scene first.</p>}<label className="field">Dialogue<textarea value={text} maxLength={400} onChange={e => setText(e.target.value)} placeholder="What does your character say?"/></label><div className="field-row"><label className="field">Voice<Select aria="Voice" value={voice} onChange={setVoice} options={voices.map(item => item.id)} render={id => voices.find(item => item.id === id)!.name}/></label><button disabled={!text.trim() || busy || recording} className="quiet generate-voice" onClick={() => work(async () => load(await synthesizeCached(speechProvider(account),text,voice,getVoice(actor)?.hostedVoiceId), 'Generated voice'))}><Sparkles size={16}/> Generate voice</button></div>{(!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') && <p className="small-text">Voice generation runs on this device. The first use downloads the voice engine.</p>}</>}
     <div className="field-row"><label className={`quiet file-button ${busy || recording ? 'disabled' : ''}`}><FileAudio size={16}/> Upload audio<input type="file" accept="audio/*,.webm" disabled={busy || recording} onChange={e => { const file = e.target.files?.[0]; if (file) void work(() => load(file, file.name.replace(/\.[^.]+$/, ''))); e.currentTarget.value = ''; }}/></label><button className={`quiet ${recording ? 'recording' : ''}`} disabled={busy} onClick={() => void record()}>{recording ? <Square size={15}/> : <Mic size={16}/>} {recording ? 'Stop recording' : 'Record voice'}</button></div>
     {asset && <><audio controls src={asset.url} aria-label="Preview audio"/>{!isDialogue && <label className="field">Name<input value={name} maxLength={80} onChange={e => setName(e.target.value)}/></label>}</>}
     <label className="field">Start (seconds)<input type="number" step=".01" min={0} max={scene.duration - .1} value={Math.round(start * 100) / 100} onChange={e => setStart(Number(e.target.value))}/></label>
