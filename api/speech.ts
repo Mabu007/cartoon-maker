@@ -24,9 +24,6 @@ async function post(request: Request) {
   if (voiceId !== undefined && (typeof voiceId !== 'string' || !voicePattern.test(voiceId)))
     return Response.json({ error: 'The hosted voice ID is invalid.' }, { status: 400 });
   const chosen = voiceId || (voice === 'bright' ? process.env.FISH_VOICE_BRIGHT : voice === 'deep' ? process.env.FISH_VOICE_DEEP : process.env.FISH_VOICE_WARM);
-  const instructions = voice === 'bright'
-    ? 'Bright, energetic character delivery.' : voice === 'deep'
-      ? 'Low and steady character delivery.' : 'Warm, natural character delivery.';
   if (chosen && !voicePattern.test(chosen)) return Response.json({ error: 'The configured provider voice ID is invalid.' }, { status: 503 });
   try {
     // Do not allow client control of the provider URL or model.
@@ -34,7 +31,7 @@ async function post(request: Request) {
       method: 'POST', signal: AbortSignal.timeout(55_000),
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: process.env.SPEECH_MODEL || MODEL, input: text.trim(),
-        ...(chosen ? { voice: chosen } : {}), instructions, response_format: 'mp3' })
+        ...(chosen ? { voice: chosen } : {}), response_format: 'mp3' })
     });
     if (!upstream.ok) {
       let error = 'Voice provider returned HTTP ' + upstream.status + '.';

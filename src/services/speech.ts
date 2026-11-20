@@ -1,6 +1,9 @@
 import type { Account } from './cloud.ts';
 
-export interface SpeechProvider { synthesize(text: string, voice: string, voiceId?: string): Promise<Blob>; }
+export interface SpeechProvider {
+  synthesize(text: string, voice: string, voiceId?: string): Promise<Blob>;
+  cacheScope?: string;
+}
 export const voices = [{ id: 'warm', name: 'Warm' }, { id: 'bright', name: 'Bright' }, { id: 'deep', name: 'Deep' }];
 let worker: Worker | undefined;
 let nextRequest = 0;
@@ -26,6 +29,7 @@ function getWorker() {
   return worker;
 }
 export const localSpeech: SpeechProvider = {
+  cacheScope: 'local-flite-v1',
   async synthesize(text, voice) {
     if (!text.trim() || text.length > 400) throw new Error('Enter between 1 and 400 characters to generate a voice.');
     const preset = voice === 'bright' ? 'slt' : voice === 'deep' ? 'rms' : 'kal';
@@ -41,6 +45,7 @@ export const localSpeech: SpeechProvider = {
 export function speechProvider(account: Account | null): SpeechProvider {
   if (!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') return localSpeech;
   return {
+    cacheScope: 'hosted-openrouter-v1',
     async synthesize(text, voice, voiceId) {
       const token = await account.getIdToken();
       let response: Response;
@@ -71,7 +76,7 @@ export function speechProvider(account: Account | null): SpeechProvider {
 export async function synthesizeCached(provider: SpeechProvider, text: string, preset: string,
   hostedVoiceId?: string, force = false) {
   const { getAudio, putAudio } = await import('./audio.ts');
-  const input = new TextEncoder().encode(['toonroom-tts-v2',text.trim(),preset,hostedVoiceId ?? ''].join('\u0000'));
+  const input = new TextEncoder().encode(['toonroom-tts-v3',provider.cacheScope ?? 'external',text.trim(),preset,hostedVoiceId ?? ''].join('\u0000'));
   const digest = await crypto.subtle.digest('SHA-256',input);
   const key = 'speech-' + [...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('');
   if (!force) {
@@ -80,6 +85,9 @@ export async function synthesizeCached(provider: SpeechProvider, text: string, p
   }
   const result = await provider.synthesize(text,preset,hostedVoiceId);
   if (!result.size) throw new Error('Speech engine returned empty audio.');
-  await putAudio(key,result).catch(()=>{});
+  // A hosted request can return local WAV on fallback. Do not cache that
+  // blob as if it were a hosted Fish voice.
+  if (provider.cacheScope !== 'hosted-openrouter-v1' || result.type !== 'audio/wav')
+    await putAudio(key,result).catch(()=>{});
   return result;
 }
