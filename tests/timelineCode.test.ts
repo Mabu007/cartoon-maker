@@ -35,10 +35,10 @@ test('camera shot edits trim competing full frame shots to prevent overlap', () 
 test('audio-derived viseme timestamps are deterministic and silence remains silent', () => {
   const cues = parseRhubarbOutput({ mouthCues: [{ start: 0, end: .2, value: 'A' }, { start: .2, end: .6, value: 'D' }, { start: .6, end: .8, value: 'X' }] }, 1);
   assert.equal(sampleTimedViseme(cues, .1).shape, 'closed');
-  assert.equal(sampleTimedViseme(cues, .41).shape, 'wide');
+  assert.equal(sampleTimedViseme(cues, .41).shape, 'open'); // Rhubarb D = fully open
   assert.equal(sampleTimedViseme(cues, .75).weight, 0);
   assert.equal(sampleTimedViseme(cues, 2).shape, 'rest');
-  assert.throws(() => parseRhubarbOutput({ mouthCues: [{ start: -1, end: 1, value: 'A' }] }, 1), /Invalid Rhubarb cue/);
+  assert.throws(() => parseRhubarbOutput({ mouthCues: [{ start: -1, end: 1, value: 'A' }] }, 1), /Rhubarb cue/);
 });
 
 

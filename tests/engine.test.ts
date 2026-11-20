@@ -190,7 +190,10 @@ test('facial performances blink, move eyes and mouths, do not synchronize actors
   assert(sbu.some((face, index) => Math.abs(face.gazeX - sbu[0].gazeX) > .5 && index > 10), 'gaze moves');
   assert(sbu.some((face, index) => Math.abs(face.blink - zee[index].blink) > .5), 'actors blink independently');
   assert.deepEqual(facialPerformance(2.75, 'actor-zee', 'talk', 'neutral'), facialPerformance(2.75, 'actor-zee', 'talk', 'neutral'));
-  assert(facialPerformance(1.5, 'actor-zee', 'talk', 'neutral').mouthOpen > .2);
+  // Talk is a gesture, not a time-driven mouth oscillator: audio cues
+  // exclusively control the speaking jaw.
+  assert.equal(facialPerformance(1.5, 'actor-zee', 'talk', 'neutral').mouthOpen, 0);
+  assert(facialPerformance(1.5, 'actor-zee', 'talk', 'neutral', .5, { shape: 'open', weight: 1 }).mouthOpen > .2);
   assert.equal(facialPerformance(1.5, 'actor-zee', 'idle', 'neutral').mouthOpen, 0);
   assert.equal(facialPerformance(1.5, 'actor-zee', 'cry', 'neutral').expression, 'sad');
   assert.equal(facialPerformance(1.5, 'actor-zee', 'laugh', 'neutral').expression, 'happy');
