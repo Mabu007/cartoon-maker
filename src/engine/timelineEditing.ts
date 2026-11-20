@@ -40,7 +40,7 @@ export function resizeSceneTimeline(scene: Scene, duration: number): Scene {
   const locked = scene.clips.find(clip => trackIsLocked(scene,clip.track) && clip.start + clip.length > length + 1e-8);
   if (locked) throw new Error('Unlock the ' + locked.track + ' track before shortening clips on it.');
   return { ...scene, duration: length,
-    clips: scene.clips.flatMap(clip => {
+    clips: scene.clips.flatMap((clip): Clip[] => {
       if (clip.start >= length - MIN + 1e-8) return [];
       const trimmed = Math.min(clip.length, length - clip.start);
       if (trimmed < MIN - 1e-8) return [];

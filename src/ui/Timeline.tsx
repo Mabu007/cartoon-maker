@@ -36,7 +36,8 @@ export function Timeline({
   const shown=preview?.id===scene.id?preview:scene;
   const chosen=new Set(selectedClipIds);
   const byTrack=useMemo(()=>{
-    const result=Object.fromEntries(tracks.map(track=>[track,[]])) as Record<Track,Clip[]>;
+    const result = {} as Record<Track,Clip[]>;
+    for (const track of tracks) result[track]=[];
     for(const clip of shown.clips) result[clip.track].push(clip);
     for(const track of tracks)result[track].sort((a,b)=>a.start-b.start);
     return result;

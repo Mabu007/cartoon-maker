@@ -10,7 +10,7 @@ export function VoiceClipControls({ clip, character, generate, restore }: {
   restore:(clip:Dialogue,index:number)=>Promise<string>;
 }) {
   const [text,setText]=useState(clip.text);
-  const [voice,setVoice]=useState(clip.voicePreset??character?.voicePreset??'warm');
+  const [voice,setVoice]=useState<string>(clip.voicePreset??character?.voicePreset??'warm');
   const [busy,setBusy]=useState(false),[status,setStatus]=useState(''),[error,setError]=useState('');
   const [url,setUrl]=useState(''),[versionIndex,setVersionIndex]=useState(-1);
   useEffect(()=>{setText(clip.text);setVoice(clip.voicePreset??character?.voicePreset??'warm');setVersionIndex(-1);},[clip.asset,clip.id,character?.voicePreset]);

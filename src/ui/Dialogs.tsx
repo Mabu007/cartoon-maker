@@ -87,7 +87,7 @@ export function AudioDialog({ request, actors, characters, scene, account, add, 
   const getVoice = (actorId:string) => characters.find(c=>c.id===scene.actors.find(a=>a.id===actorId)?.characterId);
   const initialActor=request.actor || Object.keys(actors)[0] || '';
   const [actor, setActor] = useState(initialActor), [text, setText] = useState(''),
-    [voice, setVoice] = useState(getVoice(initialActor)?.voicePreset ?? 'warm');
+    [voice, setVoice] = useState<string>(getVoice(initialActor)?.voicePreset ?? 'warm');
   const [start, setStart] = useState(clamp(request.start, 0, scene.duration - .1)), [name, setName] = useState('');
   const [recording, setRecording] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [asset, setAsset] = useState<{ blob: Blob; url: string; length: number; generationText?: string }>();
