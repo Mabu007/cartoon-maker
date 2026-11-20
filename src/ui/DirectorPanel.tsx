@@ -48,7 +48,11 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
   const [error,setError]=useState(''),[history,setHistory]=useState<Message[]>([]);
   const [copied,setCopied]=useState('');
   const previewRef=useRef(preview);previewRef.current=preview;
-  useEffect(()=>()=>previewRef.current(undefined),[]);
+  const activeRef=useRef(true);
+  useEffect(()=>{
+    activeRef.current=true;
+    return ()=>{activeRef.current=false;previewRef.current(undefined);};
+  },[]);
   const selected=selection?.kind==='clip'?scene.clips.find(item=>item.id===selection.id):undefined;
   const selectedActor=selection?.kind==='actor'?scene.actors.find(item=>item.id===selection.id):undefined;
   const selectedProp=selection?.kind==='object'?scene.objects.find(item=>item.id===selection.id):undefined;
@@ -88,6 +92,7 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
       for(let attempt=0;attempt<2;attempt++){
         response=await filmmaker(ai,'timeline',attempt===0?request:
           `${request}\nYour previous proposed operations were invalid: ${issue}. Fix all IDs, collisions and timeline constraints. Return a valid fresh proposal.`,context);
+        if(!activeRef.current)return; // Scene or project switched while the model was working.
         try{
           const next=applyTimelineEdits(project,scene,response,{deferSpeech:true});
           if(snapshot!==sceneToCode(scene))throw new Error('The scene changed while requesting direction.');
@@ -128,6 +133,8 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
           lipSync:{source:analysis.source,engine:analysis.engine,analyzedDuration:analysis.analyzedDuration,
             ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})}};
       }):{next:pending.next,generatedAssets:[]};
+      // A delayed voice result from a closed or switched scene must never apply.
+      if(!activeRef.current)throw new Error('The scene closed while preparing speech. Original timeline remains unchanged.');
       // Apply performs the canonical store comparison and creates one undo snapshot.
       apply(prepared.next,pending.base,prepared.generatedAssets);
       preview(undefined);
