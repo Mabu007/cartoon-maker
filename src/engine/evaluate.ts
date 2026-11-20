@@ -1,6 +1,6 @@
 import { animations, blend, clamp, ease, mix, sample, viewForward } from './animation.ts';
 import { anchorFor } from './interactions.ts';
-import { sampleViseme, type Viseme } from './visemes.ts';
+import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
@@ -84,7 +84,7 @@ export function evaluate(scene: Scene, time: number) {
     if (face) expression = face.expression;
     const spoken = sounds.find(clip => clip.track === 'dialogue' && clip.actor === actor.id && !clip.muted);
     const viseme = spoken?.track === 'dialogue'
-      ? sampleViseme(spoken.text, spoken.length, t - spoken.start)
+      ? spoken.visemes?.length ? sampleTimedViseme(spoken.visemes, t - spoken.start + spoken.offset) : sampleViseme(spoken.text, spoken.length, t - spoken.start)
       : undefined;
     if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? scene.objects.find(item => item.id === propCue.target) : undefined;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
