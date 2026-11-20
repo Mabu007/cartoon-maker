@@ -1,7 +1,7 @@
 import { chatProvider, openRouterEndpoint } from '../src/engine/creativeModel.js';
 import type { AiTask } from '../src/engine/filmmakerAI.js';
 
-const modelKeys: Record<AiTask, string> = { brainstorm: 'TOONROOM_BRAINSTORM_MODEL', screenplay: 'TOONROOM_SCREENPLAY_MODEL', direct: 'TOONROOM_DIRECTION_MODEL' };
+const modelKeys: Record<AiTask, string> = { brainstorm: 'TOONROOM_BRAINSTORM_MODEL', screenplay: 'TOONROOM_SCREENPLAY_MODEL', direct: 'TOONROOM_DIRECTION_MODEL', timeline: 'TOONROOM_DIRECTION_MODEL' };
 
 export function connection(task: AiTask) {
   const openRouter = process.env.OPENROUTER_API_KEY;
