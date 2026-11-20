@@ -112,3 +112,8 @@ test('editing unrelated timeline timing preserves order of tied cues',()=>{
   assert.deepEqual(moveTimelineClips(s,['a'],0).clips.map(c=>c.id),['a','b']);
   assert.deepEqual(trimTimelineClip(s,'a','out',3).clips.map(c=>c.id),['a','b']);
 });
+
+test('scene shrinking cannot silently destroy clips on locked tracks',()=>{
+  const s={...scene(sound('locked',0,12)),trackSettings:{audio:{locked:true}}};
+  assert.throws(()=>resizeSceneTimeline(s,8),/Unlock the audio track/);
+});

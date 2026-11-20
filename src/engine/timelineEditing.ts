@@ -37,6 +37,8 @@ export function snapGuides(scene: Scene, playhead: number, exclude: string[] = [
 export function resizeSceneTimeline(scene: Scene, duration: number): Scene {
   if (!Number.isFinite(duration) || duration < 1 || duration > 180) throw new Error('Scene duration must be between 1 and 180 seconds.');
   const length = rounding(duration);
+  const locked = scene.clips.find(clip => trackIsLocked(scene,clip.track) && clip.start + clip.length > length + 1e-8);
+  if (locked) throw new Error('Unlock the ' + locked.track + ' track before shortening clips on it.');
   return { ...scene, duration: length,
     clips: scene.clips.flatMap(clip => {
       if (clip.start >= length - MIN + 1e-8) return [];
