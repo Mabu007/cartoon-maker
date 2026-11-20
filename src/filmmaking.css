@@ -444,3 +444,9 @@
   .professional-timeline .timeline-empty-track { font-size:9px; }
   .professional-timeline .timeline-first-tip { display:none; }
 }
+
+/* At Fit zoom, the full scene really occupies exactly the viewport, even on
+   320px screens; higher zoom is independent of scene duration. */
+.professional-timeline .timeline-sheet { min-width:0; }
+.professional-timeline .lane:focus-visible { outline:1px dashed #ad80e8; outline-offset:-2px; }
+.professional-timeline .timeline-context-menu { overflow:auto; }

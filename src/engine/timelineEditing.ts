@@ -41,7 +41,13 @@ export function resizeSceneTimeline(scene: Scene, duration: number): Scene {
     clips: scene.clips.flatMap(clip => {
       if (clip.start >= length - MIN + 1e-8) return [];
       const trimmed = Math.min(clip.length, length - clip.start);
-      return trimmed >= MIN - 1e-8 ? [{ ...clip, length: rounding(trimmed) }] : [];
+      if (trimmed < MIN - 1e-8) return [];
+      if (clip.track === 'movement') {
+        const fraction = trimmed/clip.length;
+        const start = movementPosition(clip,0),end = movementPosition(clip,fraction);
+        return [{ ...clip, length: rounding(trimmed), fromX:start.x, fromY:start.y, toX:end.x, toY:end.y, keyframes:segmentedKeys(clip,0,fraction) }];
+      }
+      return [{ ...clip, length: rounding(trimmed) }];
     }),
     markers: scene.markers?.filter(marker => marker.time <= length)
   };

@@ -321,6 +321,7 @@ export default function App() {
   function patchActor(value: ActorData) { editScene(current => ({ ...current, actors: current.actors.map(actor => actor.id === value.id ? value : actor) })); }
   function patchObject(value: Prop) { editScene(current => repairOrphanedObjectActions({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
   function patchClip(value: Clip, original?: Clip) {
+    if (scene.trackSettings?.[value.track]?.locked) { tell('Unlock the track before editing this clip.',true); return; }
     if (value.track === 'dialogue') {
       const before = scene.clips.find(clip => clip.id === value.id);
       const script = project.production?.screenplay.scenes.find(item => item.id === scene.id);
@@ -365,6 +366,7 @@ export default function App() {
   }
   function addClip(value: Clip) {
     commitScene(current => {
+      if (current.trackSettings?.[value.track]?.locked) throw new Error('Unlock the track before adding clips.');
       if (current.clips.some(clip => clip.id === value.id)) throw new Error('This clip already exists.');
       const clip = value.track === 'camera' ? value : changeClipTiming(value, value.start, value.length, current.duration);
       return { ...current, clips: clip.track === 'camera' ? insertCameraShot(current.clips, clip, [...current.actors, ...current.objects].map(item => item.id)) : [...current.clips, clip] };
@@ -730,6 +732,7 @@ export default function App() {
       // Never steal Backspace, clipboard, Space or shortcuts from text editors.
       if (el?.isContentEditable || el?.closest('input,textarea,select,[role="textbox"],.monaco-editor,.cm-editor,[contenteditable]')) return;
       const inClip = !!el?.closest('.clip,.timeline-keyframe');
+      const inTimeline = !!el?.closest('.professional-timeline');
       if (el?.closest('button,[role="button"],[role="separator"]') && !inClip) return;
       const state = useStudio.getState(), hasTimelineSelection = state.clipIds.length > 0 || !!state.selectedKeyframe;
       const command = event.metaKey || event.ctrlKey;
@@ -742,7 +745,7 @@ export default function App() {
       }
       if (workspace !== 'direct') return;
       if (event.code === 'Space' && !command && !event.altKey) { event.preventDefault(); void play(); return; }
-      if (command && key === 'a' && (inClip || hasTimelineSelection)) { event.preventDefault(); state.selectClips(currentScene(state).clips.map(clip=>clip.id)); return; }
+      if (command && key === 'a' && (inTimeline || hasTimelineSelection)) { event.preventDefault(); state.selectClips(currentScene(state).clips.map(clip=>clip.id)); return; }
       if (command && key === 'c' && hasTimelineSelection) { event.preventDefault(); copyTimelineSelection(); return; }
       if (command && key === 'x' && hasTimelineSelection) { event.preventDefault(); cutTimelineSelection(); return; }
       if (command && key === 'v') { event.preventDefault(); pasteTimelineSelection(); return; }
@@ -751,7 +754,7 @@ export default function App() {
         event.preventDefault(); removeSelection(); return;
       }
       if (!command && !event.altKey && key === 's' && hasTimelineSelection) { event.preventDefault(); splitTimelineSelection(); return; }
-      if (inClip && (key === '+' || key === '=' || key === '-' || key === '_')) {
+      if (inTimeline && (key === '+' || key === '=' || key === '-' || key === '_')) {
         event.preventDefault(); window.dispatchEvent(new CustomEvent('toonroom-zoom', {detail:key==='+'||key==='='?'in':'out'})); return;
       }
       if (event.key === 'Escape') { state.select(null); setFocus(false); return; }

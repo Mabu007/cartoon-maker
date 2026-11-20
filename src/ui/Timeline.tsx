@@ -30,7 +30,7 @@ export function Timeline({
   const playheadRef=useRef(playhead),drag=useRef<DragSession|null>(null),scrub=useRef(false),contextRef=useRef<HTMLDivElement>(null);
   const anchor=useRef<string|null>(null);
   const labelWidth=viewport<=790?TRACK_WIDTH_MOBILE:TRACK_WIDTH_DESKTOP;
-  const sheetWidth=Math.max(viewport,570)*zoom;
+  const sheetWidth=Math.max(viewport,260)*zoom;
   const unitsPerPixel=scene.duration/Math.max(1,sheetWidth-labelWidth);
   const pixelsPerSecond=1/unitsPerPixel;
   const shown=preview?.id===scene.id?preview:scene;
@@ -78,7 +78,7 @@ export function Timeline({
     if(!el){setZoom(value);return;}
     const at=playheadRef.current/scene.duration;
     const viewportPosition=labelWidth+at*(sheetWidth-labelWidth)-el.scrollLeft;
-    const nextSheet=Math.max(viewport,570)*value;
+    const nextSheet=Math.max(viewport,260)*value;
     setZoom(value);
     requestAnimationFrame(()=>{el.scrollLeft=Math.max(0,labelWidth+at*(nextSheet-labelWidth)-viewportPosition);});
   };
@@ -99,6 +99,7 @@ export function Timeline({
     const hit=event.target as HTMLElement;
     if(hit.closest('.timeline-keyframe'))return;
     const ids=selectionFor(clip.id,event);
+    event.currentTarget.focus({preventScroll:true});
     if(!ids.includes(clip.id))return;
     if(trackIsLocked(scene,clip.track))return;
     const edge=hit.closest('[data-edge]')?.getAttribute('data-edge') as 'in'|'out'|null;
@@ -203,8 +204,8 @@ export function Timeline({
         <button type="button" aria-label={(locked?'Unlock ':'Lock ')+trackNames[track]} title={locked?'Unlock track':'Lock track'} onClick={()=>toggle(track,'locked')}>{locked?<Lock size={13}/>:<Unlock size={13}/>}</button>
         <button type="button" title={'Add '+trackNames[track]+' clip'} aria-label={'Add '+trackNames[track]+' clip'} disabled={locked} onClick={()=>add(track)}><Plus size={13}/></button>
       </div>
-      <div className={`lane ${dropTrack===track?'timeline-drop-target':''}`} data-timeline-track={track}
-        onPointerDown={event=>{if(event.target===event.currentTarget)selectClips([]);}}
+      <div className={`lane ${dropTrack===track?'timeline-drop-target':''}`} data-timeline-track={track} tabIndex={0} aria-label={trackNames[track]+' timeline lane'}
+        onPointerDown={event=>{if(event.target===event.currentTarget){selectClips([]);event.currentTarget.focus({preventScroll:true});}}}
         onDragOver={event=>{if(!locked){event.preventDefault();event.dataTransfer.dropEffect='copy';setDropTrack(track);}}}
         onDragLeave={()=>setDropTrack(null)}
         onDrop={event=>insertDropped(event,track)}>
@@ -216,7 +217,7 @@ export function Timeline({
             className={`clip clip-${track} ${selected?'clip-selected':''} ${tiny?'clip-tiny':''} ${drag.current?.ids.includes(clip.id)?'clip-preview':''}`}
             style={{left:clip.start/scene.duration*100+'%',width:clip.length/scene.duration*100+'%',top:4+row*27}}
             onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();selectionFor(clip.id,event);seek(clip.start);}}}
-            onContextMenu={event=>{event.preventDefault();if(!selected)selectClips([clip.id]);setMenu({x:event.clientX,y:event.clientY,id:clip.id});}}
+            onContextMenu={event=>{event.preventDefault();if(!selected)selectClips([clip.id]);setMenu({x:Math.min(event.clientX,window.innerWidth-204),y:Math.min(event.clientY,window.innerHeight-266),id:clip.id});}}
             onPointerDown={event=>pointerDown(event,clip)}
             onPointerMove={pointerMove}
             onPointerUp={pointerUp}
