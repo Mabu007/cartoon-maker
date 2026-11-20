@@ -22,6 +22,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   useEffect(() => {
     let alive = true, handle = 0, lastShot = '', failed = false;
     let activeRenderer: Renderer | null = null;
+    let contextLost: ((event: Event) => void) | undefined;
     const fail = (error: unknown) => {
       if (!alive || failed) return;
       failed = true;
@@ -38,6 +39,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         fail(new Error('Graphics context lost'));
         if (restart < 2) setRestart(value => value + 1);
       };
+      contextLost = onContextLost;
       renderer.canvas.addEventListener('webglcontextlost', onContextLost);
       mount.current?.replaceChildren(renderer.canvas);
       setStatus('');
@@ -75,7 +77,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       repaint.current = () => {};
       if (engine.current === activeRenderer) engine.current = null;
       if (activeRenderer) {
-        activeRenderer.canvas.replaceWith(activeRenderer.canvas);
+        if (contextLost) activeRenderer.canvas.removeEventListener('webglcontextlost', contextLost);
         try { activeRenderer.destroy(); } catch (error) { console.warn('Stage renderer cleanup:', error); }
       }
     };
