@@ -98,6 +98,17 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
             : <Select aria={label(key)} value={draft[key]} onChange={v => update(key, v)} options={styles[key]}/>}
         </label>)}
         {section === 'Body' && <><p className="factory-helper">Start with three simple proportions. Your character stays rigged at every size.</p>{(['height', 'head', 'thickness'] as const).map(id => <label className="field slider" key={id}>{sliders[id]}<input type="range" min={id === 'thickness' ? .65 : .75} max={id === 'head' ? 1.35 : id === 'thickness' ? 1.45 : 1.3} step={.01} value={draft[id]} onChange={e => update(id, Number(e.target.value))}/></label>)}</>}
+        {section === 'Face' && <div className="factory-teeth-editor">
+          <span>Teeth · tap a tooth to make it gold</span>
+          <div className="factory-teeth-row" role="group" aria-label="Choose gold teeth">
+            {Array.from({ length: 6 }, (_, index) => <button type="button" key={index}
+              className={(draft.goldTeeth ?? []).includes(index) ? 'gold' : ''}
+              aria-label={'Tooth ' + (index + 1)} aria-pressed={(draft.goldTeeth ?? []).includes(index)}
+              onClick={() => update('goldTeeth', (draft.goldTeeth ?? []).includes(index)
+                ? (draft.goldTeeth ?? []).filter(value => value !== index)
+                : [...(draft.goldTeeth ?? []), index].sort((a,b) => a-b))}>{index + 1}</button>)}
+          </div>
+        </div>}
         {section === 'Face' && <div className="factory-toggle-row"><label className="check"><input type="checkbox" checked={draft.glasses} onChange={e => update('glasses', e.target.checked)}/> Glasses</label><label className="check"><input type="checkbox" checked={draft.earrings} onChange={e => update('earrings', e.target.checked)}/> Earrings</label></div>}
         {section === 'Outfit' && <div className="color-row">{Object.entries(colors).filter(([key]) => key !== 'skin').map(([key, title]) => <label key={key} title={title}><input type="color" aria-label={title} value={draft[key as keyof typeof colors]} onChange={e => update(key as keyof typeof colors, e.target.value)}/><span>{title}</span></label>)}</div>}
         <div className="factory-skin"><span>Skin tone</span><div className="tone-swatches">{skinTones.map(tone => <button key={tone} type="button" className={draft.skin.toLowerCase() === tone ? 'selected' : ''} style={{ backgroundColor: tone }} title={tone} aria-label={`Skin tone ${tone}`} onClick={() => update('skin', tone)}/>)}</div><label className="custom-tone">Custom <input type="color" aria-label="Custom skin tone" value={draft.skin} onChange={e => update('skin', e.target.value)}/></label></div>
