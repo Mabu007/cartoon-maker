@@ -41,7 +41,7 @@ export function resizeSceneTimeline(scene: Scene, duration: number): Scene {
   if (locked) throw new Error('Unlock the ' + locked.track + ' track before shortening clips on it.');
   return { ...scene, duration: length,
     clips: scene.clips.flatMap((clip): Clip[] => {
-      if (clip.start >= length - MIN + 1e-8) return [];
+      if (clip.start + clip.length <= length + 1e-8) return [clip];
       const trimmed = Math.min(clip.length, length - clip.start);
       if (trimmed < MIN - 1e-8) return [];
       if (clip.track === 'movement') {
@@ -131,7 +131,8 @@ export function trimTimelineClip(scene: Scene, id: string, edge: 'in'|'out', nex
   const clip = scene.clips.find(c=>c.id===id);
   if (!clip) return scene;
   assertTracksUnlocked(scene,[id]);
-  const beginning = edge === 'in' ? Math.min(clip.start+clip.length-MIN, Math.max(0, nextTime)) : clip.start;
+  const sourceStart = 'offset' in clip ? Math.max(0, clip.start - clip.offset) : 0;
+  const beginning = edge === 'in' ? Math.min(clip.start+clip.length-MIN, Math.max(sourceStart, nextTime)) : clip.start;
   const ending = edge === 'out' ? Math.min(scene.duration, Math.max(clip.start+MIN, nextTime)) : clip.start+clip.length;
   const length = rounding(ending-beginning);
   const start = rounding(beginning);
@@ -162,9 +163,35 @@ export function pasteTimelineClips(scene: Scene, source: Clip[], position: numbe
   }
   return {scene:{...scene,clips},ids};
 }
+/** Shift the whole selection by one amount, keeping relative timing intact.
+ * Each occupied exclusive lane excludes an open interval of possible shifts.
+ * Adjacent endpoints are valid cuts.
+ */
+export function duplicateClips(chosen: Clip[], occupied: Clip[], duration: number): Clip[] {
+  if (!chosen.length) return [];
+  const end = Math.max(...chosen.map(clip => clip.start + clip.length));
+  let shift = end - Math.min(...chosen.map(clip => clip.start));
+  const conflicts: { from: number; to: number }[] = [];
+  for (const clip of chosen) {
+    if (clip.track !== 'camera' && clip.track !== 'dialogue') continue;
+    for (const other of occupied) {
+      const sameLane = clip.track === 'camera' ? other.track === 'camera' :
+        other.track === 'dialogue' && other.actor === clip.actor;
+      if (sameLane) conflicts.push({ from: other.start - clip.start - clip.length,
+        to: other.start + other.length - clip.start });
+    }
+  }
+  conflicts.sort((a, b) => a.from - b.from);
+  for (const gap of conflicts) {
+    if (shift <= gap.from + 1e-9) break;
+    shift = Math.max(shift, gap.to);
+  }
+  if (end + shift > duration + 1e-9)
+    throw new Error('Extend the scene or shorten the selection to make room for a copy after it.');
+  return chosen.map(clip => ({ ...clip, id: uid(), start: clip.start + shift }));
+}
 export function duplicateTimelineClips(scene: Scene, ids: string[]): {scene:Scene;ids:string[]} {
-  const chosen=selectableClips(scene,ids);
-  assertTracksUnlocked(scene,ids);
-  const origin=Math.max(...chosen.map(c=>c.start+c.length),0);
-  return pasteTimelineClips(scene,chosen,origin);
+  assertTracksUnlocked(scene, ids);
+  const copies = duplicateClips(selectableClips(scene, ids), scene.clips, scene.duration);
+  return { scene: { ...scene, clips: [...scene.clips, ...copies] }, ids: copies.map(clip => clip.id) };
 }

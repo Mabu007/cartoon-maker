@@ -117,3 +117,24 @@ test('scene shrinking cannot silently destroy clips on locked tracks',()=>{
   const s={...scene(sound('locked',0,12)),trackSettings:{audio:{locked:true}}};
   assert.throws(()=>resizeSceneTimeline(s,8),/Unlock the audio track/);
 });
+
+test('keyboard duplicate preserves the camera sequence and relative audio timing', () => {
+  const camera: Clip = {id:'shot',track:'camera',shot:'wide',start:0,length:2,transition:'cut'};
+  const next = {...camera, id:'reaction',start:3,length:3};
+  const original = scene(camera, next, sound('bell', 1, 1));
+  const result = duplicateTimelineClips(original, ['shot','bell']);
+  assert.deepEqual(result.scene.clips.slice(0,3), original.clips);
+  assert.deepEqual(result.scene.clips.slice(3).map(c => c.start), [6,7]);
+  assert.throws(() => duplicateTimelineClips({...original, duration:7}, ['shot','bell']), /make room/);
+});
+test('a scene resize retains minimum-length clips exactly at the boundary', () => {
+  const clip = sound('bell', 4.9, .1);
+  assert.deepEqual(resizeSceneTimeline(scene(clip), 5).clips, [clip]);
+});
+test('dragging the left trim handle cannot extend before the recording starts', () => {
+  const clip = {...sound('bell', 4, 2), offset: 1};
+  const edited = trimTimelineClip(scene(clip), 'bell', 'in', 0).clips[0];
+  assert.equal(edited.start, 3);
+  assert.equal(edited.length, 3);
+  assert.equal('offset' in edited && edited.offset, 0);
+});

@@ -117,7 +117,10 @@ test('audio trim advances the source position and a duplicated clip fits its sce
   const voice = scene.clips.find(clip => clip.track === 'dialogue')!;
   const trimmed = changeClipTiming(voice, voice.start + .25, voice.length - .25, scene.duration, true);
   assert.equal(trimmed.track === 'dialogue' && trimmed.offset, .25);
-  const copy = copyClip({ ...voice, start: 27, length: 3 }, 30);
+  const copy = copyClip({ ...voice, start: 24, length: 3 }, 30);
+  assert.equal(copy.start, 27);
+  assert.equal(copy.length, 3);
+  assert.throws(() => copyClip({ ...voice, start: 27, length: 3 }, 30), /make room/);
   assert.notEqual(copy.id, voice.id);
   assert(copy.start + copy.length <= 30);
 });

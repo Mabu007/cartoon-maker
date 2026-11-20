@@ -82,7 +82,7 @@ export function Welcome({screen,items,lastSession,openProjects,openLanding,openP
         <div className="home-hero-actions">
           <button className="primary" onClick={start}>Get started <ArrowRight size={18}/></button>
           {resume?<button className="quiet" onClick={()=>openProject(resume.project)}>
-            <Play size={17}/> Resume ${resume.project.name.length>18?resume.project.name.slice(0,18)+'…':resume.project.name}
+            <Play size={17}/> Resume {resume.project.name.length>18?resume.project.name.slice(0,18)+'…':resume.project.name}
           </button>:<button className="quiet" onClick={openExample}><Play size={17}/> Explore a sample movie</button>}
         </div>
         <div className="home-proof"><span><Check size={14}/> Characters that act</span>

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { ProjectDocument, parseStoredProject, uid, type Clip, type Project, type Scene } from './engine/schema.ts';
+import { ProjectDocument, parseStoredProject, type Clip, type Project, type Scene } from './engine/schema.ts';
 import { makeProject } from './engine/presets.ts';
 import { validateTimelineChange } from './engine/timelineCode.ts';
+import { duplicateClips } from './engine/timelineEditing.ts';
 import { clamp } from './engine/animation.ts';
 import { removeObjectWithDecisions, repairOrphanedObjectActions, repairGazeTargets } from './engine/interactions.ts';
 
@@ -96,31 +97,5 @@ export function removeEntity(scene: Scene, id: string): Scene {
   }) });
 }
 export function copyClip(clip: Clip, duration: number, clips: Clip[] = []): Clip {
-  if (clip.track !== 'camera') {
-    // Never wrap a duplicate backwards onto its source when space runs out.
-    // For one actor's dialogue find the next unoccupied slot, avoiding two
-    // recordings speaking over each other after a duplicate action.
-    let start=clip.start+clip.length;
-    if(clip.track==='dialogue'){
-      const speaker=clip.actor;
-      const taken=clips.filter((item):item is Extract<Clip,{track:'dialogue'}> =>
-        item.track==='dialogue'&&item.actor===speaker)
-        .sort((a,b)=>a.start-b.start);
-      for(const other of taken){
-        if(start+clip.length<=other.start+1e-9)break;
-        if(start<other.start+other.length-1e-9)start=other.start+other.length;
-      }
-    }
-    if(start+clip.length>duration+1e-9)
-      throw new Error('Extend the scene or shorten the clip to make room for a copy after it.');
-    return changeClipTiming({...clip,id:uid()},start,clip.length,duration);
-  }
-  const shots = clips.filter(item => item.track === 'camera').sort((a, b) => a.start - b.start);
-  let start = clip.start + clip.length;
-  for (const shot of shots) {
-    if (start + clip.length <= shot.start + 1e-9) break;
-    start = Math.max(start, shot.start + shot.length);
-  }
-  if (start + clip.length > duration + 1e-9) throw new Error('Extend the scene or shorten the shot to make room for a copy after it.');
-  return { ...clip, id: uid(), start };
+  return duplicateClips([clip], clips, duration)[0];
 }
