@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import { Graphics, GraphicsPath } from 'pixi.js';
 import { illustratedPath } from '../src/engine/illustration.ts';
 import { facialPerformance } from '../src/engine/facialAnimation.ts';
-import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects } from '../src/engine/interactions.ts';
+import { sampleViseme, textVisemes } from '../src/engine/visemes.ts';
+import { footContactAt } from '../src/engine/animation.ts';
+import { anchorFor, compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects } from '../src/engine/interactions.ts';
 import { fitCharacterPreview, PREVIEW_FOOT_PADDING, PREVIEW_GROUND_Y, PREVIEW_TOP_PADDING } from '../src/engine/previewLayout.ts';
 import { drawActor } from '../src/engine/actorArt.ts';
 import test from 'node:test';
 import { animations, armIK, blend, rig, sample, skeleton } from '../src/engine/animation.ts';
 import { directorJSONSchema, directorSchema } from '../src/engine/directorSchema.ts';
 import { evaluate, locate, projectDuration } from '../src/engine/evaluate.ts';
-import { characters, makeProject, makeScene } from '../src/engine/presets.ts';
+import { characters, makeProject, makeScene, makeProp } from '../src/engine/presets.ts';
 import { actions, AnimationClip, CharacterDefinition, ProjectDocument, SkeletonDefinition, views } from '../src/engine/schema.ts';
 import { changeClipTiming, copyClip, currentScene, removeEntity, runEdit, useStudio } from '../src/studio.ts';
 
@@ -263,4 +265,93 @@ test('object deletion + undo/redo preserves the original object/action graph', (
   assert(restored.clips.some(clip => clip.track === 'body' && clip.target === 'sofa' && clip.action === 'sit'));
   useStudio.getState().redo();
   assert(!currentScene(useStudio.getState()).objects.some(item => item.id === 'sofa'));
+});
+
+
+test('mouth cue timings follow phoneme families and survive random timeline seeking', () => {
+  const cues = textVisemes('Mama sees food! Oh, wow.', 3.4);
+  assert(cues.length >= 10);
+  assert.equal(cues[0].shape, 'closed');
+  assert(cues.some(item => item.shape === 'wide'));
+  assert(cues.some(item => item.shape === 'pucker'));
+  assert(cues.some(item => item.shape === 'round'));
+  assert.equal(cues[0].start, 0);
+  assert(Math.abs(cues.at(-1)!.end - 3.4) < .0001);
+  assert.deepEqual(textVisemes('Mama sees food! Oh, wow.', 3.4), cues);
+  const at = sampleViseme('Mama sees food!', 1.3, .14);
+  assert.notEqual(at.shape, 'rest');
+  assert.deepEqual(at, sampleViseme('Mama sees food!', 1.3, .14));
+  assert.equal(sampleViseme('Hello', 1, 2).shape, 'rest');
+  assert.equal(sampleViseme('', 2, 1).weight, 0);
+});
+
+test('lip sync is viseme-specific and eye contact overrides wandering pupils', () => {
+  const m = facialPerformance(1.1, 'sbu', 'talk', 'neutral', .7, { shape: 'closed', weight: 1 });
+  const wide = facialPerformance(1.1, 'sbu', 'talk', 'neutral', .7, { shape: 'wide', weight: 1 });
+  assert.equal(m.mouthOpen, 0, 'M/B/P phonemes must close the mouth even with audible audio');
+  assert(wide.mouthOpen > .5);
+  assert.equal(wide.viseme, 'wide');
+  const left = facialPerformance(1.1, 'sbu', 'talk', 'neutral', 0, undefined, { x: -1, y: 0 });
+  const right = facialPerformance(1.1, 'sbu', 'talk', 'neutral', 0, undefined, { x: 1, y: 0 });
+  assert(left.gazeX < -2);
+  assert(right.gazeX > 2);
+  const at = evaluate(scene, 9.25);
+  const sbu = at.actors.find(item => item.id === 'actor-sbu')!;
+  const zee = at.actors.find(item => item.id === 'actor-zee')!;
+  assert(sbu.speaking && sbu.viseme);
+  assert(zee.focus && zee.focus.x < 0, 'listener Zee must look towards Sbu');
+  const camera = evaluate({ ...scene, actors: scene.actors.map(item => item.id === 'actor-zee' ? { ...item, gazeTarget: 'camera' } : item) }, 9.25);
+  assert.deepEqual(camera.actors.find(item => item.id === 'actor-zee')?.focus, { x: 0, y: -.08 });
+});
+
+test('gold tooth layout renders for all faces and every viseme without floating geometry', () => {
+  const c = { ...characters[0], goldTeeth: [1, 3, 4] };
+  for (const expression of ['neutral', 'happy', 'angry', 'surprised'] as const)
+    for (const shape of ['rest', 'closed', 'bite', 'wide', 'open', 'round', 'pucker', 'tongue'] as const) {
+      const g = new Graphics(), face = new Graphics();
+      assert.doesNotThrow(() => drawActor(g, face, c, 'three-quarter', {}, expression, .7,
+        undefined, 1.5, 'talk', 'sbu', true, { shape, weight: 1 }, { x: 1, y: 0 }));
+      assert(face.context.instructions.length > 1);
+      g.destroy(); face.destroy();
+    }
+});
+
+test('grounded walk and run have opposite stance legs and airborne recovery arcs', () => {
+  for (const type of ['walk', 'run'] as const) {
+    const duration = animations[type].duration;
+    assert.equal(footContactAt(0, type, 'left').y, 0);
+    assert(footContactAt(duration * .79, type, 'left').y < -5);
+    assert(footContactAt(duration * .79, type, 'right').planted);
+    assert.deepEqual(footContactAt(duration, type, 'left'), footContactAt(0, type, 'left'));
+    const g = new Graphics(), face = new Graphics();
+    const pose = sample(animations[type], duration * .3);
+    assert.doesNotThrow(() => drawActor(g, face, characters[0], 'front', pose.pose, 'neutral', 0,
+      undefined, duration * .3, type, 'sbu', false, undefined, undefined, type, pose.lift));
+    g.destroy(); face.destroy();
+  }
+});
+
+test('image worlds and picture props round-trip without losing transparency metadata or interaction types', () => {
+  const tiny = 'data:image/webp;base64,UklGRg==';
+  const imported = makeProp('image', 400, 430, {
+    imageData: tiny, name: 'Uploaded Sofa', imageWidth: 180, imageHeight: 120, interaction: 'sit'
+  });
+  const modified = { ...scene, backgroundImage: tiny, objects: [...scene.objects, imported] };
+  const document = { ...demo, scenes: [modified] };
+  assert(ProjectDocument.safeParse(document).success);
+  const restored = ProjectDocument.parse(JSON.parse(JSON.stringify(document)));
+  assert.equal(restored.scenes[0].backgroundImage, tiny);
+  assert.equal(restored.scenes[0].objects.at(-1)?.imageData, tiny);
+  assert.equal(anchorFor(imported)?.action, 'sit');
+  assert(compatibleObjects(modified, 'sit').some(item => item.id === imported.id));
+  const hold = { ...imported, interaction: 'hold' as const };
+  assert.equal(anchorFor(hold)?.action, 'hold');
+  assert(compatibleObjects({ ...modified, objects: [...scene.objects, hold] }, 'point').some(item => item.id === hold.id));
+});
+
+test('deleted props do not leave stale actor eye focus targets', () => {
+  const withFocus = { ...scene, actors: scene.actors.map(item => item.id === 'actor-sbu' ? { ...item, gazeTarget: 'sofa' } : item) };
+  const valid = runEdit({ ...demo, scenes: [withFocus] }, document => ({ ...document, scenes: [removeEntity(withFocus, 'sofa')] }));
+  const actor = valid.scenes[0].actors.find(item => item.id === 'actor-sbu');
+  assert.equal(actor?.gazeTarget, undefined);
 });
