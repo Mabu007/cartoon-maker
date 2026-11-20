@@ -6,6 +6,7 @@ export type SavedProject = { project: Project; updated: number } & ProjectOrgani
 export type EditorSession = { projectId: string; sceneId: string; workspace: 'create' | 'write' | 'direct'; playhead: number };
 const key = (scope: string) => `toonroom.projects.v1.${scope}`;
 const sessionKey=(scope:string)=>`toonroom.last-session.v1.${scope}`;
+const projectSessionKey=(scope:string,id:string)=>`toonroom.editor-session.v1.${scope}.${id}`;
 const collections:readonly ProjectCollection[]=['ideas','in-production','finished'];
 
 function readLocal(scope: string): unknown[] {
@@ -96,19 +97,30 @@ export function removeLocal(scope: string, id: string) {
   writeLocal(scope, readLocal(scope).filter(raw => parseEntry(raw)?.project.id !== id));
   const session=lastEditorSession(scope);
   if(session?.projectId===id)localStorage.removeItem(sessionKey(scope));
+  localStorage.removeItem(projectSessionKey(scope,id));
+}
+function parseEditorSession(raw:string|null):EditorSession|undefined {
+  try {
+    const value=JSON.parse(raw??'null') as Partial<EditorSession>|null;
+    if(!value||typeof value.projectId!=='string'||typeof value.sceneId!=='string'||
+      !['create','write','direct'].includes(value.workspace??'')||
+      typeof value.playhead!=='number'||!Number.isFinite(value.playhead)||
+      value.playhead<0||value.playhead>180)return;
+    return value as EditorSession;
+  }catch{return;}
 }
 export function lastEditorSession(scope:string):EditorSession|undefined{
-  try {
-    const raw=JSON.parse(localStorage.getItem(sessionKey(scope))??'null') as Partial<EditorSession>|null;
-    if(!raw||typeof raw.projectId!=='string'||typeof raw.sceneId!=='string'||
-      !['create','write','direct'].includes(raw.workspace??'')||
-      typeof raw.playhead!=='number'||!Number.isFinite(raw.playhead)||raw.playhead<0||raw.playhead>180)return;
-    return raw as EditorSession;
-  }catch{return;}
+  return parseEditorSession(localStorage.getItem(sessionKey(scope)));
+}
+export function editorSessionFor(scope:string,projectId:string):EditorSession|undefined{
+  const record=parseEditorSession(localStorage.getItem(projectSessionKey(scope,projectId)));
+  return record?.projectId===projectId?record:undefined;
 }
 export function rememberEditorSession(scope:string,value:EditorSession){
   if(!Number.isFinite(value.playhead)||value.playhead<0)return;
-  localStorage.setItem(sessionKey(scope),JSON.stringify({...value,playhead:Math.min(180,value.playhead)}));
+  const record={...value,playhead:Math.min(180,value.playhead)};
+  localStorage.setItem(projectSessionKey(scope,value.projectId),JSON.stringify(record));
+  localStorage.setItem(sessionKey(scope),JSON.stringify(record));
 }
 export function duplicateProject(project: Project): Project {
   return { ...structuredClone(project), id: uid(), name: `${project.name.slice(0, 92)} copy` };
