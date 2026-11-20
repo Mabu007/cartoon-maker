@@ -119,8 +119,12 @@ test('held image grip is deterministic and follows the animated pose and chosen 
   const character=movie.characters.find(c=>c.id===original.actors[0].characterId)!;
   const idle=heldGripPoint(character,'front',{});
   const wave=heldGripPoint(character,'front',{rightShoulder:35,rightElbow:-24});
-  assert.notDeepEqual(idle,wave);
+  // Carry IK holds the same hand-to-object grip while the shoulder and
+  // elbow animate; otherwise a carried prop would jump during gestures.
+  assert.deepEqual(idle,wave);
   assert.deepEqual(heldGripPoint(character,'front',{}),idle);
+  // The grip follows animated head/neck position and changes with viewpoint.
+  assert.notDeepEqual(heldGripPoint(character,'front',{neck:17}),idle);
   assert.notDeepEqual(heldGripPoint(character,'back',{}),idle);
 });
 
