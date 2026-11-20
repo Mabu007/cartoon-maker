@@ -16,8 +16,9 @@ function getWorker() {
       if (wave) pending.resolve(new Blob([wave], { type: 'audio/wav' }));
       else pending.reject(new Error(error ?? 'No voice audio was produced.'));
     };
-    worker.onerror = () => {
-      for (const pending of requests.values()) pending.reject(new Error('The local voice engine could not start.'));
+    worker.onerror = event => {
+      const detail = event.message ? ` ${event.message}` : '';
+      for (const pending of requests.values()) pending.reject(new Error(`The local voice engine could not start.${detail}`));
       requests.clear();
       worker?.terminate(); worker = undefined;
     };

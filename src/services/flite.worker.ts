@@ -1,6 +1,9 @@
 import { WASI } from '@tybys/wasm-util';
-import { createFsFromVolume, Volume } from 'memfs-browser';
+import { Buffer } from 'buffer/';
 import wasmUrl from '@echogarden/flite-wasi/flite.wasm?url';
+
+Object.assign(globalThis, { Buffer });
+const filesystem = import('memfs-browser');
 
 let binary: Promise<WebAssembly.Module> | undefined;
 self.onmessage = async (event: MessageEvent<{ id: number; text: string; voice: string }>) => {
@@ -10,6 +13,7 @@ self.onmessage = async (event: MessageEvent<{ id: number; text: string; voice: s
       if (!response.ok) throw new Error('Could not download the local voice engine.');
       return WebAssembly.compile(await response.arrayBuffer());
     }).catch(error => { binary = undefined; throw error; });
+    const { createFsFromVolume, Volume } = await filesystem;
     const fs = createFsFromVolume(Volume.fromJSON({ '/home/voice': null }));
     let error = '';
     const wasi = new WASI({ args: ['flite', '-t', text, '-voice', voice, '-o', 'voice.wav'], preopens: { '.': '/home/voice' }, fs: fs as unknown as NonNullable<ConstructorParameters<typeof WASI>[0]>['fs'], print() {}, printErr: message => { error += message; }, returnOnExit: true });

@@ -12,6 +12,7 @@
     "@echogarden/flite-wasi": "^0.1.1",
     "@tailwindcss/vite": "^4.1.0",
     "@tybys/wasm-util": "^0.10.5",
+    "buffer": "^6.0.3",
     "firebase": "^12.5.0",
     "fix-webm-duration": "^1.0.6",
     "lucide-react": "^0.552.0",
