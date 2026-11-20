@@ -29,7 +29,11 @@ export const CharacterDefinition = z.strictObject({
   nose: z.enum(['button', 'long', 'flat']), mouth: z.enum(['smile', 'line', 'full']), ears: z.enum(['round', 'small', 'wide']),
   hair: z.enum(['fade', 'puff', 'locs', 'buzz', 'bald', 'afro', 'braids', 'curls']), beard: z.enum(['none', 'goatee', 'full']), hat: z.enum(['none', 'cap', 'beanie']),
   glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(['tee', 'hoodie', 'jacket', 'sweater', 'uniform']), accessory: z.enum(['none', 'chain', 'scarf']), goldTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional(),
-  voicePreset: VoicePreset.optional(), hostedVoiceId: HostedVoiceId.optional()
+  voicePreset: VoicePreset.optional(), hostedVoiceId: HostedVoiceId.optional(),
+  mouthRig: z.strictObject({ width: num(.65,1.5), jawScale: num(.6,1.5),
+    roundness: num(0,1), asymmetry: num(-1,1) }).optional(),
+  missingTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional(),
+  toothColors: z.array(color).length(6).optional()
 });
 export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.string().min(1).max(60), color, ...position,
   imageData: propImageData.optional(), imageWidth: num(10, 800).optional(), imageHeight: num(10, 800).optional(),
