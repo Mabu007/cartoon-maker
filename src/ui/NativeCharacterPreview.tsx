@@ -22,7 +22,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
   }, []);
-  const mouthMask = useId();
+  const mouthMask = 'toon-mouth-' + useId().replace(/:/g, '');
   const speech = action === 'talk'
     ? sampleViseme('Hello there! Let us create a cartoon. Watch my mouth moving!', 8, elapsed % 8) : undefined;
   const mood = facialPerformance(elapsed, c.id, action, expression, 0, speech, focus);
