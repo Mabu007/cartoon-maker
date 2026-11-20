@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { evaluate, movementPosition } from '../src/engine/evaluate.ts';
-import { makeProject } from '../src/engine/presets.ts';
+import { evaluate, locate, movementPosition, projectDuration } from '../src/engine/evaluate.ts';
+import { makeProject, makeScene } from '../src/engine/presets.ts';
 import { ProjectDocument, parseStoredProject, type Clip } from '../src/engine/schema.ts';
 import { sceneToCode, parseSceneCode } from '../src/engine/timelineCode.ts';
 import { movieToCode, parseMovieCode, sceneBuildingContext, movieBuildingContext } from '../src/engine/movieTimeline.ts';
@@ -18,6 +18,16 @@ test('versioned movie JSON round trips without losing scene ordering, clips or a
   assert.deepEqual(parseMovieCode(JSON.stringify(demo), demo), parsed);
 });
 
+test('whole-movie JSON can reorder executable scenes without changing individual scene data', () => {
+  const second = { ...makeScene('Classroom'), id: 'new-classroom', name: 'The lesson' };
+  const prior = { ...demo, scenes: [...demo.scenes, second] };
+  const imported = parseMovieCode(movieToCode({ ...prior, scenes: [second, demo.scenes[0]] }), prior);
+  assert.deepEqual(imported.scenes.map(item => item.id), [second.id, demo.scenes[0].id]);
+  assert.equal(projectDuration(imported.scenes), second.duration + demo.scenes[0].duration);
+  assert.equal(locate(imported.scenes, 0).scene.id, second.id);
+  assert.equal(locate(imported.scenes, second.duration + 1).scene.id, demo.scenes[0].id);
+});
+
 test('unversioned and version-zero historical project documents migrate only the version', () => {
   const { version: _version, ...legacy } = demo;
   assert.deepEqual(parseStoredProject(legacy), demo);
@@ -28,6 +38,7 @@ test('unversioned and version-zero historical project documents migrate only the
 });
 
 test('movie JSON rejects malformed clips, unknown assets and identity changes atomically', () => {
+  const before = structuredClone(demo.scenes[0].clips);
   const invalid = structuredClone(demo);
   invalid.scenes[0].clips.push({ id: 'new-music', track: 'music', start: 2, length: 2, name: 'No audio', asset: 'asset:unavailable', volume: 1, offset: 0, muted: false });
   assert.throws(() => parseMovieCode(movieToCode(invalid), demo), /unknown audio asset/);
@@ -36,7 +47,7 @@ test('movie JSON rejects malformed clips, unknown assets and identity changes at
   assert.throws(() => parseMovieCode(movieToCode(bad), demo), /outside the scene/);
   assert.throws(() => parseMovieCode(movieToCode({ ...demo, id: 'different' }), demo), /Movie ID cannot change/);
   assert.throws(() => parseMovieCode('{ not json', demo), /Invalid JSON/);
-  assert.deepEqual(demo.scenes[0].clips, makeProject(true).scenes[0].clips.map((c,i) => demo.scenes[0].clips[i]).filter(Boolean));
+  assert.deepEqual(demo.scenes[0].clips, before);
 });
 
 test('imported movement keyframes sample deterministically in the actual scene evaluator', () => {

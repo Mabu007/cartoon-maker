@@ -57,6 +57,8 @@ export function parseMovieCode(source: string, current: Project): Project {
   if ('format' in data || 'schemaVersion' in data || 'project' in data) {
     if (data.format !== 'toonroom-timeline') throw new Error('Unknown timeline format.');
     if (data.schemaVersion !== MOVIE_CODE_VERSION) throw new Error('Unsupported movie timeline schema version ' + String(data.schemaVersion) + '.');
+    const unknown = Object.keys(data).find(key => !['format', 'schemaVersion', 'project'].includes(key));
+    if (unknown) throw new Error('Unknown movie timeline field: ' + unknown + '.');
     return validateMovieReplacement(current, data.project);
   }
   // Legacy exported project files were bare version-1 ProjectDocument JSON.
