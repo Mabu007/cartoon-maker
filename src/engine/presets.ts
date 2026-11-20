@@ -8,7 +8,11 @@ const base: Character = {
 export const characters: Character[] = [base,
   { ...base, id: 'zee', name: 'Zee', skin: '#a65f42', shirt: '#b8a5f5', pants: '#392c53', hairColor: '#30243b', shoes: '#f7d879', head: 1.07, height: .91, shape: 'round', hair: 'puff', beard: 'none', eyes: 'relaxed', brows: 'arched', earrings: true, outfit: 'jacket' },
   { ...base, id: 'milo', name: 'Milo', skin: '#d99b6a', shirt: '#78ceb5', pants: '#283954', hair: 'locs', beard: 'none', glasses: true, outfit: 'tee', height: 1.09, shape: 'square' },
-  { ...base, id: 'tumi', name: 'Tumi', skin: '#8d503a', shirt: '#ef887d', pants: '#4b2943', hair: 'buzz', hat: 'beanie', beard: 'none', eyes: 'wide', outfit: 'jacket', accessory: 'scarf' }
+  { ...base, id: 'tumi', name: 'Tumi', skin: '#8d503a', shirt: '#ef887d', pants: '#4b2943', hair: 'buzz', hat: 'beanie', beard: 'none', eyes: 'wide', outfit: 'jacket', accessory: 'scarf' },
+  { ...base, id: 'naledi', name: 'Naledi', skin: '#986044', shirt: '#e996ae', pants: '#423557', shoes: '#faf0d7', hair: 'braids', head: 1.05, height: .94, shape: 'round', beard: 'none', brows: 'arched', outfit: 'sweater', earrings: true, accessory: 'chain' },
+  { ...base, id: 'neo', name: 'Neo', skin: '#ac714f', shirt: '#83acd1', pants: '#29334b', shoes: '#ffe3ad', hair: 'afro', beard: 'none', height: 1.12, shape: 'square', outfit: 'tee', glasses: true },
+  { ...base, id: 'lerato', name: 'Lerato', skin: '#d49569', shirt: '#7fcfae', pants: '#4c415a', hair: 'curls', beard: 'none', head: 1.12, height: .84, outfit: 'uniform', eyes: 'wide', earrings: true },
+  { ...base, id: 'bra-j', name: 'Bra J', skin: '#76452f', shirt: '#ce9472', pants: '#2c3545', shoes: '#dfca9c', hair: 'bald', beard: 'full', head: .98, height: 1.2, thickness: 1.14, shape: 'square', hat: 'cap', outfit: 'jacket', accessory: 'chain' }
 ];
 export const propColors: Record<Prop['kind'], string> = { sofa: '#e18556', chair: '#cf8c69', table: '#754e4b', desk: '#936b57', door: '#b4a38d', window: '#8ebcad', television: '#343447', lamp: '#f6ca70', cup: '#f5e8ce', book: '#f88e78', phone: '#7569a6', plant: '#6d9878', microphone: '#414057', streetlight: '#504b62', counter: '#d59964' };
 export const anchors: Partial<Record<Prop['kind'], Anchor>> = {
