@@ -27,6 +27,8 @@ export function Welcome({screen,items,lastSession,openProjects,openLanding,openP
   const [idea,setIdea]=useState('');
   const [search,setSearch]=useState('');
   const [sort,setSort]=useState<'recent'|'title'|'longest'>('recent');
+  // Render only a small page of thumbnail SVGs to keep large libraries fast.
+  const [visibleCount,setVisibleCount]=useState(20);
   const [collection,setCollection]=useState<'all'|'favorites'|ProjectCollection>('all');
   const [renaming,setRenaming]=useState<Project>();
   const [newName,setNewName]=useState('');
@@ -144,14 +146,14 @@ export function Welcome({screen,items,lastSession,openProjects,openLanding,openP
         <div className="home-collection-tabs" role="group" aria-label="Project collections">
           {(['all','favorites','ideas','in-production','finished'] as const).map(tab=><button key={tab} type="button"
             aria-pressed={collection===tab} className={collection===tab?'active':''}
-            onClick={()=>setCollection(tab)}>{tab==='all'?'All movies':tab==='favorites'?'Starred':collectionLabels[tab]}
+            onClick={()=>{setCollection(tab);setVisibleCount(20);}}>{tab==='all'?'All movies':tab==='favorites'?'Starred':collectionLabels[tab]}
             {tab==='all'&&<small>{items.length}</small>}</button>)}
         </div>
         <div className="home-filter">
           <label className="home-search"><Search size={17}/><input aria-label="Search movies" value={search}
-            placeholder="Find a movie, scene or character…" onChange={event=>setSearch(event.target.value)}/></label>
+            placeholder="Find a movie, scene or character…" onChange={event=>{setSearch(event.target.value);setVisibleCount(20);}}/></label>
           <label className="home-sort"><SlidersHorizontal size={15}/><select aria-label="Sort movies"
-            value={sort} onChange={event=>setSort(event.target.value as typeof sort)}>
+            value={sort} onChange={event=>{setSort(event.target.value as typeof sort);setVisibleCount(20);}}>
             <option value="recent">Recently edited</option><option value="title">Title A–Z</option>
             <option value="longest">Longest first</option>
           </select></label>
@@ -160,7 +162,7 @@ export function Welcome({screen,items,lastSession,openProjects,openLanding,openP
       <div className="home-project-grid">
         <button className="home-project-create" onClick={start}><span className="home-create-icon"><Plus size={28}/></span>
           <strong>Start something new</strong><small>An empty canvas, a whole new world.</small></button>
-        {filtered.map(item=>{
+        {filtered.slice(0,visibleCount).map(item=>{
           const {project,updated}=item,info=projectPreviewInfo(project);
           return <article className="home-project-card" key={project.id}>
             <button className="home-project-cover" onClick={()=>openProject(project)}
@@ -201,6 +203,10 @@ export function Welcome({screen,items,lastSession,openProjects,openLanding,openP
           </article>;
         })}
       </div>
+      {filtered.length>visibleCount&&<button className="quiet home-load-more"
+        onClick={()=>setVisibleCount(count=>count+20)}>
+        Show more movies ({filtered.length-visibleCount} remaining)
+      </button>}
       {!filtered.length&&items.length>0&&<div className="home-empty-projects">
         <Search size={27}/><h2>No movies found</h2><p>Try another search or collection to find your project.</p>
         <button className="quiet" onClick={()=>{setSearch('');setCollection('all');}}>Show all movies</button></div>}
