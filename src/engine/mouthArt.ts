@@ -71,12 +71,13 @@ export function drawExpressionMouth(face:Graphics,character:Character,mood:Facia
       .fill(tooth.fill).stroke({color:tooth.outline,width:.48});
   }
   const {rx,top,bottom,cornerLeft,cornerRight}=model;
-  layer.lips.moveTo(-rx*.88,cornerLeft*.65)
-    .bezierCurveTo(-rx*.65,top*.97,-rx*.32,top-1.2,0,top-1.4)
-    .bezierCurveTo(rx*.32,top-1.2,rx*.65,top*.97,rx*.88,cornerRight*.65)
+  // Same lip control points and quadratic paths as SvgMouthRig.
+  layer.lips.moveTo(-rx,cornerLeft)
+    .quadraticCurveTo(-rx*.4,top-1.2,0,top-1.45)
+    .quadraticCurveTo(rx*.4,top-1.05,rx,cornerRight)
     .stroke({color:'#713d4c',width:character.mouth==='full'?2.1:1.65,cap:'round'});
-  layer.lips.moveTo(-rx*.82,cornerLeft*.72)
-    .bezierCurveTo(-rx*.6,bottom*.92,-rx*.32,bottom+.8,0,bottom+1.2)
-    .bezierCurveTo(rx*.32,bottom+.8,rx*.6,bottom*.92,rx*.82,cornerRight*.72)
+  layer.lips.moveTo(-rx,cornerLeft)
+    .quadraticCurveTo(-rx*.35,bottom+.65,0,bottom+1.15)
+    .quadraticCurveTo(rx*.35,bottom+.65,rx,cornerRight)
     .stroke({color:'#653946',width:1.35,cap:'round'});
 }
