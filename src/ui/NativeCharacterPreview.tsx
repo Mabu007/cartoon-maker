@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { animations, gaitLeg, sample, viewForward } from '../engine/animation.ts';
-import { sampleViseme } from '../engine/visemes.ts';
+import { sampleViseme, type Viseme } from '../engine/visemes.ts';
 import { facialPerformance } from '../engine/facialAnimation.ts';
 import { SvgMouthRig } from './SvgMouthRig.tsx';
 import type { Action, Character, Expression, View } from '../engine/schema.ts';
@@ -10,8 +10,8 @@ import type { Action, Character, Expression, View } from '../engine/schema.ts';
  * accelerated stage can't initialize or loses its graphics context, character
  * creation stays available using this lightweight, parametric preview.
  */
-export function NativeCharacterPreview({ character: c, view, action, expression, flip, scale, focus }: {
-  character: Character; view: View; action: Action; expression: Expression; flip: boolean; scale: number; focus?: { x: number; y: number };
+export function NativeCharacterPreview({ character: c, view, action, expression, flip, scale, focus, mouthTest }: {
+  character: Character; view: View; action: Action; expression: Expression; flip: boolean; scale: number; focus?: { x: number; y: number }; mouthTest?: Viseme;
 }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -25,8 +25,9 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     return () => cancelAnimationFrame(frame);
   }, []);
   const mouthMask = 'toon-mouth-' + useId().replace(/:/g, '');
-  const speech = action === 'talk'
-    ? sampleViseme('Hello there! Let us create a cartoon. Watch my mouth moving!', 8, elapsed % 8) : undefined;
+  const speech = mouthTest ? {shape:mouthTest,weight:mouthTest==='rest'?0:1} :
+    action === 'talk'
+      ? sampleViseme('Hello there! Let us create a cartoon. Watch my mouth moving!', 8, elapsed % 8) : undefined;
   const mood = facialPerformance(elapsed, c.id, action, expression, 0, speech, focus);
   const emotion = mood.expression;
   const rear = view === 'back' || view === 'back-quarter';

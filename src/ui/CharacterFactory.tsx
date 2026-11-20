@@ -5,6 +5,7 @@ import { fitCharacterPreview } from '../engine/previewLayout.ts';
 import { NativeCharacterPreview } from './NativeCharacterPreview.tsx';
 import { actions, expressions, label, uid, views, type Action, type Character, type Expression, type Scene, type View } from '../engine/schema.ts';
 import { characters } from '../engine/presets.ts';
+import { visemeNames, type Viseme } from '../engine/visemes.ts';
 import { Avatar, IconButton, Modal, Select } from './shared.tsx';
 
 const sliders = { height: 'Height', head: 'Head size', thickness: 'Build', torso: 'Torso length', arms: 'Arm length', legs: 'Leg length', eyeSpacing: 'Eye spacing' } as const;
@@ -21,11 +22,12 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   const [section, setSection] = useState<keyof typeof styleGroups>('Hair'), [view, setView] = useState<View>('three-quarter');
   const [action, setAction] = useState<Action>('idle'), [expression, setExpression] = useState<Expression>('neutral');
   const [look, setLook] = useState<'auto'|'camera'|'left'|'right'|'up'>('auto');
+  const [mouthTest,setMouthTest]=useState<'auto'|Viseme>('auto');
   const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.4), [fallback, setFallback] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const canvas = useRef<HTMLDivElement>(null);
-  const frame = useRef({ draft, action, expression, view, flip, scale, look });
-  frame.current = { draft, action, expression, view, flip, scale, look };
+  const frame = useRef({ draft, action, expression, view, flip, scale, look, mouthTest });
+  frame.current = { draft, action, expression, view, flip, scale, look, mouthTest };
   useEffect(() => {
     let alive = true, handle = 0;
     let dispose = () => {};
@@ -55,7 +57,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       };
       let reset = performance.now(), lastAction = '', previous = -1;
       const animate = (now: number) => {
-        const { draft, action, expression, view, flip, scale, look } = frame.current;
+        const { draft, action, expression, view, flip, scale, look, mouthTest } = frame.current;
         if (lastAction !== action) { lastAction = action; reset = now; }
         const time = ((now - reset) / 1000) % 8;
         if (!document.hidden && Math.floor(time * 24) !== previous) {
@@ -74,7 +76,8 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           const gaze = look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } :
             look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 };
           try {
-            renderer.draw(scene, [draft], time, { characterPreview: true, previewFocus: gaze });
+            renderer.draw(scene,[draft],time,{characterPreview:true,previewFocus:gaze,
+              previewViseme:mouthTest==='auto'?undefined:mouthTest});
           } catch (cause) {
             useNativePreview(cause);
             return;
@@ -88,11 +91,16 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   }, []);
   const update = <K extends keyof Character>(key: K, value: Character[K]) => setDraft(item => ({ ...item, [key]: value }));
   return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
-    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas">{fallback ? <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={fitCharacterPreview(draft, scale, action).scale} focus={look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } : look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 }}/> : <div className="factory-renderer-mount" ref={canvas}/>}</div><div className="factory-zoom"><IconButton title="Fit entire character" onClick={() => setScale(1.4)}><Maximize2 size={15}/></IconButton><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
+    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas">{fallback ? <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={fitCharacterPreview(draft, scale, action).scale} focus={look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } : look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 }} mouthTest={mouthTest==='auto'?undefined:mouthTest}/> : <div className="factory-renderer-mount" ref={canvas}/>}</div><div className="factory-zoom"><IconButton title="Fit entire character" onClick={() => setScale(1.4)}><Maximize2 size={15}/></IconButton><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
       <div className="segmented view-choice" aria-label="Character view">{views.map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{viewLabels[item]}</button>)}</div>
       <div className="field-row"><label>Preview action<Select aria="Preview action" value={action} onChange={setAction} options={actions}/></label><label>Expression<Select aria="Preview expression" value={expression} onChange={setExpression} options={expressions}/></label></div>
       <label className="field preview-eye-focus">Eye focus<Select aria="Preview eye focus" value={look} onChange={setLook} options={['auto','camera','left','right','up'] as const}
         render={value => value === 'auto' ? 'Natural · moving eyes' : value === 'camera' ? 'Eye contact · camera' : 'Look ' + value}/></label>
+      <label className="field">Mouth rig audition
+        <Select aria="Preview mouth shape" value={mouthTest} onChange={setMouthTest}
+          options={['auto',...visemeNames] as const}
+          render={value=>value==='auto'?'Automatic · speech/audio':value.toUpperCase()}/>
+      </label>
     </div><div className="factory-edit"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
       <div className="factory-voice-config" aria-label="Persistent character voice configuration">
         <strong>Character voice · used in every scene</strong>
