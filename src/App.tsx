@@ -928,12 +928,20 @@ export default function App() {
             editScene(current => ({ ...current, actors: current.actors.map(item => item.id === id ? { ...item, ...coords } : item), clips: current.clips.map(clip => clip.track === 'movement' && clip.actor === id ? { ...clip, fromX: clamp(clip.fromX + dx, -2000, 3000), toX: clamp(clip.toX + dx, -2000, 3000), fromY: clamp(clip.fromY + dy, -2000, 3000), toY: clamp(clip.toY + dy, -2000, 3000) } : clip) }));
           } else if (object) patchObject({ ...object, ...coords });
         }}/></div>
-        <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock(scene.duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={scene.duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
+        <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock((directorPreview??scene).duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={(directorPreview??scene).duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
       </section>
       {directorOpen ? <DirectorPanel key={session + scene.id} project={project} scene={scene} selection={selection} getTime={() => time.current.local}
         ai={ai} busy={compiling} openCode={() => showDialog('code')}
         canUndo={hasUndo} undo={()=>run(()=>useStudio.getState().undo())}
-        preview={next=>{if(next || directorPreview)pause();if(next)setArrange(false);setDirectorPreview(next);}}
+        preview={next=>{
+          if(next || directorPreview)pause();
+          if(next)setArrange(false);
+          if(!next && directorPreview){
+            const current=currentScene(useStudio.getState());
+            updateCursor(current,Math.min(time.current.local,current.duration),true);
+          }
+          setDirectorPreview(next);
+        }}
         apply={(next, original, generatedAssets) => {
           replaceScene(next, original, generatedAssets);
           setDirectorPreview(undefined);
