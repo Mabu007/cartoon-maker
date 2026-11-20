@@ -30,8 +30,17 @@ export function evaluate(scene: Scene, time: number) {
   const t = clamp(time, 0, Math.max(0, scene.duration - .000001));
   const timelineClips = scene.clips.filter(clip => !scene.trackSettings?.[clip.track]?.muted);
   const sounds = timelineClips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'music' || clip.track === 'dialogue') && audibleAudioTrack(scene,clip.track) && active(clip, t));
+  // Index timeline clips once rather than repeatedly scanning all 600 clips
+  // for each actor on every animation frame. Preserve clip iteration order.
+  const byActor=new Map<string,Clip[]>();
+  for(const clip of timelineClips){
+    if(!('actor' in clip))continue;
+    const group=byActor.get(clip.actor);
+    if(group)group.push(clip);else byActor.set(clip.actor,[clip]);
+  }
+  const objectsById=new Map(scene.objects.map(object=>[object.id,object]));
   const actors = scene.actors.map((actor): CharacterState => {
-    const clips = timelineClips.filter(clip => 'actor' in clip && clip.actor === actor.id);
+    const clips = byActor.get(actor.id)??[];
     const presence = clips.filter(clip => clip.track === 'actors' && clip.visible === undefined);
     const entrance = latest(clips.filter(clip => clip.track === 'actors' && clip.visible !== undefined && clip.start <= t));
     const propCue = latest(clips.filter(clip => clip.track === 'props' && clip.start <= t));
@@ -77,7 +86,7 @@ export function evaluate(scene: Scene, time: number) {
     for (const clip of [body, gesture]) {
       if (!clip) continue;
       const isGesture = clip.layer === 'gesture';
-      const target = clip.target ? scene.objects.find(item => item.id === clip.target) : undefined;
+      const target = clip.target ? objectsById.get(clip.target) : undefined;
       const supported = clip.action !== 'sit' || (target && anchorFor(target)?.action === 'sit');
       const activeAction: Action = supported ? clip.action : 'stand';
       const definition = animations[activeAction];
@@ -86,7 +95,10 @@ export function evaluate(scene: Scene, time: number) {
       const supportedSitBefore = clips.some(previous =>
         previous.track === 'body' && previous.action === 'sit' && previous.layer === 'body' &&
         previous.start + previous.length <= clip.start + .05 &&
-        previous.target && scene.objects.some(item => item.id === previous.target && anchorFor(item)?.action === 'sit'));
+        previous.target && (() => {
+          const object=objectsById.get(previous.target);
+          return !!object && anchorFor(object)?.action==='sit';
+        })());
       // A replacement Stand action must immediately put the feet on the floor,
       // not replay the seated opening pose for the first 0.8 seconds.
       const offsets = (activeAction === 'sit' && clip.start === 0) ||
@@ -122,7 +134,7 @@ export function evaluate(scene: Scene, time: number) {
     const viseme = spoken?.visemes?.length
       ? sampleTimedViseme(spoken.visemes,audioTime)
       : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
-    if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? scene.objects.find(item => item.id === propCue.target) : undefined;
+    if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? objectsById.get(propCue.target) : undefined;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
       speaking: Boolean(spoken), actionTime: action === gesture?.action ? t - gesture.start : t - (body?.start ?? t), locomotion, gaitTime, gaitVelocity, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held };
@@ -144,7 +156,7 @@ export function evaluate(scene: Scene, time: number) {
       continue;
     }
     const targetActor = targetId ? actors.find(item => item.id === targetId && item.visible) : undefined;
-    const targetProp = targetId ? scene.objects.find(item => item.id === targetId) : undefined;
+    const targetProp = targetId ? objectsById.get(targetId) : undefined;
     const implicit = !targetId && activeSpeakers.length
       ? (activeSpeakers.some(item => item.id === actor.id)
         ? actors.find(item => item.id !== actor.id && item.visible)
