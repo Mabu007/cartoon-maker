@@ -28,7 +28,7 @@ export function facialPerformance(
   const gazeY = Math.sin(t * .71 + seed * 8) * 1.25;
   const expressive: Partial<Record<Action, Expression>> = {
     laugh: 'happy', cry: 'sad', angry: 'angry', surprise: 'surprised',
-    think: 'thinking', celebrate: 'happy'
+    think: 'thinking', shrug: 'confused', celebrate: 'excited'
   };
   const resolved: Expression = expression === 'neutral' ? expressive[action] ?? 'neutral' : expression;
   const animationSpeech = action === 'talk'
