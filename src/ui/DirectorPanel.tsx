@@ -34,6 +34,15 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
   preview:(scene:Scene|undefined)=>void;undo:()=>void;canUndo:boolean;openCode:()=>void;
 }){
   const [prompt,setPrompt]=useState('');
+  const [clockTime,setClockTime]=useState(getTime);
+  // The toolbar updates its playhead via custom events instead of causing
+  // a full React render on every animation frame.
+  const getTimeRef=useRef(getTime);getTimeRef.current=getTime;
+  useEffect(()=>{
+    const update=()=>setClockTime(getTimeRef.current());
+    window.addEventListener('toonroom-time',update);
+    return ()=>window.removeEventListener('toonroom-time',update);
+  },[]);
   const [loading,setLoading]=useState(false),[applying,setApplying]=useState(false);
   const [pending,setPending]=useState<Pending>();
   const [error,setError]=useState(''),[history,setHistory]=useState<Message[]>([]);
@@ -43,7 +52,7 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
   const selected=selection?.kind==='clip'?scene.clips.find(item=>item.id===selection.id):undefined;
   const selectedActor=selection?.kind==='actor'?scene.actors.find(item=>item.id===selection.id):undefined;
   const selectedProp=selection?.kind==='object'?scene.objects.find(item=>item.id===selection.id):undefined;
-  const time=getTime();
+  const time=clockTime;
   const camera=evaluate(scene,time).camera;
   const cast=scene.actors.map(actor=>({
     id:actor.id,characterId:actor.characterId,name:project.characters.find(c=>c.id===actor.characterId)?.name??actor.id,
@@ -59,7 +68,7 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
   function clear(){setPending(undefined);preview(undefined);}
   async function propose(){
     if(!prompt.trim()||loading||applying||!canUseAI(ai))return;
-    const request=prompt.trim(),base=snapshot;
+    const request=prompt.trim(),base=snapshot,playhead=getTimeRef.current();
     clear();setError('');setCopied('');setLoading(true);
     try{
       const context={
@@ -67,8 +76,8 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
         storyBible:project.production?.bible,
         screenplay:project.production?.screenplay.scenes.find(s=>s.id===scene.id),
         screenplayStatus:project.production?.scriptStatus??'none',
-        scene,playheadSeconds:time,selectedClip:selected,
-        selection,selectedActor,selectedProp,camera,
+        scene,playheadSeconds:playhead,selectedClip:selected,
+        selection,selectedActor,selectedProp,camera:evaluate(scene,playhead).camera,
         actors:cast,props:scene.objects.map(o=>({id:o.id,name:o.name,kind:o.kind,x:o.x,y:o.y})),
         characters:project.characters.map(c=>({id:c.id,name:c.name,voicePreset:c.voicePreset})),
         availableAudioAssets:assets,
