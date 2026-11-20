@@ -33,7 +33,7 @@ export function evaluate(scene: Scene, time: number) {
       if (!clip) continue;
       const isGesture = clip.layer === 'gesture';
       const target = clip.target ? scene.objects.find(item => item.id === clip.target) : undefined;
-      const supported = clip.action !== 'sit' || (target && anchors[target.kind]?.action === 'sit');
+      const supported = clip.action !== 'sit' || (target && anchorFor(target)?.action === 'sit');
       const activeAction: Action = supported ? clip.action : 'stand';
       const definition = animations[activeAction];
       if (!isGesture) action = activeAction;
