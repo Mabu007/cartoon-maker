@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles } from 'lucide-react';
 import { animations, clamp } from '../engine/animation.ts';
-import { anchors, soundNames } from '../engine/presets.ts';
+import { soundNames } from '../engine/presets.ts';
+import { compatibleObjects, nearestObject } from '../engine/interactions.ts';
 import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track } from '../engine/schema.ts';
 import { type Format } from '../engine/renderer.ts';
 import { projectDuration } from '../engine/evaluate.ts';
@@ -27,7 +28,11 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
   const place = scene.actors.find(item => item.id === actor);
   const [toX, setToX] = useState((place?.x ?? 480) + 145);
   const [toY, setToY] = useState(place?.y ?? 420);
-  const choices = scene.objects.filter(object => anchors[object.kind]?.action === 'hold' || (action === 'sit' && anchors[object.kind]?.action === 'sit'));
+  const choices = compatibleObjects(scene, action);
+  const seat = action === 'sit' ? nearestObject(scene, actor, 'sit') : undefined;
+  const selectedTarget = action === 'sit'
+    ? choices.find(item => item.id === target)?.id ?? seat?.id ?? ''
+    : choices.some(item => item.id === target) ? target : '';
   function submit() {
     const at = clamp(start, 0, scene.duration - .1);
     const base = { id: uid(), start: at, length: clamp(length, .1, scene.duration - at) };
@@ -39,20 +44,25 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     if (track === 'actors') return add({ ...base, track, actor });
     if (track === 'movement') return add({ ...base, track, actor, fromX: place.x, fromY: place.y, toX: clamp(toX, -2000, 3000), toY: clamp(toY, -2000, 3000) });
     if (track === 'face') return add({ ...base, track, actor, expression });
-    return add({ ...base, track, actor, action, layer, ...(choices.some(item => item.id === target) ? { target } : {}) });
+    if (action === 'sit' && !selectedTarget) return;
+    return add({ ...base, track, actor, action, layer: action === 'sit' ? 'body' : layer,
+      ...(selectedTarget ? { target: selectedTarget } : {}) });
   }
   return <Modal title="Add timeline clip" description="Choose what happens at the playhead." close={close}><form onSubmit={e => { e.preventDefault(); submit(); }}>
     <div className="dialog-fields"><label className="field">Track<Select aria="Track" value={track} options={tracks} onChange={setTrack} render={id => trackNames[id]}/></label>
-    {(needsActor || track === 'camera') && <label className="field">{track === 'camera' ? 'Focus' : 'Actor'}<Select aria="Actor" value={actor} onChange={value => { setActor(value); const item = scene.actors.find(entry => entry.id === value); if (item) { setToX(item.x + 145); setToY(item.y); } }} options={track === 'camera' ? ['', ...Object.keys(actors)] : Object.keys(actors)} render={id => actors[id] ?? 'Automatic'}/></label>}
+    {(needsActor || track === 'camera') && <label className="field">{track === 'camera' ? 'Focus' : 'Actor'}<Select aria="Actor" value={actor} onChange={value => { setActor(value); setTarget(''); const item = scene.actors.find(entry => entry.id === value); if (item) { setToX(item.x + 145); setToY(item.y); } }} options={track === 'camera' ? ['', ...Object.keys(actors)] : Object.keys(actors)} render={id => actors[id] ?? 'Automatic'}/></label>}
     {needsActor && !actor && <p className="form-error">Add an actor to the scene first.</p>}
-    {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setTarget(''); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={layer} onChange={setLayer} options={['body', 'gesture']}/></label></div>{!!choices.length && <label className="field">Interact with<Select aria="Interact with" value={target} onChange={setTarget} options={['', ...choices.map(item => item.id)]} render={id => choices.find(item => item.id === id)?.name ?? 'None'}/></label>}</>}
+    {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setTarget(''); if (value === 'sit') setLayer('body'); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={action === 'sit' ? 'body' : layer} onChange={setLayer} options={action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label></div>{action === 'sit' && !choices.length && <p className="form-error" role="alert">Add a chair or sofa to this scene before making a character sit.</p>}
+      {!!choices.length && <label className="field">{action === 'sit' ? 'Sit on' : 'Interact with'}<Select aria={action === 'sit' ? 'Seat' : 'Interact with'} value={selectedTarget} onChange={setTarget}
+        options={action === 'sit' ? choices.map(item => item.id) : ['', ...choices.map(item => item.id)]}
+        render={id => choices.find(item => item.id === id)?.name ?? 'Empty hands'}/></label>}</>}
     {track === 'movement' && <div className="field-row"><label className="field">End X<input type="number" value={toX} onChange={e => setToX(Number(e.target.value))}/></label><label className="field">End Y<input type="number" value={toY} onChange={e => setToY(Number(e.target.value))}/></label></div>}
     {track === 'face' && <label className="field">Expression<Select aria="Expression" value={expression} onChange={setExpression} options={expressions}/></label>}
     {track === 'camera' && <div className="field-row"><label className="field">Shot<Select aria="Shot" value={shot} onChange={setShot} options={shots}/></label><label className="field">Transition<Select aria="Transition" value={transition} onChange={setTransition} options={['cut', 'glide']}/></label></div>}
     {track === 'transition' && <label className="field">Effect<Select aria="Effect" value={effect} onChange={setEffect} options={['fade-in', 'fade-out']}/></label>}
     {track === 'audio' && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={setSound} options={soundNames}/></label>}
     <div className="field-row"><label className="field">Start (seconds)<input aria-label="Clip start" type="number" value={Math.round(start * 100) / 100} min={0} max={scene.duration - .1} step="any" onChange={e => setStart(Number(e.target.value))}/></label>{track !== 'dialogue' && <label className="field">Length (seconds)<input aria-label="Clip length" type="number" value={length} min={.1} max={180} step="any" onChange={e => setLength(Number(e.target.value))}/></label>}</div></div>
-    <footer className="modal-footer">{track === 'audio' && <button type="button" className="quiet" onClick={() => audio('audio', '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={needsActor && !actor}><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
+    <footer className="modal-footer">{track === 'audio' && <button type="button" className="quiet" onClick={() => audio('audio', '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={(needsActor && !actor) || (track === 'body' && action === 'sit' && !selectedTarget)}><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
   </form></Modal>;
 }
 
