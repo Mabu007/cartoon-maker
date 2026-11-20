@@ -1,6 +1,6 @@
 import type { Account } from './cloud.ts';
 
-export interface SpeechProvider { synthesize(text: string, voice: string): Promise<Blob>; }
+export interface SpeechProvider { synthesize(text: string, voice: string, voiceId?: string): Promise<Blob>; }
 export const voices = [{ id: 'warm', name: 'Warm' }, { id: 'bright', name: 'Bright' }, { id: 'deep', name: 'Deep' }];
 let worker: Worker | undefined;
 let nextRequest = 0;
@@ -41,11 +41,45 @@ export const localSpeech: SpeechProvider = {
 export function speechProvider(account: Account | null): SpeechProvider {
   if (!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') return localSpeech;
   return {
-    async synthesize(text, voice) {
+    async synthesize(text, voice, voiceId) {
       const token = await account.getIdToken();
-      const response = await fetch('/api/speech', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ text, voice }) });
-      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? 'The speech service is unavailable.');
-      return response.blob();
+      let response: Response;
+      try {
+        response = await fetch('/api/speech', { method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ text, voice, ...(voiceId ? { voiceId } : {}) }) });
+      } catch { return localSpeech.synthesize(text, voice); }
+      if (!response.ok) {
+        const issue = (await response.json().catch(() => ({}))) as { error?: string };
+        // Hosted service can be limited or unconfigured; keep creation possible offline.
+        if ([429, 502, 503, 504].includes(response.status)) return localSpeech.synthesize(text, voice);
+        throw new Error(issue.error || 'Hosted voice is unavailable. Use the local voice engine.');
+      }
+      const type = response.headers.get('content-type')?.split(';')[0].toLowerCase();
+      if (!type || !['audio/mpeg', 'audio/wav','audio/x-wav'].includes(type))
+        throw new Error('Hosted speech returned no playable audio. Switch to local voice generation.');
+      const blob = await response.blob();
+      if (!blob.size || blob.size > 20 * 1024 * 1024) throw new Error('The voice service returned an empty or oversized audio file.');
+      return blob;
     }
   };
+}
+
+/** Persistent, content-addressed cache. Explicit regeneration bypasses this
+ * cache; successful generations replace only their own cache entry.
+ */
+export async function synthesizeCached(provider: SpeechProvider, text: string, preset: string,
+  hostedVoiceId?: string, force = false) {
+  const { getAudio, putAudio } = await import('./audio.ts');
+  const input = new TextEncoder().encode(['toonroom-tts-v2',text.trim(),preset,hostedVoiceId ?? ''].join('\u0000'));
+  const digest = await crypto.subtle.digest('SHA-256',input);
+  const key = 'speech-' + [...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('');
+  if (!force) {
+    const cached = await getAudio(key).catch(()=>undefined);
+    if (cached?.size) return cached;
+  }
+  const result = await provider.synthesize(text,preset,hostedVoiceId);
+  if (!result.size) throw new Error('Speech engine returned empty audio.');
+  await putAudio(key,result).catch(()=>{});
+  return result;
 }
