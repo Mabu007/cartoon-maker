@@ -98,7 +98,7 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
           if(snapshot!==sceneToCode(scene))throw new Error('The scene changed while requesting direction.');
           const unresolved=countPendingSpeech(response);
           if(!response.edits.length){
-            setHistory(old=>[...old,{role:'user',text:request},{role:'assistant',text:response!.message}].slice(-24));
+            setHistory(old=>[...old,{role:'user' as const,text:request},{role:'assistant' as const,text:response!.message}].slice(-24));
             setPrompt('');return;
           }
           setPending({base,characters:characterStamp,next,proposal:response,request,unresolved});
@@ -138,7 +138,7 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
       // Apply performs the canonical store comparison and creates one undo snapshot.
       apply(prepared.next,pending.base,prepared.generatedAssets);
       preview(undefined);
-      setHistory(old=>[...old,{role:'user',text:pending.request},{role:'assistant',text:pending.proposal.message+
+      setHistory(old=>[...old,{role:'user' as const,text:pending.request},{role:'assistant' as const,text:pending.proposal.message+
         (pending.unresolved?' Speech audio was generated for the accepted dialogue.':' Changes applied to the live timeline.')}].slice(-24));
       setPending(undefined);setPrompt('');
     }catch(cause){setError(cause instanceof Error?cause.message:'Could not apply this proposal. The original timeline is preserved.');}
@@ -146,8 +146,8 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
   }
   function discard(){
     if(!pending)return;
-    setHistory(old=>[...old,{role:'user',text:pending.request},
-      {role:'assistant',text:'Proposal discarded. The movie was not changed.'}].slice(-24));
+    setHistory(old=>[...old,{role:'user' as const,text:pending.request},
+      {role:'assistant' as const,text:'Proposal discarded. The movie was not changed.'}].slice(-24));
     clear();
   }
   async function copyContext(){
