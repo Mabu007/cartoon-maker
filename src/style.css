@@ -2382,3 +2382,17 @@ select {
 .object-dependency-dialog > .field small { color: #bcafca; font-size: 11px; }
 .object-dependency-dialog .select-wrap { width: 100%; }
 .object-dependency-dialog .select-wrap select { width: 100%; }
+
+
+/* Portable visual worlds and props: same native file input on desktop/mobile. */
+.asset-file-input { display: none; }
+.image-world-card { overflow: hidden; border: 1px solid #78588a; border-radius: 11px; background: #2c2539; margin: 7px 0 13px; }
+.image-world-card img { display: block; width: 100%; height: 108px; object-fit: cover; }
+.image-world-card span { display: block; padding: 8px 10px; color: #e7d0ed; font-size: 11px; }
+.inspector-image-preview { display: block; width: min(100%, 170px); max-height: 155px; object-fit: contain; margin: 8px auto 14px; border-radius: 8px; background: #3e3450; }
+.factory-teeth-editor { display: grid; gap: 7px; font-size: 11px; color: #d8c4dc; margin: 8px 0 14px; }
+.factory-teeth-row { display: flex; align-items: center; justify-content: center; gap: 3px; padding: 8px; background: #30283c; border-radius: 11px; }
+.factory-teeth-row button { width: 34px; height: 31px; border: 1px solid #c7b7a3; border-radius: 4px 4px 11px 11px; background: #fff4de; color: #4a3a39; font-size: 10px; font-weight: 800; cursor: pointer; }
+.factory-teeth-row button.gold { border-color: #b78b3e; background: linear-gradient(135deg, #fff6bc, #edc05a 58%, #aa742b); color: #4d320e; }
+.factory-teeth-row button:hover { outline: 2px solid #caa0ed; }
+.preview-eye-focus { margin-top: 8px; }
