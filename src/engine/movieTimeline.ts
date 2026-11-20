@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { actions, builtinVoiceNames, environments, expressions, ProjectDocument, SceneDefinition, TimelineClip, tracks, shots, soundNames, WIDTH, HEIGHT, parseStoredProject, type Project, type Scene } from './schema.ts';
+import { actions, builtinVoiceNames, environments, expressions, ProjectDocument, SceneDefinition, TimelineClip, tracks, shots, soundNames, WIDTH, HEIGHT, type Project, type Scene } from './schema.ts';
 import { sceneContext, sceneToCode, validateTimelineChange } from './timelineCode.ts';
 
 /**
@@ -24,7 +24,12 @@ function issueText(error: z.ZodError): string {
 
 export function validateMovieReplacement(previous: Project, raw: unknown): Project {
   let next: Project;
-  try { next = parseStoredProject(raw); }
+  try {
+    // Old bare JSON can omit the version. Interactive edits must still reject overlapping shots.
+    const data = raw && typeof raw === 'object' ? raw as Record<string, unknown> : undefined;
+    next = ProjectDocument.parse(data && (data.version === undefined || data.version === 0)
+      ? {...data, version: 1} : raw);
+  }
   catch (error) {
     if (error instanceof z.ZodError) throw new Error('Movie timeline did not validate: ' + issueText(error));
     throw error;

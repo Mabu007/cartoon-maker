@@ -30,6 +30,16 @@ export function snapTime(time: number, guides: number[], pixelsPerSecond: number
   }
   return rounding(closest);
 }
+export function snapMoveDelta(start: number, end: number, guides: number[], pixelsPerSecond: number, enabled: boolean) {
+  if (!enabled || pixelsPerSecond <= 0) return 0;
+  let adjustment = 0, distance = 9 / pixelsPerSecond;
+  for (const guide of guides) {
+    const left = guide - start, right = guide - end;
+    const delta = Math.abs(left) <= Math.abs(right) ? left : right;
+    if (Math.abs(delta) <= distance) { adjustment = delta; distance = Math.abs(delta); }
+  }
+  return adjustment;
+}
 export function snapGuides(scene: Scene, playhead: number, exclude: string[] = []) {
   const skip = new Set(exclude);
   return [0, scene.duration, playhead, ...(scene.markers ?? []).map(marker => marker.time), ...scene.clips.filter(c => !skip.has(c.id)).flatMap(clip => [clip.start, clip.start + clip.length])];

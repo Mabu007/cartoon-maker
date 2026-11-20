@@ -5,7 +5,7 @@ import { ProjectDocument, type Clip, type Scene } from '../src/engine/schema.ts'
 import { evaluate } from '../src/engine/evaluate.ts';
 import { sceneSounds } from '../src/services/audio.ts';
 import { useStudio } from '../src/studio.ts';
-import { selectClipRange, snapTime, snapGuides, compatibleTrack, moveTimelineClips, trimTimelineClip, splitTimelineClips, deleteMovementKeyframe, deleteTimelineClips, pasteTimelineClips, duplicateTimelineClips, resizeSceneTimeline } from '../src/engine/timelineEditing.ts';
+import { selectClipRange, snapTime, snapMoveDelta, snapGuides, compatibleTrack, moveTimelineClips, trimTimelineClip, splitTimelineClips, deleteMovementKeyframe, deleteTimelineClips, pasteTimelineClips, duplicateTimelineClips, resizeSceneTimeline } from '../src/engine/timelineEditing.ts';
 
 const project=makeProject(true), original=project.scenes[0], actor=original.actors[0].id;
 const scene=(...clips:Clip[]):Scene=>({...original,clips});
@@ -137,4 +137,9 @@ test('dragging the left trim handle cannot extend before the recording starts', 
   assert.equal(edited.start, 3);
   assert.equal(edited.length, 3);
   assert.equal('offset' in edited && edited.offset, 0);
+});
+
+test('either moved edge snaps even when the opposite edge has no matching guide', () => {
+  assert.ok(Math.abs(snapMoveDelta(2.05,5.05,[5],100,true) + .05) < 1e-8);
+  assert.equal(snapMoveDelta(2,5,[2,5.05],100,true), 0);
 });

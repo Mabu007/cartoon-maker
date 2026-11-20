@@ -121,3 +121,10 @@ test('migrated timeline documents persist and reload from local project storage'
     else Reflect.deleteProperty(globalThis, 'localStorage');
   }
 });
+
+test('whole movie Code Mode rejects overlapping shots without migrating away a valid shot', () => {
+  const movie = structuredClone(demo);
+  const shot = movie.scenes[0].clips.find(clip => clip.track === 'camera')!;
+  movie.scenes[0].clips.push({...shot, id: 'overlapping-shot'});
+  assert.throws(() => parseMovieCode(movieToCode(movie), demo), /overlap/);
+});

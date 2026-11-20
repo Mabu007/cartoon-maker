@@ -3,14 +3,14 @@ import { ChevronDown, ChevronUp, ClipboardCopy, Code2, Copy, Keyboard, Plus, Tra
 import { clamp } from '../engine/animation.ts';
 import { tracks, trackNames, uid, type Clip, type Scene, type Track } from '../engine/schema.ts';
 import { compatibleObjects } from '../engine/interactions.ts';
-import { selectClipRange, snapGuides, snapTime, moveTimelineClips, trimTimelineClip, resizeSceneTimeline, trackIsLocked } from '../engine/timelineEditing.ts';
+import { selectClipRange, snapGuides, snapTime, snapMoveDelta, moveTimelineClips, trimTimelineClip, resizeSceneTimeline, trackIsLocked } from '../engine/timelineEditing.ts';
 import { type Selection } from '../studio.ts';
 import { clipLabel, IconButton, trackIcon } from './shared.tsx';
 
 type Keyframe = { clipId: string; index: number } | null;
 type DragSession = {
   sceneId: string; ids: string[]; clip: Clip; startX: number; edge: 'move'|'in'|'out';
-  moved: boolean; preview: Scene; lastDelta: number;
+  moved: boolean; preview: Scene; base: Scene; collapseOnClick: boolean; guides: number[]; lastDelta: number;
 };
 type ContextMenu = {x:number;y:number;id:string}|null;
 const TRACK_WIDTH_DESKTOP = 150, TRACK_WIDTH_MOBILE = 112;
@@ -108,18 +108,20 @@ export function Timeline({
     if(event.button!==0)return;
     const hit=event.target as HTMLElement;
     if(hit.closest('.timeline-keyframe'))return;
-    const ids=selectionFor(clip.id,event);
+    const collapseOnClick = !event.shiftKey && !event.ctrlKey && !event.metaKey && chosen.has(clip.id) && chosen.size > 1;
+    const ids = collapseOnClick ? selectedClipIds : selectionFor(clip.id,event);
     event.currentTarget.focus({preventScroll:true});
     if(!ids.includes(clip.id))return;
     if(trackIsLocked(scene,clip.track))return;
     const edge=hit.closest('[data-edge]')?.getAttribute('data-edge') as 'in'|'out'|null;
-    drag.current={sceneId:scene.id,ids:edge?[clip.id]:ids,clip,startX:event.clientX,edge:edge??'move',moved:false,preview:scene,lastDelta:0};
+    const moving = edge ? [clip.id] : ids;
+    drag.current={base:scene,collapseOnClick,guides:snapGuides(scene,playheadRef.current,moving),sceneId:scene.id,ids:moving,clip,startX:event.clientX,edge:edge??'move',moved:false,preview:scene,lastDelta:0};
     event.currentTarget.setPointerCapture(event.pointerId);
     event.stopPropagation();
   }
   function pointerMove(event:PointerEvent<HTMLDivElement>){
     const data=drag.current;
-    if(!data||data.sceneId!==scene.id)return;
+    if(!data||data.base!==scene)return;
     const dx=event.clientX-data.startX;
     if(!data.moved && Math.abs(dx)<3)return;
     data.moved=true;
@@ -128,15 +130,13 @@ export function Timeline({
     try{
       if(data.edge==='move'){
         const target=data.clip.start+delta;
-        const snapped=snapTime(target,snapGuides(scene,playheadRef.current,data.ids),pixelsPerSecond,snap);
         const targetEnd=data.clip.start+data.clip.length+delta;
-        const snappedEnd=snapTime(targetEnd,snapGuides(scene,playheadRef.current,data.ids),pixelsPerSecond,snap);
-        const adjustment=Math.abs(snapped-target)<=Math.abs(snappedEnd-targetEnd)?snapped-target:snappedEnd-targetEnd;
+        const adjustment = snapMoveDelta(target,targetEnd,data.guides,pixelsPerSecond,snap);
         data.lastDelta=delta+adjustment;
         next=moveTimelineClips(scene,data.ids,data.lastDelta);
       }else{
         const edgeTime=data.edge==='in'?data.clip.start+delta:data.clip.start+data.clip.length+delta;
-        const snapped=snapTime(edgeTime,snapGuides(scene,playheadRef.current,data.ids),pixelsPerSecond,snap);
+        const snapped=snapTime(edgeTime,data.guides,pixelsPerSecond,snap);
         next=trimTimelineClip(scene,data.clip.id,data.edge,snapped);
       }
       data.preview=next;
@@ -146,8 +146,8 @@ export function Timeline({
   function pointerUp(event:PointerEvent<HTMLDivElement>){
     const data=drag.current;drag.current=null;
     setPreview(null);
-    if(!data||data.sceneId!==scene.id)return;
-    if(!data.moved){seek(data.clip.start);return;}
+    if(!data||data.base!==scene)return;
+    if(!data.moved){if(data.collapseOnClick)selectClips([data.clip.id]);seek(data.clip.start);return;}
     try{
       let next=data.preview;
       if(data.edge==='move'){
