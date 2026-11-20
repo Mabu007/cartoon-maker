@@ -1,6 +1,6 @@
 import { clamp } from '../engine/animation.ts';
 import { builtinVoiceNames, soundNames, type Project, type Scene, type SoundClip } from '../engine/schema.ts';
-import { applyGainEnvelope } from '../engine/audioMix.ts';
+import { applyGainEnvelope, audibleAudioTrack } from '../engine/audioMix.ts';
 
 const builtinVoices = new Set<string>(builtinVoiceNames);
 const soundTypes = new Set<string>(soundNames);
@@ -112,10 +112,8 @@ export function soundEvents(scenes: Scene[]) {
   return scenes.flatMap(scene => {
     const start = sceneStart;
     sceneStart += scene.duration;
-    const audioTracks = ['dialogue','audio','music'] as const;
-    const solo = audioTracks.filter(track => scene.trackSettings?.[track]?.solo);
-    return sceneSounds(scene).filter(clip => !clip.muted && !scene.trackSettings?.[clip.track]?.muted &&
-      (!solo.length || solo.includes(clip.track))).map(clip => ({ clip, position: start + clip.start }));
+    return sceneSounds(scene).filter(clip => !clip.muted && audibleAudioTrack(scene,clip.track))
+      .map(clip => ({ clip, position: start + clip.start }));
   });
 }
 export function soundPlayback(clip: SoundClip, position: number, bufferDuration: number, cursor = 0) {
@@ -129,7 +127,7 @@ export function soundPlayback(clip: SoundClip, position: number, bufferDuration:
 export function dialogueAmplitude(scene: Scene, actor: string, time: number, envelopeFor: (asset: string) => Float32Array | undefined) {
   let value = 0;
   for (const clip of scene.clips) {
-    if (clip.track !== 'dialogue' || scene.trackSettings?.dialogue?.muted || clip.actor !== actor || clip.muted || time < clip.start || time >= clip.start + clip.length) continue;
+    if (clip.track !== 'dialogue' || !audibleAudioTrack(scene,'dialogue') || clip.actor !== actor || clip.muted || time < clip.start || time >= clip.start + clip.length) continue;
     const frame = Math.floor((time - clip.start + clip.offset) * 50);
     value = Math.max(value, (envelopeFor(clip.asset)?.[frame] ?? 0) * Math.min(1, clip.volume));
   }
@@ -137,7 +135,7 @@ export function dialogueAmplitude(scene: Scene, actor: string, time: number, env
 }
 export async function prepareDialoguePreview(scene: Scene) {
   const envelopes = new Map<string, Float32Array>();
-  const assets = new Set(scene.clips.flatMap(clip => clip.track === 'dialogue' && !clip.muted ? [clip.asset] : []));
+  const assets = new Set(scene.clips.flatMap(clip => clip.track === 'dialogue' && !clip.muted && audibleAudioTrack(scene,'dialogue') ? [clip.asset] : []));
   await Promise.allSettled([...assets].map(async asset => { envelopes.set(asset, (await readSound(asset)).envelope); }));
   return (actor: string, time: number) => dialogueAmplitude(scene, actor, time, asset => envelopes.get(asset));
 }

@@ -4,7 +4,9 @@ import { makeProject } from '../src/engine/presets.ts';
 import { ProjectDocument, type Clip, type Scene } from '../src/engine/schema.ts';
 import { replaceDialogueAsset, restoreDialogueAsset, validateDialogueReplacement } from '../src/engine/dialogueAudio.ts';
 import { soundEvents, soundPlayback, projectAssets } from '../src/services/audio.ts';
-import { gainAt, gainKeyframes, DUCK_LEVEL } from '../src/engine/audioMix.ts';
+import { gainAt, gainKeyframes, DUCK_LEVEL, audibleAudioTrack } from '../src/engine/audioMix.ts';
+import { evaluate } from '../src/engine/evaluate.ts';
+import { dialogueAmplitude } from '../src/services/audio.ts';
 import { useStudio } from '../src/studio.ts';
 
 const project=makeProject(true);
@@ -127,4 +129,14 @@ test('persistent character preset survives schema parse across scenes',()=>{
   assert.equal(parsed.characters[0].hostedVoiceId,'custom.123:example');
   const invalid={...char,hostedVoiceId:'https://bad-voice/abc'};
   assert.equal(ProjectDocument.safeParse({...project,characters:[invalid,...project.characters.slice(1)]}).success,false);
+});
+
+test('soloing music suppresses lip-sync preview and decoded dialogue amplitude',()=>{
+  const dialogue=speech('voice',0,3);
+  const initial=scene(dialogue,music('bg',0,9));
+  const solo={...initial,trackSettings:{music:{solo:true}}};
+  assert.equal(audibleAudioTrack(solo,'dialogue'),false);
+  assert.equal(audibleAudioTrack(solo,'music'),true);
+  assert.equal(dialogueAmplitude(solo,actor,1,()=>new Float32Array(200).fill(1)),0);
+  assert.equal(evaluate(solo,1).actors.find(item=>item.id===actor)?.speaking,false);
 });

@@ -21,3 +21,5 @@ Three distinct existing tracks: Dialogue, SFX and Music. Clip controls provide v
 `tests/audioProduction.test.ts` covers per-clip regeneration, versions, collision recovery, audio references, undo, track solo, ducking, fades, loops and persistent voices. Run `npm ci && npm run build`, then generate and regenerate a line, deliberately trigger a provider failure, upload SFX/music, preview, save/reopen, restore versions, and export a mixed file.
 
 Browser Computer Use is not exposed in this chat session. GitHub Actions preexisting CI fails near-instantly without logs. **Do not claim runtime/production QA or authenticated voice inference passing** until exercised. Stop after Part 5.
+
+Solo/mute are applied through `audibleAudioTrack` consistently in the deterministic scene evaluator (mouth movement), preview audio envelopes, real-time playback, and offline export. Voice cache keys now include backend identity; a local WAV fallback is never reused as a permanent hosted response. Fish requests only use documented speech endpoint parameters, with voice IDs supplied where configured.

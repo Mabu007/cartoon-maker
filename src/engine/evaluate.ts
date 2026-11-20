@@ -1,5 +1,6 @@
 import { animations, blend, clamp, ease, mix, sample, viewForward } from './animation.ts';
 import { anchorFor } from './interactions.ts';
+import { audibleAudioTrack } from './audioMix.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
@@ -26,7 +27,7 @@ export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, pro
 export function evaluate(scene: Scene, time: number) {
   const t = clamp(time, 0, Math.max(0, scene.duration - .000001));
   const timelineClips = scene.clips.filter(clip => !scene.trackSettings?.[clip.track]?.muted);
-  const sounds = timelineClips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'music' || clip.track === 'dialogue') && active(clip, t));
+  const sounds = timelineClips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'music' || clip.track === 'dialogue') && audibleAudioTrack(scene,clip.track) && active(clip, t));
   const actors = scene.actors.map((actor): CharacterState => {
     const clips = timelineClips.filter(clip => 'actor' in clip && clip.actor === actor.id);
     const presence = clips.filter(clip => clip.track === 'actors' && clip.visible === undefined);

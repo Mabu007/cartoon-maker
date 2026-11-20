@@ -1,4 +1,14 @@
-import type { SoundClip } from './schema.ts';
+import type { SoundClip, Scene } from './schema.ts';
+/** Single shared interpretation of mute and solo for playback, export and
+ * speaker lip-sync. Project backups intentionally ignore audition controls.
+ */
+export function audibleAudioTrack(scene: Scene, track: SoundClip['track']) {
+  if (scene.trackSettings?.[track]?.muted) return false;
+  const choices = (['dialogue','audio','music'] as const).filter(
+    name => scene.trackSettings?.[name]?.solo
+  );
+  return !choices.length || choices.includes(track);
+}
 export type SoundWindow = { start: number; end: number };
 export const DUCK_LEVEL = 0.38;
 export const DUCK_ATTACK = 0.09, DUCK_RELEASE = 0.22;
