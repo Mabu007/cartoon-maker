@@ -1,0 +1,168 @@
+import { useEffect, useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles } from 'lucide-react';
+import { animations, clamp } from '../engine/animation.ts';
+import { anchors, soundNames } from '../engine/presets.ts';
+import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track } from '../engine/schema.ts';
+import { type Format } from '../engine/renderer.ts';
+import { projectDuration } from '../engine/evaluate.ts';
+import type { Account } from '../services/cloud.ts';
+import { audioLength, putAudio } from '../services/audio.ts';
+import { speechProvider, voices } from '../services/speech.ts';
+import { browserExporter, exportCodec } from '../services/export.ts';
+import type { SavedProject } from '../services/projects.ts';
+import { clipLabel, clock, formats, IconButton, Modal, Select, trackIcon } from './shared.tsx';
+
+export type ClipRequest = { track?: Track; action?: Action; actor?: string };
+export function AddClipDialog({ close, request, scene, actors, time, add, audio }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; add: (clip: Clip) => void; audio: (track: 'dialogue' | 'audio', actor: string, start: number) => void }) {
+  const [track, setTrack] = useState<Track>(request.track ?? 'body');
+  const [actor, setActor] = useState(request.actor ?? Object.keys(actors)[0] ?? '');
+  const [action, setAction] = useState<Action>(request.action ?? 'walk');
+  const [layer, setLayer] = useState<'body' | 'gesture'>(request.action && ['wave', 'point', 'nod', 'shake', 'talk'].includes(request.action) ? 'gesture' : 'body');
+  const [target, setTarget] = useState(''), [expression, setExpression] = useState<typeof expressions[number]>('happy');
+  const [shot, setShot] = useState<typeof shots[number]>('medium'), [transition, setTransition] = useState<'cut' | 'glide'>('cut');
+  const [effect, setEffect] = useState<'fade-in' | 'fade-out'>('fade-in'), [sound, setSound] = useState<typeof soundNames[number]>('pop');
+  const [start, setStart] = useState(clamp(time, 0, scene.duration - .1));
+  const [length, setLength] = useState(request.action ? Math.max(1, animations[request.action].duration) : 2);
+  const needsActor = ['actors', 'movement', 'body', 'face', 'dialogue'].includes(track);
+  const place = scene.actors.find(item => item.id === actor);
+  const [toX, setToX] = useState((place?.x ?? 480) + 145);
+  const [toY, setToY] = useState(place?.y ?? 420);
+  const choices = scene.objects.filter(object => anchors[object.kind]?.action === 'hold' || (action === 'sit' && anchors[object.kind]?.action === 'sit'));
+  function submit() {
+    const at = clamp(start, 0, scene.duration - .1);
+    const base = { id: uid(), start: at, length: clamp(length, .1, scene.duration - at) };
+    if (track === 'dialogue') { audio(track, actor, at); return; }
+    if (track === 'camera') return add({ ...base, track, shot, transition, ...(actor ? { focus: actor } : {}) });
+    if (track === 'transition') return add({ ...base, track, effect });
+    if (track === 'audio') return add({ ...base, track, name: label(sound), asset: `builtin:${sound}`, volume: .75, muted: false, offset: 0 });
+    if (!place) return;
+    if (track === 'actors') return add({ ...base, track, actor });
+    if (track === 'movement') return add({ ...base, track, actor, fromX: place.x, fromY: place.y, toX: clamp(toX, -2000, 3000), toY: clamp(toY, -2000, 3000) });
+    if (track === 'face') return add({ ...base, track, actor, expression });
+    return add({ ...base, track, actor, action, layer, ...(choices.some(item => item.id === target) ? { target } : {}) });
+  }
+  return <Modal title="Add timeline clip" description="Choose what happens at the playhead." close={close}><form onSubmit={e => { e.preventDefault(); submit(); }}>
+    <div className="dialog-fields"><label className="field">Track<Select aria="Track" value={track} options={tracks} onChange={setTrack} render={id => trackNames[id]}/></label>
+    {(needsActor || track === 'camera') && <label className="field">{track === 'camera' ? 'Focus' : 'Actor'}<Select aria="Actor" value={actor} onChange={value => { setActor(value); const item = scene.actors.find(entry => entry.id === value); if (item) { setToX(item.x + 145); setToY(item.y); } }} options={track === 'camera' ? ['', ...Object.keys(actors)] : Object.keys(actors)} render={id => actors[id] ?? 'Automatic'}/></label>}
+    {needsActor && !actor && <p className="form-error">Add an actor to the scene first.</p>}
+    {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setTarget(''); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={layer} onChange={setLayer} options={['body', 'gesture']}/></label></div>{!!choices.length && <label className="field">Interact with<Select aria="Interact with" value={target} onChange={setTarget} options={['', ...choices.map(item => item.id)]} render={id => choices.find(item => item.id === id)?.name ?? 'None'}/></label>}</>}
+    {track === 'movement' && <div className="field-row"><label className="field">End X<input type="number" value={toX} onChange={e => setToX(Number(e.target.value))}/></label><label className="field">End Y<input type="number" value={toY} onChange={e => setToY(Number(e.target.value))}/></label></div>}
+    {track === 'face' && <label className="field">Expression<Select aria="Expression" value={expression} onChange={setExpression} options={expressions}/></label>}
+    {track === 'camera' && <div className="field-row"><label className="field">Shot<Select aria="Shot" value={shot} onChange={setShot} options={shots}/></label><label className="field">Transition<Select aria="Transition" value={transition} onChange={setTransition} options={['cut', 'glide']}/></label></div>}
+    {track === 'transition' && <label className="field">Effect<Select aria="Effect" value={effect} onChange={setEffect} options={['fade-in', 'fade-out']}/></label>}
+    {track === 'audio' && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={setSound} options={soundNames}/></label>}
+    <div className="field-row"><label className="field">Start (seconds)<input aria-label="Clip start" type="number" value={Math.round(start * 100) / 100} min={0} max={scene.duration - .1} step="any" onChange={e => setStart(Number(e.target.value))}/></label>{track !== 'dialogue' && <label className="field">Length (seconds)<input aria-label="Clip length" type="number" value={length} min={.1} max={180} step="any" onChange={e => setLength(Number(e.target.value))}/></label>}</div></div>
+    <footer className="modal-footer">{track === 'audio' && <button type="button" className="quiet" onClick={() => audio('audio', '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={needsActor && !actor}><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
+  </form></Modal>;
+}
+
+export type AudioRequest = { track: 'dialogue' | 'audio'; actor?: string; start: number };
+export function AudioDialog({ request, actors, scene, account, add, close }: { request: AudioRequest; actors: Record<string, string>; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
+  const isDialogue = request.track === 'dialogue';
+  const [actor, setActor] = useState(request.actor || Object.keys(actors)[0] || ''), [text, setText] = useState(''), [voice, setVoice] = useState('warm');
+  const [start, setStart] = useState(clamp(request.start, 0, scene.duration - .1)), [name, setName] = useState('');
+  const [recording, setRecording] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [asset, setAsset] = useState<{ blob: Blob; url: string; length: number }>();
+  const recorder = useRef<MediaRecorder | undefined>(undefined), inputStream = useRef<MediaStream | undefined>(undefined), alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; inputStream.current?.getTracks().forEach(track => track.stop()); if (recorder.current?.state === 'recording') recorder.current.stop(); }; }, []);
+  useEffect(() => () => { if (asset) URL.revokeObjectURL(asset.url); }, [asset]);
+  async function load(blob: Blob, label: string) {
+    if (blob.size >= 20 * 1024 * 1024) throw new Error('Choose an audio file smaller than 20 MB.');
+    const length = await audioLength(blob);
+    if (length < .1) throw new Error('The recording is too short.');
+    if (alive.current) { setAsset({ blob, url: URL.createObjectURL(blob), length }); setName(label); }
+  }
+  async function work(command: () => Promise<void>) {
+    setBusy(true); setError('');
+    try { await command(); } catch (error) { setError(error instanceof Error ? error.message : 'Could not load audio.'); } finally { if (alive.current) setBusy(false); }
+  }
+  async function record() {
+    if (recorder.current?.state === 'recording') { recorder.current.stop(); return; }
+    await work(async () => {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') throw new Error('Microphone recording is unavailable. Upload audio instead.');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!alive.current) { stream.getTracks().forEach(track => track.stop()); return; }
+      inputStream.current = stream;
+      try {
+        const mic = new MediaRecorder(stream); recorder.current = mic;
+        const chunks: Blob[] = [];
+        mic.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+        mic.onstop = () => { stream.getTracks().forEach(track => track.stop()); if (!alive.current) return; setRecording(false); void work(() => load(new Blob(chunks, { type: mic.mimeType.split(';')[0] || 'audio/webm' }), 'Microphone recording')); };
+        mic.onerror = () => { stream.getTracks().forEach(track => track.stop()); setRecording(false); setError('The microphone recording failed.'); };
+        mic.start(); setRecording(true);
+      } catch (error) { stream.getTracks().forEach(track => track.stop()); throw error; }
+    });
+  }
+  const save = () => work(async () => {
+    if (!asset) return;
+    const at = clamp(start, 0, scene.duration - .1);
+    const id = uid(); await putAudio(id, asset.blob);
+    const common = { id: uid(), start: at, length: clamp(asset.length, .1, scene.duration - at), asset: `asset:${id}`, volume: 1, muted: false, offset: 0 };
+    add(isDialogue ? { ...common, track: 'dialogue', text: text.trim(), actor } : { ...common, track: 'audio', name: name.trim().slice(0, 80) || 'Audio' });
+  });
+  return <Modal title={isDialogue ? 'Add dialogue' : 'Add audio'} description={isDialogue ? 'Generate a voice, record your own, or attach an audio file.' : 'Add a recording, sound effect, or music track.'} close={close}>
+    <div className="dialog-fields">{isDialogue && <><label className="field">Actor<Select aria="Dialogue actor" value={actor} onChange={setActor} options={Object.keys(actors)} render={id => actors[id]}/></label>{!actor && <p className="form-error">Add an actor to the scene first.</p>}<label className="field">Dialogue<textarea value={text} maxLength={400} onChange={e => setText(e.target.value)} placeholder="What does your character say?"/></label><div className="field-row"><label className="field">Voice<Select aria="Voice" value={voice} onChange={setVoice} options={voices.map(item => item.id)} render={id => voices.find(item => item.id === id)!.name}/></label><button disabled={!text.trim() || busy || recording} className="quiet generate-voice" onClick={() => work(async () => load(await speechProvider(account).synthesize(text, voice), 'Generated voice'))}><Sparkles size={16}/> Generate voice</button></div>{(!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') && <p className="small-text">Voice generation runs on this device. The first use downloads the voice engine.</p>}</>}
+    <div className="field-row"><label className={`quiet file-button ${busy || recording ? 'disabled' : ''}`}><FileAudio size={16}/> Upload audio<input type="file" accept="audio/*,.webm" disabled={busy || recording} onChange={e => { const file = e.target.files?.[0]; if (file) void work(() => load(file, file.name.replace(/\.[^.]+$/, ''))); e.currentTarget.value = ''; }}/></label><button className={`quiet ${recording ? 'recording' : ''}`} disabled={busy} onClick={() => void record()}>{recording ? <Square size={15}/> : <Mic size={16}/>} {recording ? 'Stop recording' : 'Record voice'}</button></div>
+    {asset && <><audio controls src={asset.url} aria-label="Preview audio"/>{!isDialogue && <label className="field">Name<input value={name} maxLength={80} onChange={e => setName(e.target.value)}/></label>}</>}
+    <label className="field">Start (seconds)<input type="number" step=".01" min={0} max={scene.duration - .1} value={Math.round(start * 100) / 100} onChange={e => setStart(Number(e.target.value))}/></label>
+    {asset && start + asset.length > scene.duration && <p className="small-text">Audio will trim at the end of this scene.</p>}
+    {busy && <p className="small-text" role="status">Preparing audio…</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>
+    <footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!asset || busy || recording || (isDialogue && !actor)} onClick={() => void save()}><Plus size={16}/> Add to timeline</button></footer>
+  </Modal>;
+}
+
+export function ExportDialog({ project, initialFormat, initialSubtitles, close }: { project: Project; initialFormat: Format; initialSubtitles: boolean; close: () => void }) {
+  const [format, setFormat] = useState(initialFormat), [subtitles, setSubtitles] = useState(initialSubtitles), [progress, setProgress] = useState<number | null>(null);
+  const [error, setError] = useState(''), [download, setDownload] = useState<{ url: string; extension: string }>();
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => () => { if (download) URL.revokeObjectURL(download.url); }, [download]);
+  const codec = exportCodec();
+  const start = async () => {
+    const controller = new AbortController(); request.current = controller; setError(''); setProgress(0); setDownload(undefined);
+    try {
+      const movie = await browserExporter.run(project, format, subtitles, controller.signal, setProgress);
+      if (!controller.signal.aborted) setDownload({ url: URL.createObjectURL(movie.blob), extension: movie.extension });
+    } catch (error) { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Export failed.'); }
+    finally { if (request.current === controller) { request.current = null; setProgress(null); } }
+  };
+  const filename = project.name.replace(/[^\w -]/g, '').trim().replaceAll(' ', '-') || 'cartoon';
+  return <Modal title="Export video" description="Render every scene in project order, with voices and sound mixed in." close={close}>
+    <div className="dialog-fields"><div className="export-summary"><Clapperboard size={25}/><div><strong>{project.name}</strong><small>{project.scenes.length} {project.scenes.length === 1 ? 'scene' : 'scenes'} · {clock(projectDuration(project.scenes))}</small></div></div>
+    <label className="field">Frame size<Select aria="Export frame size" value={format} onChange={setFormat} options={formats} render={id => id === '16:9' ? '16:9 · 1280 × 720' : id === '9:16' ? '9:16 · 720 × 1280' : '1:1 · 720 × 720'}/></label>
+    <label className="check"><input type="checkbox" checked={subtitles} onChange={e => setSubtitles(e.target.checked)}/><Captions size={16}/> Include subtitles</label>
+    <p className="small-text">{codec ? `Format: ${codec.includes('mp4') ? 'MP4' : 'WebM'} · 30 fps. Keep this tab visible while the cartoon renders.` : 'This browser cannot export a canvas video with audio.'}</p>
+    {progress !== null && <div className="export-progress"><span role="status">Rendering video… {Math.round(progress * 100)}%</span><progress value={progress} max={1}/></div>}
+    {error && <p className="form-error" role="alert">{error}</p>}{download && <video className="export-preview" controls src={download.url} aria-label="Exported video preview"/>}</div>
+    <footer className="modal-footer"><span className="spacer"/>{progress !== null ? <button className="quiet" onClick={() => request.current?.abort()}>Cancel export</button> : <><button className="quiet" onClick={close}>Close</button>{download ? <a className="primary" href={download.url} download={`${filename}.${download.extension}`}><Download size={17}/> Download {download.extension.toUpperCase()}</a> : <button className="primary" disabled={!codec} onClick={() => void start()}><Download size={17}/> Render video</button>}</>}</footer>
+  </Modal>;
+}
+
+export function ProjectsDialog({ items, current, close, create, open, duplicate, remove, demo }: { items: SavedProject[]; current: string; close: () => void; create: () => void; open: (project: Project) => void; duplicate: (project: Project) => void; remove: (project: Project) => void; demo: () => void }) {
+  return <Modal title="Projects" description="Open a saved cartoon or start something new." close={close}>
+    <div className="dialog-fields"><div className="project-list">{items.map(({ project, updated }) => <div className="project-row" key={project.id}><button className="project-title" onClick={() => open(project)}><Clapperboard size={19}/><span><strong>{project.name}</strong><small>{project.id === current ? 'Currently open' : new Date(updated).toLocaleDateString()} · {project.scenes.length} scene{project.scenes.length > 1 ? 's' : ''}</small></span></button><IconButton title={`Duplicate ${project.name}`} onClick={() => duplicate(project)}><Copy size={15}/></IconButton><IconButton title={`Delete ${project.name}`} onClick={() => remove(project)}><Trash2 size={15}/></IconButton></div>)}
+      {!items.length && <p className="empty-small">Save your first project and it will appear here.</p>}</div><button className="quiet full" onClick={demo}><Clapperboard size={16}/> Open “Who Ate My Food?” example</button></div>
+    <footer className="modal-footer"><span className="spacer"/><button className="primary" onClick={create}><Plus size={16}/> New project</button></footer>
+  </Modal>;
+}
+export function ScenesDialog({ scenes, active, close, add, open, reorder, copy, drop, savePreset }: { scenes: Scene[]; active: string; close: () => void; add: () => void; open: (scene: Scene) => void; reorder: (id: string, direction: number) => void; copy: (scene: Scene) => void; drop: (scene: Scene) => void; savePreset: (scene: Scene) => void }) {
+  return <Modal title="Manage scenes" description="Arrange scenes in the order they’ll play and export." close={close}>
+    <div className="dialog-fields"><div className="project-list">{scenes.map((scene, index) => <div className="project-row" key={scene.id}><button className="project-title" onClick={() => open(scene)}><Clapperboard size={19}/><span><strong>{scene.name}</strong><small>{scene.duration}s · {scene.id === active ? 'Currently open' : scene.environment}</small></span></button><IconButton title="Move scene up" disabled={index === 0} onClick={() => reorder(scene.id, -1)}><ArrowUp size={15}/></IconButton><IconButton title="Move scene down" disabled={index === scenes.length - 1} onClick={() => reorder(scene.id, 1)}><ArrowDown size={15}/></IconButton><IconButton title="Save furnished world" onClick={() => savePreset(scene)}><Save size={15}/></IconButton><IconButton title="Duplicate scene" onClick={() => copy(scene)}><Copy size={15}/></IconButton><IconButton title="Delete scene" disabled={scenes.length === 1} onClick={() => drop(scene)}><Trash2 size={15}/></IconButton></div>)}</div></div>
+    <footer className="modal-footer"><span className="spacer"/><button className="primary" onClick={add}><Plus size={16}/> Add scene</button></footer>
+  </Modal>;
+}
+export function AccountDialog({ available, account, login, logout, close }: { available: boolean; account: Account | null; login: (email: string, password: string, register: boolean) => Promise<void>; logout: () => Promise<void>; close: () => void }) {
+  const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [register, setRegister] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  async function submit() { setBusy(true); setError(''); try { if (account) await logout(); else await login(email.trim(), password, register); close(); } catch (error) { setError(error instanceof Error ? error.message : 'Authentication failed.'); } finally { setBusy(false); } }
+  return <Modal title={account ? 'Your account' : register ? 'Create an account' : 'Sign in'} description={available ? 'Keep your private projects available across devices.' : 'This studio currently saves projects on this device.'} close={close}><form onSubmit={event => { event.preventDefault(); void submit(); }}>
+    <div className="dialog-fields">{available && !account && <><label className="field">Email<input type="email" autoComplete="email" value={email} required onChange={e => setEmail(e.target.value)}/></label><label className="field">Password<input type="password" autoComplete={register ? 'new-password' : 'current-password'} minLength={6} required value={password} onChange={e => setPassword(e.target.value)}/></label><button type="button" className="quiet" onClick={() => setRegister(value => !value)}>{register ? 'I already have an account' : 'Create an account'}</button></>}{account && <div className="export-summary"><Cloud size={23}/><strong>{account.email}</strong></div>}{!available && <p className="small-text">Cloud sign-in is available when a Firebase project is connected. You can create, reopen, and export cartoons here in the meantime.</p>}{error && <p className="form-error">{error}</p>}</div>
+    <footer className="modal-footer"><span className="spacer"/><button type="button" className="quiet" onClick={close}>{available ? 'Cancel' : 'Continue in this browser'}</button>{available && <button className="primary" disabled={busy}>{busy ? 'Working…' : account ? 'Sign out' : register ? 'Create account' : 'Sign in'}</button>}</footer>
+  </form></Modal>;
+}
+export function HelpDialog({ close, demo }: { close: () => void; demo: () => void }) {
+  return <Modal title="Make your first cartoon" description="Start with the editable example and make it your own." close={close}><div className="dialog-fields"><ol className="quick-start"><li><strong>Build your cast.</strong> Pick a character to change their look, or press + to add them to the scene.</li><li><strong>Set the scene.</strong> Pick a world, add props and use Arrange to place them.</li><li><strong>Direct the performance.</strong> Add action, dialogue and camera clips. Drag or trim clips to change their timing.</li><li><strong>Watch and share.</strong> Play with Space, save your project and export the finished video.</li></ol><div className="keyboard-help"><kbd>Space</kbd> Play / pause <kbd>Ctrl + Z</kbd> Undo <kbd>Delete</kbd> Remove</div></div><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Back to studio</button><button className="primary" onClick={demo}><Clapperboard size={16}/> Open example</button></footer></Modal>;
+}
+export function DirectorDialog({ generate, example, close }: { generate?: (story: string) => Promise<void>; example: () => void; close: () => void }) {
+  const [story, setStory] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  return <Modal title="Story director" description={generate ? 'Describe a short story to turn it into an editable project.' : 'Explore a scripted example built with the same tools you can use in the studio.'} close={close}><div className="dialog-fields">{generate ? <label className="field">Story<textarea value={story} maxLength={2500} onChange={e => setStory(e.target.value)} placeholder="Zee is trying to stay quiet while Bra Sbu records a podcast…"/></label> : <div className="export-summary"><WandSparkles size={24}/><div><strong>Who Ate My Food?</strong><small>30 seconds · 2 actors · editable timeline</small></div></div>}{error && <p className="form-error">{error}</p>}</div><footer className="modal-footer"><span className="spacer"/><button className={generate ? 'quiet' : 'primary'} onClick={example}><Clapperboard size={16}/> Open example</button>{generate && <button className="primary" disabled={busy || story.trim().length < 5} onClick={async () => { setBusy(true); setError(''); try { await generate(story); } catch (error) { setError(error instanceof Error ? error.message : 'Could not direct the story.'); setBusy(false); } }}><Sparkles size={16}/>{busy ? 'Directing…' : 'Generate project'}</button>}</footer></Modal>;
+}

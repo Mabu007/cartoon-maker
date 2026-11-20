@@ -1,0 +1,90 @@
+import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react';
+import { AlertCircle, Clapperboard } from 'lucide-react';
+import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
+import { type Project, type Scene } from '../engine/schema.ts';
+import { clamp } from '../engine/animation.ts';
+import type { Mixer } from '../services/audio.ts';
+import type { Selection } from '../studio.ts';
+
+type Position = { x: number; y: number };
+type Drag = { id: string; kind: 'actor' | 'object'; origin: Position; pointer: Position; current: Position; moved: boolean };
+export type PreviewTime = { scene: Scene; local: number };
+export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame }: {
+  project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
+  selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
+  mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
+}) {
+  const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), repaint = useRef<() => void>(() => {});
+  const [status, setStatus] = useState('Loading preview…');
+  const props = useRef({ project, scene, time, playing, edit, selection, subtitles, mixer, onFrame });
+  props.current = { project, scene, time, playing, edit, selection, subtitles, mixer, onFrame };
+  useEffect(() => {
+    let alive = true, handle = 0, lastShot = '';
+    setStatus('Loading preview…');
+    createRenderer(format, quality ? 1 : .75).then(renderer => {
+      if (!alive) { renderer.destroy(); return; }
+      engine.current = renderer;
+      mount.current?.replaceChildren(renderer.canvas);
+      setStatus('');
+      const draw = () => {
+        const p = props.current;
+        const { scene: live, local } = p.time.current;
+        const scene = p.playing ? live : p.scene;
+        const frame = renderer.draw(scene, p.project.characters, local, {
+          selected: p.selection?.kind !== 'clip' && !p.playing ? p.selection?.id : undefined,
+          ...(drag.current?.moved ? { staged: { [drag.current.id]: drag.current.current } } : {}),
+          edit: p.edit && !p.playing, subtitles: p.subtitles, amplitude: (id, t) => p.mixer.current?.amplitude(scene, id, t) ?? 0
+        });
+        if (frame.shot !== lastShot) { lastShot = frame.shot; p.onFrame?.(frame.shot); }
+      };
+      repaint.current = draw;
+      draw();
+      let previewTime = -1;
+      const tick = () => {
+        if (!alive) return;
+        const p = props.current;
+        if (p.playing && !document.hidden && Math.floor(p.time.current.local * 30) !== previewTime) {
+          previewTime = Math.floor(p.time.current.local * 30);
+          try { draw(); } catch (error) { setStatus(error instanceof Error ? error.message : 'Preview failed.'); return; }
+        }
+        handle = requestAnimationFrame(tick);
+      };
+      handle = requestAnimationFrame(tick);
+    }).catch(() => { if (alive) setStatus('The preview needs WebGL. Enable hardware acceleration or try a different browser.'); });
+    return () => { alive = false; cancelAnimationFrame(handle); repaint.current = () => {}; engine.current?.destroy(); engine.current = null; };
+  }, [format, quality]);
+  useEffect(() => { if (!playing) repaint.current(); }, [project, scene, playing, edit, selection, subtitles]);
+  useEffect(() => { const refresh = () => repaint.current(); window.addEventListener('toonroom-seek', refresh); return () => window.removeEventListener('toonroom-seek', refresh); }, []);
+  function pointer(event: PointerEvent) {
+    const renderer = engine.current;
+    if (!renderer) return;
+    const box = renderer.canvas.getBoundingClientRect();
+    return renderer.pick((event.clientX - box.left) * renderer.width / box.width, (event.clientY - box.top) * renderer.height / box.height);
+  }
+  return <div className={`stage-format format-${format.replace(':', '-')}`}>
+    <div className={`canvas-mount ${edit ? 'place-mode' : ''}`} ref={mount}
+      onPointerDown={event => {
+        if (playing || event.button !== 0) return;
+        const hit = pointer(event);
+        if (!hit?.id) { selected(null); return; }
+        const actor = scene.actors.find(item => item.id === hit.id), object = scene.objects.find(item => item.id === hit.id);
+        const entity = actor ?? object;
+        if (!entity) return;
+        const kind = actor ? 'actor' : 'object';
+        selected({ kind, id: entity.id });
+        if (!edit) return;
+        drag.current = { id: entity.id, kind, origin: entity, pointer: hit, current: entity, moved: false };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }} onPointerMove={event => {
+        const item = drag.current, hit = item && pointer(event);
+        if (!item || !hit) return;
+        const dx = hit.x - item.pointer.x, dy = hit.y - item.pointer.y;
+        if (Math.hypot(dx, dy) < 3 && !item.moved) return;
+        const grid = snap ? 10 : 1;
+        item.moved = true;
+        item.current = { x: clamp(Math.round((item.origin.x + dx) / grid) * grid, -100, 1060), y: clamp(Math.round((item.origin.y + dy) / grid) * grid, 30, 570) };
+        repaint.current();
+      }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved) move(item.id, item.current); repaint.current(); }} onPointerCancel={() => { drag.current = null; repaint.current(); }} />
+    {status && <div className="stage-status">{status.startsWith('Loading') ? <Clapperboard size={22}/> : <AlertCircle size={22}/>}<span>{status}</span></div>}
+  </div>;
+}

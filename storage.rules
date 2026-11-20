@@ -1,0 +1,13 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/audio/{id} {
+      function ownsAsset() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+      allow read, delete: if ownsAsset();
+      allow create, update: if ownsAsset() && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches('audio/.*');
+    }
+  }
+}
