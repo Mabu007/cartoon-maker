@@ -3,13 +3,14 @@ import { createRenderer, type Format } from '../engine/renderer.ts';
 import { locate, projectDuration } from '../engine/evaluate.ts';
 import type { Project } from '../engine/schema.ts';
 import { createAudioMixer } from './audio.ts';
+import { exportScale, hasFrameEncoder, type VideoExporter } from './exportTypes.ts';
 
 const codecs = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
-export const exportCodec = () => typeof MediaRecorder === 'undefined' || !HTMLCanvasElement.prototype.captureStream ? undefined : codecs.find(codec => MediaRecorder.isTypeSupported(codec));
-export interface VideoExporter { run: (project: Project, format: Format, subtitles: boolean, signal: AbortSignal, progress: (value: number) => void) => Promise<{ blob: Blob; extension: string }>; }
-export const browserExporter: VideoExporter = {
+const recorderCodec = () => typeof MediaRecorder === 'undefined' || !HTMLCanvasElement.prototype.captureStream ? undefined : codecs.find(codec => MediaRecorder.isTypeSupported(codec));
+export const exportCodec = () => hasFrameEncoder() ? 'video/webm' : recorderCodec();
+const recorderExporter: VideoExporter = {
   async run(project, format, subtitles, signal, progress) {
-    const mimeType = exportCodec();
+    const mimeType = recorderCodec();
     if (!mimeType) throw new Error('This browser cannot record a canvas with audio. Open the studio in a current Chrome, Edge, or Firefox browser.');
     const mixer = createAudioMixer();
     let renderer: Awaited<ReturnType<typeof createRenderer>> | undefined;
@@ -19,7 +20,7 @@ export const browserExporter: VideoExporter = {
       await mixer.context.resume();
       await mixer.prepare(project.scenes);
       signal.throwIfAborted();
-      renderer = await createRenderer(format, format === '9:16' ? 1280 / 540 : 4 / 3, true);
+      renderer = await createRenderer(format, exportScale(format), true);
       signal.throwIfAborted();
       const renderAt = (time: number) => {
         const { scene, local } = locate(project.scenes, time);
@@ -70,5 +71,16 @@ export const browserExporter: VideoExporter = {
       stream?.getTracks().forEach(track => track.stop());
       renderer?.destroy(); mixer.close();
     }
+  }
+};
+
+export const browserExporter: VideoExporter = {
+  async run(project, format, subtitles, signal, progress) {
+    if (hasFrameEncoder()) {
+      const { frameExporter, UnsupportedFrameEncoder } = await import('./frameExport.ts');
+      try { return await frameExporter.run(project, format, subtitles, signal, progress); }
+      catch (error) { if (!(error instanceof UnsupportedFrameEncoder)) throw error; }
+    }
+    return recorderExporter.run(project, format, subtitles, signal, progress);
   }
 };

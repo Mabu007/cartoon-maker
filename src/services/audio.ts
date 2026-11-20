@@ -148,3 +148,30 @@ export async function audioLength(blob: Blob) {
   const context = new OfflineAudioContext(1, 1, 24000);
   return (await context.decodeAudioData(await blob.arrayBuffer())).duration;
 }
+
+export async function mixOffline(scenes: Scene[], duration: number, signal: AbortSignal) {
+  const context = new OfflineAudioContext(2, Math.ceil(duration * 48000), 48000);
+  const master = context.createGain();
+  const limiter = context.createDynamicsCompressor();
+  master.connect(limiter).connect(context.destination);
+  let start = 0;
+  const clips = scenes.flatMap(scene => {
+    const offset = start;
+    start += scene.duration;
+    return sceneSounds(scene).filter(clip => !clip.muted).map(clip => ({ clip, start: offset + clip.start }));
+  });
+  await Promise.all(clips.map(async ({ clip, start }) => {
+    const { buffer } = await readSound(context, clip.asset);
+    signal.throwIfAborted();
+    const length = Math.min(clip.length, buffer.duration - clip.offset);
+    if (length <= 0) return;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    gain.gain.value = clip.volume;
+    source.connect(gain).connect(master);
+    source.start(start, clip.offset, length);
+  }));
+  signal.throwIfAborted();
+  return context.startRendering();
+}

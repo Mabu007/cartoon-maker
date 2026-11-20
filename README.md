@@ -11,7 +11,7 @@ npm test
 npm run build
 ```
 
-Use Node.js 22.18+ or 24. The editor runs without service credentials and saves projects in the current browser. Use **Projects** to start a fresh cartoon or reopen a saved one. Choose **Arrange** to place actors and props. Use **Add clip** to direct their performance. Video exports capture all scenes with mixed audio and support landscape, portrait, and square layouts. The render runs in real time at up to 30 fps. Chrome with hardware acceleration is the preferred starting point.
+Use Node.js 22.18+ or 24. The editor runs without service credentials and saves projects in the current browser. Use **Projects** to start a fresh cartoon or reopen a saved one. Choose **Arrange** to place actors and props. Use **Add clip** to direct their performance. Video exports capture all scenes with mixed audio and support landscape, portrait, and square layouts. Supported browsers encode at 30 fps frame by frame. Browsers using the MediaRecorder fallback capture in real time. Chrome with hardware acceleration is the preferred starting point.
 
 ## Connect Firebase and deploy
 
