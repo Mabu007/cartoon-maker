@@ -11,6 +11,7 @@ import { createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.t
 import { duplicateProject, duplicateScene, listLocal, removeLocal, saveLocal, writeLocal, type SavedProject } from './services/projects.ts';
 import { exampleDirector, hostedDirector } from './services/director.ts';
 import { speechProvider } from './services/speech.ts';
+import { prepareArtwork } from './services/artwork.ts';
 import { changeClipTiming, copyClip, currentScene, initial, removeEntity, useStudio, type Selection } from './studio.ts';
 import { AssetLibrary } from './ui/AssetLibrary.tsx';
 import { CharacterFactory } from './ui/CharacterFactory.tsx';
@@ -23,15 +24,15 @@ import { Timeline } from './ui/Timeline.tsx';
 
 const studioName = import.meta.env.VITE_STUDIO_NAME?.trim() || 'Toonroom';
 type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | null;
-type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[] };
+type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[]; backgroundImage?: string };
 const worldKey = (scope: string) => `toonroom.worlds.v1.${scope}`;
 function worldPresets(scope: string): WorldPreset[] {
   try {
     const items: unknown = JSON.parse(localStorage.getItem(worldKey(scope)) ?? '[]');
     if (!Array.isArray(items)) return [];
     return items.flatMap(item => {
-      const parsed = SceneDefinition.safeParse({ id: 'world', name: item?.name, environment: item?.environment, objects: item?.objects, actors: [], clips: [], duration: 30 });
-      return parsed.success ? [{ name: parsed.data.name, environment: parsed.data.environment, objects: parsed.data.objects }] : [];
+      const parsed = SceneDefinition.safeParse({ id: 'world', name: item?.name, environment: item?.environment, objects: item?.objects, backgroundImage: item?.backgroundImage, actors: [], clips: [], duration: 30 });
+      return parsed.success ? [{ name: parsed.data.name, environment: parsed.data.environment, objects: parsed.data.objects, backgroundImage: parsed.data.backgroundImage }] : [];
     });
   } catch { return []; }
 }
@@ -243,22 +244,47 @@ export default function App() {
     editScene(current => ({ ...current, objects: [...current.objects, value] }));
     select({ id: value.id, kind: 'object' }); setMobilePanel('stage'); setArrange(true);
   }
-  function applyWorld(environment: Scene['environment'], furnished?: Prop[]) {
+  function applyWorld(environment: Scene['environment'], furnished?: Prop[], backgroundImage?: string) {
     const preset = furnished ?? makeScene(environment).objects;
-    editScene(current => replaceWorldObjects({ ...current, environment }, preset.map(object => ({ ...object, id: uid() }))));
+    editScene(current => replaceWorldObjects({ ...current, environment, backgroundImage }, preset.map(object => ({ ...object, id: uid() }))));
     select(null); setMobilePanel('stage');
   }
-  function setWorld(environment: Scene['environment'], furnished?: Prop[]) {
-    if (scene.environment === environment && !furnished) return;
+  function setWorld(environment: Scene['environment'], furnished?: Prop[], backgroundImage?: string) {
+    if (scene.environment === environment && !furnished && !scene.backgroundImage) return;
     if (scene.objects.length) {
       const used = scene.clips.filter(clip => clip.track === 'body' && clip.target && scene.objects.some(object => object.id === clip.target)).length;
-      ask('Change the furnished world?', 'This replaces the current props.' + (used ? ' ' + used + ' dependent timeline action(s) will safely change to standing/empty-handed actions.' : '') + ' Use Undo to restore the original world.', () => applyWorld(environment, furnished));
-    }
-    else applyWorld(environment, furnished);
+      ask('Change the furnished world?', 'This replaces the current props.' + (used ? ' ' + used + ' dependent timeline action(s) will safely change to standing/empty-handed actions.' : '') + ' Use Undo to restore the original world.', () => applyWorld(environment, furnished, backgroundImage));
+    } else applyWorld(environment, furnished, backgroundImage);
+  }
+  async function uploadWorld(file: File) {
+    try {
+      const imported = await prepareArtwork(file, 'world');
+      pause();
+      useStudio.getState().editScene(current => ({ ...current, backgroundImage: imported.data }));
+      setMobilePanel('stage');
+      tell('World image added. Your cast and props are still in place.');
+    } catch (error) { showError(error); }
+  }
+  async function uploadProp(file: File) {
+    try {
+      const imported = await prepareArtwork(file, 'prop');
+      const maxDimension = Math.max(imported.width, imported.height);
+      const sizing = Math.min(1, 165 / maxDimension);
+      const prop = makeProp('image', 480, 435, {
+        name: file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Picture prop',
+        imageData: imported.data, imageWidth: Math.max(10, Math.round(imported.width * sizing)),
+        imageHeight: Math.max(10, Math.round(imported.height * sizing)), interaction: 'none'
+      });
+      pause();
+      useStudio.getState().editScene(current => ({ ...current, objects: [...current.objects, prop] }));
+      select({ kind: 'object', id: prop.id });
+      setMobilePanel('inspector');
+      tell('Picture prop added. Set its interaction type in the inspector.');
+    } catch (error) { showError(error); }
   }
   function saveWorld(value: Scene) {
     try {
-      const next = [...worlds.filter(item => item.name !== value.name), { name: value.name, environment: value.environment, objects: value.objects }].slice(-24);
+      const next = [...worlds.filter(item => item.name !== value.name), { name: value.name, environment: value.environment, objects: value.objects, backgroundImage: value.backgroundImage }].slice(-24);
       localStorage.setItem(worldKey(scope), JSON.stringify(next)); setWorlds(next); tell('Furnished world saved.');
     } catch (error) { showError(error); }
   }
@@ -380,7 +406,7 @@ export default function App() {
     </header>
     <nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button></nav>
     <main className={`workspace mobile-${mobilePanel}`}>
-      <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary} characters={project.characters} scene={scene} newCharacter={() => editCharacter()} editCharacter={editCharacter} addActor={addActor} setWorld={setWorld} addProp={addObject} addAction={action => showClip('body', action)} addSound={addSound} dialogue={() => showAudio('dialogue')} audio={() => showAudio('audio')}/>{library === 'Worlds' && !!worlds.length && <div className="saved-worlds"><h3>Saved worlds</h3>{worlds.map(item => <button className="quiet full" key={item.name} onClick={() => setWorld(item.environment, item.objects)}>{item.name}</button>)}</div>}</div>
+      <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary} characters={project.characters} scene={scene} newCharacter={() => editCharacter()} editCharacter={editCharacter} addActor={addActor} setWorld={setWorld} uploadWorld={uploadWorld} addProp={addObject} uploadProp={uploadProp} addAction={action => showClip('body', action)} addSound={addSound} dialogue={() => showAudio('dialogue')} audio={() => showAudio('audio')}/>{library === 'Worlds' && !!worlds.length && <div className="saved-worlds"><h3>Saved worlds</h3>{worlds.map(item => <button className="quiet full" key={item.name} onClick={() => setWorld(item.environment, item.objects, item.backgroundImage)}>{item.name}</button>)}</div>}</div>
       <section className="stage-panel" aria-label="Studio stage">
         <header className="stage-heading"><div><span className="stage-kicker"><i/> SCENE PREVIEW</span><button className="scene-title" onClick={() => showDialog('scenes')}>{scene.name}<ChevronDown size={14}/></button></div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
         <div className="viewer"><Stage project={project} scene={scene} time={time} playing={playing} edit={arrange} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {

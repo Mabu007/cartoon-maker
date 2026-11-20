@@ -7,11 +7,15 @@ export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', '
 export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think'] as const;
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
-export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter'] as const;
+export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image'] as const;
 export const tracks = ['actors', 'movement', 'body', 'face', 'dialogue', 'audio', 'camera', 'transition'] as const;
 export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', dialogue: 'Dialogue', audio: 'Sound', camera: 'Camera', transition: 'Transitions' };
 const id = z.string().min(1).max(100);
 const color = z.string().regex(/^#[\da-f]{6}$/i);
+// Portable WebP thumbnails are embedded in project JSON. A strict budget keeps
+// the project within typical browser storage and Firestore document limits.
+const imageData = z.string().regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/).max(320_000);
+const propImageData = z.string().regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/).max(105_000);
 const num = (min: number, max: number) => z.number().finite().min(min).max(max);
 const position = { x: num(-2000, 3000), y: num(-2000, 3000), scale: num(.2, 4), rotation: num(-360, 360), depth: num(-1000, 1000) };
 export const CharacterView = z.enum(views);
@@ -21,10 +25,13 @@ export const CharacterDefinition = z.strictObject({
   shape: z.enum(['round', 'oval', 'square']), eyes: z.enum(['round', 'relaxed', 'wide']), brows: z.enum(['arched', 'straight', 'bold']),
   nose: z.enum(['button', 'long', 'flat']), mouth: z.enum(['smile', 'line', 'full']), ears: z.enum(['round', 'small', 'wide']),
   hair: z.enum(['fade', 'puff', 'locs', 'buzz', 'bald', 'afro', 'braids', 'curls']), beard: z.enum(['none', 'goatee', 'full']), hat: z.enum(['none', 'cap', 'beanie']),
-  glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(['tee', 'hoodie', 'jacket', 'sweater', 'uniform']), accessory: z.enum(['none', 'chain', 'scarf'])
+  glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(['tee', 'hoodie', 'jacket', 'sweater', 'uniform']), accessory: z.enum(['none', 'chain', 'scarf']), goldTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional()
 });
-export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.string().min(1).max(60), color, ...position });
-export const Actor = z.strictObject({ id, characterId: id, ...position, view: CharacterView, flip: z.boolean(), expression: z.enum(expressions) });
+export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.string().min(1).max(60), color, ...position,
+  imageData: propImageData.optional(), imageWidth: num(10, 800).optional(), imageHeight: num(10, 800).optional(),
+  interaction: z.enum(['none','sit','hold']).optional()
+});
+export const Actor = z.strictObject({ id, characterId: id, ...position, view: CharacterView, flip: z.boolean(), expression: z.enum(expressions), gazeTarget: id.optional() });
 export const InteractionAnchor = z.strictObject({ x: num(-1000, 1000), y: num(-1000, 1000), action: z.enum(['sit', 'hold', 'open']), facing: CharacterView.optional() });
 export const joints = ['root', 'hips', 'torso', 'neck', 'head', 'leftShoulder', 'leftElbow', 'leftWrist', 'leftHand', 'rightShoulder', 'rightElbow', 'rightWrist', 'rightHand', 'leftHip', 'leftKnee', 'leftAnkle', 'leftFoot', 'rightHip', 'rightKnee', 'rightAnkle', 'rightFoot'] as const;
 export const Joint = z.enum(joints);
@@ -43,7 +50,9 @@ export const CameraShot = z.strictObject({ ...time, track: z.literal('camera'), 
 const Transition = z.strictObject({ ...time, track: z.literal('transition'), effect: z.enum(['fade-in', 'fade-out']) });
 export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, DialogueClip, AudioClip, CameraShot, Transition]);
 export const TimelineTrack = z.enum(tracks);
-export const SceneDefinition = z.strictObject({ id, name: z.string().trim().min(1).max(70), environment: z.enum(environments), duration: num(1, 180), actors: z.array(Actor).max(24), objects: z.array(SceneObject).max(100), clips: z.array(TimelineClip).max(600) });
+export const SceneDefinition = z.strictObject({ id, name: z.string().trim().min(1).max(70), environment: z.enum(environments),
+  backgroundImage: imageData.optional(), duration: num(1, 180),
+  actors: z.array(Actor).max(24), objects: z.array(SceneObject).max(100), clips: z.array(TimelineClip).max(600) });
 
 function verifyIds(items: { id: string }[], ctx: z.RefinementCtx, path: (string | number)[]) {
   if (new Set(items.map(item => item.id)).size !== items.length) ctx.addIssue({ code: 'custom', path, message: 'Duplicate IDs' });
@@ -52,12 +61,17 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
   verifyIds(project.characters, ctx, ['characters']);
   verifyIds(project.scenes, ctx, ['scenes']);
   const characters = new Set(project.characters.map(character => character.id));
+  const embeddedImageBytes = project.scenes.reduce((sum, scene) =>
+    sum + (scene.backgroundImage?.length ?? 0) + scene.objects.reduce((n, obj) => n + (obj.imageData?.length ?? 0), 0), 0);
+  if (embeddedImageBytes > 780_000) ctx.addIssue({ code: 'custom', path: ['scenes'], message: 'Image budget exceeded. Use smaller or fewer images in this project.' });
   project.scenes.forEach((scene, index) => {
     const path = ['scenes', index];
     verifyIds([...scene.actors, ...scene.objects, ...scene.clips], ctx, path);
     const actors = new Set(scene.actors.map(actor => actor.id));
     const objects = new Set(scene.objects.map(object => object.id));
     if (scene.actors.some(actor => !characters.has(actor.characterId))) ctx.addIssue({ code: 'custom', path, message: 'Actor refers to a missing character' });
+    for (const actor of scene.actors) if (actor.gazeTarget && actor.gazeTarget !== 'camera' && !actors.has(actor.gazeTarget) && !objects.has(actor.gazeTarget))
+      ctx.addIssue({ code: 'custom', path: [...path, 'actors', actor.id, 'gazeTarget'], message: 'Gaze target was removed' });
     for (const clip of scene.clips) {
       if (clip.start + clip.length > scene.duration + .0001 || ('actor' in clip && !actors.has(clip.actor)) || ('target' in clip && clip.target && !objects.has(clip.target)) || ('focus' in clip && clip.focus && !actors.has(clip.focus))) {
         ctx.addIssue({ code: 'custom', path: [...path, 'clips', clip.id], message: 'Clip is outside the scene or has a missing target' });

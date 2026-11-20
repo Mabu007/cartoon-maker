@@ -12,16 +12,36 @@ export const mix = (from: number, to: number, t: number) => from + (to - from) *
 export const ease = (t: number) => t * t * (3 - 2 * t);
 const radians = Math.PI / 180;
 const key = (time: number, pose: JointPose = {}, lift = 0) => ({ time, pose, lift });
-const gait = (strong: boolean) => {
-  const stride = strong ? 44 : 28;
-  const swing = (angle: number, left: number, right: number): JointPose => ({ leftHip: angle, rightHip: -angle, leftKnee: left, rightKnee: right, leftShoulder: -angle * .8, rightShoulder: angle * .8, leftElbow: strong ? 60 : 15, rightElbow: strong ? 60 : 15, torso: strong ? 15 : 4 });
-  return [key(0, swing(stride, -10, -40), 1), key(.25, swing(0, -5, -55), strong ? 10 : 4), key(.5, swing(-stride, -40, -10), 1), key(.75, swing(0, -55, -5), strong ? 10 : 4), key(1, swing(stride, -10, -40), 1)];
+const gait = (running: boolean) => {
+  // Eight-phase walk cycle with opposite arm swing, knee recovery, toe-off
+  // and torso/head counter-rotation. Feet are planted by the actor renderer.
+  const stride = running ? 43 : 28, lean = running ? 12 : 3;
+  const swing = (step: number, leadKnee: number, backKnee: number): JointPose => ({
+    leftHip: step, rightHip: -step,
+    leftKnee: leadKnee, rightKnee: backKnee,
+    leftShoulder: -step * (running ? .94 : .82), rightShoulder: step * (running ? .94 : .82),
+    leftElbow: running ? 68 : 16, rightElbow: running ? 65 : 14,
+    leftWrist: running ? -12 : 8, rightWrist: running ? 12 : -8,
+    torso: lean + Math.sin(step / stride * Math.PI) * (running ? 4 : 2),
+    head: -lean * .28 - Math.sin(step / stride * Math.PI) * 2
+  });
+  return [
+    key(0, swing(stride, -5, -38), 0),
+    key(.125, swing(stride*.75, -10, -61), 0),
+    key(.25, swing(0, -15, -67), 0),
+    key(.375, swing(-stride*.75, -43, -38), 0),
+    key(.5, swing(-stride, -40, -5), 0),
+    key(.625, swing(-stride*.75, -61, -10), 0),
+    key(.75, swing(0, -67, -15), 0),
+    key(.875, swing(stride*.75, -38, -43), 0),
+    key(1, swing(stride, -5, -38), 0)
+  ];
 };
 const seated: JointPose = { leftHip: 84, rightHip: 79, leftKnee: -83, rightKnee: -81, torso: -5, rightShoulder: 22, rightElbow: 24, leftShoulder: -18, leftElbow: 23 };
 const make = (id: Action, duration: number, loop: boolean, keys: Animation['keys'], expression?: Animation['expression']): Animation => ({ id, duration, loop, keys, expression });
 export const animations: Record<Action, Animation> = {
   idle: make('idle', 3, true, [key(0), key(.5, { torso: 2, head: -2, leftShoulder: 3 }, 2), key(1)]),
-  walk: make('walk', .94, true, gait(false)), run: make('run', .62, true, gait(true)),
+  walk: make('walk', .88, true, gait(false)), run: make('run', .54, true, gait(true)),
   stop: make('stop', .5, false, [key(0, { torso: 17, leftHip: 25, rightHip: -15 }), key(.45, { torso: -9, leftHip: 9, leftKnee: -10 }), key(1)]),
   turn: make('turn', .8, false, [key(0), key(.35, { head: 13, torso: 8, rightHip: 10 }), key(.65, { head: -8, torso: -9, leftHip: 12 }), key(1)]),
   jump: make('jump', .85, false, [key(0), key(.18, { leftHip: 23, rightHip: 22, leftKnee: -43, rightKnee: -43 }, -16), key(.53, { leftHip: 36, rightHip: -5, leftKnee: -40, rightKnee: -57, leftShoulder: 130, rightShoulder: -128 }, 69), key(.83, { leftKnee: -33, rightKnee: -32 }, -9), key(1)]),
@@ -67,6 +87,18 @@ export function armIK(shoulder: Point, target: Point, upper: number, lower: numb
   const distance = clamp(Math.hypot(dx, dy), Math.abs(upper - lower) + .01, upper + lower - .01);
   const flex = Math.acos(clamp((upper ** 2 + distance ** 2 - lower ** 2) / (2 * upper * distance), -1, 1));
   return [{ x: shoulder.x + Math.cos(angle + flex * bend) * upper, y: shoulder.y + Math.sin(angle + flex * bend) * upper }, { x: shoulder.x + Math.cos(angle) * distance, y: shoulder.y + Math.sin(angle) * distance }];
+}
+/** Predictable, foot-planted gait trajectory. Each leg has a stance phase
+ * locked to the floor and a short raised recovery arc, never skating in air.
+ */
+export function footContactAt(time: number, action: 'walk' | 'run', side: 'left' | 'right') {
+  const duration = animations[action].duration;
+  const phase = (((time / duration) + (side === 'right' ? .5 : 0)) % 1) + 1;
+  const progress = phase % 1;
+  const stance = .57, stride = action === 'run' ? 22 : 15;
+  if (progress <= stance) return { x: stride * (.5 - progress / stance), y: 0, planted: true };
+  const recovery = (progress - stance) / (1 - stance);
+  return { x: stride * (-.5 + recovery), y: -Math.sin(recovery * Math.PI) * (action === 'run' ? 19 : 10), planted: false };
 }
 export function rig(c: Character, pose: JointPose, width: number) {
   const p = (joint: JointName) => pose[joint] ?? 0;
