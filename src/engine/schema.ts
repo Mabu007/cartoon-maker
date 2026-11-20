@@ -55,7 +55,10 @@ export const CameraShot = z.strictObject({ ...time, track: z.literal('camera'), 
 const Transition = z.strictObject({ ...time, track: z.literal('transition'), effect: z.enum(['fade-in', 'fade-out', 'dissolve']) });
 export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, MusicClip, CameraShot, Transition]);
 export const TimelineTrack = z.enum(tracks);
+export const TimelineMarker = z.strictObject({ id, name: z.string().trim().min(1).max(60), time: num(0, 180) });
+export const TimelineTrackSettings = z.strictObject({ muted: z.boolean().optional(), locked: z.boolean().optional(), collapsed: z.boolean().optional() });
 export const SceneDefinition = z.strictObject({ id, name: z.string().trim().min(1).max(70), environment: z.enum(environments),
+  markers: z.array(TimelineMarker).max(60).optional(), trackSettings: z.partialRecord(TimelineTrack, TimelineTrackSettings).optional(),
   backgroundImage: imageData.optional(), duration: num(1, 180),
   actors: z.array(Actor).max(24), objects: z.array(SceneObject).max(100), clips: z.array(TimelineClip).max(600) });
 
@@ -142,7 +145,9 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
   if (embeddedImageBytes > 780_000) ctx.addIssue({ code: 'custom', path: ['scenes'], message: 'Image budget exceeded. Use smaller or fewer images in this project.' });
   project.scenes.forEach((scene, index) => {
     const path = ['scenes', index];
-    verifyIds([...scene.actors, ...scene.objects, ...scene.clips], ctx, path);
+    verifyIds([...scene.actors, ...scene.objects, ...scene.clips, ...(scene.markers ?? [])], ctx, path);
+    for (const [markerIndex, marker] of (scene.markers ?? []).entries())
+      if (marker.time > scene.duration) ctx.addIssue({ code: 'custom', path: [...path, 'markers', markerIndex, 'time'], message: 'Marker exceeds scene duration' });
     const actors = new Set(scene.actors.map(actor => actor.id));
     const objects = new Set(scene.objects.map(object => object.id));
     if (scene.actors.some(actor => !characters.has(actor.characterId))) ctx.addIssue({ code: 'custom', path, message: 'Actor refers to a missing character' });

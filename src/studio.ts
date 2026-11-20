@@ -8,11 +8,11 @@ import { removeObjectWithDecisions, repairOrphanedObjectActions, repairGazeTarge
 export const initial = ProjectDocument.parse(makeProject(true));
 export type Selection = { kind: 'actor' | 'object' | 'clip'; id: string } | null;
 export type Library = 'Cast' | 'Worlds' | 'Props' | 'Actions' | 'Audio';
-type Snapshot = { project: Project; sceneId: string; selection: Selection };
+type Snapshot = { project: Project; sceneId: string; selection: Selection; clipIds: string[]; selectedKeyframe: { clipId: string; index: number } | null };
 export type SceneTarget = { session: number; sceneId: string };
 export interface StudioState extends Snapshot {
   session: number; library: Library; past: Snapshot[]; future: Snapshot[]; dirty: boolean;
-  open: (document: Project, dirty?: boolean) => void; select: (selection: Selection) => void; setLibrary: (panel: Library) => void; setScene: (id: string) => void;
+  open: (document: Project, dirty?: boolean) => void; select: (selection: Selection) => void; selectClips: (ids: string[]) => void; selectKeyframe: (clipId: string, index: number) => void; setLibrary: (panel: Library) => void; setScene: (id: string) => void;
   edit: (command: (project: Project) => Project) => void; editScene: (command: (scene: Scene) => Scene, target?: SceneTarget) => void;
   markSaved: (document: Project) => void; undo: () => void; redo: () => void;
 }
@@ -25,26 +25,45 @@ export function runEdit(project: Project, command: (project: Project) => Project
   return JSON.stringify(next) === JSON.stringify(project) ? project : next;
 }
 export const currentScene = (state: Pick<Snapshot, 'project' | 'sceneId'>) => state.project.scenes.find(scene => scene.id === state.sceneId) ?? state.project.scenes[0];
-const snapshot = ({ project, sceneId, selection }: Snapshot): Snapshot => ({ project, sceneId, selection });
+const snapshot = ({ project, sceneId, selection, clipIds, selectedKeyframe }: Snapshot): Snapshot => ({ project, sceneId, selection, clipIds, selectedKeyframe });
 function validSelection(scene: Scene, selection: Selection): Selection {
   if (!selection) return null;
   const items = selection.kind === 'actor' ? scene.actors : selection.kind === 'object' ? scene.objects : scene.clips;
   return items.some(item => item.id === selection.id) ? selection : null;
 }
 export const useStudio = create<StudioState>((set, get) => ({
-  project: initial, sceneId: initial.scenes[0].id, selection: null, session: 0, library: 'Cast', past: [], future: [], dirty: false,
+  project: initial, sceneId: initial.scenes[0].id, selection: null, clipIds: [], selectedKeyframe: null, session: 0, library: 'Cast', past: [], future: [], dirty: false,
   open: (project, dirty = false) => {
     const normalized = parseStoredProject({ ...project, scenes: project.scenes.map(repairOrphanedObjectActions) });
-    set(state => ({ project: normalized, sceneId: normalized.scenes[0].id, selection: null, session: state.session + 1, past: [], future: [], dirty }));
+    set(state => ({ project: normalized, sceneId: normalized.scenes[0].id, selection: null, clipIds: [], selectedKeyframe: null, session: state.session + 1, past: [], future: [], dirty }));
   },
-  select: selection => set(state => ({ selection: validSelection(currentScene(state), selection) })),
+  select: selection => set(state => {
+    const valid = validSelection(currentScene(state), selection);
+    return { selection: valid, clipIds: valid?.kind === 'clip' ? [valid.id] : [], selectedKeyframe: null };
+  }),
+  selectClips: ids => set(state => {
+    const existing = new Set(currentScene(state).clips.map(clip => clip.id));
+    const selected = [...new Set(ids)].filter(id => existing.has(id));
+    return { clipIds: selected, selection: selected.length ? { kind: 'clip' as const, id: selected.at(-1)! } : null, selectedKeyframe: null };
+  }),
+  selectKeyframe: (clipId, index) => set(state => {
+    const clip = currentScene(state).clips.find(item => item.id === clipId);
+    if (clip?.track !== 'movement' || !clip.keyframes?.[index]) return state;
+    return { clipIds: [clipId], selection: { kind: 'clip' as const, id: clipId }, selectedKeyframe: { clipId, index } };
+  }),
   setLibrary: library => set({ library }),
-  setScene: sceneId => set(state => state.project.scenes.some(scene => scene.id === sceneId) && state.sceneId !== sceneId ? { sceneId, selection: null } : state),
+  setScene: sceneId => set(state => state.project.scenes.some(scene => scene.id === sceneId) && state.sceneId !== sceneId ? { sceneId, selection: null, clipIds: [], selectedKeyframe: null } : state),
   edit: command => set(state => {
     const project = runEdit(state.project, command);
     if (project === state.project) return state;
     const scene = currentScene({ project, sceneId: state.sceneId });
-    return { project, sceneId: scene.id, selection: scene.id === state.sceneId ? validSelection(scene, state.selection) : null,
+    const previous = scene.id === state.sceneId;
+    const existing = new Map(scene.clips.map(clip => [clip.id, clip]));
+    const clipIds = previous ? state.clipIds.filter(id => existing.has(id)) : [];
+    const keyframe = previous ? state.selectedKeyframe : null;
+    const selectedKeyframe = keyframe && existing.get(keyframe.clipId)?.track === 'movement' &&
+      (existing.get(keyframe.clipId) as Extract<Clip, { track: 'movement' }>).keyframes?.[keyframe.index] ? keyframe : null;
+    return { project, sceneId: scene.id, selection: previous ? validSelection(scene, state.selection) : null, clipIds, selectedKeyframe,
       past: [...state.past.slice(-39), snapshot(state)], future: [], dirty: true };
   }),
   editScene: (command, target) => {

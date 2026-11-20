@@ -25,9 +25,10 @@ export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, pro
 }
 export function evaluate(scene: Scene, time: number) {
   const t = clamp(time, 0, Math.max(0, scene.duration - .000001));
-  const sounds = scene.clips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'music' || clip.track === 'dialogue') && active(clip, t));
+  const timelineClips = scene.clips.filter(clip => !scene.trackSettings?.[clip.track]?.muted);
+  const sounds = timelineClips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'music' || clip.track === 'dialogue') && active(clip, t));
   const actors = scene.actors.map((actor): CharacterState => {
-    const clips = scene.clips.filter(clip => 'actor' in clip && clip.actor === actor.id);
+    const clips = timelineClips.filter(clip => 'actor' in clip && clip.actor === actor.id);
     const presence = clips.filter(clip => clip.track === 'actors' && clip.visible === undefined);
     const entrance = latest(clips.filter(clip => clip.track === 'actors' && clip.visible !== undefined && clip.start <= t));
     const propCue = latest(clips.filter(clip => clip.track === 'props' && clip.start <= t));
@@ -143,7 +144,7 @@ export function evaluate(scene: Scene, time: number) {
       actor.focus = { x: clamp(deltaX / 190, -1, 1), y: clamp((focusY - eyeHeight) / 140, -1, 1) };
     }
   }
-  const cameraClips = scene.clips.filter(clip => clip.track === 'camera');
+  const cameraClips = timelineClips.filter(clip => clip.track === 'camera');
   const cameraClip = latest(cameraClips.filter(clip => active(clip, t)));
   function frame(clip?: typeof cameraClip): CameraState {
     const target = actors.find(actor => actor.id === clip?.focus && actor.visible) ?? actors.find(actor => actor.visible);
@@ -170,13 +171,13 @@ export function evaluate(scene: Scene, time: number) {
     camera.y = cameraClip.shot === 'pan' ? previous.y : mix(previous.y, camera.y, weight);
     camera.zoom = cameraClip.shot === 'pan' || cameraClip.shot === 'tilt' ? Math.max(1.28, previous.zoom) : mix(previous.zoom, camera.zoom, weight);
   }
-  const transition = latest(scene.clips.filter((clip): clip is Extract<Clip, { track: 'transition' }> => clip.track === 'transition' && active(clip, t)));
+  const transition = latest(timelineClips.filter((clip): clip is Extract<Clip, { track: 'transition' }> => clip.track === 'transition' && active(clip, t)));
   const fade = transition ? clamp((t - transition.start) / transition.length) : 0;
   const objects = scene.objects.map(object => {
-    const cue = latest(scene.clips.filter(clip => clip.track === 'props' && clip.target === object.id && clip.start <= t));
+    const cue = latest(timelineClips.filter(clip => clip.track === 'props' && clip.target === object.id && clip.start <= t));
     if (cue?.track !== 'props' || cue.interaction !== 'release') return object;
     const owner = scene.actors.find(actor => actor.id === cue.actor);
-    const move = latest(scene.clips.filter(clip => clip.track === 'movement' && clip.actor === cue.actor && clip.start <= cue.start));
+    const move = latest(timelineClips.filter(clip => clip.track === 'movement' && clip.actor === cue.actor && clip.start <= cue.start));
     if (move?.track !== 'movement') return owner ? { ...object, x: owner.x + 42, y: owner.y - 35 } : object;
     const at = clamp((cue.start - move.start) / move.length);
     const position = movementPosition(move, at);

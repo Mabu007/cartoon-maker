@@ -102,7 +102,7 @@ async function readSound(asset: string) {
   }
   return pending;
 }
-export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is SoundClip => clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music');
+export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is SoundClip => (clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music') && !scene.trackSettings?.[clip.track]?.muted);
 export const projectAssets = (project: Project) => [...new Set(project.scenes.flatMap(scene => sceneSounds(scene).map(clip => clip.asset)).filter(asset => asset.startsWith('asset:')).map(asset => asset.slice(6)))];
 function soundEvents(scenes: Scene[]) {
   let sceneStart = 0;
@@ -122,7 +122,7 @@ export function soundPlayback(clip: SoundClip, position: number, bufferDuration:
 export function dialogueAmplitude(scene: Scene, actor: string, time: number, envelopeFor: (asset: string) => Float32Array | undefined) {
   let value = 0;
   for (const clip of scene.clips) {
-    if (clip.track !== 'dialogue' || clip.actor !== actor || clip.muted || time < clip.start || time >= clip.start + clip.length) continue;
+    if (clip.track !== 'dialogue' || scene.trackSettings?.dialogue?.muted || clip.actor !== actor || clip.muted || time < clip.start || time >= clip.start + clip.length) continue;
     const frame = Math.floor((time - clip.start + clip.offset) * 50);
     value = Math.max(value, (envelopeFor(clip.asset)?.[frame] ?? 0) * Math.min(1, clip.volume));
   }
