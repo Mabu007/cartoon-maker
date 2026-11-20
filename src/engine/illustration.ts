@@ -1,4 +1,4 @@
-import type { Graphics } from 'pixi.js';
+import { GraphicsPath, type Graphics } from 'pixi.js';
 import type { Character } from './schema.ts';
 import { INK } from './art.ts';
 
@@ -18,7 +18,12 @@ export function shade(hex: string, amount: number) {
 }
 
 function part(g: Graphics, d: string, fill: string, stroke = INK, width = 3) {
-  g.svg('<path d="' + d + '" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + width + '" stroke-linecap="round" stroke-linejoin="round"/>');
+  // SVG path data is parsed directly into Pixi geometry, without DOMParser.
+  // Graphics.svg() requires a complete <svg> root and was crashing for a bare
+  // <path> at every animation frame; GraphicsPath also avoids browser reflows.
+  const path = new GraphicsPath(d);
+  if (fill !== 'none') g.path(path).fill(fill);
+  if (stroke !== 'none' && width > 0) g.path(path).stroke({ color: stroke, width, cap: 'round', join: 'round' });
 }
 function detail(g: Graphics, d: string, color: string, width = 1.8) {
   part(g, d, 'none', color, width);

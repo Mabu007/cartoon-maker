@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { createRenderer } from '../engine/renderer.ts';
+import { NativeCharacterPreview } from './NativeCharacterPreview.tsx';
 import { actions, expressions, label, uid, views, type Action, type Character, type Expression, type Scene, type View } from '../engine/schema.ts';
 import { characters } from '../engine/presets.ts';
 import { Avatar, IconButton, Modal, Select } from './shared.tsx';
@@ -18,7 +19,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   const [draft, setDraft] = useState<Character>(() => source ?? { ...characters[0], id: uid(), name: 'New character' });
   const [section, setSection] = useState<keyof typeof styleGroups>('Hair'), [view, setView] = useState<View>('three-quarter');
   const [action, setAction] = useState<Action>('idle'), [expression, setExpression] = useState<Expression>('neutral');
-  const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.14), [error, setError] = useState('');
+  const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.14), [fallback, setFallback] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const canvas = useRef<HTMLDivElement>(null);
   const frame = useRef({ draft, action, expression, view, flip, scale });
@@ -26,9 +27,22 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   useEffect(() => {
     let alive = true, handle = 0;
     let dispose = () => {};
+    const useNativePreview = (cause: unknown) => {
+      if (!alive) return;
+      console.warn('Accelerated character preview unavailable; switching to browser SVG.', cause);
+      cancelAnimationFrame(handle);
+      try { dispose(); } catch (error) { console.warn('Preview renderer cleanup failed.', error); }
+      canvas.current?.replaceChildren();
+      setFallback(true);
+    };
     createRenderer('1:1', .8).then(renderer => {
       if (!alive) { renderer.destroy(); return; }
-      dispose = renderer.destroy;
+      const onContextLost = (event: Event) => { event.preventDefault(); useNativePreview(new Error('Graphics context lost')); };
+      renderer.canvas.addEventListener('webglcontextlost', onContextLost);
+      dispose = () => {
+        renderer.canvas.removeEventListener('webglcontextlost', onContextLost);
+        renderer.destroy();
+      };
       canvas.current?.replaceChildren(renderer.canvas);
       let reset = performance.now(), lastAction = '', previous = -1;
       const animate = (now: number) => {
@@ -38,17 +52,22 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         if (Math.floor(time * 24) !== previous) {
           previous = Math.floor(time * 24);
           const scene: Scene = { id: 'character-preview', name: 'Character', environment: 'Podcast studio', duration: 8, actors: [{ id: 'preview', characterId: draft.id, x: 480, y: 458, scale, rotation: 0, depth: 0, view, flip, expression }], objects: [], clips: [{ id: 'pose', track: 'body', layer: 'body', actor: 'preview', action, start: 0, length: 8 }, { id: 'expression', track: 'face', expression, actor: 'preview', start: 0, length: 8 }] };
-          renderer.draw(scene, [draft], time, { characterPreview: true });
+          try {
+            renderer.draw(scene, [draft], time, { characterPreview: true });
+          } catch (cause) {
+            useNativePreview(cause);
+            return;
+          }
         }
         handle = requestAnimationFrame(animate);
       };
       handle = requestAnimationFrame(animate);
-    }).catch(() => { if (alive) setError('The character preview needs WebGL.'); });
+    }).catch(useNativePreview);
     return () => { alive = false; cancelAnimationFrame(handle); dispose(); };
   }, []);
   const update = <K extends keyof Character>(key: K, value: Character[K]) => setDraft(item => ({ ...item, [key]: value }));
   return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
-    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas" ref={canvas}/><div className="factory-zoom"><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
+    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas" ref={canvas}>{fallback && <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={scale}/>}</div><div className="factory-zoom"><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
       <div className="segmented view-choice" aria-label="Character view">{views.map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{viewLabels[item]}</button>)}</div>
       <div className="field-row"><label>Preview action<Select aria="Preview action" value={action} onChange={setAction} options={actions}/></label><label>Expression<Select aria="Preview expression" value={expression} onChange={setExpression} options={expressions}/></label></div>
     </div><div className="factory-edit"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
@@ -72,7 +91,6 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         {advanced && <div className="factory-advanced">{(section === 'Face' ? ['eyeSpacing'] : ['torso', 'arms', 'legs']).map(key => { const id = key as keyof typeof sliders; return <label className="field slider" key={key}>{sliders[id]}<input type="range" min={.65} max={id === 'eyeSpacing' ? 1.4 : 1.3} step={.01} value={draft[id]} onChange={event => update(id, Number(event.target.value))}/></label>; })}</div>}</>}
       </div>
     </div></div>
-    {error && <p className="form-error" role="alert">{error}</p>}
     <footer className="modal-footer">{source && <><IconButton title="Delete character" onClick={() => remove(source.id)}><Trash2 size={17}/></IconButton><button className="quiet" disabled={!draft.name.trim()} onClick={() => save({ ...draft, id: uid(), name: `${draft.name.trim().slice(0, 54)} copy` })}><Copy size={16}/> Duplicate</button></>}<span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!draft.name.trim()} onClick={() => save({ ...draft, name: draft.name.trim() })}><Save size={16}/> Save character</button></footer>
   </Modal>;
 }

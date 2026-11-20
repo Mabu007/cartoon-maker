@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { Graphics, GraphicsPath } from 'pixi.js';
+import { drawActor } from '../src/engine/actorArt.ts';
 import test from 'node:test';
 import { animations, armIK, blend, rig, sample, skeleton } from '../src/engine/animation.ts';
 import { directorJSONSchema, directorSchema } from '../src/engine/directorSchema.ts';
@@ -112,4 +114,18 @@ test('audio trim advances the source position and a duplicated clip fits its sce
   const copy = copyClip({ ...voice, start: 27, length: 3 }, 30);
   assert.notEqual(copy.id, voice.id);
   assert(copy.start + copy.length <= 30);
+});
+
+test('illustrated character paths render without a DOM, WebGL, or SVG document importer', () => {
+  const samplePath = new GraphicsPath('M 0 0 C 6 -4 12 4 16 0 L 16 16 Z');
+  assert(samplePath.instructions.length > 0);
+  for (const character of characters) for (const view of views) {
+    const body = new Graphics();
+    const face = new Graphics();
+    assert.doesNotThrow(() => drawActor(body, face, character, view, {}, 'happy', 0.2), character.name + ' / ' + view);
+    assert(body.context.instructions.length > 0);
+    assert(face.context.instructions.length > 0);
+    body.destroy();
+    face.destroy();
+  }
 });
