@@ -456,11 +456,111 @@ export default function App() {
       tell('Picture prop added. Set its interaction type in the inspector.');
     } catch (error) { showError(error); }
   }
+  function storeWorlds(next:WorldPreset[]){
+    if(next.length>24)throw new Error('Saved world limit reached (24). Delete an old preset first.');
+    localStorage.setItem(worldKey(scope),JSON.stringify(next));
+    setWorlds(next);
+  }
   function saveWorld(value: Scene) {
     try {
-      const next = [...worlds.filter(item => item.name !== value.name), { name: value.name, environment: value.environment, objects: value.objects, backgroundImage: value.backgroundImage }].slice(-24);
-      localStorage.setItem(worldKey(scope), JSON.stringify(next)); setWorlds(next); tell('Furnished world saved.');
+      const original=value.name.trim().slice(0,64)||'My world';
+      let name=original,n=2;
+      while(worlds.some(item=>item.name===name)){name=original.slice(0,58)+' '+n;n++;}
+      storeWorlds([...worlds,{
+        name,environment:value.environment,objects:structuredClone(value.objects),
+        backgroundImage:value.backgroundImage
+      }]);
+      tell('World "'+name+'" saved to your reusable sets.');
     } catch (error) { showError(error); }
+  }
+  function renameWorldPreset(oldName:string,newName:string){
+    const name=newName.trim();
+    if(!name||name.length>70)throw new Error('World name must be 1–70 characters.');
+    if(oldName!==name && worlds.some(item=>item.name===name))throw new Error('A saved world already has this name.');
+    if(!worlds.some(item=>item.name===oldName))throw new Error('The saved world is missing.');
+    storeWorlds(worlds.map(item=>item.name===oldName?{...item,name}:item));
+  }
+  function duplicateWorldPreset(name:string){
+    try{
+      const existing=worlds.find(item=>item.name===name);
+      if(!existing)throw new Error('World preset is missing.');
+      const base=existing.name.slice(0,59)+' copy';
+      let copy=base,n=2;
+      while(worlds.some(item=>item.name===copy)){copy=base.slice(0,65)+' '+n;n++;}
+      storeWorlds([...worlds,{...structuredClone(existing),name:copy}]);
+    }catch(error){showError(error);}
+  }
+  function deleteWorldPreset(name:string){
+    ask('Delete saved world?',`Remove "${name}" from reusable worlds? This does not delete backgrounds or props already placed in movies.`,()=>{
+      try{storeWorlds(worlds.filter(item=>item.name!==name));tell('Saved world removed.');}
+      catch(error){showError(error);}
+    });
+  }
+  function clearWorldImage(){
+    editScene(current=>({...current,backgroundImage:undefined}));
+    tell('Custom background removed from this scene.');
+  }
+  function duplicateCastCharacter(character:Character){
+    if(project.characters.length>=80){tell('Your cast is full (80 characters).',true);return;}
+    const copy:Character={...structuredClone(character),id:uid(),name:(character.name.slice(0,54)+' copy')};
+    edit(current=>({...current,characters:[...current.characters,copy]}));
+    tell(copy.name+' created. Choose it to customize its look and voice.');
+  }
+  function inspectAssetObject(id:string){
+    if(!scene.objects.some(item=>item.id===id))return;
+    pause();select({kind:'object',id});setMobilePanel('inspector');
+  }
+  function duplicateAssetObject(id:string){
+    run(()=>{
+      const current=currentScene(useStudio.getState()),object=current.objects.find(item=>item.id===id);
+      if(!object)throw new Error('Prop no longer exists.');
+      if(current.objects.length>=100)throw new Error('Scene has reached its 100-prop limit.');
+      const copy={...structuredClone(object),id:uid(),x:clamp(object.x+36,-2000,3000),
+        name:(object.name.slice(0,54)+' copy')};
+      commitScene(value=>({...value,objects:[...value.objects,copy]}));
+      select({kind:'object',id:copy.id});setMobilePanel('inspector');
+    });
+  }
+  function deleteAssetObject(id:string){
+    const current=currentScene(useStudio.getState()),object=current.objects.find(item=>item.id===id);
+    if(!object)return;
+    if(objectDependencies(current,id).length){
+      pause();setDependentObjectId(id);setDialog('dependencies');return;
+    }
+    const usage=propUsage(current,id);
+    ask(`Delete ${object.name}?`,
+      `Delete this prop from the current scene? ${usage.total} gaze or timeline reference(s) will be repaired. Undo can restore it.`,()=>{
+      editScene(item=>removeEntity(item,id));select(null);
+    });
+  }
+  function inspectAssetAudio(id:string){
+    if(!scene.clips.some(item=>item.id===id&&['dialogue','audio','music'].includes(item.track)))return;
+    pause();select({kind:'clip',id});setMobilePanel('inspector');
+  }
+  function duplicateAssetAudio(id:string){
+    run(()=>{
+      const current=currentScene(useStudio.getState()),clip=current.clips.find(item=>item.id===id);
+      if(!clip||!['dialogue','audio','music'].includes(clip.track))throw new Error('Audio clip no longer exists.');
+      if(current.trackSettings?.[clip.track]?.locked)throw new Error('Unlock this track before duplicating audio.');
+      if(current.clips.length>=600)throw new Error('Scene has reached its clip limit.');
+      const copy=copyClip(clip,current.duration,current.clips);
+      commitScene(value=>({...value,clips:[...value.clips,copy]}));
+      select({kind:'clip',id:copy.id});setMobilePanel('inspector');
+    });
+  }
+  function deleteAssetAudio(id:string){
+    const clip=scene.clips.find(item=>item.id===id);
+    if(!clip||!['dialogue','audio','music'].includes(clip.track))return;
+    const linked=project.production?.graph.some(record=>Boolean(record.events[id]));
+    ask('Remove audio from scene?',
+      `Remove the selected ${clip.track} clip from this scene? ${linked?'This clip is screenplay-linked and may be recreated if you deliberately recompile the script. ':''}The recording remains available to other scenes or voice versions. Undo can restore it.`,()=>{
+      run(()=>{
+        const current=currentScene(useStudio.getState());
+        if(current.trackSettings?.[clip.track]?.locked)throw new Error('Unlock the audio track first.');
+        commitScene(item=>({...item,clips:item.clips.filter(value=>value.id!==id)}));
+        select(null);
+      });
+    });
   }
   function editCharacter(value?: Character) { pause(); setFactory(value); setDialog('character'); }
   function saveCharacter(value: Character) {
@@ -990,7 +1090,20 @@ export default function App() {
     </Suspense>
     {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button></nav>
     <main className={`workspace mobile-${mobilePanel}`} style={{ '--asset-width': `${assetWidth}px`, '--inspector-width': `${inspectorWidth}px` } as CSSProperties}>
-      <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary} characters={project.characters} scene={scene} newCharacter={() => editCharacter()} editCharacter={editCharacter} addActor={addActor} setWorld={setWorld} uploadWorld={uploadWorld} addProp={addObject} uploadProp={uploadProp} addAction={action => showClip(action === 'walk' || action === 'run' ? 'movement' : 'body', action)} addSound={addSound} dialogue={() => showAudio('dialogue')} audio={() => showAudio('audio')} music={() => showAudio('music')}/>{library === 'Worlds' && !!worlds.length && <div className="saved-worlds"><h3>Saved worlds</h3>{worlds.map(item => <button className="quiet full" key={item.name} onClick={() => setWorld(item.environment, item.objects, item.backgroundImage)}>{item.name}</button>)}</div>}</div>
+      <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary}
+          project={project} characters={project.characters} scene={scene}
+          newCharacter={()=>editCharacter()} editCharacter={editCharacter}
+          duplicateCharacter={duplicateCastCharacter} removeCharacter={character=>deleteCharacter(character.id)}
+          addActor={addActor} setWorld={setWorld} uploadWorld={uploadWorld}
+          savedWorlds={worlds} applySavedWorld={world=>setWorld(world.environment,world.objects,world.backgroundImage)}
+          saveCurrentWorld={()=>saveWorld(scene)} renameSavedWorld={renameWorldPreset}
+          duplicateSavedWorld={duplicateWorldPreset} deleteSavedWorld={deleteWorldPreset}
+          clearWorldImage={clearWorldImage} addProp={addObject} uploadProp={uploadProp}
+          inspectProp={inspectAssetObject} duplicateProp={duplicateAssetObject} deleteProp={deleteAssetObject}
+          addAction={action=>showClip(action==='walk'||action==='run'?'movement':'body',action)}
+          addSound={addSound} dialogue={()=>showAudio('dialogue')}
+          audio={()=>showAudio('audio')} music={()=>showAudio('music')}
+          inspectAudio={inspectAssetAudio} duplicateAudio={duplicateAssetAudio} deleteAudio={deleteAssetAudio}/></div>
       <section className="stage-panel" aria-label="Studio stage">
         <header className="stage-heading"><div><span className="stage-kicker"><i/> SCENE PREVIEW</span><button className="scene-title" onClick={() => showDialog('scenes')}>{scene.name}<ChevronDown size={14}/></button></div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
         <div className={directorPreview?'viewer director-preview-active':'viewer'}>
