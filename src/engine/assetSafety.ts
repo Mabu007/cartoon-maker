@@ -13,8 +13,11 @@ export function characterUsage(project:Project,id:string) {
     scene.elements.filter(line=>line.characterId===id).length+
     (scene.cast.includes(id)?1:0),0)??0;
   const outline=project.production?.bible.scenes.filter(scene=>scene.cast.includes(id)).length??0;
-  return {sceneActors:sceneActors.length,actorClips,screenplay,outline,
-    total:sceneActors.length+actorClips+screenplay+outline};
+  const history=project.production?.versions.reduce((sum,version)=>sum+version.screenplay.scenes.reduce(
+    (total,scene)=>total+scene.elements.filter(line=>line.characterId===id).length+
+      (scene.cast.includes(id)?1:0),0),0)??0;
+  return {sceneActors:sceneActors.length,actorClips,screenplay,outline,history,
+    total:sceneActors.length+actorClips+screenplay+outline+history};
 }
 /** Safe cascading removal leaves screenplay text for manual reassignment but
  * strips broken actor IDs, gaze targets and stale compilation graph entries.
@@ -28,20 +31,24 @@ export function removeCharacterFromProject(project:Project,id:string):Project{
   const scenes=project.scenes.map(scene=>scene.actors.filter(actor=>actor.characterId===id)
     .reduce((current,actor)=>removeEntity(current,actor.id),scene));
   const production=project.production;
+  const cleanScript=(scene:NonNullable<Project['production']>['screenplay']['scenes'][number])=>({
+    ...scene,cast:scene.cast.filter(character=>character!==id),
+    elements:scene.elements.map(line=>({
+      ...line,...(line.characterId===id?{characterId:undefined}:{}),
+      directions:line.directions.filter(direction=>
+        !('actor' in direction && direction.actor && removed.has(direction.actor))&&
+        !('target' in direction && direction.target && removed.has(direction.target)))
+    }))
+  });
   const nextProduction=production?{
     ...production,scriptStatus:'draft' as const,
     bible:{...production.bible,
       characters:production.bible.characters.filter(item=>item.characterId!==id),
       scenes:production.bible.scenes.map(scene=>({...scene,cast:scene.cast.filter(character=>character!==id)}))},
-    screenplay:{scenes:production.screenplay.scenes.map(scene=>({
-      ...scene,cast:scene.cast.filter(character=>character!==id),
-      elements:scene.elements.map(line=>({
-        ...line,...(line.characterId===id?{characterId:undefined}:{}),
-        directions:line.directions.filter(direction=>
-          !('actor' in direction && direction.actor && removed.has(direction.actor))&&
-          !('target' in direction && direction.target && removed.has(direction.target)))
-      }))
-    }))},
+    screenplay:{scenes:production.screenplay.scenes.map(cleanScript)},
+    versions:production.versions.map(version=>({...version,screenplay:{
+      scenes:version.screenplay.scenes.map(cleanScript)
+    }})),
     graph:production.graph.filter(record=>!affected.has(record.sceneId))
   }:undefined;
   return ProjectDocument.parse({

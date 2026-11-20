@@ -582,7 +582,7 @@ export default function App() {
     if(!character)return;
     const usage=characterUsage(project,id);
     ask(`Delete ${character.name}?`,
-      `This affects ${usage.sceneActors} scene appearance(s), ${usage.actorClips} animation clip(s), ${usage.screenplay} screenplay reference(s) and ${usage.outline} story outline(s). Related timeline clips will be removed; screenplay text remains for reassignment. Undo can restore the movie.`,
+      `This affects ${usage.sceneActors} scene appearance(s), ${usage.actorClips} animation clip(s), ${usage.screenplay} screenplay reference(s), ${usage.history} saved-script reference(s) and ${usage.outline} story outline(s). Related clips are removed and speaker IDs detached; the original dialogue text remains for reassignment. Undo can restore the movie.`,
       ()=>{edit(current=>removeCharacterFromProject(current,id));select(null);});
   }
   function editTimeline(next: Scene, ids?: string[]) {

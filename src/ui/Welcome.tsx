@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, Clapperboard, Copy, Film, FolderOpen, Plus, Sparkles,
   Trash2, WandSparkles, X, Star, Pencil, Clock3, Layers3, Moon, Sun, Search,
-  Check, Play, Volume2, SlidersHorizontal, FilmIcon, ChevronRight } from 'lucide-react';
+  Check, Play, SlidersHorizontal, ChevronRight } from 'lucide-react';
 import { makeProject } from '../engine/presets.ts';
 import type { Project } from '../engine/schema.ts';
 import type { SavedProject, ProjectCollection, EditorSession } from '../services/projects.ts';
