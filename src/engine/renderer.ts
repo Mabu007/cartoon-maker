@@ -105,7 +105,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.zIndex = actor.depth * 1000 + point.y;
       entity.art.position.y = -lift;
       ellipse(entity.shadow!.clear(), 0, 3, 39 - Math.min(10, Math.max(0, lift / 5)), 7, '#816a61');
-      drawActor(entity.art.clear(), entity.face!.clear(), character, (options.edit ? source.view : camera.view) ?? actor.view, options.edit ? {} : actor.pose, options.edit ? source.expression : actor.expression, options.amplitude?.(actor.id, time) ?? 0, options.edit ? undefined : actor.held);
+      drawActor(entity.art.clear(), entity.face!.clear(), character, (options.edit ? source.view : camera.view) ?? actor.view, options.edit ? {} : actor.pose, options.edit ? source.expression : actor.expression, options.amplitude?.(actor.id, time) ?? 0, options.edit ? undefined : actor.held, time, actor.action, actor.id, actor.speaking);
       entity.face!.y -= lift;
       const top = point.y - (172 * character.height + 49 * character.head) * actor.scale - lift;
       hitboxes.push({ id: actor.id, left: point.x - 55 * actor.scale, right: point.x + 64 * actor.scale, top, bottom: point.y + 10, depth: entity.group.zIndex });
