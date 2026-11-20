@@ -212,7 +212,7 @@ export function Timeline({
         <span className="timeline-track-title" title={trackNames[track]}>{trackNames[track]}<small>{source.length}</small></span>
         <button type="button" aria-label={(settings?.muted?'Unmute ':'Mute ')+trackNames[track]} title={settings?.muted?'Unmute track':'Mute track'} onClick={()=>toggle(track,'muted')}>{settings?.muted?<VolumeX size={13}/>:<Volume2 size={13}/>}</button>
         {(track==='dialogue'||track==='audio'||track==='music')&&<button type="button" className={settings?.solo?'track-solo-active':''}
-          aria-label={(settings?.solo?'Unsolo ':'Solo ')+trackNames[track]} title={settings?.solo?'Stop solo':'Solo this audio track'} onClick={()=>toggle(track,'solo')}><Headphones size={13}/></button>
+          aria-label={(settings?.solo?'Unsolo ':'Solo ')+trackNames[track]} title={settings?.solo?'Stop solo':'Solo this audio track'} onClick={()=>toggle(track,'solo')}><Headphones size={13}/></button>}
         <button type="button" aria-label={(locked?'Unlock ':'Lock ')+trackNames[track]} title={locked?'Unlock track':'Lock track'} onClick={()=>toggle(track,'locked')}>{locked?<Lock size={13}/>:<Unlock size={13}/>}</button>
         <button type="button" title={'Add '+trackNames[track]+' clip'} aria-label={'Add '+trackNames[track]+' clip'} disabled={locked} onClick={()=>add(track)}><Plus size={13}/></button>
       </div>

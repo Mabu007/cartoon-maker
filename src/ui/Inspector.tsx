@@ -77,7 +77,7 @@ export function Inspector({ scene, actors, characters, selection, select, patchA
           <label className="field">Focus<Select aria="Camera focus" value={clip.focus ?? ''} onChange={value => { const { focus: _, ...rest } = clip; patchClip(value ? { ...rest, focus: value } : rest); }} options={['', ...Object.keys(actors)]} render={id => actors[id] ?? 'Automatic'}/></label>
           <label className="field">Transition<Select aria="Camera transition" value={clip.transition} onChange={transition => patchClip({ ...clip, transition })} options={['cut', 'glide']}/></label>
           <p className="small-text">Camera: {clip.start.toFixed(2)}s – {(clip.start + clip.length).toFixed(2)}s ({clip.length.toFixed(2)}s). {clip.transition === 'glide' ? 'Smooth glide from previous framing.' : 'Instant cut to this framing.'}</p>
-        </>
+        </>}
         {clip.track === 'transition' && <label className="field">Transition<Select aria="Scene transition" value={clip.effect} onChange={effect => patchClip({ ...clip, effect })} options={['fade-in', 'fade-out']}/></label>}
       </details></>}
       {object && objectDependencies(scene, object.id, actors).length > 0 && <p className="small-text" role="status">This object supports {objectDependencies(scene, object.id, actors).length} timeline action(s). Deleting it will let you choose replacements.</p>}
