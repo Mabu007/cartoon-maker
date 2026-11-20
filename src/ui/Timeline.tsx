@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { ChevronDown, ChevronUp, Copy, Minus, Plus, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronDown, ChevronUp, ClipboardCopy, Code2, Copy, Keyboard, Plus, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { clamp } from '../engine/animation.ts';
 import { tracks, trackNames, type Clip, type Scene, type Track } from '../engine/schema.ts';
 import { changeClipTiming, type Selection } from '../studio.ts';
 import { clipLabel, IconButton, trackIcon } from './shared.tsx';
 
-export function Timeline({ scene, names, selection, select, seek, change, add, remove, duplicate, compact, onCompact }: {
+export function Timeline({ scene, names, selection, select, seek, change, add, remove, duplicate, compact, onCompact, onCode, onContext, onResizeScene }: {
   scene: Scene; names: Record<string, string>; selection: Selection; select: (value: Selection) => void; seek: (t: number) => void;
-  change: (clip: Clip) => void; add: (track?: Track) => void; remove: () => void; duplicate: () => void; compact: boolean; onCompact: () => void;
+  change: (clip: Clip) => void; add: (track?: Track) => void; remove: () => void; duplicate: () => void; compact: boolean; onCompact: () => void; onCode: () => void; onContext: () => void; onResizeScene: (duration: number) => void;
 }) {
-  const [zoom, setZoom] = useState(1), [draft, setDraft] = useState<Clip | null>(null);
+  const [zoom, setZoom] = useState(1), [draft, setDraft] = useState<Clip | null>(null), [shortcuts, setShortcuts] = useState(false);
   const drag = useRef<{ clip: Clip; x: number; units: number; edge: 'move' | 'in' | 'out'; draft: Clip; moved: boolean } | null>(null);
   const needle = useRef<HTMLDivElement>(null), surface = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -72,11 +72,12 @@ export function Timeline({ scene, names, selection, select, seek, change, add, r
     if (bounds) seek(clamp((event.clientX - bounds.left) / bounds.width) * scene.duration);
   }
   return <section className={`timeline-panel ${compact ? 'timeline-compact' : ''}`} aria-label="Timeline">
-    <header><div className="timeline-title"><button className="timeline-fold" onClick={onCompact} aria-label={compact ? 'Expand timeline' : 'Collapse timeline'}>{compact ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button><h2>Timeline</h2><span className="timeline-duration">{scene.duration}s scene</span></div><div className="timeline-tools">
+    <header><div className="timeline-title"><button className="timeline-fold" onClick={onCompact} aria-label={compact ? 'Expand timeline' : 'Collapse timeline'}>{compact ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button><h2>Timeline</h2><span className="timeline-duration">{scene.duration}s scene</span><button className="quiet mini" title="Shorten this scene by five seconds" disabled={scene.duration <= 5 || scene.clips.some(c => c.start + c.length > scene.duration - 5 + .001)} onClick={() => onResizeScene(Math.max(1, scene.duration - 5))}>−5s</button><button className="quiet mini" title="Extend this scene by five seconds" disabled={scene.duration >= 180} onClick={() => onResizeScene(Math.min(180, scene.duration + 5))}>+5s</button></div><div className="timeline-tools">
       <button className="quiet mini" onClick={() => add()}><Plus size={15}/> <span>Add clip</span></button>
       <IconButton title="Duplicate selected clip" onClick={duplicate} disabled={selection?.kind !== 'clip'}><Copy size={15}/></IconButton><IconButton title="Delete selected clip" onClick={remove} disabled={selection?.kind !== 'clip'}><Trash2 size={15}/></IconButton>
-      <span className="divider"/><IconButton title="Zoom out timeline" disabled={zoom <= 1} onClick={() => setZoom(n => Math.max(1, n - .35))}><ZoomOut size={16}/></IconButton><span className="zoom-label">{Math.round(zoom * 100)}%</span><IconButton title="Zoom in timeline" disabled={zoom >= 3} onClick={() => setZoom(n => Math.min(3, n + .35))}><ZoomIn size={16}/></IconButton>
+      <span className="divider"/><IconButton title="Edit timeline JSON" onClick={onCode}><Code2 size={16}/></IconButton><IconButton title="Copy AI scene context" onClick={onContext}><ClipboardCopy size={16}/></IconButton><IconButton title="Timeline keyboard shortcuts" onClick={() => setShortcuts(value => !value)}><Keyboard size={16}/></IconButton><span className="divider"/><IconButton title="Zoom out timeline" disabled={zoom <= 1} onClick={() => setZoom(n => Math.max(1, n - .35))}><ZoomOut size={16}/></IconButton><span className="zoom-label">{Math.round(zoom * 100)}%</span><IconButton title="Zoom in timeline" disabled={zoom >= 3} onClick={() => setZoom(n => Math.min(3, n + .35))}><ZoomIn size={16}/></IconButton>
     </div></header>
+    {shortcuts && <div className="timeline-shortcuts" role="region" aria-label="Timeline keyboard shortcuts"><strong>Timeline shortcuts</strong><span>Space · Play/Pause</span><span>Backspace / Delete · Remove selection</span><span>Ctrl/Cmd + D · Duplicate</span><span>Ctrl/Cmd + Z · Undo</span><span>Ctrl/Cmd + Shift + Z · Redo</span><span>Escape · Clear selection</span><span>Drag clip edges · Trim</span><span>Code icon · Edit scene JSON</span></div>}
     {!compact && <div className="timeline-scroll"><div className="timeline-sheet" style={{ width: `${zoom * 100}%` }}>
       <div className="ruler"><div className="ruler-label">TRACKS</div><div ref={surface} className="ruler-points" onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); seekAt(e); }} onPointerMove={e => { if (e.buttons === 1) seekAt(e); }}>
         {positions.map((value, index) => <span key={value} className={index === divisions ? 'last-tick' : ''} style={{ left: `${index / divisions * 100}%` }}>{value.toFixed(decimals)}s</span>)}
