@@ -205,10 +205,66 @@ export function drawIllustratedTorso(g: Graphics, c: Character, art: Illustrated
   detail(g, 'M ' + (bx - waist + 7) + ' ' + (bottom - 15) + ' Q ' + (bx - waist + 10) + ' ' + (bottom - 11) + ' ' + (bx - waist + 7) + ' ' + (bottom - 7), shade(c.shirt, -.23), 1.3);
 }
 
-export function drawIllustratedHand(g: Graphics, x: number, y: number, width: number, color: string) {
-  const u = width / 10;
-  // A tiny mitten with an intentional thumb and finger separation.
-  const d = 'M ' + (x - 6*u) + ' ' + (y - 5*u) + ' Q ' + (x - 9*u) + ' ' + (y + 0*u) + ' ' + (x - 4*u) + ' ' + (y + 6*u) + ' Q ' + (x - 1*u) + ' ' + (y + 8*u) + ' ' + (x + 5*u) + ' ' + (y + 4*u) + ' Q ' + (x + 8*u) + ' ' + (y + 1*u) + ' ' + (x + 6*u) + ' ' + (y - 3*u) + ' Q ' + (x + 3*u) + ' ' + (y - 4*u) + ' ' + (x + 1*u) + ' ' + (y - 1*u) + ' Q ' + (x - 2*u) + ' ' + (y - 9*u) + ' ' + (x - 6*u) + ' ' + (y - 5*u) + ' Z';
-  part(g, d, color, INK, 2.1);
-  detail(g, 'M ' + (x - 1*u) + ' ' + (y + 3*u) + ' Q ' + (x + 2*u) + ' ' + (y + 5*u) + ' ' + (x + 4*u) + ' ' + (y + 2*u), shade(color, -.2), 1.1);
+export type HandPose = 'relaxed' | 'open' | 'point' | 'grip' | 'fist';
+
+/**
+ * Articulated cartoon hand silhouettes: five visible digits at gesturing scale,
+ * finger separation, thumb fold, and an extended index for pointing.
+ */
+export function drawIllustratedHand(g: Graphics, x: number, y: number, width: number, color: string, pose: HandPose = 'relaxed', facing: -1 | 1 = 1) {
+  const u = width / 10, sign = facing;
+  const fx = (a: number) => x + a * u * sign;
+  const fy = (a: number) => y + a * u;
+  const outline = (d: string, weight = 2) => part(g, d, color, INK, weight);
+  const seam = (d: string, weight = 1.2) => detail(g, d, shade(color, -.24), weight);
+  if (pose === 'point') {
+    // Index finger is one clearly extended finger; the remaining three curl
+    // into the palm, with the thumb wrapping over the knuckles.
+    outline('M ' + fx(-6) + ' ' + fy(-4) + ' Q ' + fx(-8) + ' ' + fy(1) + ' ' + fx(-5) + ' ' + fy(6) +
+      ' Q ' + fx(0) + ' ' + fy(9) + ' ' + fx(7) + ' ' + fy(4) +
+      ' L ' + fx(9) + ' ' + fy(1) + ' Q ' + fx(12) + ' ' + fy(-1) + ' ' + fx(10) + ' ' + fy(-4) +
+      ' L ' + fx(7) + ' ' + fy(-5) + ' L ' + fx(25) + ' ' + fy(-7) +
+      ' Q ' + fx(29) + ' ' + fy(-9) + ' ' + fx(26) + ' ' + fy(-12) +
+      ' Q ' + fx(24) + ' ' + fy(-13) + ' ' + fx(21) + ' ' + fy(-12) +
+      ' L ' + fx(4) + ' ' + fy(-11) + ' Q ' + fx(-2) + ' ' + fy(-13) + ' ' + fx(-6) + ' ' + fy(-4) + ' Z', 2.35);
+    seam('M ' + fx(-4) + ' ' + fy(2) + ' q ' + (8*u*sign) + ' ' + (-3*u) + ' ' + (13*u*sign) + ' ' + (2*u), 1.35);
+    for (const [sx,sy] of [[2,5],[6,3],[9,1]] as const) seam('M ' + fx(sx) + ' ' + fy(sy) + ' l ' + (2*u*sign) + ' ' + (-2*u), 1.05);
+    return;
+  }
+  if (pose === 'open') {
+    // Open hand has four separated fingers and a distinct thumb.
+    outline('M ' + fx(-7) + ' ' + fy(4) + ' Q ' + fx(-11) + ' ' + fy(0) + ' ' + fx(-10) + ' ' + fy(-3) +
+      ' L ' + fx(-12) + ' ' + fy(-13) + ' Q ' + fx(-12) + ' ' + fy(-18) + ' ' + fx(-8) + ' ' + fy(-18) +
+      ' Q ' + fx(-5) + ' ' + fy(-18) + ' ' + fx(-4) + ' ' + fy(-12) +
+      ' L ' + fx(-3) + ' ' + fy(-22) + ' Q ' + fx(-2) + ' ' + fy(-26) + ' ' + fx(1) + ' ' + fy(-25) +
+      ' Q ' + fx(4) + ' ' + fy(-24) + ' ' + fx(3) + ' ' + fy(-15) +
+      ' L ' + fx(6) + ' ' + fy(-20) + ' Q ' + fx(9) + ' ' + fy(-24) + ' ' + fx(12) + ' ' + fy(-21) +
+      ' Q ' + fx(14) + ' ' + fy(-18) + ' ' + fx(10) + ' ' + fy(-11) +
+      ' L ' + fx(14) + ' ' + fy(-13) + ' Q ' + fx(17) + ' ' + fy(-13) + ' ' + fx(17) + ' ' + fy(-9) +
+      ' Q ' + fx(15) + ' ' + fy(-4) + ' ' + fx(8) + ' ' + fy(3) +
+      ' Q ' + fx(1) + ' ' + fy(9) + ' ' + fx(-7) + ' ' + fy(4) + ' Z');
+    seam('M ' + fx(-3) + ' ' + fy(-10) + ' L ' + fx(-2) + ' ' + fy(-3));
+    seam('M ' + fx(4) + ' ' + fy(-11) + ' L ' + fx(3) + ' ' + fy(-2));
+    seam('M ' + fx(10) + ' ' + fy(-7) + ' L ' + fx(6) + ' ' + fy(0));
+    return;
+  }
+  if (pose === 'grip' || pose === 'fist') {
+    outline('M ' + fx(-9) + ' ' + fy(-4) + ' Q ' + fx(-9) + ' ' + fy(-10) + ' ' + fx(-3) + ' ' + fy(-11) +
+      ' L ' + fx(10) + ' ' + fy(-10) + ' Q ' + fx(16) + ' ' + fy(-7) + ' ' + fx(13) + ' ' + fy(-2) +
+      ' Q ' + fx(15) + ' ' + fy(5) + ' ' + fx(7) + ' ' + fy(9) +
+      ' Q ' + fx(-4) + ' ' + fy(11) + ' ' + fx(-9) + ' ' + fy(3) + ' Z', 2.2);
+    for (let n = 0; n < 3; n++) seam('M ' + fx(-1+n*4.2) + ' ' + fy(-8) + ' q ' + (2*u*sign) + ' ' + (5*u) + ' 0 ' + (7*u), 1.25);
+    if (pose === 'grip') seam('M ' + fx(-8) + ' ' + fy(-1) + ' Q ' + fx(1) + ' ' + fy(5) + ' ' + fx(7) + ' ' + fy(1), 1.6);
+    return;
+  }
+  // Calm relaxed hand: palm and separated finger tips, even at thumbnail size.
+  outline('M ' + fx(-7) + ' ' + fy(-4) + ' Q ' + fx(-9) + ' ' + fy(0) + ' ' + fx(-6) + ' ' + fy(7) +
+    ' Q ' + fx(-2) + ' ' + fy(10) + ' ' + fx(3) + ' ' + fy(8) +
+    ' L ' + fx(12) + ' ' + fy(0) + ' Q ' + fx(15) + ' ' + fy(-5) + ' ' + fx(12) + ' ' + fy(-7) +
+    ' Q ' + fx(10) + ' ' + fy(-10) + ' ' + fx(7) + ' ' + fy(-7) +
+    ' Q ' + fx(6) + ' ' + fy(-11) + ' ' + fx(3) + ' ' + fy(-10) +
+    ' Q ' + fx(1) + ' ' + fy(-11) + ' ' + fx(-2) + ' ' + fy(-9) +
+    ' Q ' + fx(-5) + ' ' + fy(-9) + ' ' + fx(-7) + ' ' + fy(-4) + ' Z', 2.1);
+  seam('M ' + fx(2) + ' ' + fy(-1) + ' Q ' + fx(6) + ' ' + fy(1) + ' ' + fx(9) + ' ' + fy(-2));
+  seam('M ' + fx(-2) + ' ' + fy(3) + ' Q ' + fx(1) + ' ' + fy(6) + ' ' + fx(4) + ' ' + fy(3));
 }
