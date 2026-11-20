@@ -97,7 +97,22 @@ export function removeEntity(scene: Scene, id: string): Scene {
 }
 export function copyClip(clip: Clip, duration: number, clips: Clip[] = []): Clip {
   if (clip.track !== 'camera') {
-    return changeClipTiming({ ...clip, id: uid() }, Math.min(clip.start + clip.length, duration - clip.length), clip.length, duration);
+    // Never wrap a duplicate backwards onto its source when space runs out.
+    // For one actor's dialogue find the next unoccupied slot, avoiding two
+    // recordings speaking over each other after a duplicate action.
+    let start=clip.start+clip.length;
+    if(clip.track==='dialogue'){
+      const taken=clips.filter((item):item is Extract<Clip,{track:'dialogue'}> =>
+        item.track==='dialogue'&&item.actor===clip.actor)
+        .sort((a,b)=>a.start-b.start);
+      for(const other of taken){
+        if(start+clip.length<=other.start+1e-9)break;
+        if(start<other.start+other.length-1e-9)start=other.start+other.length;
+      }
+    }
+    if(start+clip.length>duration+1e-9)
+      throw new Error('Extend the scene or shorten the clip to make room for a copy after it.');
+    return changeClipTiming({...clip,id:uid()},start,clip.length,duration);
   }
   const shots = clips.filter(item => item.track === 'camera').sort((a, b) => a.start - b.start);
   let start = clip.start + clip.length;

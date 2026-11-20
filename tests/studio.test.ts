@@ -164,3 +164,19 @@ test('preview and export sample dialogue emphasis at the same trimmed media posi
   assert.equal(dialogueAmplitude(trimmed, clip.actor, clip.start - .1, read), 0);
   assert.equal(dialogueAmplitude(trimmed, clip.actor, clip.start + clip.length, read), 0);
 });
+
+test('duplicating dialogue moves forward into free space without overlapping the original speaker',()=>{
+  const voice:Clip={id:'original',track:'dialogue',actor:'actor-sbu',
+    text:'Hello',asset:'builtin:sbu-food',start:1,length:2,offset:0,volume:1,muted:false};
+  const other:Clip={...voice,id:'later',start:3,length:3};
+  const result=copyClip(voice,12,[voice,other]);
+  assert.equal(result.start,6);
+  assert.equal(result.length,2);
+  assert.notEqual(result.id,voice.id);
+  assert.equal(voice.start,1);
+});
+test('duplicating audio with no remaining space rejects instead of silently overlapping its source',()=>{
+  const music:Clip={id:'song',track:'music',name:'Ending',asset:'builtin:sting',
+    start:15,length:15,offset:0,volume:1,muted:false};
+  assert.throws(()=>copyClip(music,30,[music]),/make room/);
+});
