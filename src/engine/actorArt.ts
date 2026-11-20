@@ -1,5 +1,5 @@
 import type { Graphics } from 'pixi.js';
-import { armIK, footContactAt, rig, type Point } from './animation.ts';
+import { armIK, gaitLeg, rig, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
 import { drawIllustratedHair, drawIllustratedFacialHair, drawIllustratedHand, drawIllustratedHead, drawIllustratedTorso, shade } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
@@ -20,7 +20,7 @@ function stroke(g: Graphics, joints: Point[], width: number, color: string) {
 }
 export function drawActor(g: Graphics, face: Graphics, c: Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
-  locomotion: Action = action, lift = 0) {
+  locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view), actionTime = time) {
   const art = viewArt[view];
   const r = rig(c, pose, art.width);
   const limbWidth = 10 * c.thickness;
@@ -31,8 +31,8 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
     stroke(g, [joint.shoulder, { x: (joint.shoulder.x + elbow.x) / 2, y: (joint.shoulder.y + elbow.y) / 2 }], limbWidth + 5, c.shirt);
     const handMode = carrying ? 'grip' :
       action === 'point' && side === 'right' ? 'point' :
-      (action === 'wave' || action === 'talk' || action === 'celebrate') && side === 'right' ? 'open' :
-      (locomotion === 'walk' || locomotion === 'run') ? 'fist' : 'relaxed';
+      ['wave', 'talk', 'celebrate', 'open-hand', 'hand-to-face'].includes(action) && side === 'right' ? 'open' :
+      (action === 'fist' && side === 'right') || locomotion === 'walk' || locomotion === 'run' ? 'fist' : 'relaxed';
     drawIllustratedHand(g, hand.x, hand.y, limbWidth, c.skin, handMode, side === 'right' ? 1 : -1);
     // Gentle curved sleeve-cuff instead of a rigid straight seam.
     segment(g, (joint.shoulder.x + elbow.x) / 2 - 3, (joint.shoulder.y + elbow.y) / 2, (joint.shoulder.x + elbow.x) / 2 + 3, (joint.shoulder.y + elbow.y) / 2 + 2, shade(c.shirt, -.27), 1.5);
@@ -51,17 +51,13 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
     const joint = r[side];
     let knee = joint.knee, foot = joint.foot;
     const moving = locomotion === 'walk' || locomotion === 'run';
-    if (moving) {
-      const step = footContactAt(time, locomotion, side);
-      const len = 38 * c.legs * c.height;
-      const goal = { x: joint.upper.x + step.x * c.legs * c.height, y: step.y * c.legs * c.height + lift };
-      [knee, foot] = armIK(joint.upper, goal, len, len * 1.09, 1);
-    }
+    if (moving) [knee, foot] = gaitLeg(joint.upper, c.legs * c.height, gaitTime, locomotion, side, forward, lift, velocity);
     stroke(g, [joint.upper, knee, foot], limbWidth + 1, c.pants);
-    const shoeDir = view === 'front' || view === 'back' ? (side === 'left' ? -4 : 4) : (art.rear ? -5 : 5);
+    const shoeDir = moving || (view !== 'front' && view !== 'back') ? forward * 6 : (side === 'left' ? -4 : 4);
+    const toe = Math.sign(shoeDir);
     ellipse(g, foot.x + shoeDir, foot.y + 1, 12 * c.thickness, 6.5, c.shoes, 2.7);
-    segment(g, foot.x - 7 + shoeDir, foot.y + 4, foot.x + 9 + shoeDir, foot.y + 4, shade(c.shoes, -.27), 1.7);
-    segment(g, foot.x + shoeDir - 5, foot.y - 2, foot.x + shoeDir + 2, foot.y - 3, shade(c.shoes, .36), 1.2);
+    segment(g, foot.x - 7 * toe + shoeDir, foot.y + 4, foot.x + 9 * toe + shoeDir, foot.y + 4, shade(c.shoes, -.27), 1.7);
+    segment(g, foot.x + shoeDir - 5 * toe, foot.y - 2, foot.x + shoeDir + 2 * toe, foot.y - 3, shade(c.shoes, .36), 1.2);
   };
   leg('left'); leg('right'); arm('left');
   drawIllustratedTorso(g, c, art, r.neck, r.hip);
@@ -77,7 +73,9 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
   face.position.set(r.head.x, r.head.y);
   face.angle = r.angle;
   face.scale.set(c.head);
-  drawFace(face, c, art, facialPerformance(time, actorId, action, expression, speaking ? Math.max(amplitude, .15 + .62 * Math.abs(Math.sin(time * 13.7 + actorId.length))) : amplitude, viseme, focus));
+  const mood = facialPerformance(time, actorId, action, expression, speaking ? Math.max(amplitude, .15 + .62 * Math.abs(Math.sin(time * 13.7 + actorId.length))) : amplitude, viseme, focus);
+  if (action === 'blink' && actionTime < .22) mood.blink = Math.max(mood.blink, 1 - Math.abs(actionTime - .11) / .11);
+  drawFace(face, c, art, mood);
 }
 function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: FacialPerformance) {
   const { face, rear, profile, far } = art;

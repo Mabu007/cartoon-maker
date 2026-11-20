@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles } from 'lucide-react';
-import { animations, clamp } from '../engine/animation.ts';
+import { animations, clamp, gaitSpeeds } from '../engine/animation.ts';
 import { soundNames } from '../engine/presets.ts';
-import { compatibleObjects, nearestObject } from '../engine/interactions.ts';
+import { anchorFor, compatibleObjects, nearestObject } from '../engine/interactions.ts';
 import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track } from '../engine/schema.ts';
 import { type Format } from '../engine/renderer.ts';
-import { projectDuration } from '../engine/evaluate.ts';
+import { evaluate, projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
 import { speechProvider, voices } from '../services/speech.ts';
@@ -22,12 +22,20 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
   const [target, setTarget] = useState(''), [expression, setExpression] = useState<typeof expressions[number]>('happy');
   const [shot, setShot] = useState<typeof shots[number]>('medium'), [transition, setTransition] = useState<'cut' | 'glide'>('cut');
   const [effect, setEffect] = useState<'fade-in' | 'fade-out'>('fade-in'), [sound, setSound] = useState<typeof soundNames[number]>('pop');
+  const [gait, setGait] = useState<'walk' | 'run'>(request.action === 'run' ? 'run' : 'walk');
+  const [interaction, setInteraction] = useState<'equip' | 'release'>('equip');
   const [start, setStart] = useState(clamp(time, 0, scene.duration - .1));
   const [length, setLength] = useState(request.action ? Math.max(1, animations[request.action].duration) : 2);
-  const needsActor = ['actors', 'movement', 'body', 'face', 'dialogue'].includes(track);
+  const needsActor = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue'].includes(track);
   const place = scene.actors.find(item => item.id === actor);
   const [toX, setToX] = useState((place?.x ?? 480) + 145);
   const [toY, setToY] = useState(place?.y ?? 420);
+  const evaluated = evaluate(scene, start).actors.find(item => item.id === actor);
+  const travel = Math.hypot(toX - (evaluated?.x ?? 0), toY - (evaluated?.y ?? 0));
+  const travelLength = Math.max(.1, travel / (gaitSpeeds[gait] * (place?.scale ?? 1)));
+  const holdables = scene.objects.filter(item => anchorFor(item)?.action === 'hold');
+  const cueTargets = track === 'gaze' ? ['camera', ...Object.keys(actors).filter(id => id !== actor), ...scene.objects.map(item => item.id)] : holdables.map(item => item.id);
+  const cueTarget = cueTargets.includes(target) ? target : cueTargets[0];
   const choices = compatibleObjects(scene, action);
   const seat = action === 'sit' ? nearestObject(scene, actor, 'sit') : undefined;
   const selectedTarget = action === 'sit'
@@ -42,7 +50,11 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     if (track === 'audio') return add({ ...base, track, name: label(sound), asset: `builtin:${sound}`, volume: .75, muted: false, offset: 0 });
     if (!place) return;
     if (track === 'actors') return add({ ...base, track, actor });
-    if (track === 'movement') return add({ ...base, track, actor, fromX: place.x, fromY: place.y, toX: clamp(toX, -2000, 3000), toY: clamp(toY, -2000, 3000) });
+    if (track === 'movement' && evaluated && travelLength <= scene.duration - at + .0001)
+      return add({ ...base, length: travelLength, track, actor, gait, fromX: evaluated.x, fromY: evaluated.y, toX: clamp(toX, -2000, 3000), toY: clamp(toY, -2000, 3000) });
+    if (track === 'movement') return;
+    if (track === 'gaze') return cueTarget ? add({ ...base, track, actor, target: cueTarget }) : undefined;
+    if (track === 'props') return cueTarget ? add({ ...base, track, actor, target: cueTarget, interaction }) : undefined;
     if (track === 'face') return add({ ...base, track, actor, expression });
     if (action === 'sit' && !selectedTarget) return;
     return add({ ...base, track, actor, action, layer: action === 'sit' ? 'body' : layer,
@@ -56,13 +68,15 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
       {!!choices.length && <label className="field">{action === 'sit' ? 'Sit on' : 'Interact with'}<Select aria={action === 'sit' ? 'Seat' : 'Interact with'} value={selectedTarget} onChange={setTarget}
         options={action === 'sit' ? choices.map(item => item.id) : ['', ...choices.map(item => item.id)]}
         render={id => choices.find(item => item.id === id)?.name ?? 'Empty hands'}/></label>}</>}
-    {track === 'movement' && <div className="field-row"><label className="field">End X<input type="number" value={toX} onChange={e => setToX(Number(e.target.value))}/></label><label className="field">End Y<input type="number" value={toY} onChange={e => setToY(Number(e.target.value))}/></label></div>}
+    {(track === 'gaze' || track === 'props') && <label className="field">Target<Select aria="Cue target" value={cueTarget ?? ''} options={cueTargets} onChange={setTarget} render={id => actors[id] ?? scene.objects.find(item => item.id === id)?.name ?? label(id)}/></label>}
+    {track === 'props' && <label className="field">Interaction<Select aria="Prop interaction" value={interaction} options={['equip', 'release']} onChange={setInteraction}/></label>}
+    {track === 'movement' && <><label className="field">Travel pace<Select aria="Travel pace" value={gait} options={['walk', 'run']} onChange={setGait}/></label><div className="field-row"><label className="field">End X<input type="number" value={toX} onChange={e => setToX(Number(e.target.value))}/></label><label className="field">End Y<input type="number" value={toY} onChange={e => setToY(Number(e.target.value))}/></label></div><small>{travelLength.toFixed(2)} seconds at {gait} pace</small>{travelLength > scene.duration - start && <p className="form-error">Move the start earlier or choose a closer destination.</p>}</>}
     {track === 'face' && <label className="field">Expression<Select aria="Expression" value={expression} onChange={setExpression} options={expressions}/></label>}
     {track === 'camera' && <div className="field-row"><label className="field">Shot<Select aria="Shot" value={shot} onChange={setShot} options={shots}/></label><label className="field">Transition<Select aria="Transition" value={transition} onChange={setTransition} options={['cut', 'glide']}/></label></div>}
     {track === 'transition' && <label className="field">Effect<Select aria="Effect" value={effect} onChange={setEffect} options={['fade-in', 'fade-out']}/></label>}
     {track === 'audio' && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={setSound} options={soundNames}/></label>}
-    <div className="field-row"><label className="field">Start (seconds)<input aria-label="Clip start" type="number" value={Math.round(start * 100) / 100} min={0} max={scene.duration - .1} step="any" onChange={e => setStart(Number(e.target.value))}/></label>{track !== 'dialogue' && <label className="field">Length (seconds)<input aria-label="Clip length" type="number" value={length} min={.1} max={180} step="any" onChange={e => setLength(Number(e.target.value))}/></label>}</div></div>
-    <footer className="modal-footer">{track === 'audio' && <button type="button" className="quiet" onClick={() => audio('audio', '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={(needsActor && !actor) || (track === 'body' && action === 'sit' && !selectedTarget)}><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
+    <div className="field-row"><label className="field">Start (seconds)<input aria-label="Clip start" type="number" value={Math.round(start * 100) / 100} min={0} max={scene.duration - .1} step="any" onChange={e => setStart(Number(e.target.value))}/></label>{track !== 'dialogue' && track !== 'movement' && <label className="field">Length (seconds)<input aria-label="Clip length" type="number" value={length} min={.1} max={180} step="any" onChange={e => setLength(Number(e.target.value))}/></label>}</div></div>
+    <footer className="modal-footer">{track === 'audio' && <button type="button" className="quiet" onClick={() => audio('audio', '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={(needsActor && !actor) || (track === 'movement' && travelLength > scene.duration - start) || (['gaze', 'props'].includes(track) && !cueTarget) || (track === 'body' && action === 'sit' && !selectedTarget)}><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
   </form></Modal>;
 }
 
@@ -148,11 +162,11 @@ export function ExportDialog({ project, initialFormat, initialSubtitles, close }
   </Modal>;
 }
 
-export function ProjectsDialog({ items, current, close, create, open, duplicate, remove, demo }: { items: SavedProject[]; current: string; close: () => void; create: () => void; open: (project: Project) => void; duplicate: (project: Project) => void; remove: (project: Project) => void; demo: () => void }) {
+export function ProjectsDialog({ items, current, close, create, open, duplicate, remove, demo, backup, restore }: { items: SavedProject[]; current: string; close: () => void; create: () => void; open: (project: Project) => void; duplicate: (project: Project) => void; remove: (project: Project) => void; demo: () => void; backup: () => void; restore: () => void }) {
   return <Modal title="Projects" description="Open a saved cartoon or start something new." close={close}>
     <div className="dialog-fields"><div className="project-list">{items.map(({ project, updated }) => <div className="project-row" key={project.id}><button className="project-title" onClick={() => open(project)}><Clapperboard size={19}/><span><strong>{project.name}</strong><small>{project.id === current ? 'Currently open' : new Date(updated).toLocaleDateString()} · {project.scenes.length} scene{project.scenes.length > 1 ? 's' : ''}</small></span></button><IconButton title={`Duplicate ${project.name}`} onClick={() => duplicate(project)}><Copy size={15}/></IconButton><IconButton title={`Delete ${project.name}`} onClick={() => remove(project)}><Trash2 size={15}/></IconButton></div>)}
-      {!items.length && <p className="empty-small">Save your first project and it will appear here.</p>}</div><button className="quiet full" onClick={demo}><Clapperboard size={16}/> Open “Who Ate My Food?” example</button></div>
-    <footer className="modal-footer"><span className="spacer"/><button className="primary" onClick={create}><Plus size={16}/> New project</button></footer>
+      {!items.length && <p className="empty-small">Save your first project and it will appear here.</p>}</div><button className="quiet full" onClick={demo}><Clapperboard size={16}/> Open “The Missing Rent Money” example</button></div>
+    <footer className="modal-footer"><button className="quiet" onClick={backup}>Download backup</button><button className="quiet" onClick={restore}>Restore backup</button><span className="spacer"/><button className="primary" onClick={create}><Plus size={16}/> New project</button></footer>
   </Modal>;
 }
 export function ScenesDialog({ scenes, active, close, add, open, reorder, copy, drop, savePreset }: { scenes: Scene[]; active: string; close: () => void; add: () => void; open: (scene: Scene) => void; reorder: (id: string, direction: number) => void; copy: (scene: Scene) => void; drop: (scene: Scene) => void; savePreset: (scene: Scene) => void }) {

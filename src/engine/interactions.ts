@@ -56,7 +56,7 @@ export function removeObjectWithDecisions(scene: Scene, objectId: string, decisi
   if (!removed) return scene;
   const previousKind = anchorFor(removed)?.action;
   const surviving = scene.objects.filter(item => item.id !== objectId);
-  const clips = scene.clips.map(clip => {
+  const clips = scene.clips.filter(clip => !((clip.track === 'gaze' || clip.track === 'props') && clip.target === objectId)).map(clip => {
     if (clip.track !== 'body' || clip.target !== objectId) return clip;
     const decision = decisions[clip.id];
     if (decision?.startsWith('object:')) {
@@ -71,7 +71,11 @@ export function removeObjectWithDecisions(scene: Scene, objectId: string, decisi
 /** Used for world changes and imported/legacy projects. */
 export function repairOrphanedObjectActions(scene: Scene): Scene {
   let changed = false;
-  const clips = scene.clips.map(clip => {
+  const targets = new Set([...scene.actors.map(actor => actor.id), ...scene.objects.map(object => object.id), 'camera']);
+  const valid = scene.clips.filter(clip => clip.track === 'gaze' ? targets.has(clip.target) :
+    clip.track === 'props' ? scene.objects.some(object => object.id === clip.target && anchorFor(object)?.action === 'hold') : true);
+  changed = valid.length !== scene.clips.length;
+  const clips = valid.map(clip => {
     if (clip.track !== 'body') return clip;
     const target = clip.target ? scene.objects.find(item => item.id === clip.target) : undefined;
     if (clip.action === 'sit' && (!target || anchorFor(target)?.action !== 'sit')) {

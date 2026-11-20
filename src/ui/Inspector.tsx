@@ -1,6 +1,6 @@
 import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound } from 'lucide-react';
 import { actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
-import { compatibleObjects, objectDependencies } from '../engine/interactions.ts';
+import { anchorFor, compatibleObjects, objectDependencies } from '../engine/interactions.ts';
 import { anchors } from '../engine/presets.ts';
 import { Avatar, clipLabel, IconButton, NumberField, propIcon, Select, trackIcon } from './shared.tsx';
 import { changeClipTiming, type Selection } from '../studio.ts';
@@ -46,6 +46,14 @@ export function Inspector({ scene, actors, characters, selection, select, patchA
       {clip && <><details open><summary>Timing</summary><div className="field-row"><NumberField text="Start" value={clip.start} min={0} max={scene.duration - .1} step={.01} onChange={start => patchClip(changeClipTiming(clip, start, clip.length, scene.duration))}/><NumberField text="Length" value={clip.length} min={.1} max={scene.duration - clip.start} step={.01} onChange={length => patchClip(changeClipTiming(clip, clip.start, length, scene.duration))}/></div></details><details open><summary>{label(clip.track)} settings</summary>
         {'actor' in clip && <label className="field">Actor<Select aria="Clip actor" value={clip.actor} onChange={actor => patchClip({ ...clip, actor })} options={Object.keys(actors)} render={id => actors[id]}/></label>}
         {clip.track === 'movement' && <><div className="field-row"><NumberField text="From X" value={clip.fromX} min={-2000} max={3000} onChange={fromX => patchClip({ ...clip, fromX })}/><NumberField text="From Y" value={clip.fromY} min={-2000} max={3000} onChange={fromY => patchClip({ ...clip, fromY })}/></div><div className="field-row"><NumberField text="To X" value={clip.toX} min={-2000} max={3000} onChange={toX => patchClip({ ...clip, toX })}/><NumberField text="To Y" value={clip.toY} min={-2000} max={3000} onChange={toY => patchClip({ ...clip, toY })}/></div></>}
+        {clip.track === 'actors' && clip.visible !== undefined && <label className="check"><input type="checkbox" checked={clip.visible} onChange={event => patchClip({ ...clip, visible: event.target.checked })}/>Visible from this cue</label>}
+        {clip.track === 'gaze' && <label className="field">Look at<Select aria="Timeline gaze target" value={clip.target} options={['camera', ...Object.keys(actors).filter(id => id !== clip.actor), ...scene.objects.map(item => item.id)]}
+          onChange={target => patchClip({ ...clip, target })} render={id => actors[id] ?? scene.objects.find(item => item.id === id)?.name ?? label(id)}/></label>}
+        {clip.track === 'props' && <>
+          <label className="field">Prop<Select aria="Timeline prop" value={clip.target} options={scene.objects.filter(item => anchorFor(item)?.action === 'hold').map(item => item.id)}
+            onChange={target => patchClip({ ...clip, target })} render={id => scene.objects.find(item => item.id === id)?.name ?? label(id)}/></label>
+          <label className="field">Interaction<Select aria="Timeline prop interaction" value={clip.interaction} options={['equip', 'release']} onChange={interaction => patchClip({ ...clip, interaction })}/></label>
+        </>}
         {clip.track === 'body' && <><label className="field">Action<Select aria="Clip action" value={clip.action} onChange={action => patchClip({ ...clip, action })} options={actions}/></label><label className="field">Layer<Select aria="Action layer" value={clip.action === 'sit' ? 'body' : clip.layer} onChange={layer => patchClip({ ...clip, layer })} options={clip.action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label>
           {clip.action === 'sit' && !compatibleObjects(scene, 'sit').length && <p className="form-error">Add a chair or sofa before using the Sit action.</p>}
           <label className="field">{clip.action === 'sit' ? 'Seat' : 'Interact with'}<Select aria="Interaction target" value={clip.target ?? ''} onChange={value => { const { target: _, ...rest } = clip; patchClip(value ? { ...rest, target: value } : rest); }}

@@ -2361,16 +2361,14 @@ select {
 /* Built-in no-GPU SVG character preview: keeps the editor functional even
    when an accelerated renderer is blocked or a graphics context is lost. */
 .factory-canvas .native-character-svg { display:block; width:100%; height:100%; max-width:100%; object-fit:contain; }
-.native-actor-walk, .native-actor-run { animation: native-walk .48s ease-in-out infinite alternate; transform-origin: center; }
 .native-actor-talk, .native-actor-laugh { animation: native-bob .36s ease-in-out infinite alternate; }
 .native-actor-jump, .native-actor-celebrate { animation: native-jump .7s ease-in-out infinite alternate; }
 .native-actor-wave .native-arm-right { animation: native-wave .5s ease-in-out infinite alternate; transform-origin: center; transform-box: fill-box; }
-@keyframes native-walk { to { transform:translateY(-4px) rotate(1.5deg); } }
 @keyframes native-bob { to { transform:translateY(-3px); } }
 @keyframes native-jump { to { transform:translateY(-20px); } }
 @keyframes native-wave { to { transform:rotate(-12deg) translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) {
-  .native-actor-walk,.native-actor-run,.native-actor-talk,.native-actor-laugh,.native-actor-jump,.native-actor-celebrate,.native-actor-wave .native-arm-right { animation:none; }
+  .native-actor-talk,.native-actor-laugh,.native-actor-jump,.native-actor-celebrate,.native-actor-wave .native-arm-right { animation:none; }
 }
 
 /* Contextual object→action dependency decisions (shown only when needed). */

@@ -40,7 +40,7 @@ export function changeClipTiming(clip: Clip, start: number, length: number, dura
 }
 export function removeEntity(scene: Scene, id: string): Scene {
   const current = scene.objects.some(item => item.id === id) ? removeObjectWithDecisions(scene, id) : scene;
-  return { ...current, actors: current.actors.filter(item => item.id !== id), objects: current.objects.filter(item => item.id !== id), clips: current.clips.filter(clip => clip.id !== id && (!('actor' in clip) || clip.actor !== id)).map(clip => {
+  return { ...current, actors: current.actors.filter(item => item.id !== id), objects: current.objects.filter(item => item.id !== id), clips: current.clips.filter(clip => clip.id !== id && (!('actor' in clip) || clip.actor !== id) && (!('target' in clip) || (clip.track !== 'gaze' && clip.track !== 'props') || clip.target !== id)).map(clip => {
     if (clip.track === 'camera' && clip.focus === id) { const { focus, ...rest } = clip; return rest; }
     if (clip.track === 'body' && clip.target === id) { const { target, ...rest } = clip; return rest; }
     return clip;

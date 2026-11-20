@@ -53,6 +53,13 @@ function effect(context: BaseAudioContext, name: string) {
 const decoders = new Map<string, Promise<{ buffer: AudioBuffer; envelope: Float32Array }>>();
 let remoteAudio: ((id: string) => Promise<Blob | undefined>) | undefined;
 export function setRemoteAudio(loader?: (id: string) => Promise<Blob | undefined>) { remoteAudio = loader; }
+export async function getOrFetchAudio(id: string) {
+  const local = await getAudio(id);
+  if (local || !remoteAudio) return local;
+  const remote = await remoteAudio(id);
+  if (remote) await putAudio(id, remote).catch(() => {});
+  return remote;
+}
 function envelope(buffer: AudioBuffer) {
   const windowSize = Math.floor(buffer.sampleRate / 50);
   const result = new Float32Array(Math.ceil(buffer.length / windowSize));
@@ -79,11 +86,7 @@ export async function readSound(context: BaseAudioContext, asset: string) {
         if (!response.ok) throw new Error(`Could not load audio “${name}”`);
         buffer = await context.decodeAudioData(await response.arrayBuffer());
       } else {
-        let blob = asset.startsWith('asset:') ? await getAudio(name) : undefined;
-        if (!blob && remoteAudio && asset.startsWith('asset:')) {
-          blob = await remoteAudio(name);
-          if (blob) await putAudio(name, blob).catch(() => {});
-        }
+        const blob = asset.startsWith('asset:') ? await getOrFetchAudio(name) : undefined;
         if (!blob) throw new Error(`Audio file is missing (${name}). Reattach the original file.`);
         buffer = await context.decodeAudioData(await blob.arrayBuffer());
       }

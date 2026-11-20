@@ -1,3 +1,4 @@
+import { viewForward } from './animation.ts';
 import { Application, Container, Graphics, Text, Sprite, Texture } from 'pixi.js';
 import { drawActor } from './actorArt.ts';
 import { drawProp, drawWorld, ellipse, propSize, rect } from './art.ts';
@@ -134,7 +135,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     const carrying = new Set(actors.flatMap(actor => actor.held && actor.visible ? [actor.held.id] : []));
     const characterById = new Map(characters.map(character => [character.id, character]));
     const sourceActorById = new Map(scene.actors.map(actor => [actor.id, actor]));
-    for (const prop of scene.objects) {
+    for (const prop of options.edit ? scene.objects : lastFrame.objects) {
       used.add(prop.id);
       const entity = get(prop.id);
       entity.group.visible = options.edit || !carrying.has(prop.id);
@@ -185,14 +186,16 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       const lift = options.edit ? 0 : actor.lift;
       entity.group.position.set(point.x, point.y);
       entity.group.angle = actor.rotation;
-      entity.group.scale.set((actor.flip ? -1 : 1) * actor.scale, actor.scale);
+      const view = (options.edit ? source.view : camera.view) ?? actor.view;
+      const directionFlip = options.edit ? source.flip : actor.flip !== (viewForward(view) !== viewForward(actor.view));
+      entity.group.scale.set((directionFlip ? -1 : 1) * actor.scale, actor.scale);
       entity.group.zIndex = actor.depth * 1000 + point.y;
       entity.art.position.y = -lift;
       ellipse(entity.shadow!.clear(), 0, 3, 39 - Math.min(10, Math.max(0, lift / 5)), 7, '#816a61');
-      drawActor(entity.art.clear(), entity.face!.clear(), character, (options.edit ? source.view : camera.view) ?? actor.view,
+      drawActor(entity.art.clear(), entity.face!.clear(), character, view,
         options.edit ? {} : actor.pose, options.edit ? source.expression : actor.expression,
         options.amplitude?.(actor.id, time) ?? 0, options.edit ? undefined : actor.held,
-        time, actor.action, actor.id, actor.speaking, actor.viseme, options.characterPreview ? options.previewFocus : actor.focus, actor.locomotion, actor.lift);
+        time, actor.action, actor.id, actor.speaking, actor.viseme, options.characterPreview ? options.previewFocus : actor.focus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime);
       entity.face!.y -= lift;
       if (actor.held?.imageData && !options.edit) {
         const url = actor.held.imageData;

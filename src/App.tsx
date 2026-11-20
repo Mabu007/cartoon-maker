@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Captions, Check, ChevronDown, CircleHelp, Clapperboard, Cloud, Download, Expand, FolderOpen, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Sparkles, Square, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Captions, Check, ChevronDown, CircleHelp, Clapperboard, Cloud, Download, Expand, FolderOpen, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Sparkles, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { approveScript, compileMovie, missingRentMovie, reviseScript, startProduction } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
 import { evaluate, locate, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
 import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
-import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
+import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Production, type Project, type Prop, type Scene, type ScriptSceneData, type Track } from './engine/schema.ts';
 import type { Format } from './engine/renderer.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
 import { createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
 import { duplicateProject, duplicateScene, listLocal, removeLocal, saveLocal, writeLocal, type SavedProject } from './services/projects.ts';
 import { exampleDirector, hostedDirector } from './services/director.ts';
 import { speechProvider } from './services/speech.ts';
+import { renderSpeech, type AiAccess } from './services/filmmaker.ts';
+import { backupMovie, restoreMovie } from './services/projectExchange.ts';
+import { DirectorPanel } from './ui/DirectorPanel.tsx';
 import { prepareArtwork } from './services/artwork.ts';
 import { changeClipTiming, copyClip, currentScene, initial, removeEntity, useStudio, type Selection } from './studio.ts';
 import { AssetLibrary } from './ui/AssetLibrary.tsx';
@@ -22,8 +26,34 @@ import { Stage, type PreviewTime } from './ui/Stage.tsx';
 import { clock, formats, IconButton, Modal, Select } from './ui/shared.tsx';
 import { Timeline } from './ui/Timeline.tsx';
 
+const StoryStudio = lazy(() => import('./ui/StoryStudio.tsx').then(module => ({ default: module.StoryStudio })));
+const ScreenplayStudio = lazy(() => import('./ui/ScreenplayStudio.tsx').then(module => ({ default: module.ScreenplayStudio })));
+
+function PanelResize({ side, value, change }: { side: 'left' | 'right'; value: number; change: (width: number) => void }) {
+  const drag = useRef<{ x: number; width: number } | null>(null);
+  const set = (width: number) => change(clamp(width, 160, 370));
+  const direction = side === 'left' ? 1 : -1;
+  return <div role="separator" aria-label={side === 'left' ? 'Resize assets' : 'Resize inspector'}
+    aria-orientation="vertical" aria-valuemin={160} aria-valuemax={370} aria-valuenow={value} tabIndex={0}
+    className={`panel-resize panel-resize-${side}`}
+    onKeyDown={event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      set(value + (event.key === 'ArrowRight' ? 12 : -12) * direction);
+    }}
+    onPointerDown={event => {
+      drag.current = { x: event.clientX, width: value };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }}
+    onPointerMove={event => {
+      if (drag.current) set(drag.current.width + (event.clientX - drag.current.x) * direction);
+    }}
+    onLostPointerCapture={() => { drag.current = null; }}
+    onDoubleClick={() => change(side === 'left' ? 263 : 254)}/>;
+}
+
 const studioName = import.meta.env.VITE_STUDIO_NAME?.trim() || 'Toonroom';
-type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | null;
+type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | null;
 type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[]; backgroundImage?: string };
 const worldKey = (scope: string) => `toonroom.worlds.v1.${scope}`;
 function worldPresets(scope: string): WorldPreset[] {
@@ -41,9 +71,19 @@ const errorMessage = (error: unknown) => error instanceof Error ? error.message 
 export default function App() {
   const project = useStudio(state => state.project), scene = useStudio(currentScene), selection = useStudio(state => state.selection), library = useStudio(state => state.library);
   const hasUndo = useStudio(state => state.past.length > 0), hasRedo = useStudio(state => state.future.length > 0);
+  const [workspace, setWorkspace] = useState<'create' | 'write' | 'direct'>('direct');
+  const [directorOpen, setDirectorOpen] = useState(false);
+  const [assetWidth, setAssetWidth] = useState(263), [inspectorWidth, setInspectorWidth] = useState(254);
+  const [scriptTarget, setScriptTarget] = useState<{ sceneId?: string; lineId?: string; autoDraft?: boolean }>({});
+  const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'light' ? 'light' : 'dark');
+  const [compiling, setCompiling] = useState(false);
+  const compileInFlight = useRef(false);
+  const importFile = useRef<HTMLInputElement>(null);
   const dirty = useStudio(state => state.dirty);
   const sceneIndex = project.scenes.findIndex(item => item.id === scene.id);
   const [dialog, setDialog] = useState<Dialog>(null), [account, setAccount] = useState<Account | null>(null), [items, setItems] = useState<SavedProject[]>([]);
+  const [personalModel, setPersonalModel] = useState<AiAccess['personal']>(null);
+  const ai = { account, personal: personalModel };
   const scope = account?.uid ?? 'guest';
   const [worlds, setWorlds] = useState<WorldPreset[]>([]);
   const [saveStatus, setSaveStatus] = useState('Saved on device'), [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
@@ -92,7 +132,9 @@ export default function App() {
     livePlaying.current = false; livePreparing.current = false;
     setPlaying(false); setPreparing(false);
   }
-  function loadProject(next: Project, edited = false) {
+  function loadProject(next: Project, edited = false, preservePrevious = true) {
+    const previous = useStudio.getState();
+    if (preservePrevious && previous.dirty && previous.project.id !== next.id && originalScope.current === scope) persist(previous.project);
     pause(); setArrange(false);
     useStudio.getState().open(next, edited);
     updateCursor(next.scenes[0], 0, false);
@@ -201,6 +243,18 @@ export default function App() {
   function patchActor(value: ActorData) { editScene(current => ({ ...current, actors: current.actors.map(actor => actor.id === value.id ? value : actor) })); }
   function patchObject(value: Prop) { editScene(current => ({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
   function patchClip(value: Clip) {
+    if (value.track === 'dialogue') {
+      const before = scene.clips.find(clip => clip.id === value.id);
+      const script = project.production?.screenplay.scenes.find(item => item.id === scene.id);
+      const from = project.production?.graph.find(item => item.sceneId === scene.id)?.events[value.id]?.line;
+      if (before?.track === 'dialogue' && before.text !== value.text && script && from) {
+        if (value.text.length > 400 || !value.text.trim()) { tell('Enter a spoken line between 1 and 400 characters.', true); return; }
+        if (project.production?.graph.find(item => item.sceneId === scene.id)?.locked.includes(value.id)) { tell('Unlock the dialogue clip before changing its line.', true); return; }
+        const next = { ...script, elements: script.elements.map(line => line.id === from ? { ...line, text: value.text } : line) };
+        void commitDirection(next, script);
+        return;
+      }
+    }
     let updated: Clip = value;
     if (value.track === 'body') {
       const body = value;
@@ -344,7 +398,16 @@ export default function App() {
       tell('Object removed. Dependent actions were updated.');
     } catch (error) { showError(error); }
   }
-  function rename(value: string) { const name = value.trim(); if (name && name !== project.name) edit(current => ({ ...current, name })); }
+  function rename(value: string) {
+    const name = value.trim();
+    if (!name || name === project.name) return;
+    edit(current => ({
+      ...current, name,
+      ...(current.production && current.production.bible.status !== 'locked' ? {
+        production: { ...current.production, bible: { ...current.production.bible, profile: { ...current.production.bible.profile, title: name } } }
+      } : {})
+    }));
+  }
   function addSound(name: typeof soundNames[number]) { const start = clamp(time.current.local, 0, scene.duration - .1); addClip({ id: uid(), track: 'audio', name: label(name), asset: `builtin:${name}`, length: Math.min(.8, scene.duration - start), start, muted: false, volume: .8, offset: 0 }); }
   function deleteProject(item: Project) {
     ask(`Delete “${item.name}”?`, 'This permanently removes the saved project.', () => {
@@ -353,21 +416,111 @@ export default function App() {
           if (account) { await cloudQueue.current; await deleteCloud(account, item.id); }
           removeLocal(scope, item.id);
           const entries = listLocal(scope); setItems(entries);
-          if (useStudio.getState().project.id === item.id) loadProject(entries[0]?.project ?? makeProject());
+          if (useStudio.getState().project.id === item.id) loadProject(entries[0]?.project ?? makeProject(), false, false);
           tell('Project deleted.');
         } catch (error) { showError(error); }
       })();
     });
   }
+  function updateProduction(change: (current: Production) => Production) {
+    edit(current => ({ ...current, production: change(current.production ?? startProduction(current)) }));
+  }
+  function switchWorkspace(next: typeof workspace) {
+    pause(); setFocus(false); setArrange(false);
+    if (next !== 'direct' && !useStudio.getState().project.production) updateProduction(value => value);
+    setWorkspace(next);
+  }
+  function openScript(sceneId?: string, lineId?: string, autoDraft = false) {
+    setScriptTarget({ sceneId, lineId, autoDraft }); switchWorkspace('write');
+  }
+  function newMovie() {
+    const next = makeProject();
+    openProject({ ...next, production: startProduction(next) }, true);
+    setWorkspace('create');
+  }
+  function openRentExample() {
+    openProject(missingRentMovie(), true); setWorkspace('create'); setScriptTarget({});
+  }
+  async function compile(next: Project, original: Project, target?: string, playAfter = false) {
+    if (compileInFlight.current) return false;
+    compileInFlight.current = true;
+    pause(); setCompiling(true);
+    try {
+      const output = await compileMovie(next, renderSpeech(speechProvider(account)));
+      if (useStudio.getState().project !== original) throw new Error('The project changed during compilation. Generate it again to use your latest edits.');
+      useStudio.getState().edit(() => output);
+      const chosen = output.scenes.find(item => item.id === target) ?? output.scenes[0];
+      setWorkspace('direct'); setArrange(false); setMobilePanel('stage');
+      if (!target) setDirectorOpen(false);
+      const position = target && time.current.scene.id === chosen.id ? Math.min(time.current.local, chosen.duration - .01) : 0;
+      useStudio.getState().setScene(chosen.id);
+      updateCursor(chosen, position, false);
+      const notes = output.production?.graph.flatMap(item => item.diagnostics) ?? [];
+      tell(notes.length ? `Timeline ready with ${notes.length} production notes. Open Director to review.` : 'Timeline ready.');
+      if (playAfter) window.requestAnimationFrame(() => void play());
+      return true;
+    } catch (error) { showError(error); return false; }
+    finally { compileInFlight.current = false; setCompiling(false); }
+  }
+  async function commitDirection(next: ScriptSceneData, expected: ScriptSceneData, note?: string, request?: string) {
+    const current = useStudio.getState().project;
+    const production = current.production;
+    if (!production || production.scriptStatus !== 'approved') {
+      tell('Approve the current screenplay revision before making a timeline direction change.', true); return false;
+    }
+    const base = production.screenplay.scenes.find(item => item.id === next.id);
+    if (JSON.stringify(base) !== JSON.stringify(expected)) { tell('This scene changed. Review a fresh direction proposal.', true); return false; }
+    const revised = approveScript(reviseScript(production, production.screenplay.scenes.map(item => item.id === next.id ? next : item)));
+    if (note && request) revised.conversation = [...revised.conversation, { role: 'user' as const, text: request }, { role: 'assistant' as const, text: note }].slice(-24);
+    return compile({ ...current, production: revised }, current, next.id, true);
+  }
+  function toggleClipLock(id: string) {
+    updateProduction(value => ({ ...value, graph: value.graph.map(record =>
+      record.sceneId !== scene.id ? record : { ...record, locked: record.locked.includes(id) ? record.locked.filter(item => item !== id) : [...record.locked, id] }
+    ) }));
+  }
+  async function exchange(file: File) {
+    try {
+      const value = await restoreMovie(file);
+      loadProject(value, true); setWorkspace(value.production ? 'write' : 'direct'); setScriptTarget({}); close(); tell('Project restored as a new copy.');
+    } catch (error) { showError(error); }
+  }
+  function reorderDirectScene(id: string, step: number) {
+    edit(current => {
+      const scenes = [...current.scenes];
+      const index = scenes.findIndex(item => item.id === id);
+      if (!scenes[index] || !scenes[index + step]) return current;
+      [scenes[index], scenes[index + step]] = [scenes[index + step], scenes[index]];
+      const production = current.production;
+      if (!production) return { ...current, scenes };
+      const existing = new Set(scenes.map(item => item.id));
+      const compiled = scenes.flatMap(item => production.screenplay.scenes.filter(source => source.id === item.id));
+      const linked = production.screenplay.scenes.map(source => existing.has(source.id) ? compiled.shift()! : source);
+      const changed = linked.some((item, at) => item.id !== production.screenplay.scenes[at].id);
+      return { ...current, scenes, production: changed ? reviseScript(production, linked) : production };
+    });
+  }
+  function dropDirectScene(value: Scene) {
+    const linked = project.production?.screenplay.scenes.some(item => item.id === value.id);
+    ask(`Delete “${value.name}”?`, linked ? 'This removes the scene from the screenplay and timeline. Undo can restore it.' :
+      'This removes the scene and its timeline. Undo can restore it.', () => edit(current => {
+      const scenes = current.scenes.filter(item => item.id !== value.id);
+      const production = current.production;
+      if (!production) return { ...current, scenes };
+      const script = production.screenplay.scenes.filter(item => item.id !== value.id);
+      const updated = script.length !== production.screenplay.scenes.length ? reviseScript(production, script) : production;
+      return { ...current, scenes, production: { ...updated, graph: updated.graph.filter(item => item.sceneId !== value.id) } };
+    }));
+  }
   function showDialog(value: Dialog) { pause(); setDialog(value); }
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
-      if (dialog || (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,button,[role=button],[contenteditable=true]'))) return;
-      if (event.code === 'Space') { event.preventDefault(); void play(); }
+      if (dialog || (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,button,[role=button],[role=separator],[contenteditable=true]'))) return;
+      if (workspace === 'direct' && event.code === 'Space') { event.preventDefault(); void play(); }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); persist(undefined, true); }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); run(() => event.shiftKey ? useStudio.getState().redo() : useStudio.getState().undo()); }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') { event.preventDefault(); duplicateSelection(); }
-      if (event.key === 'Delete' || event.key === 'Backspace') { if (selection) { event.preventDefault(); removeSelection(); } }
+      if (workspace === 'direct' && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') { event.preventDefault(); duplicateSelection(); }
+      if (workspace === 'direct' && (event.key === 'Delete' || event.key === 'Backspace')) { if (selection) { event.preventDefault(); removeSelection(); } }
       if (event.key === 'Escape') { select(null); setFocus(false); }
       if (arrange && selection && selection.kind !== 'clip' && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
         event.preventDefault(); const step = event.shiftKey ? 10 : 1;
@@ -386,27 +539,61 @@ export default function App() {
   if (dialog === 'clip') content = <AddClipDialog scene={scene} actors={actorNames} time={time.current.local} request={requestedClip} close={close} add={addClip} audio={showAudio}/>;
   if (dialog === 'audio') content = <AudioDialog scene={scene} actors={actorNames} request={requestedAudio} account={account} add={addClip} close={close}/>;
   if (dialog === 'export') content = <ExportDialog project={project} initialFormat={format} initialSubtitles={subtitles} close={close}/>;
-  if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={() => openProject(makeProject(), true)} open={openProject} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={() => openProject(exampleDirector.example(), true)}/>;
+  if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value => { setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); setScriptTarget({}); openProject(value); }} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
   if (dialog === 'scenes') content = <ScenesDialog scenes={project.scenes} active={scene.id} close={close} open={switchScene} savePreset={saveWorld}
     add={() => { if (project.scenes.length >= 30) { tell('A project can contain up to 30 scenes.', true); return; } const value = makeScene(); edit(current => ({ ...current, scenes: [...current.scenes, { ...value, name: `Scene ${String(current.scenes.length + 1).padStart(2, '0')} · ${value.name}` }] })); switchScene(value); }}
     copy={value => edit(current => ({ ...current, scenes: current.scenes.flatMap(item => item.id === value.id ? [item, duplicateScene(item)] : [item]) }))}
-    reorder={(id, direction) => edit(current => { const scenes = [...current.scenes], index = scenes.findIndex(item => item.id === id); [scenes[index], scenes[index + direction]] = [scenes[index + direction], scenes[index]]; return { ...current, scenes }; })}
-    drop={value => ask(`Delete “${value.name}”?`, 'This removes the scene and its timeline. Undo can restore it.', () => edit(current => ({ ...current, scenes: current.scenes.filter(item => item.id !== value.id) })))}/>;
+    reorder={reorderDirectScene} drop={dropDirectScene}/>;
+  if (dialog === 'ai') content = <Modal title="AI settings" description="Connect an OpenRouter key for brainstorming, screenwriting and directing. Your key stays in this tab and requests go directly to OpenRouter." close={close}>
+    <form onSubmit={event => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const key = String(data.get('key') ?? '').trim() || personalModel?.key;
+      if (!key) { tell('Enter an OpenRouter API key.', true); return; }
+      setPersonalModel({ key, model: String(data.get('model') ?? '').trim() || 'openrouter/free' });
+      close();
+    }}>
+      <div className="dialog-fields">
+        <label className="field">OpenRouter API key<input name="key" type="password" autoComplete="off" spellCheck={false} maxLength={250} placeholder={personalModel ? 'Session key connected' : 'sk-or-…'}/></label>
+        <label className="field">Model<input name="model" defaultValue={personalModel?.model ?? 'openrouter/free'} maxLength={150}/></label>
+      </div>
+      <footer className="modal-footer">{personalModel && <button type="button" className="quiet" onClick={() => { setPersonalModel(null); close(); }}>Disconnect</button>}
+        <span className="spacer"/><button className="primary" type="submit">Use for this session</button></footer>
+    </form>
+  </Modal>;
   if (dialog === 'account') content = <AccountDialog available={cloudEnabled} account={account} login={login} logout={logout} close={close}/>;
   if (dialog === 'help') content = <HelpDialog close={close} demo={() => openProject(exampleDirector.example(), true)}/>;
   if (dialog === 'director') content = <DirectorDialog close={close} example={() => openProject(exampleDirector.example(), true)} generate={account && import.meta.env.VITE_HOSTED_DIRECTOR === 'true' ? async story => openProject(await hostedDirector(account, speechProvider(account)).generate!(story), true) : undefined}/>;
   if (dialog === 'dependencies' && dependentObjectId) content = <ObjectDependenciesDialog scene={scene} objectId={dependentObjectId} actorNames={actorNames} close={close} confirm={confirmObjectDeletion}/>;
   if (dialog === 'confirm' && confirm) content = <Modal title={confirm.title} description={confirm.text} close={close}><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="danger" onClick={() => { close(); confirm.run(); }}>Confirm</button></footer></Modal>;
 
-  return <div className={`studio-shell ${focus ? 'focus-mode' : ''}`}>
+  return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''}`}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
       <div className="project-controls"><button className="quiet project-button" onClick={() => showDialog('projects')}><FolderOpen size={17}/><span>Projects</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label><span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
-      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title="Story director" onClick={() => showDialog('director')}><Sparkles size={17}/></IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
+      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => {
+        const value = theme === 'dark' ? 'light' : 'dark'; setTheme(value); localStorage.setItem('toonroom.theme', value);
+      }}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
     </header>
-    <nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button></nav>
-    <main className={`workspace mobile-${mobilePanel}`}>
-      <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary} characters={project.characters} scene={scene} newCharacter={() => editCharacter()} editCharacter={editCharacter} addActor={addActor} setWorld={setWorld} uploadWorld={uploadWorld} addProp={addObject} uploadProp={uploadProp} addAction={action => showClip('body', action)} addSound={addSound} dialogue={() => showAudio('dialogue')} audio={() => showAudio('audio')}/>{library === 'Worlds' && !!worlds.length && <div className="saved-worlds"><h3>Saved worlds</h3>{worlds.map(item => <button className="quiet full" key={item.name} onClick={() => setWorld(item.environment, item.objects, item.backgroundImage)}>{item.name}</button>)}</div>}</div>
+    <nav className="filmmaking-nav" aria-label="Filmmaking workspaces">
+      <button className={workspace === 'create' ? 'active' : ''} aria-current={workspace === 'create' ? 'page' : undefined} onClick={() => switchWorkspace('create')}>Create</button>
+      <button className={workspace === 'write' ? 'active' : ''} aria-current={workspace === 'write' ? 'page' : undefined} onClick={() => openScript(scene.id)}>Write</button>
+      <button className={workspace === 'direct' ? 'active' : ''} aria-current={workspace === 'direct' ? 'page' : undefined} onClick={() => switchWorkspace('direct')}>Direct</button>
+      <span className="spacer"/>
+      <button onClick={() => showDialog('ai')}><Sparkles size={15}/>AI settings</button>
+      {workspace === 'direct' && <button className={directorOpen ? 'active' : ''} aria-pressed={directorOpen} onClick={() => { setMobilePanel('inspector'); setDirectorOpen(value => !value); }}><Sparkles size={15}/>Director</button>}
+    </nav>
+    <Suspense fallback={<main className="film-empty" role="status">Opening workspace…</main>}>
+    {workspace === 'create' && project.production && <StoryStudio key={project.id} project={project} production={project.production} update={updateProduction}
+      ai={ai} write={draft => openScript(undefined, undefined, draft)} loadExample={openRentExample}/>}
+    {workspace === 'write' && project.production && <ScreenplayStudio key={project.id + (scriptTarget.sceneId ?? '') + (scriptTarget.lineId ?? '')}
+      project={project} production={project.production} update={updateProduction} ai={ai} busy={compiling}
+      initialScene={scriptTarget.sceneId} initialLine={scriptTarget.lineId} autoDraft={scriptTarget.autoDraft}
+      approve={() => updateProduction(approveScript)} generate={() => { const current = useStudio.getState().project; void compile(current, current); }}/> }
+    </Suspense>
+    {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button></nav>
+    <main className={`workspace mobile-${mobilePanel}`} style={{ '--asset-width': `${assetWidth}px`, '--inspector-width': `${inspectorWidth}px` } as CSSProperties}>
+      <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary} characters={project.characters} scene={scene} newCharacter={() => editCharacter()} editCharacter={editCharacter} addActor={addActor} setWorld={setWorld} uploadWorld={uploadWorld} addProp={addObject} uploadProp={uploadProp} addAction={action => showClip(action === 'walk' || action === 'run' ? 'movement' : 'body', action)} addSound={addSound} dialogue={() => showAudio('dialogue')} audio={() => showAudio('audio')}/>{library === 'Worlds' && !!worlds.length && <div className="saved-worlds"><h3>Saved worlds</h3>{worlds.map(item => <button className="quiet full" key={item.name} onClick={() => setWorld(item.environment, item.objects, item.backgroundImage)}>{item.name}</button>)}</div>}</div>
       <section className="stage-panel" aria-label="Studio stage">
         <header className="stage-heading"><div><span className="stage-kicker"><i/> SCENE PREVIEW</span><button className="scene-title" onClick={() => showDialog('scenes')}>{scene.name}<ChevronDown size={14}/></button></div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
         <div className="viewer"><Stage project={project} scene={scene} time={time} playing={playing} edit={arrange} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
@@ -418,9 +605,15 @@ export default function App() {
         }}/></div>
         <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock(scene.duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={scene.duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
       </section>
-      <Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality}/>
+      {directorOpen ? <DirectorPanel key={scene.id} project={project} scene={scene} selection={selection} getTime={() => time.current.local}
+        ai={ai} busy={compiling} write={openScript} commit={commitDirection} toggleLock={toggleClipLock}/> : <Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality}/>}
+      <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
+      <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>
-    <Timeline scene={scene} names={actorNames} selection={selection} select={select} seek={seek} change={patchClip} add={showClip} remove={removeSelection} duplicate={duplicateSelection} compact={compact} onCompact={() => setCompact(value => !value)}/>
+    <Timeline scene={scene} names={actorNames} selection={selection} select={select} seek={seek} change={patchClip} add={showClip} remove={removeSelection} duplicate={duplicateSelection} compact={compact} onCompact={() => setCompact(value => !value)}/></>}
+    <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
+      const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
+    }}/>
     {notice && <div className={`toast ${notice.error ? 'toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{!notice.error && <Check size={16}/>}<span>{notice.message}</span><IconButton title="Dismiss notice" onClick={() => setNotice(null)}><X size={14}/></IconButton></div>}
     {content}
   </div>;

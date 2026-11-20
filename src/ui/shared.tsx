@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { X, ChevronDown, Armchair, BookOpen, DoorOpen, LampFloor, Monitor, Coffee, Smartphone, Sprout, Mic, PanelTop, Table2, Store, Cable, Sofa, UserRound, MoveRight, Activity, Smile, AudioLines, Music2, Clapperboard, Blend, Image } from 'lucide-react';
+import { X, ChevronDown, Armchair, BookOpen, DoorOpen, LampFloor, Monitor, Coffee, Smartphone, Sprout, Mic, PanelTop, Table2, Store, Cable, Sofa, UserRound, MoveRight, Activity, Smile, AudioLines, Music2, Clapperboard, Blend, Image, Eye, Hand } from 'lucide-react';
 import { label, shotLabel, type Character, type Clip } from '../engine/schema.ts';
 import type { Format } from '../engine/renderer.ts';
 
@@ -25,12 +25,14 @@ export function Avatar({ character: c, large = false }: { character: Character; 
   </span>;
 }
 export const propIcon = { sofa: Sofa, chair: Armchair, table: Table2, desk: Table2, door: DoorOpen, window: PanelTop, television: Monitor, lamp: LampFloor, cup: Coffee, book: BookOpen, phone: Smartphone, plant: Sprout, microphone: Mic, streetlight: Cable, counter: Store, image: Image };
-export const trackIcon = { actors: UserRound, movement: MoveRight, body: Activity, face: Smile, dialogue: AudioLines, audio: Music2, camera: Clapperboard, transition: Blend };
+export const trackIcon = { actors: UserRound, movement: MoveRight, body: Activity, face: Smile, gaze: Eye, props: Hand, dialogue: AudioLines, audio: Music2, camera: Clapperboard, transition: Blend };
 export const formats: Format[] = ['16:9', '9:16', '1:1'];
 export const clipLabel = (clip: Clip, names: Record<string, string> = {}) => {
   switch (clip.track) {
     case 'actors': return names[clip.actor] ?? 'Actor';
-    case 'movement': return `${names[clip.actor] ?? 'Actor'} moves`;
+    case 'movement': return `${names[clip.actor] ?? 'Actor'} ${clip.gait === 'run' ? 'runs' : clip.gait === 'walk' ? 'walks' : 'moves'}`;
+    case 'gaze': return 'Look at ' + (names[clip.target] ?? clip.target);
+    case 'props': return label(clip.interaction) + ' ' + clip.target;
     case 'body': return label(clip.action);
     case 'face': return label(clip.expression);
     case 'dialogue': return clip.text || 'Recorded dialogue';

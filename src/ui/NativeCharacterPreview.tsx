@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { animations, gaitLeg, sample, viewForward } from '../engine/animation.ts';
 import { sampleViseme } from '../engine/visemes.ts';
 import { facialPerformance } from '../engine/facialAnimation.ts';
 import type { Action, Character, Expression, View } from '../engine/schema.ts';
@@ -40,9 +41,21 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const left = -24 * width * c.thickness;
   const right = 24 * width * c.thickness;
   const eyeY = headY - 5;
-  const faceShift = q ? 8 : profile ? 16 : 0;
+  const faceShift = q ? 8 * viewForward(view) : profile ? 16 : 0;
   const noseX = faceShift + (profile ? 13 : 0);
-  const animated = ['walk', 'run', 'wave', 'jump', 'celebrate', 'talk', 'laugh'].includes(action);
+  const animated = ['wave', 'jump', 'celebrate', 'talk', 'laugh'].includes(action);
+  const moving = action === 'walk' || action === 'run';
+  const forward = viewForward(view);
+  const lift = moving ? sample(animations[action], elapsed).lift : 0;
+  const legs = (['left', 'right'] as const).map((side, index) => {
+    const upper = { x: (index ? 15 : -15) * width, y: shirtBottom };
+    const scale = -shirtBottom / 76;
+    const [knee, foot] = moving
+      ? gaitLeg(upper, scale, elapsed, action, side, forward, lift)
+      : [{ x: upper.x + (index ? 6 : -5), y: -29 }, { x: upper.x + (index ? 3 : -3), y: -3 }];
+    const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
+    return { side, foot, shoe, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
+  });
   const mouthOpen = !speech || (speech.shape !== 'closed' && speech.shape !== 'rest')
     ? emotion === 'surprised' || emotion === 'excited' || emotion === 'happy' || mood.mouthOpen > .16
     : false;
@@ -65,12 +78,12 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     <path d="M 0 443 H 540" stroke="#b99ac7" strokeWidth="3"/>
     <ellipse cx="270" cy="443" rx={37 * scale} ry="7" fill="#382d45" opacity=".4"/>
     <g transform={'translate(270 443) scale(' + (flip ? -scale : scale) + ' ' + scale + ')'}>
-      <g className={animated ? 'native-actor native-actor-' + action : ''}>
-        <path d={'M -15 ' + shirtBottom + ' Q -20 -28 -18 -3'} stroke="#211e33" strokeWidth={13 * c.thickness} strokeLinecap="round" fill="none" className="native-leg-left"/>
-        <path d={'M 15 ' + shirtBottom + ' Q 21 -31 18 -3'} stroke="#211e33" strokeWidth={13 * c.thickness} strokeLinecap="round" fill="none" className="native-leg-right"/>
-        <path d={'M -15 ' + shirtBottom + ' Q -20 -28 -18 -3 M 15 ' + shirtBottom + ' Q 21 -31 18 -3'} stroke={c.pants} strokeWidth={9 * c.thickness} strokeLinecap="round" fill="none"/>
-        <ellipse cx="-21" cy="-1" rx="17" ry="7" fill={c.shoes} stroke="#242037" strokeWidth="3"/>
-        <ellipse cx="21" cy="-1" rx="17" ry="7" fill={c.shoes} stroke="#242037" strokeWidth="3"/>
+      <g className={animated ? 'native-actor native-actor-' + action : ''} transform={moving ? `translate(0 ${-lift})` : undefined}>
+        {legs.map(({ side, path, foot, shoe }) => <g key={side}>
+          <path d={path} stroke="#211e33" strokeWidth={13 * c.thickness} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          <path d={path} stroke={c.pants} strokeWidth={9 * c.thickness} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          <ellipse cx={foot.x + shoe} cy={foot.y + 1} rx={13 * c.thickness} ry="6.5" fill={c.shoes} stroke="#242037" strokeWidth="3"/>
+        </g>)}
         <path d={'M ' + (left + 2) + ' ' + shoulderY + ' Q ' + (left - 19) + ' ' + (shoulderY + 19) + ' ' + (left - 12) + ' ' + (shoulderY + 44)} stroke={c.skin} strokeWidth={12 * c.thickness} fill="none" strokeLinecap="round" className="native-arm-left"/>
         <path d={'M ' + (right - 2) + ' ' + shoulderY + ' Q ' + (right + 19) + ' ' + (shoulderY + 19) + ' ' + (right + 13) + ' ' + (shoulderY + 44)} stroke={c.skin} strokeWidth={12 * c.thickness} fill="none" strokeLinecap="round" className="native-arm-right"/>
         <path d={'M ' + (left + 2) + ' ' + shoulderY + ' Q ' + (left - 16) + ' ' + (shoulderY + 17) + ' ' + (left - 15) + ' ' + (shoulderY + 25)} stroke={c.shirt} strokeWidth={15 * c.thickness} fill="none" strokeLinecap="round"/>
