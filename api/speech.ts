@@ -1,4 +1,4 @@
-import { authorize } from '../server/authorize.ts';
+import { authorize } from '../server/authorize.js';
 
 async function post(request: Request) {
   const key = process.env.SPEECH_API_KEY;

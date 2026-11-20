@@ -1,5 +1,5 @@
-import { directorSchema, directorJSONSchema } from '../src/engine/directorSchema.ts';
-import { authorize } from '../server/authorize.ts';
+import { directorSchema, directorJSONSchema } from '../src/engine/directorSchema.js';
+import { authorize } from '../server/authorize.js';
 
 async function post(request: Request) {
   const key = process.env.DIRECTOR_API_KEY, model = process.env.DIRECTOR_MODEL;
