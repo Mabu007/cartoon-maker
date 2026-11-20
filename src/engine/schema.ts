@@ -53,11 +53,15 @@ const FaceClip = z.strictObject({ ...time, track: z.literal('face'), actor: id, 
 export const audioAsset = z.string().regex(/^(?:builtin:[a-z0-9-]+|asset:[a-zA-Z0-9-]+)$/);
 const sound = { asset: audioAsset, volume: num(0, 2), muted: z.boolean(), offset: num(0, 180).default(0),
   fadeIn: num(0, 180).optional(), fadeOut: num(0, 180).optional(), loop: z.boolean().optional() };
-const mouthCues = z.array(z.strictObject({ start: num(0, 180), end: num(0, 180), shape: z.enum(['rest', 'closed', 'bite', 'wide', 'open', 'round', 'pucker', 'tongue']) })).max(3000);
+const mouthCues = z.array(z.strictObject({ start: num(0, 180), end: num(0, 180), shape: z.enum(['rest', 'closed', 'bite', 'wide', 'open', 'round', 'pucker', 'tongue']), strength: num(0, 1).optional() })).max(3000);
+export const LipSyncMetadata = z.strictObject({
+  source: z.enum(['rhubarb', 'estimated']), engine: z.string().min(1).max(72),
+  cacheKey: z.string().regex(/^[a-f0-9]{64}$/).optional(), analyzedDuration: num(.1,180)
+});
 export const DialogueVersion = z.strictObject({ asset: audioAsset, text: z.string().max(1000),
-  length: num(.1,180), offset: num(0,180), voicePreset: VoicePreset.optional(), visemes: mouthCues.optional() });
+  length: num(.1,180), offset: num(0,180), voicePreset: VoicePreset.optional(), visemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
 export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal('dialogue'), actor: id, text: z.string().max(1000),
-  voicePreset: VoicePreset.optional(), versions: z.array(DialogueVersion).max(5).optional(), visemes: mouthCues.optional() });
+  voicePreset: VoicePreset.optional(), versions: z.array(DialogueVersion).max(5).optional(), visemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
 const AudioClip = z.strictObject({ ...time, ...sound, track: z.literal('audio'), name: z.string().min(1).max(80) });
 const MusicClip = z.strictObject({ ...time, ...sound, track: z.literal('music'), name: z.string().min(1).max(80) });
 export const CameraShot = z.strictObject({ ...time, track: z.literal('camera'), shot: z.enum(shots), focus: id.optional(), transition: z.enum(['cut', 'glide']) });

@@ -98,10 +98,14 @@ export function evaluate(scene: Scene, time: number) {
     }
     const face = latest(clips.filter((clip): clip is Extract<Clip, { track: 'face' }> => clip.track === 'face' && active(clip, t)));
     if (face) expression = face.expression;
-    const spoken = sounds.find(clip => clip.track === 'dialogue' && clip.actor === actor.id && !clip.muted);
-    const viseme = spoken?.track === 'dialogue'
-      ? spoken.visemes?.length ? sampleTimedViseme(spoken.visemes, t - spoken.start + spoken.offset) : sampleViseme(spoken.text, spoken.length, t - spoken.start)
-      : undefined;
+    const spoken = latest(sounds.filter((clip):clip is Extract<Clip,{track:'dialogue'}> =>
+      clip.track==='dialogue' && clip.actor===actor.id && !clip.muted));
+    // sceneTime is derived from Web Audio's currentTime in preview or the frame
+    // timestamp in export. A dialogue offset shifts source *audio* time only.
+    const audioTime = spoken ? t - spoken.start + spoken.offset : -1;
+    const viseme = spoken?.visemes?.length
+      ? sampleTimedViseme(spoken.visemes,audioTime)
+      : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
     if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? scene.objects.find(item => item.id === propCue.target) : undefined;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,

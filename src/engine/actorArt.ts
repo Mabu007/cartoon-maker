@@ -79,7 +79,8 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
   face.position.set(r.head.x, r.head.y);
   face.angle = r.angle;
   face.scale.set(c.head);
-  const mood = facialPerformance(time, actorId, action, expression, speaking ? Math.max(amplitude, .15 + .62 * Math.abs(Math.sin(time * 13.7 + actorId.length))) : amplitude, viseme, focus);
+  // Never add synthetic random jaw motion over audio-aligned silence.
+  const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus);
   if (action === 'blink' && actionTime < .22) mood.blink = Math.max(mood.blink, 1 - Math.abs(actionTime - .11) / .11);
   drawFace(face, c, art, mood);
 }
