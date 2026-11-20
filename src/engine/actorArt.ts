@@ -1,6 +1,7 @@
 import type { Graphics } from 'pixi.js';
 import { armIK, rig, type Point } from './animation.ts';
-import { ellipse, INK, line, poly, rect, segment } from './art.ts';
+import { ellipse, INK, line, rect, segment } from './art.ts';
+import { drawIllustratedHair, drawIllustratedHand, drawIllustratedHead, drawIllustratedTorso, shade } from './illustration.ts';
 import type { Character, Expression, JointPose, Prop, View } from './schema.ts';
 
 export const viewArt: Record<View, { width: number; face: number; far: boolean; rear: boolean; profile: boolean }> = {
@@ -23,7 +24,9 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
     const [elbow, hand] = carrying ? armIK(joint.shoulder, { x: r.head.x + (art.rear ? -26 : 45), y: r.head.y + 43 }, 28 * c.arms, 28 * c.arms, 1) : [joint.elbow, joint.hand];
     stroke(g, [joint.shoulder, elbow, hand], limbWidth, c.skin);
     stroke(g, [joint.shoulder, { x: (joint.shoulder.x + elbow.x) / 2, y: (joint.shoulder.y + elbow.y) / 2 }], limbWidth + 5, c.shirt);
-    ellipse(g, hand.x, hand.y, limbWidth * .65, limbWidth * .74, c.skin, 2.7);
+    drawIllustratedHand(g, hand.x, hand.y, limbWidth, c.skin);
+    // Gentle curved sleeve-cuff instead of a rigid straight seam.
+    segment(g, (joint.shoulder.x + elbow.x) / 2 - 3, (joint.shoulder.y + elbow.y) / 2, (joint.shoulder.x + elbow.x) / 2 + 3, (joint.shoulder.y + elbow.y) / 2 + 2, shade(c.shirt, -.27), 1.5);
     if (carrying && held) {
       const x = hand.x + 7, y = hand.y + 9;
       if (held.kind === 'cup') {
@@ -40,18 +43,12 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
     stroke(g, [joint.upper, joint.knee, joint.foot], limbWidth + 1, c.pants);
     const shoeDir = view === 'front' || view === 'back' ? (side === 'left' ? -4 : 4) : (art.rear ? -5 : 5);
     ellipse(g, joint.foot.x + shoeDir, joint.foot.y + 1, 12 * c.thickness, 6.5, c.shoes, 2.7);
-    segment(g, joint.foot.x - 4 + shoeDir, joint.foot.y + 4, joint.foot.x + 7 + shoeDir, joint.foot.y + 4, '#967681', 1.3);
+    segment(g, joint.foot.x - 7 + shoeDir, joint.foot.y + 4, joint.foot.x + 9 + shoeDir, joint.foot.y + 4, shade(c.shoes, -.27), 1.7);
+    segment(g, joint.foot.x + shoeDir - 5, joint.foot.y - 2, joint.foot.x + shoeDir + 2, joint.foot.y - 3, shade(c.shoes, .36), 1.2);
   };
   leg('left'); leg('right'); arm('left');
-  stroke(g, [r.hip, r.neck], (35 + (c.outfit !== 'tee' ? 3 : 0)) * art.width * c.thickness, c.shirt);
+  drawIllustratedTorso(g, c, art, r.neck, r.hip);
   const top = r.neck.y + 8, midX = r.neck.x;
-  if (c.outfit === 'hoodie') {
-    poly(g, [midX - 16, top - 10, midX + 16, top - 10, midX + 8, top + 8, midX - 8, top + 8], c.shirt, 2.3);
-    if (!art.rear) { segment(g, midX - 5, top + 8, midX - 7, top + 23, INK, 1.8); segment(g, midX + 5, top + 8, midX + 7, top + 23, INK, 1.8); }
-  } else if (c.outfit === 'jacket' && !art.rear) {
-    segment(g, midX, top, r.hip.x, r.hip.y + 6, INK, 2);
-    segment(g, midX + 4, top + 14, midX + 11, top + 13, '#eee0d4', 2);
-  }
   if (c.accessory === 'chain' && !art.rear) {
     line(g, [{ x: midX - 12, y: top }, { x: midX, y: top + 17 }, { x: midX + 12, y: top }], '#f3ca65', 3);
     ellipse(g, midX, top + 17, 3.6, 3.6, '#f3ca65', 1.2);
@@ -81,17 +78,9 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], expressi
     if (c.earrings && visibleEarring) { ellipse(g, x, y + 8, 4.3, 6, '#f4cb65', 1.8); ellipse(g, x, y + 7.1, 1.8, 2.5, c.skin); }
   };
   if (!profile) ear(w - 1, 8, false);
-  if (c.shape === 'square') rect(g, -w, -h, w * 2, h * 2, c.skin, 26, 3.9);
-  else ellipse(g, 0, 0, w, h, c.skin, 3.9);
+  drawIllustratedHead(g, c, art);
   ear(profile ? -8 : -w + 2, 8, true);
-  if (c.hair !== 'bald') {
-    g.moveTo(-w + 2, -3).bezierCurveTo(-w - 6, -h * .76, -w * .64, -h - 5, 0, -h - 4).bezierCurveTo(w * .73, -h - 5, w + 5, -h * .57, w - 1, -12);
-    if (rear) g.bezierCurveTo(w - 2, 38, -w + 4, 46, -w + 2, -3);
-    else g.bezierCurveTo(w * .66, -h * .72, -w * .38, -h * .72, -w + 2, -3);
-    g.closePath().fill(c.hairColor).stroke({ color: INK, width: 3, join: 'round' });
-    if (c.hair === 'locs') for (let i = 0; i < 5; i++) rect(g, -w + 8 + i * (w * 1.42 / 5), -h + 5, 10, 28 + (i % 2) * 9, c.hairColor, 5, 2);
-    if (c.hair === 'fade' && !rear) segment(g, -w + 9, -20, -w + 19, -28, '#625063', 2);
-  }
+  drawIllustratedHair(g, c, art, w, h);
   if (c.hat === 'beanie') {
     ellipse(g, 0, -h + 3, w + 2, 25, c.shirt, 3);
     rect(g, -w - 2, -h + 2, w * 2 + 4, 13, c.shirt, 4, 3);
@@ -108,6 +97,7 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], expressi
     const width = narrow ? 5.2 : 7.4;
     ellipse(g, x, eyeY, width, height, '#fff1dc', 1.6);
     ellipse(g, x + (art.face ? 1.7 : 0), eyeY + 1, 2.65, Math.max(2.6, height * .54), INK);
+    ellipse(g, x - 1, eyeY - 2.5, 1.45, 1.65, '#ffffff');
     const slant = expression === 'angry' ? (x < face ? 5 : -5) : expression === 'sad' ? (x < face ? -4 : 4) : 0;
     const browY = eyeY - height - (expression === 'surprised' ? 7 : 4);
     g.moveTo(x - width, browY).quadraticCurveTo(x, browY - (c.brows === 'arched' ? 5 : 1), x + width, browY + slant).stroke({ color: INK, width: c.brows === 'bold' ? 3.7 : 2.6, cap: 'round' });
@@ -119,6 +109,7 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], expressi
   const noseWidth = c.nose === 'long' ? 7 : c.nose === 'flat' ? 6 : 4;
   ellipse(g, noseX, 8, noseWidth, c.nose === 'long' ? 6 : 3.4, c.skin, 1.7);
   const mouthX = profile ? face + 3 : face;
+  if (!profile && expression === 'happy') { ellipse(g, face - 31, 16, 5.2, 2.4, shade(c.skin, .15)); ellipse(g, face + 30, 16, 5.2, 2.4, shade(c.skin, .15)); }
   if (c.beard === 'full') ellipse(g, mouthX, 29, 19, 12, c.hairColor, 2);
   else if (c.beard === 'goatee') ellipse(g, mouthX, 36, 10, 5.2, c.hairColor, 1.5);
   const mouthY = 24;

@@ -5,19 +5,21 @@ import { actions, expressions, label, uid, views, type Action, type Character, t
 import { characters } from '../engine/presets.ts';
 import { Avatar, IconButton, Modal, Select } from './shared.tsx';
 
-const sliders = { height: 'Height', head: 'Head size', torso: 'Torso length', arms: 'Arm length', legs: 'Leg length', thickness: 'Limb width', eyeSpacing: 'Eye spacing' } as const;
+const sliders = { height: 'Height', head: 'Head size', thickness: 'Build', torso: 'Torso length', arms: 'Arm length', legs: 'Leg length', eyeSpacing: 'Eye spacing' } as const;
+const skinTones = ['#f2c49b', '#d89b70', '#b97550', '#925b40', '#76452f', '#503123'];
 const colors = { skin: 'Skin tone', shirt: 'Top', pants: 'Trousers', hairColor: 'Hair color', shoes: 'Shoes' } as const;
 const styles = {
   shape: ['round', 'oval', 'square'], eyes: ['round', 'relaxed', 'wide'], brows: ['arched', 'straight', 'bold'], nose: ['button', 'long', 'flat'], mouth: ['smile', 'line', 'full'], ears: ['round', 'small', 'wide'],
-  hair: ['fade', 'puff', 'locs', 'buzz', 'bald'], beard: ['none', 'goatee', 'full'], hat: ['none', 'cap', 'beanie'], outfit: ['tee', 'hoodie', 'jacket'], accessory: ['none', 'chain', 'scarf']
+  hair: ['fade', 'puff', 'locs', 'buzz', 'bald', 'afro', 'braids', 'curls'], beard: ['none', 'goatee', 'full'], hat: ['none', 'cap', 'beanie'], outfit: ['tee', 'hoodie', 'jacket', 'sweater', 'uniform'], accessory: ['none', 'chain', 'scarf']
 } as const;
-const styleGroups = { Body: ['shape'], Face: ['eyes', 'brows', 'nose', 'mouth', 'ears'], Style: ['hair', 'beard', 'hat', 'outfit', 'accessory'] } as const;
+const styleGroups = { Hair: ['hair', 'beard', 'hat'], Face: ['shape', 'eyes', 'brows', 'nose', 'mouth', 'ears'], Outfit: ['outfit', 'accessory'], Body: [] } as const;
 const viewLabels: Record<View, string> = { front: 'Front', 'three-quarter': '¾ Front', side: 'Side', 'back-quarter': '¾ Back', back: 'Back' };
 export function CharacterFactory({ source, save, close, remove }: { source?: Character; save: (value: Character) => void; close: () => void; remove: (id: string) => void }) {
   const [draft, setDraft] = useState<Character>(() => source ?? { ...characters[0], id: uid(), name: 'New character' });
-  const [section, setSection] = useState<keyof typeof styleGroups>('Style'), [view, setView] = useState<View>('three-quarter');
+  const [section, setSection] = useState<keyof typeof styleGroups>('Hair'), [view, setView] = useState<View>('three-quarter');
   const [action, setAction] = useState<Action>('idle'), [expression, setExpression] = useState<Expression>('neutral');
-  const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.42), [error, setError] = useState('');
+  const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.14), [error, setError] = useState('');
+  const [advanced, setAdvanced] = useState(false);
   const canvas = useRef<HTMLDivElement>(null);
   const frame = useRef({ draft, action, expression, view, flip, scale });
   frame.current = { draft, action, expression, view, flip, scale };
@@ -35,8 +37,8 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         const time = ((now - reset) / 1000) % 8;
         if (Math.floor(time * 24) !== previous) {
           previous = Math.floor(time * 24);
-          const scene: Scene = { id: 'character-preview', name: 'Character', environment: 'Podcast studio', duration: 8, actors: [{ id: 'preview', characterId: draft.id, x: 480, y: 450, scale, rotation: 0, depth: 0, view, flip, expression }], objects: [], clips: [{ id: 'pose', track: 'body', layer: 'body', actor: 'preview', action, start: 0, length: 8 }, { id: 'expression', track: 'face', expression, actor: 'preview', start: 0, length: 8 }] };
-          renderer.draw(scene, [draft], time);
+          const scene: Scene = { id: 'character-preview', name: 'Character', environment: 'Podcast studio', duration: 8, actors: [{ id: 'preview', characterId: draft.id, x: 480, y: 458, scale, rotation: 0, depth: 0, view, flip, expression }], objects: [], clips: [{ id: 'pose', track: 'body', layer: 'body', actor: 'preview', action, start: 0, length: 8 }, { id: 'expression', track: 'face', expression, actor: 'preview', start: 0, length: 8 }] };
+          renderer.draw(scene, [draft], time, { characterPreview: true });
         }
         handle = requestAnimationFrame(animate);
       };
@@ -45,17 +47,30 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
     return () => { alive = false; cancelAnimationFrame(handle); dispose(); };
   }, []);
   const update = <K extends keyof Character>(key: K, value: Character[K]) => setDraft(item => ({ ...item, [key]: value }));
-  return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Design once. Direct from any angle." close={close}>
-    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas" ref={canvas}/><div className="factory-zoom"><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.8, n - .15))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.8, n + .15))}><Plus size={15}/></IconButton></div>
+  return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
+    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas" ref={canvas}/><div className="factory-zoom"><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
       <div className="segmented view-choice" aria-label="Character view">{views.map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{viewLabels[item]}</button>)}</div>
       <div className="field-row"><label>Preview action<Select aria="Preview action" value={action} onChange={setAction} options={actions}/></label><label>Expression<Select aria="Preview expression" value={expression} onChange={setExpression} options={expressions}/></label></div>
     </div><div className="factory-edit"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
-      <div className="preset-row" aria-label="Character presets">{characters.map(item => <button key={item.id} title={item.name} aria-label={`Use ${item.name} preset`} onClick={() => setDraft({ ...item, id: draft.id, name: draft.name })}><Avatar character={item}/></button>)}</div>
-      <div className="segmented">{(['Style', 'Body', 'Face'] as const).map(item => <button key={item} onClick={() => setSection(item)} className={item === section ? 'active' : ''}>{item}</button>)}</div>
-      <div className="factory-fields">{styleGroups[section].map(key => <label className="field" key={key}>{label(key)}<Select aria={label(key)} value={draft[key]} onChange={v => update(key, v)} options={styles[key]}/></label>)}
-      {section === 'Body' && Object.entries(sliders).filter(([key]) => key !== 'eyeSpacing').map(([key, title]) => { const id = key as keyof typeof sliders; return <label className="field slider" key={key}>{title}<input type="range" min={id === 'thickness' ? .65 : .75} max={id === 'head' ? 1.35 : id === 'thickness' ? 1.45 : 1.3} step={.01} value={draft[id]} onChange={event => update(id, Number(event.target.value))}/></label>; })}
-      {section === 'Face' && <><label className="field slider">Eye spacing<input type="range" min={.65} max={1.4} step={.01} value={draft.eyeSpacing} onChange={e => update('eyeSpacing', Number(e.target.value))}/></label><label className="check"><input type="checkbox" checked={draft.glasses} onChange={e => update('glasses', e.target.checked)}/> Glasses</label><label className="check"><input type="checkbox" checked={draft.earrings} onChange={e => update('earrings', e.target.checked)}/> Earring</label></>}
-      {section === 'Style' && <div className="color-row">{Object.entries(colors).map(([key, title]) => <label key={key} title={title}><input type="color" aria-label={title} value={draft[key as keyof typeof colors]} onChange={e => update(key as keyof typeof colors, e.target.value)}/><span>{title}</span></label>)}</div>}</div>
+      <div className="factory-section-heading"><span>Start with a character</span><button type="button" className="surprise-button" onClick={() => {
+        const item = characters[Math.floor(Math.random() * characters.length)];
+        setDraft(current => ({ ...item, id: current.id, name: current.name }));
+      }}>Surprise me ✨</button></div>
+      <div className="preset-row" aria-label="Character presets">{characters.map(item => <button key={item.id} type="button" title={item.name} aria-label={`Use ${item.name} preset`} onClick={() => setDraft({ ...item, id: draft.id, name: draft.name })}><Avatar character={item}/><span>{item.name}</span></button>)}</div>
+      <div className="segmented factory-categories">{(['Hair', 'Face', 'Outfit', 'Body'] as const).map(item => <button key={item} type="button" onClick={() => setSection(item)} className={item === section ? 'active' : ''}>{item}</button>)}</div>
+      <div className="factory-fields">
+        {styleGroups[section].map(key => <label className="field" key={key}>{label(key)}
+          {key === 'hair' || key === 'outfit' || key === 'shape'
+            ? <div className="choice-pills">{styles[key].map(value => <button type="button" className={draft[key] === value ? 'selected' : ''} key={value} onClick={() => update(key, value)}>{label(value)}</button>)}</div>
+            : <Select aria={label(key)} value={draft[key]} onChange={v => update(key, v)} options={styles[key]}/>}
+        </label>)}
+        {section === 'Body' && <><p className="factory-helper">Start with three simple proportions. Your character stays rigged at every size.</p>{(['height', 'head', 'thickness'] as const).map(id => <label className="field slider" key={id}>{sliders[id]}<input type="range" min={id === 'thickness' ? .65 : .75} max={id === 'head' ? 1.35 : id === 'thickness' ? 1.45 : 1.3} step={.01} value={draft[id]} onChange={e => update(id, Number(e.target.value))}/></label>)}</>}
+        {section === 'Face' && <div className="factory-toggle-row"><label className="check"><input type="checkbox" checked={draft.glasses} onChange={e => update('glasses', e.target.checked)}/> Glasses</label><label className="check"><input type="checkbox" checked={draft.earrings} onChange={e => update('earrings', e.target.checked)}/> Earrings</label></div>}
+        {section === 'Outfit' && <div className="color-row">{Object.entries(colors).filter(([key]) => key !== 'skin').map(([key, title]) => <label key={key} title={title}><input type="color" aria-label={title} value={draft[key as keyof typeof colors]} onChange={e => update(key as keyof typeof colors, e.target.value)}/><span>{title}</span></label>)}</div>}
+        <div className="factory-skin"><span>Skin tone</span><div className="tone-swatches">{skinTones.map(tone => <button key={tone} type="button" className={draft.skin.toLowerCase() === tone ? 'selected' : ''} style={{ backgroundColor: tone }} title={tone} aria-label={`Skin tone ${tone}`} onClick={() => update('skin', tone)}/>)}</div><label className="custom-tone">Custom <input type="color" aria-label="Custom skin tone" value={draft.skin} onChange={e => update('skin', e.target.value)}/></label></div>
+        {(section === 'Face' || section === 'Body') && <><button type="button" className="advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(value => !value)}>{advanced ? '− Hide advanced proportions' : '+ Advanced proportions'}</button>
+        {advanced && <div className="factory-advanced">{(section === 'Face' ? ['eyeSpacing'] : ['torso', 'arms', 'legs']).map(key => { const id = key as keyof typeof sliders; return <label className="field slider" key={key}>{sliders[id]}<input type="range" min={.65} max={id === 'eyeSpacing' ? 1.4 : 1.3} step={.01} value={draft[id]} onChange={event => update(id, Number(event.target.value))}/></label>; })}</div>}</>}
+      </div>
     </div></div>
     {error && <p className="form-error" role="alert">{error}</p>}
     <footer className="modal-footer">{source && <><IconButton title="Delete character" onClick={() => remove(source.id)}><Trash2 size={17}/></IconButton><button className="quiet" disabled={!draft.name.trim()} onClick={() => save({ ...draft, id: uid(), name: `${draft.name.trim().slice(0, 54)} copy` })}><Copy size={16}/> Duplicate</button></>}<span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!draft.name.trim()} onClick={() => save({ ...draft, name: draft.name.trim() })}><Save size={16}/> Save character</button></footer>

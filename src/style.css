@@ -1817,9 +1817,9 @@ select {
 }
 .factory-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 255px;
-  gap: 15px;
-  padding: 14px 15px;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 17px;
+  padding: 14px 16px;
 }
 .factory-preview {
   display: flex;
@@ -1831,7 +1831,7 @@ select {
   place-items: center;
   overflow: hidden;
   min-height: 160px;
-  height: min(330px, 39vh);
+  height: min(410px, 54vh);
   border: 1px solid #59456a;
   background: #15121e;
   border-radius: 9px;
@@ -1886,21 +1886,33 @@ select {
   margin-top: 0;
 }
 .factory-fields {
-  max-height: 268px;
+  max-height: 326px;
   overflow: auto;
   padding: 0 2px;
 }
 .preset-row {
   display: flex;
-  gap: 6px;
-  margin: 9px 0;
+  gap: 7px;
+  margin: 8px 0 13px;
+  padding: 3px 2px 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
 }
 .preset-row button {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  border-radius: 8px;
+  display: grid;
+  justify-items: center;
+  flex: 0 0 55px;
+  gap: 4px;
+  border: 1px solid #4c3d59;
+  background: #292235;
+  color: #dbcee9;
+  font-size: 10px;
+  padding: 5px 3px;
+  border-radius: 9px;
+  scroll-snap-align: start;
 }
+.preset-row button:hover { border-color: #c38ae5; background: #3c2e4b; }
 .preset-row button:hover .avatar {
   outline: 2px solid var(--accent);
 }
@@ -1937,6 +1949,28 @@ select {
   border: 0;
   padding: 0;
 }
+
+/* Character casting: curated visual presets first, technical controls second. */
+.factory-section-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:9px; font-size:12px; font-weight:700; color:#ece3f2; }
+.surprise-button { border:1px solid #715387; border-radius:999px; padding:5px 10px; background:#33233f; color:#ecc9ff; font-size:11px; font-weight:650; cursor:pointer; }
+.surprise-button:hover { background:#523565; }
+.factory-categories { margin:4px 0 12px; }
+.factory-helper { color:#b9afc5; font-size:11px; margin:6px 0 11px; line-height:1.45; }
+.choice-pills { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 10px; }
+.choice-pills button { border:1px solid #55415f; background:#211a2b; border-radius:8px; color:#c8bad6; font-size:11px; padding:7px 10px; cursor:pointer; }
+.choice-pills button.selected { color:#fff; background:#59326e; border-color:#bf7de1; box-shadow:inset 0 0 0 1px #b77edb55; }
+.choice-pills button:hover { border-color:#bb80d9; }
+.factory-toggle-row { display:flex; align-items:center; flex-wrap:wrap; gap:14px; padding:6px 0; }
+.factory-skin { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0 12px; color:#c7b8d8; font-size:11px; }
+.tone-swatches { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+.tone-swatches button { width:23px; height:23px; border-radius:50%; border:2px solid #261b2c; box-shadow:0 0 0 1px #655775; cursor:pointer; }
+.tone-swatches button.selected { outline:2px solid #dba0f5; outline-offset:2px; }
+.custom-tone { display:flex; gap:5px; align-items:center; cursor:pointer; }
+.custom-tone input { width:27px; height:25px; padding:0; background:transparent; border:0; cursor:pointer; }
+.advanced-toggle { display:block; padding:8px 0; margin-top:6px; border:0; background:none; color:#c48ae9; font-size:12px; cursor:pointer; text-align:left; }
+.factory-advanced { padding:8px 11px; margin-bottom:8px; border:1px dashed #574466; border-radius:9px; background:#211829; }
+.factory-edit { min-width:0; }
+
 @media (max-width: 1200px) {
   .workspace {
     grid-template-columns: 230px minmax(0, 1fr) 215px;
@@ -2267,7 +2301,7 @@ select {
     gap: 5px;
   }
   .factory-canvas {
-    height: 170px;
+    height: min(300px, 45vh);
   }
   .factory-fields {
     max-height: none;
