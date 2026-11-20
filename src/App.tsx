@@ -808,7 +808,16 @@ export default function App() {
     ask(`Delete “${item.name}”?`, 'This permanently removes the saved project.', () => void deleteSavedProject(item));
   }
   function updateProduction(change: (current: Production) => Production) {
-    edit(current => ({ ...current, production: change(current.production ?? startProduction(current)) }));
+    edit(current => {
+      const previous=current.production??startProduction(current);
+      const production=change(previous);
+      // The title users edit in Create is the same movie title they should
+      // later find in Projects. Keep both views in sync without renaming when
+      // unrelated story fields or screenplay lines change.
+      const title=production.bible.profile.title.trim();
+      const changed=title&&title!==previous.bible.profile.title;
+      return { ...current,production,...(changed?{name:title}:{}) };
+    });
   }
   function switchWorkspace(next: typeof workspace) {
     pause(); setFocus(false); setArrange(false); setDirectorPreview(undefined);
