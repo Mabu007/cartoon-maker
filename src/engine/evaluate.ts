@@ -1,8 +1,8 @@
 import { animations, blend, clamp, ease, mix, sample } from './animation.ts';
 import { anchors } from './presets.ts';
-import { HEIGHT, WIDTH, views, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
+import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
-type State = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; held?: Prop };
+type State = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action; speaking: boolean; held?: Prop };
 type Camera = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -25,13 +25,19 @@ export function evaluate(scene: Scene, time: number) {
     let { pose, lift } = idle;
     let expression = actor.expression;
     let held: Prop | undefined;
+    let action: Action = body?.action ?? 'idle';
     for (const clip of [body, gesture]) {
       if (!clip) continue;
       const isGesture = clip.layer === 'gesture';
-      const definition = animations[clip.action];
-      const offsets = clip.action === 'sit' && clip.start === 0 ? definition.duration : 0;
+      const target = clip.target ? scene.objects.find(item => item.id === clip.target) : undefined;
+      const supported = clip.action !== 'sit' || (target && anchors[target.kind]?.action === 'sit');
+      const activeAction: Action = supported ? clip.action : 'stand';
+      const definition = animations[activeAction];
+      if (!isGesture) action = activeAction;
+      else if (activeAction === 'talk' || activeAction === 'laugh' || activeAction === 'cry') action = activeAction;
+      const offsets = activeAction === 'sit' && clip.start === 0 ? definition.duration : 0;
       const next = sample(definition, t - clip.start + offsets);
-      const weight = clip.action === 'sit' || clip.action === 'stand' ? 1 : frameWeight(clip, t);
+      const weight = activeAction === 'sit' || activeAction === 'stand' ? 1 : frameWeight(clip, t);
       pose = blend(pose, next.pose, weight, isGesture);
       if (!isGesture) lift = mix(lift, next.lift, weight);
       if (definition.expression) expression = definition.expression;
@@ -40,9 +46,9 @@ export function evaluate(scene: Scene, time: number) {
         view = progression > .66 ? actor.view : progression > .33 ? 'side' : views[Math.max(0, views.indexOf(actor.view) - 1)];
         flip = progression > .66 ? !flip : flip;
       }
-      const object = scene.objects.find(item => item.id === clip.target);
+      const object = target;
       const anchor = object && anchors[object.kind];
-      if (object && anchor?.action === 'sit' && clip.action === 'sit') {
+      if (object && anchor?.action === 'sit' && activeAction === 'sit') {
         const amount = clip.start === 0 ? 1 : ease(clamp((t - clip.start) / .65));
         const angle = object.rotation * Math.PI / 180;
         x = mix(x, object.x + (anchor.x * Math.cos(angle) - anchor.y * Math.sin(angle)) * object.scale, amount);
@@ -53,7 +59,7 @@ export function evaluate(scene: Scene, time: number) {
     }
     const face = latest(clips.filter((clip): clip is Extract<Clip, { track: 'face' }> => clip.track === 'face' && active(clip, t)));
     if (face) expression = face.expression;
-    return { ...actor, x, y, view, flip, pose, lift, expression, visible: !presence.length || presence.some(clip => active(clip, t)), held };
+    return { ...actor, x, y, view, flip, pose, lift, expression, action, speaking: sounds.some(clip => clip.track === 'dialogue' && clip.actor === actor.id && !clip.muted), visible: !presence.length || presence.some(clip => active(clip, t)), held };
   });
   const cameraClips = scene.clips.filter(clip => clip.track === 'camera');
   const cameraClip = latest(cameraClips.filter(clip => active(clip, t)));
