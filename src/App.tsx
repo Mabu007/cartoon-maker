@@ -83,6 +83,8 @@ export default function App() {
   const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(() => localStorage.getItem('toonroom.started') ? 'projects' : 'landing');
   const [seedIdea, setSeedIdea] = useState('');
   const [directorOpen, setDirectorOpen] = useState(false);
+  // Proposals are temporary stage views; only Apply edits the canonical store.
+  const [directorPreview,setDirectorPreview] = useState<Scene|undefined>();
   const [assetWidth, setAssetWidth] = useState(263), [inspectorWidth, setInspectorWidth] = useState(254);
   const [scriptTarget, setScriptTarget] = useState<{ sceneId?: string; lineId?: string; autoDraft?: boolean }>({});
   const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'light' ? 'light' : 'dark');
@@ -147,7 +149,7 @@ export default function App() {
     setPlaying(false); setPreparing(false);
   }
   function loadProject(next: Project, edited = false) {
-    pause(); setArrange(false); close();
+    pause(); setArrange(false); setDirectorPreview(undefined); close();
     useStudio.getState().open(next, edited);
     updateCursor(currentScene(useStudio.getState()), 0, false);
     saveToken.current++;
@@ -300,10 +302,10 @@ export default function App() {
     useStudio.getState().editScene(command, sceneTarget);
   }
   const editScene = (command: (value: Scene) => Scene) => run(() => commitScene(command));
-  function replaceScene(next: Scene, base: string) {
+  function replaceScene(next: Scene, base: string, generatedAssets:readonly string[] = []) {
     commitScene(current => {
       if (sceneToCode(current) !== base) throw new Error('The scene changed while this edit was open. Reopen it and try again.');
-      return validateSceneReplacement(useStudio.getState().project, current.id, next);
+      return validateSceneReplacement(useStudio.getState().project, current.id, next, generatedAssets);
     });
     const current = currentScene(useStudio.getState());
     updateCursor(current, Math.min(time.current.local, Math.max(0, current.duration - .01)), false);
@@ -676,7 +678,7 @@ export default function App() {
     edit(current => ({ ...current, production: change(current.production ?? startProduction(current)) }));
   }
   function switchWorkspace(next: typeof workspace) {
-    pause(); setFocus(false); setArrange(false);
+    pause(); setFocus(false); setArrange(false); setDirectorPreview(undefined);
     if (next !== 'direct' && !useStudio.getState().project.production) updateProduction(value => value);
     setWorkspace(next);
   }
@@ -733,18 +735,22 @@ export default function App() {
     finally { compileInFlight.current = false; setCompiling(false); }
   }
   async function commitDirection(next: ScriptSceneData, expected: ScriptSceneData, note?: string, request?: string) {
-    const state = useStudio.getState();
-    if (state.session !== session) { tell('The project changed. Review a fresh direction proposal.', true); return false; }
-    const current = state.project;
-    const production = current.production;
-    if (!production || production.scriptStatus !== 'approved') {
-      tell('Approve the current screenplay revision before making a timeline direction change.', true); return false;
+    const state=useStudio.getState();
+    if(state.session!==session) { tell('Project changed. Review the screenplay edit again.',true);return false; }
+    const current=state.project,production=current.production;
+    if(!production){tell('No screenplay is attached to this project.',true);return false;}
+    const base=production.screenplay.scenes.find(item=>item.id===next.id);
+    if(JSON.stringify(base)!==JSON.stringify(expected)){
+      tell('The screenplay changed. Reopen the line and try again.',true);return false;
     }
-    const base = production.screenplay.scenes.find(item => item.id === next.id);
-    if (JSON.stringify(base) !== JSON.stringify(expected)) { tell('This scene changed. Review a fresh direction proposal.', true); return false; }
-    const revised = approveScript(reviseScript(production, production.screenplay.scenes.map(item => item.id === next.id ? next : item)));
-    if (note && request) revised.conversation = [...revised.conversation, { role: 'user' as const, text: request }, { role: 'assistant' as const, text: note }].slice(-24);
-    return compile({ ...current, production: revised }, current, next.id, true);
+    // Script changes are creative context, not a gate to directing. Do not
+    // implicitly recompile: that could overwrite manually directed clips.
+    const revised=reviseScript(production,production.screenplay.scenes.map(item=>item.id===next.id?next:item));
+    if(note&&request)revised.conversation=[...revised.conversation,
+      {role:'user' as const,text:request},{role:'assistant' as const,text:note}].slice(-24);
+    state.edit(value=>({...value,production:revised}));
+    tell('Screenplay revised. Existing timeline edits remain intact. Regenerate voice or compile explicitly when ready.');
+    return true;
   }
   function toggleClipLock(id: string) {
     updateProduction(value => ({ ...value, graph: value.graph.map(record =>
@@ -911,7 +917,10 @@ export default function App() {
       <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary} characters={project.characters} scene={scene} newCharacter={() => editCharacter()} editCharacter={editCharacter} addActor={addActor} setWorld={setWorld} uploadWorld={uploadWorld} addProp={addObject} uploadProp={uploadProp} addAction={action => showClip(action === 'walk' || action === 'run' ? 'movement' : 'body', action)} addSound={addSound} dialogue={() => showAudio('dialogue')} audio={() => showAudio('audio')} music={() => showAudio('music')}/>{library === 'Worlds' && !!worlds.length && <div className="saved-worlds"><h3>Saved worlds</h3>{worlds.map(item => <button className="quiet full" key={item.name} onClick={() => setWorld(item.environment, item.objects, item.backgroundImage)}>{item.name}</button>)}</div>}</div>
       <section className="stage-panel" aria-label="Studio stage">
         <header className="stage-heading"><div><span className="stage-kicker"><i/> SCENE PREVIEW</span><button className="scene-title" onClick={() => showDialog('scenes')}>{scene.name}<ChevronDown size={14}/></button></div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
-        <div className="viewer"><Stage key={session} project={project} scene={scene} time={time} playing={playing} edit={arrange} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
+        <div className={directorPreview?'viewer director-preview-active':'viewer'}>
+          {directorPreview&&<div className="director-preview-label" role="status">AI PROPOSAL PREVIEW · NOT APPLIED</div>}
+          <Stage key={session} project={project} scene={directorPreview??scene} time={time}
+          playing={playing&&!directorPreview} edit={arrange&&!directorPreview} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
           const actor = scene.actors.find(item => item.id === id), object = scene.objects.find(item => item.id === id);
           if (actor) {
             const dx = coords.x - actor.x, dy = coords.y - actor.y;
@@ -921,9 +930,13 @@ export default function App() {
         <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock(scene.duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={scene.duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
       </section>
       {directorOpen ? <DirectorPanel key={session + scene.id} project={project} scene={scene} selection={selection} getTime={() => time.current.local}
-        ai={ai} busy={compiling} openCode={() => showDialog('code')} apply={(next, original) => {
-          replaceScene(next, original);
-          tell('AI direction applied to the timeline. You can undo this change.');
+        ai={ai} busy={compiling} openCode={() => showDialog('code')}
+        canUndo={hasUndo} undo={()=>run(()=>useStudio.getState().undo())}
+        preview={next=>{if(next){pause();setArrange(false);}setDirectorPreview(next);}}
+        apply={(next, original, generatedAssets) => {
+          replaceScene(next, original, generatedAssets);
+          setDirectorPreview(undefined);
+          tell('AI direction applied to the canonical timeline. Undo is available.');
         }}/> : <Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} regenerateVoice={regenerateVoice} restoreVoiceVersion={restoreVoiceVersion} alignVoiceClip={alignVoiceClip}/>}
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>

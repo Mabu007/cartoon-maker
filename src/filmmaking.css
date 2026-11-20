@@ -493,3 +493,14 @@
 .factory-mouth-rig-editor strong {font-size:12px;}
 .factory-mouth-rig-editor .slider span{display:flex;justify-content:space-between;}
 .factory-teeth-row button[title^="Missing"] {opacity:.36;text-decoration:line-through;}
+
+/* AI Director proposal staging: stage is preview-only until Apply. */
+.director-preview-active {position:relative;outline:2px solid #b18ee8;outline-offset:-2px;}
+.director-preview-active .canvas-mount {pointer-events:none;}
+.director-preview-label {position:absolute;z-index:10;left:12px;top:10px;
+  padding:6px 10px;border-radius:7px;background:#38294bf0;color:#eedaff;
+  border:1px solid #b18ee8;font-size:10px;letter-spacing:.07em;font-weight:700;}
+.director-edit-list {display:grid;gap:5px;margin:10px 0;padding-left:19px;max-height:190px;overflow:auto;}
+.director-edit-list li {font-size:12px;line-height:1.35;}
+.director-proposal h3 {display:flex;align-items:center;gap:6px;}
+.director-proposal .film-tools {flex-wrap:wrap;}
