@@ -1,16 +1,26 @@
 import { anchors } from './presets.ts';
-import { actions, type Action, type Clip, type Prop, type Scene } from './schema.ts';
+import { actions, type Action, type Anchor, type Clip, type Prop, type Scene } from './schema.ts';
 
 export type DependentAction = Extract<Clip, { track: 'body' }>;
 export type ObjectDependencyDecision = Record<string, string>;
 export type ObjectDependency = { clip: DependentAction; actorName: string; targetName: string; alternatives: Prop[] };
 
+export function anchorFor(object: Prop): Anchor | undefined {
+  if (object.kind === 'image') {
+    if (object.interaction === 'sit')
+      return { action: 'sit', x: 0, y: -(object.imageHeight ?? 100) * .46, facing: 'side' };
+    if (object.interaction === 'hold')
+      return { action: 'hold', x: 0, y: -(object.imageHeight ?? 70) * .5 };
+    return undefined;
+  }
+  return anchors[object.kind];
+}
 const fallbackFor = (clip: DependentAction): Action => clip.action === 'sit' ? 'stand' : 'idle';
 
 export function compatibleObjects(scene: Scene, action: Action, excludeId?: string): Prop[] {
   return scene.objects.filter(object =>
     object.id !== excludeId && (action === 'sit'
-      ? anchors[object.kind]?.action === 'sit'
+      ? anchorFor(object)?.action === 'sit'
       : anchors[object.kind]?.action === 'hold'));
 }
 export function nearestObject(scene: Scene, actorId: string, action: Action, excludeId?: string): Prop | undefined {
@@ -24,7 +34,7 @@ export function objectDependencies(scene: Scene, objectId: string, actorNames: R
   return scene.clips.flatMap(clip => {
     if (clip.track !== 'body' || clip.target !== objectId) return [];
     const kind = anchors[object.kind]?.action;
-    const alternatives = scene.objects.filter(item => item.id !== objectId && anchors[item.kind]?.action === kind);
+    const alternatives = scene.objects.filter(item => item.id !== objectId && anchorFor(item)?.action === kind);
     return [{ clip, actorName: actorNames[clip.actor] ?? scene.actors.find(item => item.id === clip.actor)?.id ?? 'Actor',
       targetName: object.name, alternatives }];
   });
@@ -44,7 +54,7 @@ function resolvedAction(clip: DependentAction, decision: string | undefined): De
 export function removeObjectWithDecisions(scene: Scene, objectId: string, decisions: ObjectDependencyDecision = {}): Scene {
   const removed = scene.objects.find(item => item.id === objectId);
   if (!removed) return scene;
-  const previousKind = anchors[removed.kind]?.action;
+  const previousKind = anchorFor(removed)?.action;
   const surviving = scene.objects.filter(item => item.id !== objectId);
   const clips = scene.clips.map(clip => {
     if (clip.track !== 'body' || clip.target !== objectId) return clip;
@@ -55,7 +65,7 @@ export function removeObjectWithDecisions(scene: Scene, objectId: string, decisi
     }
     return resolvedAction(clip, decision);
   });
-  return { ...scene, objects: surviving, clips };
+  return repairGazeTargets({ ...scene, objects: surviving, clips });
 }
 
 /** Used for world changes and imported/legacy projects. */
@@ -64,7 +74,7 @@ export function repairOrphanedObjectActions(scene: Scene): Scene {
   const clips = scene.clips.map(clip => {
     if (clip.track !== 'body') return clip;
     const target = clip.target ? scene.objects.find(item => item.id === clip.target) : undefined;
-    if (clip.action === 'sit' && (!target || anchors[target.kind]?.action !== 'sit')) {
+    if (clip.action === 'sit' && (!target || anchorFor(target)?.action !== 'sit')) {
       changed = true;
       return resolvedAction(clip, 'action:stand');
     }
@@ -74,7 +84,15 @@ export function repairOrphanedObjectActions(scene: Scene): Scene {
     }
     return clip;
   });
-  return changed ? { ...scene, clips } : scene;
+  return repairGazeTargets(changed ? { ...scene, clips } : scene);
+}
+export function repairGazeTargets(scene: Scene): Scene {
+  const possible = new Set([...scene.actors.map(item => item.id), ...scene.objects.map(item => item.id), 'camera']);
+  if (scene.actors.every(actor => !actor.gazeTarget || possible.has(actor.gazeTarget))) return scene;
+  return { ...scene, actors: scene.actors.map(actor => {
+    if (!actor.gazeTarget || possible.has(actor.gazeTarget)) return actor;
+    const { gazeTarget: _, ...rest } = actor; return rest;
+  }) };
 }
 export function replaceWorldObjects(scene: Scene, replacements: Prop[]): Scene {
   // Prop IDs are local to scenes: an old seating/holding reference must be
