@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const WIDTH = 960;
 export const HEIGHT = 540;
 export const views = ['front', 'three-quarter', 'side', 'back-quarter', 'back'] as const;
-export const expressions = ['neutral', 'happy', 'angry', 'surprised', 'sad', 'thinking'] as const;
+export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', 'sleepy', 'angry', 'surprised', 'sad', 'thinking'] as const;
 export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think'] as const;
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;

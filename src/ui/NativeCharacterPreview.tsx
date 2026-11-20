@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { facialPerformance } from '../engine/facialAnimation.ts';
 import type { Action, Character, Expression, View } from '../engine/schema.ts';
 
 /**
@@ -8,6 +10,19 @@ import type { Action, Character, Expression, View } from '../engine/schema.ts';
 export function NativeCharacterPreview({ character: c, view, action, expression, flip, scale }: {
   character: Character; view: View; action: Action; expression: Expression; flip: boolean; scale: number;
 }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    let frame = 0, start = 0, last = -200;
+    const animate = (time: number) => {
+      if (!start) start = time;
+      if (!document.hidden && time - last >= 60) { setElapsed((time - start) / 1000); last = time; }
+      frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  const mood = facialPerformance(elapsed, c.id, action, expression);
+  const emotion = mood.expression;
   const rear = view === 'back' || view === 'back-quarter';
   const profile = view === 'side';
   const q = view === 'three-quarter' || view === 'back-quarter';
@@ -24,8 +39,9 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const faceShift = q ? 8 : profile ? 16 : 0;
   const noseX = faceShift + (profile ? 13 : 0);
   const animated = ['walk', 'run', 'wave', 'jump', 'celebrate', 'talk', 'laugh'].includes(action);
-  const mouthOpen = expression === 'surprised' || action === 'talk' || action === 'laugh';
-  const eyeH = expression === 'surprised' ? 11 : expression === 'angry' ? 5 : c.eyes === 'relaxed' ? 5 : 8;
+  const mouthOpen = emotion === 'surprised' || mood.mouthOpen > .16;
+  const eyeH = (emotion === 'surprised' || emotion === 'excited' ? 11 : emotion === 'sleepy' ? 3 : emotion === 'angry' || emotion === 'smug' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
+  const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
   const silhouette = c.shape === 'square'
     ? 'M ' + (-headW + 14) + ' ' + (headY - headH) + ' Q ' + (-headW - 5) + ' ' + (headY - headH) + ' ' + (-headW) + ' ' + (headY - 9) + ' Q ' + (-headW - 4) + ' ' + (headY + headH) + ' 0 ' + (headY + headH) + ' Q ' + headW + ' ' + (headY + headH) + ' ' + headW + ' ' + (headY - 9) + ' Q ' + headW + ' ' + (headY - headH) + ' ' + (headW - 15) + ' ' + (headY - headH) + ' Z'
     : 'M 0 ' + (headY - headH) + ' C ' + (-headW * 1.3) + ' ' + (headY - headH) + ' ' + (-headW * 1.3) + ' ' + (headY + headH * .75) + ' 0 ' + (headY + headH) + ' C ' + (headW * 1.3) + ' ' + (headY + headH * 1.15) + ' ' + (headW * 1.3) + ' ' + (headY - headH) + ' 0 ' + (headY - headH) + ' Z';
@@ -56,19 +72,48 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         <path d={silhouette} fill={c.skin} stroke="#252037" strokeWidth="4"/>
         <path d={'M ' + (-headW + 9) + ' ' + (headY + 8) + ' Q ' + (-headW + 6) + ' ' + (headY + 22) + ' ' + (-headW + 19) + ' ' + (headY + 32)} fill="none" stroke="#754634" strokeWidth="2" opacity=".4"/>
         {c.hair !== 'bald' && <path d={mainHair} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
-        {(['afro', 'puff', 'curls'].includes(c.hair)) && Array.from({ length: 6 }, (_, i) => <circle key={i} cx={-headW + 10 + i * (headW * 2 - 20) / 5} cy={headY - headH - (i % 2 ? 9 : 6)} r={c.hair === 'curls' ? 11 : 16} fill={c.hairColor} stroke="#282036" strokeWidth="2.5"/>)}
-        {(['locs', 'braids'].includes(c.hair)) && Array.from({ length: 6 }, (_, i) => <path key={i} d={'M ' + (-headW + 10 + i * (headW * 2 - 20) / 5) + ' ' + (headY - headH + 5) + ' q ' + (i % 2 ? 5 : -4) + ' 29 1 48'} stroke={c.hairColor} strokeWidth={c.hair === 'braids' ? 6 : 10} strokeLinecap="round" fill="none"/>)}
+        {(c.hair === 'fade' || c.hair === 'buzz') && <g>
+          <path d={'M ' + (-headW+3) + ' ' + (headY-6) + ' Q ' + (-headW+3) + ' ' + (headY-26) + ' ' + (-headW+17) + ' ' + (headY-25) + ' Q ' + (-headW+19) + ' ' + (headY-12) + ' ' + (-headW+3) + ' ' + (headY-6) + ' Z'} fill={c.hair === 'fade' ? c.skin : c.hairColor} opacity={c.hair==='fade' ? .64 : 1}/>
+          {Array.from({ length: 7 }, (_, i) => {
+            const x=-headW*.66+i*headW*.23, y=headY-headH-8+Math.abs(i-3)*1.5;
+            return <path key={i} d={'M ' + x + ' ' + y + ' q 3 -4 6 0'} stroke="#96879f" strokeWidth="1.5" opacity=".5" fill="none"/>;
+          })}
+          {c.hair === 'fade' && <path d={'M ' + (-headW+7) + ' ' + (headY-18) + ' q 5 -9 12 -7'} stroke="#c1a298" strokeWidth="2" fill="none"/>}
+        </g>}
+        {c.hair === 'afro' && <path d={'M ' + (-headW-7) + ' ' + (headY-12) + ' C ' + (-headW-25) + ' ' + (headY-35) + ' ' + (-headW-15) + ' ' + (headY-headH-20) + ' ' + (-headW+2) + ' ' + (headY-headH-22) + ' C ' + (-headW+8) + ' ' + (headY-headH-49) + ' 0 ' + (headY-headH-50) + ' 19 ' + (headY-headH-36) + ' C ' + (headW+34) + ' ' + (headY-headH-42) + ' ' + (headW+30) + ' ' + (headY-headH-4) + ' ' + (headW+10) + ' ' + (headY-12) + ' Q 0 ' + (headY-25) + ' ' + (-headW-7) + ' ' + (headY-12) + ' Z'} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
+        {c.hair === 'puff' && <><path d={'M ' + (-headW*.5-32) + ' ' + (headY-headH-36) + ' C ' + (-headW*.5-48) + ' ' + (headY-headH-66) + ' ' + (-headW*.5-16) + ' ' + (headY-headH-90) + ' ' + (-headW*.5+3) + ' ' + (headY-headH-78) + ' C ' + (-headW*.5+35) + ' ' + (headY-headH-90) + ' ' + (-headW*.5+44) + ' ' + (headY-headH-41) + ' ' + (-headW*.5+20) + ' ' + (headY-headH-31) + ' Q ' + (-headW*.5-5) + ' ' + (headY-headH-21) + ' ' + (-headW*.5-32) + ' ' + (headY-headH-36) + ' Z'} fill={c.hairColor} stroke="#282036" strokeWidth="3"/><path d={'M ' + (-headW*.5-13) + ' ' + (headY-headH-16) + ' q 16 8 27 -1'} stroke="#c2a28a" strokeWidth="3" fill="none"/></>}
+        {c.hair === 'curls' && <path d={'M ' + (-headW-6) + ' ' + (headY-13) + ' Q ' + (-headW-22) + ' ' + (headY-headH-11) + ' ' + (-headW+3) + ' ' + (headY-headH-25) + ' Q ' + (-headW+16) + ' ' + (headY-headH-49) + ' -9 ' + (headY-headH-37) + ' Q 10 ' + (headY-headH-63) + ' 25 ' + (headY-headH-36) + ' Q ' + (headW+26) + ' ' + (headY-headH-28) + ' ' + (headW+8) + ' ' + (headY-12) + ' Z'} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
+        {(['afro', 'curls', 'puff'].includes(c.hair)) && Array.from({ length: 7 }, (_, i) => {
+          const x = -30 + (i % 4)*20, y = headY-headH-18-Math.floor(i/4)*17;
+          return <path key={i} d={'M ' + (x-7) + ' ' + (y+2) + ' q -1 -9 9 -6 q 5 2 3 7'} stroke="#8b8294" opacity=".46" strokeWidth="1.7" strokeLinecap="round" fill="none"/>;
+        })}
+        {(['locs', 'braids'].includes(c.hair)) && [-1, 1].flatMap(side => [0, 1].map(i => {
+          const x = side * (headW - 4 - i*8);
+          const end = headY + 26 + i*8;
+          const path = 'M ' + x + ' ' + (headY-headH+6) + ' Q ' + (x+side*9) + ' ' + (headY-12) + ' ' + (x+side*3) + ' ' + end;
+          return <g key={side + '-' + i}><path d={path} stroke="#292437" strokeWidth={c.hair === 'braids' ? 9 : 12} strokeLinecap="round" fill="none"/><path d={path} stroke={c.hairColor} strokeWidth={c.hair === 'braids' ? 5.5 : 8} strokeLinecap="round" fill="none"/>{c.hair === 'braids' && Array.from({ length: 5 }, (_, n) => <path key={n} d={'M ' + (x-3) + ' ' + (headY-23+n*8) + ' l 6 4'} stroke="#928093" opacity=".6" strokeWidth="1.5"/>)}</g>;
+        }))}
         {c.hat !== 'none' && <><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' Q 0 ' + (headY - headH - 35) + ' ' + (headW + 3) + ' ' + (headY - headH + 10) + ' Z'} fill={c.shirt} stroke="#252037" strokeWidth="3"/><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' H ' + (headW + 3)} stroke="#252037" strokeWidth="5"/></>}
         {!rear && <g>
+          {(emotion === 'happy' || emotion === 'excited' || emotion === 'sad') && !profile && [-24,24].map(offset => <ellipse key={offset} cx={Math.max(-headW+12,Math.min(headW-12,faceCenter+offset))} cy={headY+15} rx="6.5" ry="3.5" fill={emotion === 'happy' || emotion === 'excited' ? '#dc8877' : '#897195'} opacity=".22"/>)}
           {[profile ? faceShift : faceShift - 15 * c.eyeSpacing, ...(!profile ? [faceShift + 15 * c.eyeSpacing] : [])].map((x, i) => <g key={i}>
-            <ellipse cx={x} cy={eyeY} rx="7" ry={eyeH} fill="#fff5e7" stroke="#27213a" strokeWidth="2"/>
-            <circle cx={x + (q ? 2 : 0)} cy={eyeY + 1} r="3" fill="#27213a"/>
-            <circle cx={x - 1} cy={eyeY - 2} r="1.5" fill="white"/>
-            <path d={'M ' + (x - 7) + ' ' + (eyeY - eyeH - 5) + ' Q ' + x + ' ' + (eyeY - eyeH - (c.brows === 'arched' ? 11 : 5)) + ' ' + (x + 7) + ' ' + (eyeY - eyeH - (expression === 'angry' ? 2 : 5))} stroke="#242036" strokeWidth={c.brows === 'bold' ? 4 : 2.5} fill="none" strokeLinecap="round"/>
+            {eyeH < 1.4 ? <path d={'M ' + (x-7) + ' ' + eyeY + ' q 7 3 14 0'} stroke="#27213a" strokeWidth="2.5" fill="none"/> : <><ellipse cx={x} cy={eyeY} rx="7" ry={eyeH} fill="#fff5e7" stroke="#27213a" strokeWidth="2"/><circle cx={x+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY+Math.max(-eyeH+2, Math.min(eyeH-2, mood.gazeY))} r="3" fill="#27213a"/>{eyeH > 3 && <circle cx={x-1+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY-1.5+mood.gazeY} r="1.3" fill="white"/>}</>}
+            <path d={'M ' + (x-7) + ' ' + (eyeY-eyeH-5) + ' Q ' + x + ' ' + (eyeY-eyeH-(c.brows==='arched'?11:5)) + ' ' + (x+7) + ' ' + (eyeY-eyeH-(emotion==='angry'?2:5))} stroke="#242036" strokeWidth={c.brows==='bold'?4:2.5} fill="none" strokeLinecap="round"/>
           </g>)}
           <ellipse cx={noseX} cy={headY + 11} rx={c.nose === 'long' ? 7 : 5} ry={c.nose === 'long' ? 6 : 3.5} fill={c.skin} stroke="#2a2339" strokeWidth="2"/>
-          {c.beard !== 'none' && <path d={'M ' + (noseX - 13) + ' ' + (headY + 26) + ' Q ' + noseX + ' ' + (headY + (c.beard === 'full' ? 52 : 42)) + ' ' + (noseX + 13) + ' ' + (headY + 26)} stroke={c.hairColor} strokeWidth={c.beard === 'full' ? 8 : 3} fill="none"/>}
-          {mouthOpen ? <ellipse cx={noseX} cy={headY + 27} rx={expression === 'surprised' ? 7 : 11} ry={expression === 'surprised' ? 9 : 5} fill="#302033"/> : <path d={'M ' + (noseX - 10) + ' ' + (headY + 26) + ' Q ' + noseX + ' ' + (headY + (expression === 'sad' || expression === 'angry' ? 18 : 37)) + ' ' + (noseX + 10) + ' ' + (headY + 26)} stroke="#2a2038" strokeWidth="2.7" fill="none" strokeLinecap="round"/>}
+          {c.beard !== 'none' && <g fill={c.hairColor}>
+            <path d={'M ' + (noseX-1) + ' ' + (headY+17) + ' q -6 -5 -15 -1 q 4 7 13 4 Z'}/>
+            {!profile && <path d={'M ' + (noseX+1) + ' ' + (headY+17) + ' q 7 -5 15 -1 q -4 7 -13 4 Z'}/>}
+            {c.beard === 'goatee' ? <path d={'M ' + (noseX-8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+53) + ' ' + (noseX+8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+43) + ' ' + (noseX-8) + ' ' + (headY+33) + ' Z'}/> : <path d={'M ' + (-headW+4) + ' ' + (headY+13) + ' Q ' + (-headW+2) + ' ' + (headY+37) + ' 0 ' + (headY+54) + ' Q ' + (headW-2) + ' ' + (headY+37) + ' ' + (headW-4) + ' ' + (headY+13) + ' L ' + (headW-11) + ' ' + (headY+27) + ' Q 0 ' + (headY+50) + ' ' + (-headW+11) + ' ' + (headY+27) + ' Z'}/>}
+          </g>}
+          {emotion === 'surprised' ? <ellipse cx={noseX} cy={headY+27} rx="7" ry="10" fill="#302033"/> :
+            mouthOpen ? <><ellipse cx={noseX} cy={headY+27} rx={emotion==='happy'||emotion==='excited'?13:10} ry={3+mood.mouthOpen*8} fill="#302033"/><path d={'M ' + (noseX-7) + ' ' + (headY+23) + ' h 14'} stroke="#ffedde" strokeWidth="3"/></> :
+            emotion === 'happy' || emotion === 'excited' ? <path d={'M ' + (noseX-13) + ' ' + (headY+24) + ' Q ' + noseX + ' ' + (headY+42) + ' ' + (noseX+13) + ' ' + (headY+24) + ' Q ' + noseX + ' ' + (headY+34) + ' ' + (noseX-13) + ' ' + (headY+24) + ' Z'} fill="#302033"/> :
+            emotion === 'thinking' ? <ellipse cx={noseX+3} cy={headY+27} rx="4" ry="3" fill="#302033"/> :
+            emotion === 'confused' ? <path d={'M ' + (noseX-10) + ' ' + (headY+25) + ' q 8 -6 20 3'} stroke="#302033" strokeWidth="2.7" fill="none"/> :
+            emotion === 'smug' ? <path d={'M ' + (noseX-10) + ' ' + (headY+27) + ' Q ' + noseX + ' ' + (headY+31) + ' ' + (noseX+10) + ' ' + (headY+23)} stroke="#302033" strokeWidth="2.7" fill="none"/> :
+            emotion === 'sleepy' ? <path d={'M ' + (noseX-8) + ' ' + (headY+26) + ' q 8 3 16 0'} stroke="#302033" strokeWidth="2.1" fill="none"/> :
+            <path d={'M ' + (noseX-10) + ' ' + (headY+26) + ' Q ' + noseX + ' ' + (headY+(emotion==='sad'||emotion==='angry'?19:26.5)) + ' ' + (noseX+10) + ' ' + (headY+26)} stroke="#2a2038" strokeWidth="2.7" fill="none" strokeLinecap="round"/>}
           {c.glasses && <><ellipse cx={faceShift - 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>{!profile && <ellipse cx={faceShift + 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>}</>}
           {c.earrings && <circle cx={-headW + 2} cy={headY + 18} r="5" fill="none" stroke="#f5cf6b" strokeWidth="3"/>}
         </g>}

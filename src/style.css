@@ -2372,3 +2372,13 @@ select {
 @media (prefers-reduced-motion: reduce) {
   .native-actor-walk,.native-actor-run,.native-actor-talk,.native-actor-laugh,.native-actor-jump,.native-actor-celebrate,.native-actor-wave .native-arm-right { animation:none; }
 }
+
+/* Contextual object→action dependency decisions (shown only when needed). */
+.object-dependency-dialog { gap: 12px; }
+.dependency-warning { display: flex; align-items: flex-start; gap: 10px; background: #403047; border: 1px solid #856187; border-radius: 9px; padding: 11px 12px; color: #f3d7df; font-size: 12px; line-height: 1.5; }
+.dependency-warning svg { flex: none; margin-top: 1px; color: #f9bf7c; }
+.object-dependency-dialog > .field { display: grid; gap: 6px; padding: 11px; border: 1px solid #594665; border-radius: 9px; background: #2c2437; }
+.object-dependency-dialog > .field strong { font-size: 13px; color: #f6e6ff; }
+.object-dependency-dialog > .field small { color: #bcafca; font-size: 11px; }
+.object-dependency-dialog .select-wrap { width: 100%; }
+.object-dependency-dialog .select-wrap select { width: 100%; }
