@@ -1,18 +1,9 @@
 import { scenePalettes } from '../engine/presets.ts';
 import type { Project } from '../engine/schema.ts';
 
-/** Project cards use their real cast/world rather than generic film icons.
- * This SVG is lightweight and safe to render from saved project metadata.
- */
-export function projectPreviewInfo(project:Project){
-  const scene=project.scenes.find(item=>item.actors.length||item.backgroundImage||item.clips.length)??project.scenes[0];
-  return {
-    scene,seconds:project.scenes.reduce((total,item)=>total+item.duration,0),
-    sceneCount:project.scenes.length,
-    characterCount:new Set(project.scenes.flatMap(item=>item.actors.map(actor=>actor.characterId))).size,
-    clipCount:project.scenes.reduce((total,item)=>total+item.clips.length,0)
-  };
-}
+import { projectPreviewInfo } from '../engine/projectPreview.ts';
+export { projectPreviewInfo } from '../engine/projectPreview.ts';
+
 export function ProjectThumbnail({project,compact=false}:{project:Project;compact?:boolean}){
   const {scene}=projectPreviewInfo(project);
   const palette=scenePalettes[scene.environment]??scenePalettes['Living room'];
