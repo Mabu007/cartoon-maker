@@ -242,7 +242,7 @@ export default function App() {
     if (livePlaying.current || livePreparing.current) { pause(); return; }
     const token = ++animationToken.current;
     livePreparing.current = true; setPreparing(true); setArrange(false);
-    const state = useStudio.getState(), current = currentScene(state);
+    const state = useStudio.getState(), current = directorPreview ?? currentScene(state);
     const at = time.current.local >= current.duration - .01 ? 0 : time.current.local;
     try {
       const audio = mixer.current ??= createAudioMixer();
@@ -250,7 +250,8 @@ export default function App() {
       audio.monitor();
       audio.master.gain.value = settings.current.muted ? 0 : 1;
       const startIndex = state.project.scenes.findIndex(item => item.id === current.id);
-      const sequence = settings.current.loop ? [current] : state.project.scenes.slice(startIndex);
+      const sequence = directorPreview ? [current] :
+        settings.current.loop ? [current] : state.project.scenes.slice(startIndex);
       await audio.prepare(sequence);
       if (token !== animationToken.current) return;
       const startTime = audio.context.currentTime + .03;
@@ -920,7 +921,7 @@ export default function App() {
         <div className={directorPreview?'viewer director-preview-active':'viewer'}>
           {directorPreview&&<div className="director-preview-label" role="status">AI PROPOSAL PREVIEW · NOT APPLIED</div>}
           <Stage key={session} project={project} scene={directorPreview??scene} time={time}
-          playing={playing&&!directorPreview} edit={arrange&&!directorPreview} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
+          playing={playing} edit={arrange&&!directorPreview} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
           const actor = scene.actors.find(item => item.id === id), object = scene.objects.find(item => item.id === id);
           if (actor) {
             const dx = coords.x - actor.x, dy = coords.y - actor.y;
@@ -932,7 +933,7 @@ export default function App() {
       {directorOpen ? <DirectorPanel key={session + scene.id} project={project} scene={scene} selection={selection} getTime={() => time.current.local}
         ai={ai} busy={compiling} openCode={() => showDialog('code')}
         canUndo={hasUndo} undo={()=>run(()=>useStudio.getState().undo())}
-        preview={next=>{if(next){pause();setArrange(false);}setDirectorPreview(next);}}
+        preview={next=>{if(next || directorPreview)pause();if(next)setArrange(false);setDirectorPreview(next);}}
         apply={(next, original, generatedAssets) => {
           replaceScene(next, original, generatedAssets);
           setDirectorPreview(undefined);
