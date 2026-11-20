@@ -28,7 +28,8 @@ import { clock, formats, IconButton, Modal, Select } from './ui/shared.tsx';
 import { Timeline } from './ui/Timeline.tsx';
 import { TimelineCodeDialog } from './ui/TimelineCodeDialog.tsx';
 import { Welcome } from './ui/Welcome.tsx';
-import { insertCameraShot, sceneContext, sceneToCode, validateSceneReplacement } from './engine/timelineCode.ts';
+import { insertCameraShot, sceneToCode, validateSceneReplacement } from './engine/timelineCode.ts';
+import { movieToCode, sceneBuildingContext, validateMovieReplacement } from './engine/movieTimeline.ts';
 
 const StoryStudio = lazy(() => import('./ui/StoryStudio.tsx').then(module => ({ default: module.StoryStudio })));
 const ScreenplayStudio = lazy(() => import('./ui/ScreenplayStudio.tsx').then(module => ({ default: module.ScreenplayStudio })));
@@ -300,6 +301,18 @@ export default function App() {
       if (sceneToCode(current) !== base) throw new Error('The scene changed while this edit was open. Reopen it and try again.');
       return validateSceneReplacement(useStudio.getState().project, current.id, next);
     });
+    const current = currentScene(useStudio.getState());
+    updateCursor(current, Math.min(time.current.local, Math.max(0, current.duration - .01)), false);
+  }
+  function replaceMovie(next: Project, base: string) {
+    if (livePlaying.current || livePreparing.current) pause();
+    const state = useStudio.getState();
+    if (state.session !== session) throw new Error('The project changed. Reopen Code Mode before applying.');
+    state.edit(current => {
+      if (movieToCode(current) !== base) throw new Error('The movie changed while Code Mode was open. Copy your edits and reopen Code Mode.');
+      return validateMovieReplacement(current, next);
+    });
+    updateCursor(currentScene(useStudio.getState()), 0, false);
   }
   const select = (value: Selection) => useStudio.getState().select(value);
   function patchActor(value: ActorData) { editScene(current => ({ ...current, actors: current.actors.map(actor => actor.id === value.id ? value : actor) })); }
@@ -654,7 +667,7 @@ export default function App() {
   let content: ReactNode;
   if (dialog === 'character') content = <CharacterFactory source={factory} save={saveCharacter} close={close} remove={deleteCharacter}/>;
   if (dialog === 'clip') content = <AddClipDialog scene={scene} actors={actorNames} time={time.current.local} request={requestedClip} close={close} add={clip => run(() => addClip(clip))} audio={showAudio}/>;
-  if (dialog === 'code') content = <TimelineCodeDialog key={session + scene.id} project={project} scene={scene} close={close} apply={replaceScene}/>;
+  if (dialog === 'code') content = <TimelineCodeDialog key={session + scene.id} project={project} scene={scene} close={close} apply={replaceScene} applyMovie={replaceMovie}/>;
   if (dialog === 'audio') content = <AudioDialog key={session + scene.id} scene={scene} actors={actorNames} request={requestedAudio} account={account} add={addClip} close={close}/>;
   if (dialog === 'export') content = <ExportDialog project={project} initialFormat={format} initialSubtitles={subtitles} close={close}/>;
   if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value => { if (openProject(value)) { setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); setScriptTarget({}); } }} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
@@ -746,7 +759,7 @@ export default function App() {
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>
-    <Timeline key={session} scene={scene} names={actorNames} selection={selection} select={select} seek={seek} change={patchClip} add={showClip} remove={removeSelection} duplicate={duplicateSelection} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneContext(project, scene)).then(() => tell('AI scene context copied.'), showError); }} onResizeScene={duration => editScene(current => ({ ...current, duration }))} onCompact={() => setCompact(value => !value)}/></>}
+    <Timeline key={session} scene={scene} names={actorNames} selection={selection} select={select} seek={seek} change={patchClip} add={showClip} remove={removeSelection} duplicate={duplicateSelection} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneBuildingContext(project, scene)).then(() => tell('AI scene-building context copied.'), showError); }} onCopyScene={() => { void navigator.clipboard.writeText(sceneToCode(scene)).then(() => tell('Current scene JSON copied.'), showError); }} onCopyProject={() => { void navigator.clipboard.writeText(movieToCode(project)).then(() => tell('Entire movie timeline JSON copied.'), showError); }} onResizeScene={duration => editScene(current => ({ ...current, duration }))} onCompact={() => setCompact(value => !value)}/></>}
     <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
       const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
     }}/>

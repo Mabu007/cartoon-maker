@@ -305,3 +305,29 @@
   .home-create-options { grid-template-columns:1fr; }
   .home-create-options button { padding:17px; }
 }
+
+/* AI context is available directly from the timeline, with upward-opening menu
+   so it stays visible even when the timeline is docked at the bottom. */
+.ai-context-wrapper { position: relative; flex: none; }
+.ai-context-toggle { white-space: nowrap; }
+.ai-context-menu {
+  position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 90;
+  width: min(286px, calc(100vw - 20px)); padding: 7px; display: grid; gap: 3px;
+  border: 1px solid var(--film-border); border-radius: 12px;
+  background: var(--film-panel); color: var(--film-ink);
+  box-shadow: 0 18px 45px #08061080;
+}
+.ai-context-menu button {
+  background: transparent; color: inherit; border: 0; border-radius: 7px;
+  text-align: left; font-size: 12px; font-weight: 550; padding: 11px 12px;
+}
+.ai-context-menu button:hover, .ai-context-menu button:focus-visible {
+  background: var(--film-field); outline-color: var(--accent);
+}
+.timeline-code-tabs { display: flex; flex-wrap: wrap; gap: 7px; }
+.timeline-code-tabs button[aria-selected="true"] { background: var(--accent); color: white; }
+.timeline-code-status { min-height: 22px; }
+@media (max-width: 790px) {
+  .ai-context-toggle { font-size: 10px !important; padding-inline: 4px !important; }
+  .ai-context-menu { right: -40px; }
+}
