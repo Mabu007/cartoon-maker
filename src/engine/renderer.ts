@@ -14,7 +14,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   const app = new Application();
   const [width, height] = sizes[format];
   const [pixelWidth, pixelHeight] = dimensions(format, resolution);
-  await app.init({ width: pixelWidth, height: pixelHeight, resolution: 1, antialias: true, autoStart: false, background: '#24202c', preference: ['webgl', 'canvas'], preserveDrawingBuffer: capture, powerPreference: 'low-power', hello: false });
+  await app.init({ width: pixelWidth, height: pixelHeight, resolution: 1, antialias: true, autoStart: false, background: '#24202c', preference: ['webgl', 'webgpu', 'canvas'], preserveDrawingBuffer: capture, powerPreference: 'low-power', hello: false });
   app.canvas.setAttribute('aria-label', 'Cartoon scene preview');
   const world = new Container();
   const background = new Graphics();
