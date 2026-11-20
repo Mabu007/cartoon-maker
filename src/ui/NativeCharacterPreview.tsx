@@ -40,7 +40,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const noseX = faceShift + (profile ? 13 : 0);
   const animated = ['walk', 'run', 'wave', 'jump', 'celebrate', 'talk', 'laugh'].includes(action);
   const mouthOpen = emotion === 'surprised' || mood.mouthOpen > .16;
-  const eyeH = (emotion === 'surprised' ? 11 : emotion === 'angry' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
+  const eyeH = (emotion === 'surprised' || emotion === 'excited' ? 11 : emotion === 'sleepy' ? 3 : emotion === 'angry' || emotion === 'smug' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
   const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
   const silhouette = c.shape === 'square'
     ? 'M ' + (-headW + 14) + ' ' + (headY - headH) + ' Q ' + (-headW - 5) + ' ' + (headY - headH) + ' ' + (-headW) + ' ' + (headY - 9) + ' Q ' + (-headW - 4) + ' ' + (headY + headH) + ' 0 ' + (headY + headH) + ' Q ' + headW + ' ' + (headY + headH) + ' ' + headW + ' ' + (headY - 9) + ' Q ' + headW + ' ' + (headY - headH) + ' ' + (headW - 15) + ' ' + (headY - headH) + ' Z'
@@ -87,7 +87,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         }))}
         {c.hat !== 'none' && <><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' Q 0 ' + (headY - headH - 35) + ' ' + (headW + 3) + ' ' + (headY - headH + 10) + ' Z'} fill={c.shirt} stroke="#252037" strokeWidth="3"/><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' H ' + (headW + 3)} stroke="#252037" strokeWidth="5"/></>}
         {!rear && <g>
-          {(emotion === 'happy' || emotion === 'sad') && !profile && [-24,24].map(offset => <ellipse key={offset} cx={Math.max(-headW+12,Math.min(headW-12,faceCenter+offset))} cy={headY+15} rx="6.5" ry="3.5" fill={emotion === 'happy' ? '#dc8877' : '#897195'} opacity=".22"/>)}
+          {(emotion === 'happy' || emotion === 'excited' || emotion === 'sad') && !profile && [-24,24].map(offset => <ellipse key={offset} cx={Math.max(-headW+12,Math.min(headW-12,faceCenter+offset))} cy={headY+15} rx="6.5" ry="3.5" fill={emotion === 'happy' || emotion === 'excited' ? '#dc8877' : '#897195'} opacity=".22"/>)}
           {[profile ? faceShift : faceShift - 15 * c.eyeSpacing, ...(!profile ? [faceShift + 15 * c.eyeSpacing] : [])].map((x, i) => <g key={i}>
             {eyeH < 1.4 ? <path d={'M ' + (x-7) + ' ' + eyeY + ' q 7 3 14 0'} stroke="#27213a" strokeWidth="2.5" fill="none"/> : <><ellipse cx={x} cy={eyeY} rx="7" ry={eyeH} fill="#fff5e7" stroke="#27213a" strokeWidth="2"/><circle cx={x+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY+Math.max(-eyeH+2, Math.min(eyeH-2, mood.gazeY))} r="3" fill="#27213a"/>{eyeH > 3 && <circle cx={x-1+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY-1.5+mood.gazeY} r="1.3" fill="white"/>}</>}
             <path d={'M ' + (x-7) + ' ' + (eyeY-eyeH-5) + ' Q ' + x + ' ' + (eyeY-eyeH-(c.brows==='arched'?11:5)) + ' ' + (x+7) + ' ' + (eyeY-eyeH-(emotion==='angry'?2:5))} stroke="#242036" strokeWidth={c.brows==='bold'?4:2.5} fill="none" strokeLinecap="round"/>
@@ -99,9 +99,12 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
             {c.beard === 'goatee' ? <path d={'M ' + (noseX-8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+53) + ' ' + (noseX+8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+43) + ' ' + (noseX-8) + ' ' + (headY+33) + ' Z'}/> : <path d={'M ' + (-headW+4) + ' ' + (headY+13) + ' Q ' + (-headW+2) + ' ' + (headY+37) + ' 0 ' + (headY+54) + ' Q ' + (headW-2) + ' ' + (headY+37) + ' ' + (headW-4) + ' ' + (headY+13) + ' L ' + (headW-11) + ' ' + (headY+27) + ' Q 0 ' + (headY+50) + ' ' + (-headW+11) + ' ' + (headY+27) + ' Z'}/>}
           </g>}
           {emotion === 'surprised' ? <ellipse cx={noseX} cy={headY+27} rx="7" ry="10" fill="#302033"/> :
-            mouthOpen ? <><ellipse cx={noseX} cy={headY+27} rx={emotion==='happy'?13:10} ry={3+mood.mouthOpen*8} fill="#302033"/><path d={'M ' + (noseX-7) + ' ' + (headY+23) + ' h 14'} stroke="#ffedde" strokeWidth="3"/></> :
-            emotion === 'happy' ? <path d={'M ' + (noseX-13) + ' ' + (headY+24) + ' Q ' + noseX + ' ' + (headY+42) + ' ' + (noseX+13) + ' ' + (headY+24) + ' Q ' + noseX + ' ' + (headY+34) + ' ' + (noseX-13) + ' ' + (headY+24) + ' Z'} fill="#302033"/> :
+            mouthOpen ? <><ellipse cx={noseX} cy={headY+27} rx={emotion==='happy'||emotion==='excited'?13:10} ry={3+mood.mouthOpen*8} fill="#302033"/><path d={'M ' + (noseX-7) + ' ' + (headY+23) + ' h 14'} stroke="#ffedde" strokeWidth="3"/></> :
+            emotion === 'happy' || emotion === 'excited' ? <path d={'M ' + (noseX-13) + ' ' + (headY+24) + ' Q ' + noseX + ' ' + (headY+42) + ' ' + (noseX+13) + ' ' + (headY+24) + ' Q ' + noseX + ' ' + (headY+34) + ' ' + (noseX-13) + ' ' + (headY+24) + ' Z'} fill="#302033"/> :
             emotion === 'thinking' ? <ellipse cx={noseX+3} cy={headY+27} rx="4" ry="3" fill="#302033"/> :
+            emotion === 'confused' ? <path d={'M ' + (noseX-10) + ' ' + (headY+25) + ' q 8 -6 20 3'} stroke="#302033" strokeWidth="2.7" fill="none"/> :
+            emotion === 'smug' ? <path d={'M ' + (noseX-10) + ' ' + (headY+27) + ' Q ' + noseX + ' ' + (headY+31) + ' ' + (noseX+10) + ' ' + (headY+23)} stroke="#302033" strokeWidth="2.7" fill="none"/> :
+            emotion === 'sleepy' ? <path d={'M ' + (noseX-8) + ' ' + (headY+26) + ' q 8 3 16 0'} stroke="#302033" strokeWidth="2.1" fill="none"/> :
             <path d={'M ' + (noseX-10) + ' ' + (headY+26) + ' Q ' + noseX + ' ' + (headY+(emotion==='sad'||emotion==='angry'?19:26.5)) + ' ' + (noseX+10) + ' ' + (headY+26)} stroke="#2a2038" strokeWidth="2.7" fill="none" strokeLinecap="round"/>}
           {c.glasses && <><ellipse cx={faceShift - 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>{!profile && <ellipse cx={faceShift + 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>}</>}
           {c.earrings && <circle cx={-headW + 2} cy={headY + 18} r="5" fill="none" stroke="#f5cf6b" strokeWidth="3"/>}
