@@ -27,6 +27,7 @@ export const frameExporter: VideoExporter = {
       await mixer.prepare(project.scenes);
       signal.throwIfAborted();
       renderer = await createRenderer(format, scale, true);
+      await renderer.prepareImages(project.scenes);
       const video = new CanvasSource(renderer.canvas, { codec: vp8 ? 'vp8' : 'vp9', bitrate: 2_500_000, latencyMode: 'quality', keyFrameInterval: 2 });
       const sound = new AudioBufferSource({ codec: 'opus', bitrate: 128_000 });
       output.addVideoTrack(video, { frameRate: FRAME_RATE });
