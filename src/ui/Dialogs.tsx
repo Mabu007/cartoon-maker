@@ -15,7 +15,7 @@ import type { SavedProject } from '../services/projects.ts';
 import { clipLabel, clock, formats, IconButton, Modal, Select, trackIcon } from './shared.tsx';
 
 export type ClipRequest = { track?: Track; action?: Action; actor?: string };
-export function AddClipDialog({ close, request, scene, actors, time, add, audio }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; add: (clip: Clip) => void; audio: (track: 'dialogue' | 'audio', actor: string, start: number) => void }) {
+export function AddClipDialog({ close, request, scene, actors, time, add, audio }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; add: (clip: Clip) => void; audio: (track: 'dialogue' | 'audio' | 'music', actor: string, start: number) => void }) {
   const [track, setTrack] = useState<Track>(request.track ?? 'body');
   const [actor, setActor] = useState(request.actor ?? Object.keys(actors)[0] ?? '');
   const [action, setAction] = useState<Action>(request.action ?? 'walk');
