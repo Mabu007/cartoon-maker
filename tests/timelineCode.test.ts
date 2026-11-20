@@ -70,14 +70,17 @@ test('AI batches are atomic and preserve priority for same-time cues on replacem
   assert.deepEqual(next.clips.slice(-2).map(clip => clip.id), ['face-a', 'face-b']);
 });
 
-test('legacy overlapping camera shots survive unrelated edits, while new overlaps are rejected', () => {
+test('legacy camera overlaps migrate to one active shot while unsafe new overlaps are rejected', () => {
   const legacy = { ...scene, clips: [camera('old-wide', 0, 15), camera('old-close', 7, 3)] };
   useStudio.getState().open({ ...demo, scenes: [legacy] });
+  const normalized = useStudio.getState().project.scenes[0];
+  assert.equal(cameraConflicts(normalized.clips).length, 0);
+  assert.deepEqual(normalized.clips.filter(c => c.track === 'camera').map(c => [c.start, c.length]).sort((a,b) => a[0] - b[0]), [[0,7],[7,3],[10,5]]);
   useStudio.getState().editScene(current => ({ ...current, name: 'Renamed' }));
   assert.throws(() => useStudio.getState().editScene(current => ({
     ...current, clips: [...current.clips, camera('new-shot', 12, 2)]
   })), /overlap/);
-  assert.deepEqual(useStudio.getState().project.scenes[0].clips, legacy.clips);
+  assert.deepEqual(useStudio.getState().project.scenes[0].clips, normalized.clips);
 });
 
 test('fractional camera splits preserve boundaries and allocate valid unique IDs', () => {

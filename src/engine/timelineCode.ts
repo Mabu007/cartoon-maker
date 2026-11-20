@@ -1,68 +1,16 @@
-import { ProjectDocument, builtinVoiceNames, soundNames, tracks, actions, shots, expressions, environments, type Scene, type Project, type Clip } from './schema.ts';
+import { ProjectDocument, builtinVoiceNames, soundNames, tracks, actions, shots, expressions, environments, type Scene, type Project } from './schema.ts';
 import { repairOrphanedObjectActions } from './interactions.ts';
 
 /** Canonical scene interchange: editable code is the same scene the renderer executes. */
 export const SCENE_CODE_VERSION = 1;
-type Camera = Extract<Clip, { track: 'camera' }>;
-const minClip = .1;
-const timingTolerance = .0001;
+export { cameraConflicts, insertCameraShot } from './cameraTimeline.ts';
+import { cameraConflicts } from './cameraTimeline.ts';
 
-export function cameraConflicts(clips: Clip[], previous: Clip[] = []): string[] {
-  const shots = clips.filter((item): item is Camera => item.track === 'camera').sort((a, b) => a.start - b.start);
-  const previousById = new Map(previous.map(clip => [clip.id, clip]));
-  const unchanged = new Set(shots.filter(shot => {
-    const item = previousById.get(shot.id);
-    return item?.track === 'camera' && item.start === shot.start && item.length === shot.length;
-  }).map(shot => shot.id));
-  const conflicts: string[] = [];
-  for (let i = 0; i < shots.length; i++) {
-    const earlier = shots[i];
-    for (let j = i + 1; j < shots.length && shots[j].start < earlier.start + earlier.length - timingTolerance; j++) {
-      const later = shots[j];
-      if (!unchanged.has(earlier.id) || !unchanged.has(later.id)) {
-        conflicts.push(`Camera shots "${earlier.id}" and "${later.id}" overlap. Trim, move or replace a shot.`);
-      }
-    }
-  }
-  return conflicts;
-}
-
-export function validateTimelineChange(scene: Scene, previous?: Scene) {
-  const conflicts = cameraConflicts(scene.clips, previous?.clips);
+/** Every edit is held to the one-camera invariant; legacy data is normalized on load. */
+export function validateTimelineChange(scene: Scene, _previous?: Scene) {
+  const conflicts = cameraConflicts(scene.clips);
   if (conflicts.length) throw new Error(conflicts[0]);
   if (repairOrphanedObjectActions(scene) !== scene) throw new Error('Timeline actions require compatible props and valid targets.');
-}
-
-/** Insert/resize a single full-frame camera shot without overlapping another.
- * A covered shot is removed; a partially covered shot is trimmed; a completely
- * surrounding shot is split to preserve the visible portions. */
-export function insertCameraShot(clips: Clip[], incoming: Camera, reservedIds: string[] = []): Clip[] {
-  const start = incoming.start, end = start + incoming.length;
-  const reserved = new Set([...reservedIds, ...clips.map(clip => clip.id), incoming.id]);
-  const result: Clip[] = [];
-  for (const clip of clips) {
-    if (clip.id === incoming.id) continue;
-    if (clip.track !== 'camera') { result.push(clip); continue; }
-    const otherEnd = clip.start + clip.length;
-    if (otherEnd <= start + timingTolerance || clip.start >= end - timingTolerance) { result.push(clip); continue; }
-    const before = start - clip.start, after = otherEnd - end;
-    if (before >= minClip - 1e-9) result.push({ ...clip, length: Math.max(minClip, before) });
-    if (after >= minClip - 1e-9) {
-      let id = clip.id;
-      if (before >= minClip - 1e-9) {
-        const stem = '-after-' + end.toFixed(2).replace('.', '_');
-        let suffix = stem;
-        let attempt = 1;
-        do {
-          id = clip.id.slice(0, 100 - suffix.length) + suffix;
-          suffix = stem + '-' + attempt++;
-        } while (reserved.has(id));
-        reserved.add(id);
-      }
-      result.push({ ...clip, id, start: end, length: Math.max(minClip, after) });
-    }
-  }
-  return [...result, incoming];
 }
 
 export function sceneToCode(scene: Scene): string {

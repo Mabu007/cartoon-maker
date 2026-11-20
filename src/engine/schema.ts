@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { cameraConflicts, normalizeCameraTimeline } from './cameraTimeline.ts';
 
 export const WIDTH = 960;
 export const HEIGHT = 540;
@@ -145,6 +146,8 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
   if (embeddedImageBytes > 780_000) ctx.addIssue({ code: 'custom', path: ['scenes'], message: 'Image budget exceeded. Use smaller or fewer images in this project.' });
   project.scenes.forEach((scene, index) => {
     const path = ['scenes', index];
+    for (const message of cameraConflicts(scene.clips))
+      ctx.addIssue({ code: 'custom', path: [...path, 'clips'], message });
     verifyIds([...scene.actors, ...scene.objects, ...scene.clips, ...(scene.markers ?? [])], ctx, path);
     for (const [markerIndex, marker] of (scene.markers ?? []).entries())
       if (marker.time > scene.duration) ctx.addIssue({ code: 'custom', path: [...path, 'markers', markerIndex, 'time'], message: 'Marker exceeds scene duration' });
@@ -191,10 +194,18 @@ export const shotLabel = (shot: string) => shot === 'close-up' || shot === 'two-
 
 /** Accept historical unversioned/v0 project data without modifying the stored original. */
 export function parseStoredProject(raw: unknown): Project {
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    const document = raw as Record<string, unknown>;
-    if (document.version === undefined || document.version === 0)
-      return ProjectDocument.parse({ ...document, version: 1 });
-  }
-  return ProjectDocument.parse(raw);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+    return ProjectDocument.parse(raw);
+  const document = raw as Record<string, unknown>;
+  const versioned = document.version === undefined || document.version === 0
+    ? { ...document, version: 1 } : document;
+  // Migration applies only on persistent file/device/cloud reads; normal
+  // edits and pasted JSON use strict ProjectDocument validation.
+  const scenes = Array.isArray(versioned.scenes) ? versioned.scenes.map(value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const scene = value as Scene;
+    if (!Array.isArray(scene.clips)) return value;
+    return normalizeCameraTimeline(scene);
+  }) : versioned.scenes;
+  return ProjectDocument.parse({ ...versioned, scenes });
 }
