@@ -30,7 +30,9 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   const props = useRef({ project, scene, time, playing, edit, selection, subtitles, mixer, onFrame });
   props.current = { project, scene, time, playing, edit, selection, subtitles, mixer, onFrame };
   useEffect(() => {
-    let alive = true, handle = 0, lastShot = '', failed = false;
+    let alive = true, lastShot = '', failed = false;
+    let timeListener: (() => void) | undefined;
+    let visibilityListener: (() => void) | undefined;
     let activeRenderer: Renderer | null = null;
     let contextLost: ((event: Event) => void) | undefined;
     const fail = (error: unknown) => {
@@ -72,21 +74,22 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       };
       repaint.current = draw;
       draw();
-      let previousTime: PreviewTime | undefined;
-      const tick = () => {
-        if (!alive || failed) return;
-        const p = props.current;
-        if (p.playing && !document.hidden && p.time.current !== previousTime) {
-          previousTime = p.time.current;
-          draw();
-        }
-        handle = requestAnimationFrame(tick);
+      // The transport emits exact playback clock changes already. Drawing on
+      // those events prevents a second always-running RAF loop when paused,
+      // and keeps camera/visemes aligned to the actual audio clock.
+      timeListener=()=>{
+        if(props.current.playing&&!document.hidden)draw();
       };
-      handle = requestAnimationFrame(tick);
+      visibilityListener=()=>{
+        if(!document.hidden)draw();
+      };
+      window.addEventListener('toonroom-time',timeListener);
+      document.addEventListener('visibilitychange',visibilityListener);
     }).catch(fail);
     return () => {
       alive = false;
-      cancelAnimationFrame(handle);
+      if(timeListener)window.removeEventListener('toonroom-time',timeListener);
+      if(visibilityListener)document.removeEventListener('visibilitychange',visibilityListener);
       repaint.current = () => {};
       if (engine.current === activeRenderer) engine.current = null;
       if (activeRenderer) {

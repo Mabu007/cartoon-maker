@@ -302,7 +302,13 @@ export default function App() {
       frame.current = requestAnimationFrame(tick);
     } catch (error) { if (token === animationToken.current) { pause(); showError(error); } }
   }
-  function seek(value: number) { pause(); setArrange(false); const current = currentScene(useStudio.getState()); updateCursor(current, clamp(value, 0, current.duration), true); }
+  function seek(value: number) {
+    pause();setArrange(false);
+    // The transport must seek within the staged Director proposal, not the
+    // unchanged canonical scene while previewing a new duration or shot.
+    const current=directorPreview??currentScene(useStudio.getState());
+    updateCursor(current,clamp(value,0,current.duration),true);
+  }
   function switchScene(value: Scene) {
     const state = useStudio.getState();
     if (state.session !== session) return;
