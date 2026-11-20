@@ -4,12 +4,13 @@ import { anchorFor, compatibleObjects, objectDependencies } from '../engine/inte
 import { anchors } from '../engine/presets.ts';
 import { Avatar, clipLabel, IconButton, NumberField, propIcon, Select, trackIcon } from './shared.tsx';
 import { changeClipTiming, type Selection } from '../studio.ts';
+import { VoiceClipControls } from './VoiceClipControls.tsx';
 
-export function Inspector({ scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality }: {
+export function Inspector({ scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, regenerateVoice }: {
   scene: Scene; actors: Record<string, string>; characters: Character[]; selection: Selection; select: (value: Selection) => void;
   patchActor: (actor: ActorData) => void; patchObject: (object: Prop) => void; patchClip: (clip: Clip) => void; patchScene: (patch: Partial<Scene>) => void;
   editCharacter: (character: Character) => void; addDialogue: () => void; addAction: () => void; scenes: number; sceneIndex: number; openScenes: () => void; remove: () => void; duplicate: () => void;
-  snap: boolean; setSnap: (value: boolean) => void; subtitles: boolean; setSubtitles: (value: boolean) => void; quality: boolean; setQuality: (value: boolean) => void;
+  snap: boolean; setSnap: (value: boolean) => void; subtitles: boolean; setSubtitles: (value: boolean) => void; quality: boolean; setQuality: (value: boolean) => void; regenerateVoice: (clip: Extract<Clip, {track: 'dialogue'}>, text: string, voice: string) => Promise<string>;
 }) {
   const actor = scene.actors.find(item => item.id === selection?.id);
   const character = actor && characters.find(item => item.id === actor.characterId);
@@ -60,7 +61,7 @@ export function Inspector({ scene, actors, characters, selection, select, patchA
           options={clip.action === 'sit' ? compatibleObjects(scene, clip.action).map(item => item.id) : ['', ...compatibleObjects(scene, clip.action).map(item => item.id)]}
           render={id => scene.objects.find(item => item.id === id)?.name ?? 'Empty hands'}/></label></>}
         {clip.track === 'face' && <label className="field">Expression<Select aria="Clip expression" value={clip.expression} onChange={expression => patchClip({ ...clip, expression })} options={expressions}/></label>}
-        {(clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music') && <><NumberField text="Volume" value={clip.volume} min={0} max={2} step={.05} onChange={volume => patchClip({ ...clip, volume })}/><NumberField text="Audio offset" value={clip.offset} min={0} max={180} step={.01} onChange={offset => patchClip({ ...clip, offset })}/><label className="check"><input type="checkbox" checked={clip.muted} onChange={e => patchClip({ ...clip, muted: e.target.checked })}/> Mute clip</label>{clip.track === 'dialogue' && <label className="field">Caption<textarea key={clip.text} defaultValue={clip.text} maxLength={1000} onBlur={e => { if (e.target.value !== clip.text) patchClip({ ...clip, text: e.target.value }); }}/></label>}</>}
+        {(clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music') && <><NumberField text="Volume" value={clip.volume} min={0} max={2} step={.05} onChange={volume => patchClip({ ...clip, volume })}/><NumberField text="Audio offset" value={clip.offset} min={0} max={180} step={.01} onChange={offset => patchClip({ ...clip, offset })}/><label className="check"><input type="checkbox" checked={clip.muted} onChange={e => patchClip({ ...clip, muted: e.target.checked })}/> Mute clip</label>{clip.track === 'dialogue' && <VoiceClipControls key={clip.id + clip.asset} clip={clip} generate={regenerateVoice}/>}</>}
         {clip.track === 'camera' && <><label className="field">Shot<Select aria="Camera shot" value={clip.shot} onChange={shot => patchClip({ ...clip, shot })} options={shots}/></label><label className="field">Focus<Select aria="Camera focus" value={clip.focus ?? ''} onChange={value => { const { focus: _, ...rest } = clip; patchClip(value ? { ...rest, focus: value } : rest); }} options={['', ...Object.keys(actors)]} render={id => actors[id] ?? 'Automatic'}/></label><label className="field">Transition<Select aria="Camera transition" value={clip.transition} onChange={transition => patchClip({ ...clip, transition })} options={['cut', 'glide']}/></label></>}
         {clip.track === 'transition' && <label className="field">Transition<Select aria="Scene transition" value={clip.effect} onChange={effect => patchClip({ ...clip, effect })} options={['fade-in', 'fade-out']}/></label>}
       </details></>}
