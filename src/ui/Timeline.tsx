@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type DragEvent } from 'react';
-import { ChevronDown, ChevronUp, ClipboardCopy, Code2, Copy, Keyboard, Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Lock, Unlock, Volume2, VolumeX, ChevronRight, ListFilter, CopyPlus, ClipboardPaste } from 'lucide-react';
+import { ChevronDown, ChevronUp, ClipboardCopy, Code2, Copy, Keyboard, Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Lock, Unlock, Volume2, VolumeX, Headphones, ChevronRight, ListFilter, CopyPlus, ClipboardPaste } from 'lucide-react';
 import { clamp } from '../engine/animation.ts';
 import { tracks, trackNames, uid, type Clip, type Scene, type Track } from '../engine/schema.ts';
 import { compatibleObjects } from '../engine/interactions.ts';
@@ -186,7 +186,7 @@ export function Timeline({
       apply({...scene,clips:[...scene.clips,next]},[next.id]);
     }
   }
-  function toggle(track:Track,key:'muted'|'locked'|'collapsed'){
+  function toggle(track:Track,key:'muted'|'locked'|'collapsed'|'solo'){
     const previous=scene.trackSettings?.[track]??{};
     apply({...scene,trackSettings:{...scene.trackSettings,[track]:{...previous,[key]:!previous[key]}}});
   }
@@ -210,6 +210,8 @@ export function Timeline({
         <span className={`track-icon track-${track}`}><Icon size={14}/></span>
         <span className="timeline-track-title" title={trackNames[track]}>{trackNames[track]}<small>{source.length}</small></span>
         <button type="button" aria-label={(settings?.muted?'Unmute ':'Mute ')+trackNames[track]} title={settings?.muted?'Unmute track':'Mute track'} onClick={()=>toggle(track,'muted')}>{settings?.muted?<VolumeX size={13}/>:<Volume2 size={13}/>}</button>
+        {(track==='dialogue'||track==='audio'||track==='music')&&<button type="button" className={settings?.solo?'track-solo-active':''}
+          aria-label={(settings?.solo?'Unsolo ':'Solo ')+trackNames[track]} title={settings?.solo?'Stop solo':'Solo this audio track'} onClick={()=>toggle(track,'solo')}><Headphones size={13}/></button>
         <button type="button" aria-label={(locked?'Unlock ':'Lock ')+trackNames[track]} title={locked?'Unlock track':'Lock track'} onClick={()=>toggle(track,'locked')}>{locked?<Lock size={13}/>:<Unlock size={13}/>}</button>
         <button type="button" title={'Add '+trackNames[track]+' clip'} aria-label={'Add '+trackNames[track]+' clip'} disabled={locked} onClick={()=>add(track)}><Plus size={13}/></button>
       </div>

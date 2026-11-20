@@ -463,3 +463,19 @@
 .professional-timeline .clip-camera .clip-handle {width:8px;}
 .professional-timeline .camera-clip-mode {font-size:10px; color:#ddc8ff; font-weight:800;}
 .camera-inspector-hint {border-left:2px solid #aa8ad1; padding:7px 8px; background:#8362aa17; border-radius:4px;}
+
+/* Part 5: approachable audio creation controls, compact track solo indicator */
+.factory-voice-config,.voice-version-list {
+  display:grid;gap:8px;padding:12px;border-radius:9px;
+  border:1px solid #514468;background:#70589014;margin-block:10px;
+}
+.factory-voice-config strong {font-size:12px;color:#dfceef;}
+.voice-generation-actions {display:flex;gap:7px;flex-wrap:wrap;margin-block:8px;}
+.voice-generation-actions button {display:flex;align-items:center;justify-content:center;gap:7px;flex:1;min-width:126px;}
+.voice-clip-preview {display:grid;gap:6px;margin-block:10px;}
+.voice-clip-preview label {font-size:11px;color:#baaad0;display:flex;gap:5px;align-items:center;}
+.voice-clip-preview audio {width:100%;max-width:100%;height:36px;}
+.voice-version-list select {width:100%;min-width:0;}
+.professional-timeline .track-name .track-solo-active {color:#f9d887;background:#65452e;}
+.professional-timeline .track-name {gap:2px;}
+@media(max-width:790px){.professional-timeline .track-name button {width:13px;}}
