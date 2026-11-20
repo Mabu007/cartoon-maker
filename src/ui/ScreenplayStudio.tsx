@@ -86,18 +86,16 @@ export function ScreenplayStudio({ project, production, update, ai, approve, gen
     if (!canUseAI(ai) || !current || draftBusy) return;
     setError(''); setDraftBusy(true);
     const outline = production.bible.scenes.find(scene => scene.id === current.id);
-    const active = (status: string) => status === 'approved' || status === 'locked';
-    const bible = { profile: active(production.bible.status) ? production.bible.profile : { title: production.bible.profile.title },
-      characters: production.bible.characters.filter(character => active(character.status)),
-      worlds: production.bible.worlds.filter(world => active(world.status)),
-      scenes: production.bible.scenes.filter(scene => active(scene.status)) };
+    // Unapproved story ideas are still valid drafting context. Creative
+    // approval protects finished decisions; it is not a beginner entry gate.
+    const bible=production.bible;
     const selected = scenes.filter(scene => draftScope === 'all' || scene.id === current.id ||
       ((draftScope === 'act' || draftScope === 'sequence') && Boolean(outline?.[draftScope]) &&
         bible.scenes.some(item => item.id === scene.id && item[draftScope] === outline?.[draftScope])));
     try {
       const next: ScriptSceneData[] = [];
       for (const scene of selected) {
-        const result = await filmmaker(ai, 'screenplay', prompt.trim() || 'Write this scene from the approved outline.', {
+        const result = await filmmaker(ai, 'screenplay', prompt.trim() || 'Draft this scene from the current story idea.', {
           bible, outline: bible.scenes.find(item => item.id === scene.id), scene: { ...scene, set: scene.environment },
           previous: next.at(-1)?.elements.slice(-6),
           cast: project.characters.filter(character => scene.cast.includes(character.id)).map(({ id, name }) => ({ id, name })),
@@ -132,7 +130,7 @@ export function ScreenplayStudio({ project, production, update, ai, approve, gen
     updateScenes(items => items.map(scene => draft.next.find(item => item.id === scene.id) ?? scene));
     setDraft(undefined); setPrompt('');
   }
-  const remaining = production.bible.scenes.filter(scene => ['approved', 'locked'].includes(scene.status) && !scenes.some(item => item.id === scene.id));
+  const remaining = production.bible.scenes.filter(scene => !scenes.some(item => item.id === scene.id));
   const exportText = () => {
     const script = [production.bible.profile.title, ...scenes.flatMap(scene => ['', ...scene.elements.flatMap((item, index) =>
       item.type === 'dialogue' && item.characterId && !hasCharacterSlug(scene, index) ? [`                        ${(speaker(item.characterId) ?? '').toUpperCase()}`, formattedText(item)] : [formattedText(item)]
@@ -146,7 +144,7 @@ export function ScreenplayStudio({ project, production, update, ai, approve, gen
         className={scene.id===current?.id?'active':''}
         onClick={()=>{setSceneId(scene.id);setSelected('');}}>
         <span>{index+1}.</span>{scene.title}</button>)}</div>
-      {!!remaining.length && <button className="quiet" onClick={() => updateScenes(items => [...items, ...remaining.slice(0, 30 - items.length).map(fromOutline)])}>Import approved scenes</button>}
+      {!!remaining.length && <button className="quiet" onClick={() => updateScenes(items => [...items, ...remaining.slice(0, 30 - items.length).map(fromOutline)])}>Add missing outline scenes</button>}
       <details><summary>Characters</summary>{project.characters.filter(character => scenes.some(scene => scene.cast.includes(character.id))).map(character => <button className="quiet" key={character.id} onClick={() => {
         const first = scenes.find(scene => scene.elements.some(item => item.characterId === character.id));
         const item = first?.elements.find(item => item.characterId === character.id);

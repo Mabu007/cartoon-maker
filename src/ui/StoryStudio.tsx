@@ -67,7 +67,10 @@ export function StoryStudio({ project, production, update, ai, write, loadExampl
           id:project.scenes[0].id,environment:project.scenes[0].environment,
           location:project.scenes[0].environment}
       ];
-      update(current=>reviseScript(current,outline.slice(0,30).map(fromOutline)));
+      update(current=>({
+        ...reviseScript(current,outline.slice(0,30).map(fromOutline)),
+        bible:{...current.bible,scenes:current.bible.scenes.length?current.bible.scenes:outline}
+      }));
     }
     write(!production.screenplay.scenes.length&&canUseAI(ai));
   }
