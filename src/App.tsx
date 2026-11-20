@@ -8,7 +8,8 @@ import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithD
 import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Production, type Project, type Prop, type Scene, type ScriptSceneData, type Track } from './engine/schema.ts';
 import type { Format } from './engine/renderer.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
-import { createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
+import { audioLength, putAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
+import { analyzeLipSync } from './services/lipSync.ts';
 import { duplicateProject, duplicateScene, listLocal, removeLocal, saveLocal, writeLocal, type SavedProject } from './services/projects.ts';
 import { exampleDirector, hostedDirector } from './services/director.ts';
 import { speechProvider } from './services/speech.ts';
@@ -410,6 +411,27 @@ export default function App() {
       } : {})
     }));
   }
+  async function regenerateVoice(clip: Extract<Clip, { track: 'dialogue' }>, text: string, voice: string): Promise<string> {
+    const expectedProject = project.id, expectedScene = scene.id, expectedAsset = clip.asset;
+    if (!text.trim() || text.length > 400) throw new Error('Enter a line with 1 to 400 characters.');
+    const output = await speechProvider(account).synthesize(text, voice);
+    const seconds = await audioLength(output);
+    if (seconds < .1 || clip.start + seconds > 180) throw new Error('The generated line does not fit this scene. Shorten it or split the scene.');
+    const analysis = await analyzeLipSync(output, text, seconds);
+    const state = useStudio.getState();
+    if (state.project.id !== expectedProject || currentScene(state).id !== expectedScene ||
+        currentScene(state).clips.find(item => item.id === clip.id)?.track !== 'dialogue' ||
+        currentScene(state).clips.find(item => item.id === clip.id && item.track === 'dialogue')?.asset !== expectedAsset)
+      throw new Error('The dialogue changed while voice generation was running. Nothing was replaced.');
+    const audioId = uid();
+    await putAudio(audioId, output);
+    editScene(current => ({
+      ...current, duration: Math.max(current.duration, Math.ceil((clip.start + seconds) * 100) / 100),
+      clips: current.clips.map(item => item.id === clip.id ? { ...clip, text, length: Math.round(seconds * 100) / 100,
+        asset: `asset:${audioId}`, offset: 0, visemes: analysis.cues } : item)
+    }));
+    return analysis.source === 'rhubarb' ? 'Voice regenerated and aligned to the recording.' : 'Voice regenerated; estimated mouth cues are active until Rhubarb analysis is configured.';
+  }
   function addSound(name: typeof soundNames[number]) { const start = clamp(time.current.local, 0, scene.duration - .1); addClip({ id: uid(), track: 'audio', name: label(name), asset: `builtin:${name}`, length: Math.min(.8, scene.duration - start), start, muted: false, volume: .8, offset: 0 }); }
   function deleteProject(item: Project) {
     ask(`Delete “${item.name}”?`, 'This permanently removes the saved project.', () => {
@@ -614,7 +636,7 @@ export default function App() {
           if (JSON.stringify({ schemaVersion: 1, scene: previous }) !== original) throw new Error('The scene changed since this AI proposal. Request a new edit.');
           editScene(() => next);
           tell('AI direction applied to the timeline. You can undo this change.');
-        }}/> : <Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality}/>}
+        }}/> : <Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} regenerateVoice={regenerateVoice}/>}
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>
