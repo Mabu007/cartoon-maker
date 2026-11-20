@@ -1,5 +1,5 @@
 import { animations, blend, clamp, ease, mix, sample } from './animation.ts';
-import { anchors } from './presets.ts';
+import { anchorFor } from './interactions.ts';
 import { sampleViseme, type Viseme } from './visemes.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
@@ -40,7 +40,7 @@ export function evaluate(scene: Scene, time: number) {
       const supportedSitBefore = clips.some(previous =>
         previous.track === 'body' && previous.action === 'sit' && previous.layer === 'body' &&
         previous.start + previous.length <= clip.start + .05 &&
-        previous.target && scene.objects.some(item => item.id === previous.target && anchors[item.kind]?.action === 'sit'));
+        previous.target && scene.objects.some(item => item.id === previous.target && anchorFor(item)?.action === 'sit'));
       // A replacement Stand action must immediately put the feet on the floor,
       // not replay the seated opening pose for the first 0.8 seconds.
       const offsets = (activeAction === 'sit' && clip.start === 0) ||
@@ -56,7 +56,7 @@ export function evaluate(scene: Scene, time: number) {
         flip = progression > .66 ? !flip : flip;
       }
       const object = target;
-      const anchor = object && anchors[object.kind];
+      const anchor = object && anchorFor(object);
       if (object && anchor?.action === 'sit' && activeAction === 'sit') {
         const amount = clip.start === 0 ? 1 : ease(clamp((t - clip.start) / .65));
         const angle = object.rotation * Math.PI / 180;
