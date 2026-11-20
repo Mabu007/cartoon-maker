@@ -6,12 +6,12 @@ import type { Library } from '../studio.ts';
 import { Avatar, IconButton, propIcon } from './shared.tsx';
 
 const tabs = { Cast: UserRound, Worlds: Image, Props: Boxes, Actions: Clapperboard, Audio: Music2 };
-export function AssetLibrary({ active, change, characters, scene, newCharacter, editCharacter, addActor, setWorld, uploadWorld, addProp, uploadProp, addAction, addSound, dialogue, audio }: {
+export function AssetLibrary({ active, change, characters, scene, newCharacter, editCharacter, addActor, setWorld, uploadWorld, addProp, uploadProp, addAction, addSound, dialogue, audio, music }: {
   active: Library; change: (panel: Library) => void; characters: Character[]; scene: Scene;
   newCharacter: () => void; editCharacter: (character: Character) => void; addActor: (character: Character) => void;
   setWorld: (world: Scene['environment']) => void; uploadWorld: (file: File) => void;
   addProp: (kind: Prop['kind']) => void; uploadProp: (file: File) => void; addAction: (action: Action) => void;
-  addSound: (sound: typeof soundNames[number]) => void; dialogue: () => void; audio: () => void;
+  addSound: (sound: typeof soundNames[number]) => void; dialogue: () => void; audio: () => void; music: () => void;
 }) {
   const [filter, setFilter] = useState('');
   const worldFile = useRef<HTMLInputElement>(null), propFile = useRef<HTMLInputElement>(null);
@@ -39,7 +39,7 @@ export function AssetLibrary({ active, change, characters, scene, newCharacter, 
         <p className="small-text">Transparent PNGs and SVGs make great props. Select an uploaded prop to make it holdable or sit-able.</p>
       </>}
       {active === 'Actions' && actions.filter(match).map(action => <button className="asset-row" key={action} onClick={() => addAction(action)}><Clapperboard size={16}/><span>{label(action)}</span><Plus size={14}/></button>)}
-      {active === 'Audio' && <><button className="asset-row" onClick={dialogue}><Mic size={16}/><span>Add dialogue</span><Plus size={14}/></button><button className="asset-row" onClick={audio}><AudioLines size={16}/><span>Upload audio</span><Plus size={14}/></button><div className="small-label audio-heading">Sound effects</div>{soundNames.filter(match).map(sound => <button className="asset-row" key={sound} onClick={() => addSound(sound)}><Sparkles size={15}/><span>{label(sound)}</span><Plus size={14}/></button>)}</>}
+      {active === 'Audio' && <><button className="asset-row" onClick={dialogue}><Mic size={16}/><span>Add dialogue</span><Plus size={14}/></button><button className="asset-row" onClick={audio}><AudioLines size={16}/><span>Add SFX</span><Plus size={14}/></button><button className="asset-row" onClick={music}><Music2 size={16}/><span>Add music</span><Plus size={14}/></button><div className="small-label audio-heading">Sound effects</div>{soundNames.filter(match).map(sound => <button className="asset-row" key={sound} onClick={() => addSound(sound)}><Sparkles size={15}/><span>{label(sound)}</span><Plus size={14}/></button>)}</>}
     </div></div>
   </aside>;
 }
