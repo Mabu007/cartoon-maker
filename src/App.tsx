@@ -30,6 +30,7 @@ import { TimelineCodeDialog } from './ui/TimelineCodeDialog.tsx';
 import { Welcome } from './ui/Welcome.tsx';
 import { insertCameraShot, sceneToCode, validateSceneReplacement } from './engine/timelineCode.ts';
 import { movieToCode, sceneBuildingContext, validateMovieReplacement } from './engine/movieTimeline.ts';
+import { deleteMovementKeyframe, deleteTimelineClips, duplicateTimelineClips, pasteTimelineClips, resizeSceneTimeline, selectableClips, splitTimelineClips } from './engine/timelineEditing.ts';
 
 const StoryStudio = lazy(() => import('./ui/StoryStudio.tsx').then(module => ({ default: module.StoryStudio })));
 const ScreenplayStudio = lazy(() => import('./ui/ScreenplayStudio.tsx').then(module => ({ default: module.ScreenplayStudio })));
@@ -75,6 +76,7 @@ const errorMessage = (error: unknown) => error instanceof Error ? error.message 
 
 export default function App() {
   const project = useStudio(state => state.project), scene = useStudio(currentScene), selection = useStudio(state => state.selection), library = useStudio(state => state.library);
+  const selectedClipIds = useStudio(state => state.clipIds), selectedKeyframe = useStudio(state => state.selectedKeyframe);
   const hasUndo = useStudio(state => state.past.length > 0), hasRedo = useStudio(state => state.future.length > 0);
   const [workspace, setWorkspace] = useState<'create' | 'write' | 'direct'>('direct');
   const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(() => localStorage.getItem('toonroom.started') ? 'projects' : 'landing');
@@ -109,6 +111,7 @@ export default function App() {
   const livePlaying = useRef(false), livePreparing = useRef(false), settings = useRef({ loop, muted }), originalScope = useRef(scope);
   const cloudDeletes = useRef(new Set<string>());
   const cloudQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const timelineClipboard = useRef<{ projectId: string; sceneId: string; clips: Clip[] } | null>(null);
   const saveToken = useRef(0);
   settings.current = { loop, muted };
   const actorNames = Object.fromEntries(scene.actors.map(actor => [actor.id, project.characters.find(character => character.id === actor.characterId)?.name ?? 'Actor']));
@@ -450,7 +453,69 @@ export default function App() {
       edit(current => ({ ...current, characters: current.characters.filter(item => item.id !== id), scenes: current.scenes.map(item => item.actors.filter(actor => actor.characterId === id).reduce((value, actor) => removeEntity(value, actor.id), item)) })); select(null);
     });
   }
+  function editTimeline(next: Scene, ids?: string[]) {
+    run(() => {
+      const state = useStudio.getState();
+      if (state.session !== session || state.sceneId !== next.id) throw new Error('Scene changed during timeline edit.');
+      commitScene(() => next);
+      if (ids) useStudio.getState().selectClips(ids);
+    });
+  }
+  function copyTimelineSelection() {
+    const state = useStudio.getState();
+    const clips = selectableClips(currentScene(state), state.clipIds);
+    if (!clips.length) return;
+    timelineClipboard.current = { projectId: state.project.id, sceneId: state.sceneId, clips: structuredClone(clips) };
+    tell(clips.length + ' clip' + (clips.length===1?'':'s') + ' copied.');
+  }
+  function deleteTimelineSelection() {
+    const state = useStudio.getState();
+    if (state.selectedKeyframe) {
+      const key = state.selectedKeyframe;
+      editScene(scene => deleteMovementKeyframe(scene, key));
+      useStudio.getState().selectClips([key.clipId]);
+    } else if (state.clipIds.length) {
+      const ids = state.clipIds;
+      editScene(scene => deleteTimelineClips(scene, ids));
+      useStudio.getState().selectClips([]);
+    }
+  }
+  function cutTimelineSelection() {
+    if (!useStudio.getState().clipIds.length) return;
+    copyTimelineSelection();
+    deleteTimelineSelection();
+  }
+  function pasteTimelineSelection() {
+    const state = useStudio.getState(), clipboard = timelineClipboard.current;
+    if (!clipboard?.clips.length) { tell('Copy timeline clips first.', true); return; }
+    if (clipboard.projectId !== state.project.id) { tell('Clipboard belongs to another movie. Copy clips from this movie first.', true); return; }
+    run(() => {
+      const result = pasteTimelineClips(currentScene(useStudio.getState()),clipboard.clips,time.current.local);
+      commitScene(() => result.scene);
+      useStudio.getState().selectClips(result.ids);
+    });
+  }
+  function duplicateTimelineSelection() {
+    const state=useStudio.getState();
+    if(!state.clipIds.length)return;
+    run(()=>{
+      const result=duplicateTimelineClips(currentScene(useStudio.getState()),state.clipIds);
+      commitScene(()=>result.scene);
+      useStudio.getState().selectClips(result.ids);
+    });
+  }
+  function splitTimelineSelection() {
+    const state=useStudio.getState();
+    if(!state.clipIds.length)return;
+    run(()=>{
+      const result=splitTimelineClips(currentScene(useStudio.getState()),state.clipIds,time.current.local);
+      commitScene(()=>result.scene);
+      if(result.added.length)useStudio.getState().selectClips(result.added);
+      else tell('Place the playhead inside a selected clip to split it.',true);
+    });
+  }
   function duplicateSelection() {
+    if (useStudio.getState().clipIds.length) { duplicateTimelineSelection(); return; }
     const selected = useStudio.getState().selection;
     const current = currentScene(useStudio.getState());
     if (!selected) return;
@@ -466,6 +531,7 @@ export default function App() {
   }
   function removeSelection() {
     const state = useStudio.getState(), item = state.selection;
+    if (state.clipIds.length || state.selectedKeyframe) { deleteTimelineSelection(); return; }
     if (!item) return;
     const current = currentScene(state);
     if (item.kind === 'object' && objectDependencies(current, item.id).length) {
@@ -654,13 +720,37 @@ export default function App() {
   function showDialog(value: Dialog) { pause(); setDialog(value); }
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
-      if (dialog || (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,button,[role=button],[role=separator],[contenteditable=true]') && !event.target.closest('.clip'))) return;
-      if (workspace === 'direct' && event.code === 'Space') { event.preventDefault(); void play(); }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); persist(undefined, true); }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); run(() => event.shiftKey ? useStudio.getState().redo() : useStudio.getState().undo()); }
-      if (workspace === 'direct' && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') { event.preventDefault(); duplicateSelection(); }
-      if (workspace === 'direct' && (event.key === 'Delete' || event.key === 'Backspace')) { if (selection) { event.preventDefault(); removeSelection(); } }
-      if (event.key === 'Escape') { select(null); setFocus(false); }
+      if (dialog) return;
+      const target = event.target;
+      const el = target instanceof HTMLElement ? target : null;
+      // Never steal Backspace, clipboard, Space or shortcuts from text editors.
+      if (el?.isContentEditable || el?.closest('input,textarea,select,[role="textbox"],.monaco-editor,.cm-editor,[contenteditable]')) return;
+      const inClip = !!el?.closest('.clip,.timeline-keyframe');
+      if (el?.closest('button,[role="button"],[role="separator"]') && !inClip) return;
+      const state = useStudio.getState(), hasTimelineSelection = state.clipIds.length > 0 || !!state.selectedKeyframe;
+      const command = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if (command && key === 's') { event.preventDefault(); persist(undefined,true); return; }
+      if (command && (key === 'z' || key === 'y')) {
+        event.preventDefault();
+        run(() => (key === 'y' || event.shiftKey) ? useStudio.getState().redo() : useStudio.getState().undo());
+        return;
+      }
+      if (workspace !== 'direct') return;
+      if (event.code === 'Space' && !command && !event.altKey) { event.preventDefault(); void play(); return; }
+      if (command && key === 'a' && (inClip || hasTimelineSelection)) { event.preventDefault(); state.selectClips(currentScene(state).clips.map(clip=>clip.id)); return; }
+      if (command && key === 'c' && hasTimelineSelection) { event.preventDefault(); copyTimelineSelection(); return; }
+      if (command && key === 'x' && hasTimelineSelection) { event.preventDefault(); cutTimelineSelection(); return; }
+      if (command && key === 'v') { event.preventDefault(); pasteTimelineSelection(); return; }
+      if (command && key === 'd') { event.preventDefault(); duplicateSelection(); return; }
+      if ((event.key === 'Delete' || event.key === 'Backspace') && (state.selection || hasTimelineSelection)) {
+        event.preventDefault(); removeSelection(); return;
+      }
+      if (!command && !event.altKey && key === 's' && hasTimelineSelection) { event.preventDefault(); splitTimelineSelection(); return; }
+      if (inClip && (key === '+' || key === '=' || key === '-' || key === '_')) {
+        event.preventDefault(); window.dispatchEvent(new CustomEvent('toonroom-zoom', {detail:key==='+'||key==='='?'in':'out'})); return;
+      }
+      if (event.key === 'Escape') { state.select(null); setFocus(false); return; }
       if (arrange && selection && selection.kind !== 'clip' && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
         event.preventDefault(); const step = event.shiftKey ? 10 : 1;
         const dx = event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0, dy = event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0;
@@ -768,7 +858,12 @@ export default function App() {
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>
-    <Timeline key={session} scene={scene} names={actorNames} selection={selection} select={select} seek={seek} change={patchClip} add={showClip} remove={removeSelection} duplicate={duplicateSelection} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneBuildingContext(project, scene)).then(() => tell('AI scene-building context copied.'), showError); }} onCopyScene={() => { void navigator.clipboard.writeText(sceneToCode(scene)).then(() => tell('Current scene JSON copied.'), showError); }} onCopyProject={() => { void navigator.clipboard.writeText(movieToCode(project)).then(() => tell('Entire movie timeline JSON copied.'), showError); }} onResizeScene={duration => editScene(current => ({ ...current, duration }))} onCompact={() => setCompact(value => !value)}/></>}
+    <Timeline key={session} scene={scene} names={actorNames} selection={selection} selectedClipIds={selectedClipIds} selectedKeyframe={selectedKeyframe}
+      select={select} selectClips={useStudio.getState().selectClips} selectKeyframe={useStudio.getState().selectKeyframe}
+      seek={seek} change={patchClip} add={showClip} remove={()=>run(deleteTimelineSelection)} duplicate={duplicateTimelineSelection}
+      copy={copyTimelineSelection} cut={()=>run(cutTimelineSelection)} paste={pasteTimelineSelection} split={splitTimelineSelection}
+      selectAll={()=>useStudio.getState().selectClips(scene.clips.map(c=>c.id))}
+      apply={editTimeline} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneBuildingContext(project, scene)).then(() => tell('AI scene-building context copied.'), showError); }} onCopyScene={() => { void navigator.clipboard.writeText(sceneToCode(scene)).then(() => tell('Current scene JSON copied.'), showError); }} onCopyProject={() => { void navigator.clipboard.writeText(movieToCode(project)).then(() => tell('Entire movie timeline JSON copied.'), showError); }} onResizeScene={duration => editScene(current => resizeSceneTimeline(current,duration))} playhead={time.current.local} onCompact={() => setCompact(value => !value)}/></>}
     <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
       const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
     }}/>

@@ -41,7 +41,11 @@ export function Timeline({
     for(const track of tracks)result[track].sort((a,b)=>a.start-b.start);
     return result;
   },[shown]);
-  const guides=useMemo(()=>snapGuides(scene,playheadRef.current,selectedClipIds),[scene,selectedClipIds,playhead]);
+  useEffect(()=>{
+    const onZoom=(event:Event)=>{const value=(event as CustomEvent<'in'|'out'>).detail;setZoom(current=>clamp(current*(value==='in'?1.4:1/1.4),1,9));};
+    window.addEventListener('toonroom-zoom',onZoom);
+    return()=>window.removeEventListener('toonroom-zoom',onZoom);
+  },[]);
   useEffect(()=>{
     const element=viewportRef.current;
     if(!element)return;
