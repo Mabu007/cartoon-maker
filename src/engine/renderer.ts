@@ -29,6 +29,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   app.stage.scale.set(pixelWidth / width, pixelHeight / height);
   const items = new Map<string, Entity>();
   let lastEnvironment: Scene['environment'] | undefined;
+  let wasCharacterPreview = false;
   let lastFrame: ReturnType<typeof evaluate> | undefined;
   const hitboxes: { id: string; left: number; right: number; top: number; bottom: number; depth: number }[] = [];
   function get(id: string, isActor = false) {
@@ -50,18 +51,28 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     lastFrame = evaluate(scene, time);
     const { actors, camera, sounds } = lastFrame;
     if (options.characterPreview) {
-      background.clear().rect(0, 0, WIDTH, HEIGHT).fill('#635575');
-      background.rect(0, 443, WIDTH, 97).fill('#493b56');
-      for (let x = 0; x < WIDTH; x += 86) background.roundRect(x + 12, 25, 52, 400, 26).fill({ color: x % 172 === 0 ? '#756687' : '#6d5d80', alpha: .72 });
-      background.moveTo(0, 443).lineTo(WIDTH, 443).stroke({ color: '#b59ac6', width: 3, alpha: .55 });
-      lastEnvironment = undefined;
-    } else if (lastEnvironment !== scene.environment) { drawWorld(background.clear(), scene.environment); lastEnvironment = scene.environment; }
+      if (!wasCharacterPreview) {
+        background.clear().rect(0, 0, WIDTH, HEIGHT).fill('#635575');
+        background.rect(0, 443, WIDTH, 97).fill('#493b56');
+        for (let x = 0; x < WIDTH; x += 86) background.roundRect(x + 12, 25, 52, 400, 26).fill({ color: x % 172 === 0 ? '#756687' : '#6d5d80', alpha: .72 });
+        background.moveTo(0, 443).lineTo(WIDTH, 443).stroke({ color: '#b59ac6', width: 3, alpha: .55 });
+      }
+      wasCharacterPreview = true;
+    } else {
+      if (wasCharacterPreview || lastEnvironment !== scene.environment) {
+        drawWorld(background.clear(), scene.environment);
+        lastEnvironment = scene.environment;
+      }
+      wasCharacterPreview = false;
+    }
     const cropCenter = format === '16:9' || camera.zoom > 1 ? camera.x : WIDTH / 2;
     world.scale.set(options.edit ? 1 : camera.zoom);
     world.position.set(width / 2 - (options.edit ? WIDTH / 2 : cropCenter * camera.zoom), height / 2 - (options.edit ? HEIGHT / 2 : camera.y * camera.zoom));
     guides.clear(); fade.clear(); hitboxes.length = 0;
     const used = new Set<string>();
     const carrying = new Set(actors.flatMap(actor => actor.held && actor.visible ? [actor.held.id] : []));
+    const characterById = new Map(characters.map(character => [character.id, character]));
+    const sourceActorById = new Map(scene.actors.map(actor => [actor.id, actor]));
     for (const prop of scene.objects) {
       used.add(prop.id);
       const entity = get(prop.id);
@@ -79,13 +90,13 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       hitboxes.push({ id: prop.id, left: point.x - w / 2, right: point.x + w / 2, top: point.y - h, bottom: point.y + 5, depth: entity.group.zIndex });
     }
     for (const actor of actors) {
-      const character = characters.find(item => item.id === actor.characterId);
+      const character = characterById.get(actor.characterId);
       if (!character) continue;
       used.add(actor.id);
       const entity = get(actor.id, true);
       entity.group.visible = actor.visible || Boolean(options.edit);
       if (!entity.group.visible) continue;
-      const source = scene.actors.find(item => item.id === actor.id) ?? actor;
+      const source = sourceActorById.get(actor.id) ?? actor;
       const point = options.staged?.[actor.id] ?? (options.edit ? source : actor);
       const lift = options.edit ? 0 : actor.lift;
       entity.group.position.set(point.x, point.y);
