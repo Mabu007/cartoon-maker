@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { authorize } from '../server/authorize.js';
 
+export const config = { maxDuration: 60 };
 /** The Vercel function can use a native Rhubarb binary where installed, or
  * securely proxy to the Docker worker. Never run shell strings or client URLs.
  */

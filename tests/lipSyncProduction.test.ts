@@ -8,7 +8,7 @@ import { facialPerformance } from '../src/engine/facialAnimation.ts';
 import { moveTimelineClips, trimTimelineClip } from '../src/engine/timelineEditing.ts';
 import { replaceDialogueAsset,restoreDialogueAsset } from '../src/engine/dialogueAudio.ts';
 import { parseRhubarbOutput, createLipSyncAnalyzer, alignmentKey, RHUBARB_ENGINE,
-  type Analysis } from '../src/services/lipSync.ts';
+  type Analysis, validStoredAlignment } from '../src/services/lipSync.ts';
 
 const film=makeProject(true),template=film.scenes[0],actor=template.actors[0].id;
 const fixture={
@@ -178,4 +178,13 @@ test('export frame timestamps and preview scene clock evaluate the same viseme a
   const sampled=evaluate(preview.scene,preview.local).actors.find(a=>a.id===actor)?.viseme;
   assert.deepEqual(sampled,evaluate(exportFrame.scene,exportFrame.local).actors.find(a=>a.id===actor)?.viseme);
  }
+});
+
+test('malformed old cache entries are never accepted as verified Rhubarb output',()=>{
+ const legitimate:Analysis={source:'rhubarb',engine:RHUBARB_ENGINE,cacheKey:'a'.repeat(64),
+  analyzedDuration:1,cues:[{start:0,end:1,shape:'closed',strength:1}]};
+ assert.equal(validStoredAlignment(legitimate,'a'.repeat(64),1),true);
+ assert.equal(validStoredAlignment({...legitimate,cues:[{start:0,end:1,shape:'bogus' as 'closed'}]},'a'.repeat(64),1),false);
+ assert.equal(validStoredAlignment({...legitimate,cacheKey:'b'.repeat(64)},'a'.repeat(64),1),false);
+ assert.equal(validStoredAlignment({...legitimate,cues:[{start:0,end:2,shape:'closed'}]},'a'.repeat(64),1),false);
 });

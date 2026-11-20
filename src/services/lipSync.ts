@@ -3,6 +3,21 @@ export const RHUBARB_ENGINE='rhubarb-1.14.0-GHX';
 export type Analysis={cues:VisemeCue[];source:'rhubarb'|'estimated';engine:string;analyzedDuration:number;cacheKey?:string;reason?:string};
 export type Recognizer='pocketSphinx'|'phonetic';
 export type AnalyzeOptions={token?:string;recognizer?:Recognizer};
+const validShapes=new Set<Viseme>(['rest','closed','bite','wide','open','round','pucker','tongue']);
+export function validStoredAlignment(value:Analysis|undefined,key:string,duration:number):value is Analysis {
+ if(value?.source!=='rhubarb'||value.cacheKey!==key||
+   Math.abs(value.analyzedDuration-duration)>=.08||
+   !Array.isArray(value.cues)||!value.cues.length||value.cues.length>3000)return false;
+ let last=0;
+ for(const cue of value.cues) {
+  if(!cue||!Number.isFinite(cue.start)||!Number.isFinite(cue.end)||
+     cue.start<last-.012||cue.end<=cue.start||cue.end>duration+.2||
+     !validShapes.has(cue.shape)||cue.strength!==undefined&&
+       (!Number.isFinite(cue.strength)||cue.strength<0||cue.strength>1))return false;
+  last=cue.end;
+ }
+ return true;
+}
 const mapping:Record<string,{shape:Viseme;strength?:number}>={
  A:{shape:'closed',strength:1},B:{shape:'wide',strength:.6},C:{shape:'open',strength:.75},
  D:{shape:'open',strength:1},E:{shape:'round',strength:.8},F:{shape:'pucker',strength:1},
@@ -99,7 +114,7 @@ export function createLipSyncAnalyzer(adapter:AlignmentAdapter=implementation){
   const pending=(async()=>{
    try{
     const hit=await adapter.read(key).catch(()=>undefined);
-    if(hit?.source==='rhubarb'&&hit.cacheKey===key&&hit.cues?.length&&Math.abs(hit.analyzedDuration-duration)<.08)return hit;
+    if(validStoredAlignment(hit,key,duration))return hit;
     const wave=await adapter.normalize(audio);
     const raw=await adapter.request(wave,text.trim(),recognizer,options.token);
     const result:Analysis={cues:parseRhubarbOutput(raw,duration),source:'rhubarb',engine:RHUBARB_ENGINE,cacheKey:key,analyzedDuration:duration};
