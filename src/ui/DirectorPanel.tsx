@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Code2, Send, Sparkles, WandSparkles, Check, X, Undo2, ClipboardCopy, Eye, Mic2 } from 'lucide-react';
+import { Code2, Send, Sparkles, WandSparkles, Check, X, Undo2, ClipboardCopy, Eye } from 'lucide-react';
 import { applyTimelineEdits, countPendingSpeech, prepareDirectorSpeech,
   type TimelineEditProposal } from '../engine/timelineAI.ts';
 import { evaluate } from '../engine/evaluate.ts';
@@ -30,7 +30,7 @@ function description(edit:TimelineEditProposal['edits'][number]):string {
 }
 export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,preview,undo,canUndo,openCode}:{
   project:Project;scene:Scene;selection:Selection;getTime:()=>number;
-  ai:AiAccess;busy:boolean;apply:(next:Scene,original:string)=>void;
+  ai:AiAccess;busy:boolean;apply:(next:Scene,original:string,generatedAssets:readonly string[])=>void;
   preview:(scene:Scene|undefined)=>void;undo:()=>void;canUndo:boolean;openCode:()=>void;
 }){
   const [prompt,setPrompt]=useState('');
@@ -120,7 +120,7 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
             ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})}};
       }):{next:pending.next,generatedAssets:[]};
       // Apply performs the canonical store comparison and creates one undo snapshot.
-      apply(prepared.next,pending.base);
+      apply(prepared.next,pending.base,prepared.generatedAssets);
       preview(undefined);
       setHistory(old=>[...old,{role:'user',text:pending.request},{role:'assistant',text:pending.proposal.message+
         (pending.unresolved?' Speech audio was generated for the accepted dialogue.':' Changes applied to the live timeline.')}].slice(-24));
