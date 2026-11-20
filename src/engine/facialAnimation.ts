@@ -33,7 +33,7 @@ export function facialPerformance(
   const blink = Math.max(baseBlink,anxiousDouble);
   // Deterministic pupil microsaccades; explicit look targets always dominate.
   const cycle=((t+seed*1.7)%3.9);
-  const glanceAway=focus&&cycle>3.38&&cycle<3.56?.23:1;
+  const glanceAway=focus && cycle>3.38 && cycle<3.56 ? .23 : 1;
   const micro=Math.sin(t*1.12+seed*11)*.14;
   const gazeX=focus ? clamp(focus.x,-1,1)*3.45*glanceAway+micro :
     Math.sin(t*.83+seed*11)*1.48+Math.sin(t*.3+seed*3)*.36;

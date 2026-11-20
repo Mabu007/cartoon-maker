@@ -129,15 +129,38 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         </label>)}
         {section === 'Body' && <><p className="factory-helper">Start with three simple proportions. Your character stays rigged at every size.</p>{(['height', 'head', 'thickness'] as const).map(id => <label className="field slider" key={id}>{sliders[id]}<input type="range" min={id === 'thickness' ? .65 : .75} max={id === 'head' ? 1.35 : id === 'thickness' ? 1.45 : 1.3} step={.01} value={draft[id]} onChange={e => update(id, Number(e.target.value))}/></label>)}</>}
         {section === 'Face' && <div className="factory-teeth-editor">
-          <span>Teeth · tap a tooth to make it gold</span>
+          <span>Teeth · click to make gold, right-click for a missing tooth</span>
           <div className="factory-teeth-row" role="group" aria-label="Choose gold teeth">
             {Array.from({ length: 6 }, (_, index) => <button type="button" key={index}
               className={(draft.goldTeeth ?? []).includes(index) ? 'gold' : ''}
               aria-label={'Tooth ' + (index + 1)} aria-pressed={(draft.goldTeeth ?? []).includes(index)}
+              onContextMenu={event=>{event.preventDefault();update('missingTeeth',(draft.missingTeeth??[]).includes(index)
+                ?(draft.missingTeeth??[]).filter(value=>value!==index)
+                :[...(draft.missingTeeth??[]),index].sort((a,b)=>a-b));}}
+              title={(draft.missingTeeth??[]).includes(index)?'Missing tooth — right-click to restore':'Right-click to remove this tooth'}
               onClick={() => update('goldTeeth', (draft.goldTeeth ?? []).includes(index)
                 ? (draft.goldTeeth ?? []).filter(value => value !== index)
                 : [...(draft.goldTeeth ?? []), index].sort((a,b) => a-b))}>{index + 1}</button>)}
           </div>
+        </div>}
+        {section === 'Face' && <div className="factory-mouth-rig-editor">
+          <strong>Parametric SVG mouth rig</strong>
+          <p className="small-text">Character-specific proportions. The visemes animate jaw opening, lip rounding and position, closure, teeth and tongue automatically.</p>
+          {([
+            ['width','Mouth width',.65,1.5],
+            ['jawScale','Jaw opening',.6,1.5],
+            ['roundness','Lip roundness',0,1],
+            ['asymmetry','Mouth asymmetry',-1,1]
+          ] as const).map(([key,name,min,max])=><label key={key} className="field slider">
+            <span>{name} <small>{(draft.mouthRig?.[key]??({width:1,jawScale:1,roundness:.5,asymmetry:0})[key]).toFixed(2)}</small></span>
+            <input aria-label={name} type="range" min={min} max={max} step={.01}
+              value={draft.mouthRig?.[key]??({width:1,jawScale:1,roundness:.5,asymmetry:0})[key]}
+              onChange={event=>setDraft(current=>({ ...current,mouthRig:{
+                width:current.mouthRig?.width??1,jawScale:current.mouthRig?.jawScale??1,
+                roundness:current.mouthRig?.roundness??.5,asymmetry:current.mouthRig?.asymmetry??0,
+                [key]:Number(event.target.value)
+              }}))}/>
+          </label>)}
         </div>}
         {section === 'Face' && <div className="factory-toggle-row"><label className="check"><input type="checkbox" checked={draft.glasses} onChange={e => update('glasses', e.target.checked)}/> Glasses</label><label className="check"><input type="checkbox" checked={draft.earrings} onChange={e => update('earrings', e.target.checked)}/> Earrings</label></div>}
         {section === 'Outfit' && <div className="color-row">{Object.entries(colors).filter(([key]) => key !== 'skin').map(([key, title]) => <label key={key} title={title}><input type="color" aria-label={title} value={draft[key as keyof typeof colors]} onChange={e => update(key as keyof typeof colors, e.target.value)}/><span>{title}</span></label>)}</div>}

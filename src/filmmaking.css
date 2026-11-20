@@ -487,3 +487,9 @@
 .voice-alignment-production small{font-size:11px;opacity:.81;}
 .voice-alignment-production select{flex:1;min-width:135px;max-width:100%;}
 .voice-alignment-production .voice-generation-actions{align-items:center;}
+
+.factory-mouth-rig-editor {display:grid;gap:7px;border:1px solid #8367a744;
+  background:#8165a516;border-radius:9px;margin-top:12px;padding:12px;}
+.factory-mouth-rig-editor strong {font-size:12px;}
+.factory-mouth-rig-editor .slider span{display:flex;justify-content:space-between;}
+.factory-teeth-row button[title^="Missing"] {opacity:.36;text-decoration:line-through;}

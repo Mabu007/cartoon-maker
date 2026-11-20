@@ -129,7 +129,7 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: Fa
   const eyeY = -5;
   const eye = (x: number, narrow: boolean, isLeft: boolean) => {
     const baseHeight = expression === 'surprised' || expression === 'excited' ? 11.5 : expression === 'angry' ? 5.5 :
-      expression === 'sleepy' ? 3 : expression === 'smug' ? 5.5 :
+      expression === 'sleepy' ? 3 : expression === 'nervous' ? 10.4 : expression === 'smug' ? 5.5 :
       expression === 'happy' ? 6.6 : c.eyes === 'relaxed' ? 5.5 : c.eyes === 'wide' ? 9.2 : 7.7;
     const halfW = narrow ? 5.1 : 7.4;
     const open = Math.max(.06, 1 - blink);
@@ -150,7 +150,8 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: Fa
     }
     const slant = expression === 'angry' ? (isLeft ? -4.5 : 4.5) :
       expression === 'sad' ? (isLeft ? 4 : -4) : expression === 'confused' ? (isLeft ? 5 : -5) :
-      expression === 'smug' ? (isLeft ? -2 : 4) : expression === 'thinking' ? (isLeft ? -3 : 2) : 0;
+      expression === 'smug' ? (isLeft ? -2 : 4) : expression === 'nervous' ? (isLeft ? 2.8 : -1.8) :
+      expression === 'thinking' ? (isLeft ? -3 : 2) : 0;
     const browY = eyeY - baseHeight - (expression === 'surprised' || expression === 'excited' ? 10 : expression === 'angry' ? 2.3 : 5);
     g.moveTo(x - halfW - 1, browY + slant).quadraticCurveTo(x, browY - (c.brows === 'arched' ? 6 : 1.5), x + halfW + 1, browY - slant)
       .stroke({ color: INK, width: c.brows === 'bold' ? 4.1 : 2.6, cap: 'round' });
