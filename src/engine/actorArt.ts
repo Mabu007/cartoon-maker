@@ -3,6 +3,8 @@ import { armIK, rig, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
 import { drawIllustratedHair, drawIllustratedFacialHair, drawIllustratedHand, drawIllustratedHead, drawIllustratedTorso, shade } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
+import { drawExpressionMouth } from './mouthArt.ts';
+import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
 export const viewArt: Record<View, { width: number; face: number; far: boolean; rear: boolean; profile: boolean }> = {
@@ -16,7 +18,8 @@ function stroke(g: Graphics, joints: Point[], width: number, color: string) {
   line(g, joints, INK, width + 4.5);
   line(g, joints, color, width);
 }
-export function drawActor(g: Graphics, face: Graphics, c: Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false) {
+export function drawActor(g: Graphics, face: Graphics, c: Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
+  viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number }) {
   const art = viewArt[view];
   const r = rig(c, pose, art.width);
   const limbWidth = 10 * c.thickness;
@@ -61,7 +64,7 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
   face.position.set(r.head.x, r.head.y);
   face.angle = r.angle;
   face.scale.set(c.head);
-  drawFace(face, c, art, facialPerformance(time, actorId, action, expression, speaking ? Math.max(amplitude, .15 + .62 * Math.abs(Math.sin(time * 13.7 + actorId.length))) : amplitude));
+  drawFace(face, c, art, facialPerformance(time, actorId, action, expression, speaking ? Math.max(amplitude, .15 + .62 * Math.abs(Math.sin(time * 13.7 + actorId.length))) : amplitude, viseme, focus));
 }
 function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: FacialPerformance) {
   const { face, rear, profile, far } = art;
@@ -139,51 +142,5 @@ function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: Fa
   ellipse(g, noseX, 8, noseWidth, c.nose === 'long' ? 6 : 3.4, c.skin, 1.7);
   const mouthX = profile ? face + 3 : face;
   drawIllustratedFacialHair(g, c, art, mouthX, w);
-  const y = 26, widthM = c.mouth === 'full' ? 12 : c.mouth === 'line' ? 9 : 11;
-  if (expression === 'surprised') {
-    ellipse(g, mouthX, y + 1.5, 7.5, 10.2, '#38233d', 1.4);
-    ellipse(g, mouthX - 1.3, y + 6, 3, 2.2, '#c47776');
-  } else if (mouthOpen > .16) {
-    const openHeight = 2.2 + mouthOpen * (expression === 'happy' || expression === 'excited' ? 9.8 : 7.6);
-    const openWidth = expression === 'happy' || expression === 'excited' ? widthM + 3 : widthM;
-    ellipse(g, mouthX, y + 1, openWidth, openHeight, '#39243b', 1.5);
-    if (openHeight > 5) {
-      g.roundRect(mouthX - openWidth + 2, y - openHeight + 1, (openWidth - 2) * 2, 3.6, 1.3).fill('#fff0dd');
-      g.ellipse(mouthX + 1, y + openHeight * .6, openWidth * .43, 2).fill('#cc7b81');
-    }
-  } else if (expression === 'happy' || expression === 'excited') {
-    g.moveTo(mouthX - widthM - 1, y - 2).quadraticCurveTo(mouthX, y + 17, mouthX + widthM + 1, y - 2)
-      .quadraticCurveTo(mouthX, y + 6, mouthX - widthM - 1, y - 2)
-      .fill('#38283a');
-    g.roundRect(mouthX - widthM + 4, y + 1.8, (widthM - 4) * 2, 3.2, 1).fill('#fceee1');
-  } else if (expression === 'smug') {
-    g.moveTo(mouthX - widthM, y + 2).quadraticCurveTo(mouthX + 1, y + 5, mouthX + widthM + 1, y - 4)
-      .stroke({ color: INK, width: 2.6, cap: 'round' });
-  } else if (expression === 'confused') {
-    g.moveTo(mouthX - widthM, y + 2).quadraticCurveTo(mouthX - 3, y - 2, mouthX + widthM, y + 4)
-      .stroke({ color: INK, width: 2.6, cap: 'round' });
-  } else if (expression === 'sleepy') {
-    g.moveTo(mouthX - 8, y + 1).quadraticCurveTo(mouthX, y + 4, mouthX + 8, y + 1)
-      .stroke({ color: INK, width: 2, cap: 'round' });
-  } else if (expression === 'sad') {
-    g.moveTo(mouthX - widthM, y + 4).quadraticCurveTo(mouthX, y - 6, mouthX + widthM, y + 4)
-      .stroke({ color: INK, width: 2.8, cap: 'round' });
-    g.moveTo(mouthX - widthM - 3, y + 3).lineTo(mouthX - widthM - 1, y).stroke({ color: shade(c.skin, -.28), width: 1.25 });
-  } else if (expression === 'angry') {
-    g.moveTo(mouthX - widthM, y + 3).quadraticCurveTo(mouthX, y - 4, mouthX + widthM, y + 3)
-      .stroke({ color: INK, width: 3.5, cap: 'round' });
-    g.moveTo(mouthX - widthM - 3, 18).lineTo(mouthX - widthM - 6, 13).stroke({ color: shade(c.skin, -.4), width: 1.6 });
-  } else if (expression === 'thinking') {
-    ellipse(g, mouthX + 3, y, 4.3, 3.3, '#482f41', 1.2);
-    g.moveTo(mouthX - 9, y - 5).quadraticCurveTo(mouthX - 5, y - 9, mouthX - 2, y - 5)
-      .stroke({ color: shade(c.skin, -.28), width: 1.3 });
-  } else {
-    // A relaxed neutral face is genuinely straight, never permanently smiling.
-    g.moveTo(mouthX - widthM, y).quadraticCurveTo(mouthX, y + .5, mouthX + widthM, y)
-      .stroke({ color: INK, width: c.mouth === 'full' ? 3.2 : 2.25, cap: 'round' });
-    if (c.mouth === 'full') {
-      g.moveTo(mouthX - 6, y + 3.8).quadraticCurveTo(mouthX, y + 5.4, mouthX + 6, y + 3.8)
-        .stroke({ color: shade(c.skin, -.28), width: 1 });
-    }
-  }
+  drawExpressionMouth(g, c, mood, mouthX);
 }
