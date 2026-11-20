@@ -25,6 +25,8 @@ import { Inspector } from './ui/Inspector.tsx';
 import { Stage, type PreviewTime } from './ui/Stage.tsx';
 import { clock, formats, IconButton, Modal, Select } from './ui/shared.tsx';
 import { Timeline } from './ui/Timeline.tsx';
+import { TimelineCodeDialog } from './ui/TimelineCodeDialog.tsx';
+import { insertCameraShot, sceneContext } from './engine/timelineCode.ts';
 
 const StoryStudio = lazy(() => import('./ui/StoryStudio.tsx').then(module => ({ default: module.StoryStudio })));
 const ScreenplayStudio = lazy(() => import('./ui/ScreenplayStudio.tsx').then(module => ({ default: module.ScreenplayStudio })));
@@ -53,7 +55,7 @@ function PanelResize({ side, value, change }: { side: 'left' | 'right'; value: n
 }
 
 const studioName = import.meta.env.VITE_STUDIO_NAME?.trim() || 'Toonroom';
-type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | null;
+type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | 'code' | null;
 type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[]; backgroundImage?: string };
 const worldKey = (scope: string) => `toonroom.worlds.v1.${scope}`;
 function worldPresets(scope: string): WorldPreset[] {
@@ -268,14 +270,14 @@ export default function App() {
         updated = rest;
       }
     }
-    editScene(current => ({ ...current, clips: current.clips.map(clip => clip.id === updated.id ? updated : clip) }));
+    editScene(current => ({ ...current, clips: updated.track === 'camera' ? insertCameraShot(current.clips, updated) : current.clips.map(clip => clip.id === updated.id ? updated : clip) }));
   }
   function addClip(value: Clip) {
     try {
       pause();
       const current = currentScene(useStudio.getState());
       if (current.clips.length >= 600) { tell('This scene already has the maximum 600 clips.', true); return; }
-      useStudio.getState().editScene(scene => ({ ...scene, clips: [...scene.clips, changeClipTiming(value, value.start, value.length, scene.duration)] }));
+      useStudio.getState().editScene(scene => { const clip = changeClipTiming(value, value.start, value.length, scene.duration); return { ...scene, clips: clip.track === 'camera' ? insertCameraShot(scene.clips, clip) : [...scene.clips, clip] }; });
       setArrange(false); select({ kind: 'clip', id: value.id }); close();
     } catch (error) { showError(error); }
   }
@@ -515,7 +517,7 @@ export default function App() {
   function showDialog(value: Dialog) { pause(); setDialog(value); }
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
-      if (dialog || (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,button,[role=button],[role=separator],[contenteditable=true]'))) return;
+      if (dialog || (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,button,[role=button],[role=separator],[contenteditable=true]') && !event.target.closest('.clip'))) return;
       if (workspace === 'direct' && event.code === 'Space') { event.preventDefault(); void play(); }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); persist(undefined, true); }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); run(() => event.shiftKey ? useStudio.getState().redo() : useStudio.getState().undo()); }
@@ -537,6 +539,7 @@ export default function App() {
   let content: ReactNode;
   if (dialog === 'character') content = <CharacterFactory source={factory} save={saveCharacter} close={close} remove={deleteCharacter}/>;
   if (dialog === 'clip') content = <AddClipDialog scene={scene} actors={actorNames} time={time.current.local} request={requestedClip} close={close} add={addClip} audio={showAudio}/>;
+  if (dialog === 'code') content = <TimelineCodeDialog project={project} scene={scene} close={close} apply={next => editScene(current => ({ ...next, id: current.id }))}/>;
   if (dialog === 'audio') content = <AudioDialog scene={scene} actors={actorNames} request={requestedAudio} account={account} add={addClip} close={close}/>;
   if (dialog === 'export') content = <ExportDialog project={project} initialFormat={format} initialSubtitles={subtitles} close={close}/>;
   if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value => { setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); setScriptTarget({}); openProject(value); }} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
@@ -610,7 +613,7 @@ export default function App() {
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>
-    <Timeline scene={scene} names={actorNames} selection={selection} select={select} seek={seek} change={patchClip} add={showClip} remove={removeSelection} duplicate={duplicateSelection} compact={compact} onCompact={() => setCompact(value => !value)}/></>}
+    <Timeline scene={scene} names={actorNames} selection={selection} select={select} seek={seek} change={patchClip} add={showClip} remove={removeSelection} duplicate={duplicateSelection} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneContext(project, scene)).then(() => tell('AI scene context copied.'), showError); }} onResizeScene={duration => editScene(current => ({ ...current, duration }))} onCompact={() => setCompact(value => !value)}/></>}
     <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
       const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
     }}/>
