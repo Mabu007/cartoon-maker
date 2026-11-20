@@ -95,10 +95,8 @@ export function evaluate(scene: Scene, time: number) {
       const supportedSitBefore = clips.some(previous =>
         previous.track === 'body' && previous.action === 'sit' && previous.layer === 'body' &&
         previous.start + previous.length <= clip.start + .05 &&
-        previous.target && (() => {
-          const object=objectsById.get(previous.target);
-          return !!object && anchorFor(object)?.action==='sit';
-        })());
+        previous.target && objectsById.has(previous.target) &&
+        anchorFor(objectsById.get(previous.target)!)?.action==='sit');
       // A replacement Stand action must immediately put the feet on the floor,
       // not replay the seated opening pose for the first 0.8 seconds.
       const offsets = (activeAction === 'sit' && clip.start === 0) ||
