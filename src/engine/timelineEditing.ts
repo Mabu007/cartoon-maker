@@ -111,12 +111,17 @@ export function moveTimelineClips(scene: Scene, ids: string[], delta: number, de
   const maxEnd = Math.max(...chosen.map(clip=>clip.start+clip.length));
   const bounded = Math.max(-minStart, Math.min(scene.duration-maxEnd, delta));
   const selected = new Set(ids);
-  let clips: Clip[] = scene.clips.filter(c=>!selected.has(c.id));
-  for (const clip of chosen) {
-    const start = rounding(clip.start + bounded);
-    const moved: Clip = { ...clip, start, ...(destination && clip.track !== destination ? {track: destination} : {}) } as Clip;
-    if (moved.track === 'camera') clips = insertCameraShot(clips, moved);
-    else clips.push(moved);
+  // Preserve clip array order for same-time priority and deterministic playback.
+  const shifted: Clip[] = scene.clips.map(clip => {
+    if (!selected.has(clip.id)) return clip;
+    return { ...clip, start: rounding(clip.start + bounded),
+      ...(destination && clip.track !== destination ? {track: destination} : {}) } as Clip;
+  });
+  const selectedCameras = shifted.filter(clip => selected.has(clip.id) && clip.track === 'camera');
+  if (!selectedCameras.length) return { ...scene, clips: shifted };
+  let clips = shifted.filter(clip => !selected.has(clip.id) || clip.track !== 'camera');
+  for (const clip of selectedCameras) {
+    if (clip.track === 'camera') clips = insertCameraShot(clips,clip);
   }
   return { ...scene, clips };
 }
@@ -135,8 +140,9 @@ export function trimTimelineClip(scene: Scene, id: string, edge: 'in'|'out', nex
     const from=movementPosition(clip,a),to=movementPosition(clip,b);
     edited={ ...edited, fromX:from.x,fromY:from.y,toX:to.x,toY:to.y,keyframes:segmentedKeys(clip,a,b) };
   }
-  const clips=scene.clips.filter(c=>c.id!==id);
-  return {...scene, clips: edited.track==='camera' ? insertCameraShot(clips,edited) : [...clips,edited]};
+  if (edited.track !== 'camera') return { ...scene, clips: scene.clips.map(c=>c.id===id ? edited : c) };
+  const clips = scene.clips.filter(c=>c.id!==id);
+  return { ...scene, clips: insertCameraShot(clips,edited) };
 }
 export function pasteTimelineClips(scene: Scene, source: Clip[], position: number): {scene:Scene;ids:string[]} {
   if (!source.length) return {scene,ids:[]};

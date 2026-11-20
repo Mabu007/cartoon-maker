@@ -104,3 +104,11 @@ test('duration shrink safely trims/removes past-end clips and markers',()=>{
   assert.equal(s.duration,30);
   assert.throws(()=>resizeSceneTimeline(s,181),/between 1 and 180/);
 });
+
+test('editing unrelated timeline timing preserves order of tied cues',()=>{
+  const a:Clip={id:'a',track:'face',actor,start:1,length:2,expression:'happy'};
+  const b:Clip={id:'b',track:'face',actor,start:1,length:2,expression:'sad'};
+  const s=scene(a,b);
+  assert.deepEqual(moveTimelineClips(s,['a'],0).clips.map(c=>c.id),['a','b']);
+  assert.deepEqual(trimTimelineClip(s,'a','out',3).clips.map(c=>c.id),['a','b']);
+});

@@ -42,11 +42,6 @@ export function Timeline({
     return result;
   },[shown]);
   useEffect(()=>{
-    const onZoom=(event:Event)=>{const value=(event as CustomEvent<'in'|'out'>).detail;setZoom(current=>clamp(current*(value==='in'?1.4:1/1.4),1,9));};
-    window.addEventListener('toonroom-zoom',onZoom);
-    return()=>window.removeEventListener('toonroom-zoom',onZoom);
-  },[]);
-  useEffect(()=>{
     const element=viewportRef.current;
     if(!element)return;
     const size=()=>setViewport(element.clientWidth);
@@ -82,6 +77,20 @@ export function Timeline({
     setZoom(value);
     requestAnimationFrame(()=>{el.scrollLeft=Math.max(0,labelWidth+at*(nextSheet-labelWidth)-viewportPosition);});
   };
+  useEffect(()=>{
+    const element=viewportRef.current;
+    if(!element || compact)return;
+    const wheel=(event:WheelEvent)=>{
+      if(event.ctrlKey||event.metaKey){event.preventDefault();setZoomAround(zoom*(event.deltaY>0?.85:1.15));}
+    };
+    element.addEventListener('wheel',wheel,{passive:false});
+    return()=>element.removeEventListener('wheel',wheel);
+  },[zoom,viewport,compact,scene.duration]);
+  useEffect(()=>{
+    const onZoom=(event:Event)=>setZoomAround(zoom*((event as CustomEvent<'in'|'out'>).detail==='in'?1.4:1/1.4));
+    window.addEventListener('toonroom-zoom',onZoom);
+    return()=>window.removeEventListener('toonroom-zoom',onZoom);
+  },[zoom,viewport,scene.duration]);
   const seekAt=(event:PointerEvent)=>{
     const box=surface.current?.getBoundingClientRect();
     if(!box)return;
@@ -229,7 +238,7 @@ export function Timeline({
               className={`timeline-keyframe ${selectedKeyframe?.clipId===clip.id&&selectedKeyframe.index===index?'selected':''}`}
               style={{left:key.time*100+'%'}} title={`Keyframe ${index+1} · ${(clip.start+clip.length*key.time).toFixed(2)}s`}
               aria-label={`Select keyframe ${index+1} in ${clip.id}`}
-              onPointerDown={event=>{event.stopPropagation();selectKeyframe(clip.id,index);}}
+              onPointerDown={event=>{event.stopPropagation();event.currentTarget.focus({preventScroll:true});selectKeyframe(clip.id,index);seek(clip.start+clip.length*key.time);}}
               onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.stopPropagation();event.preventDefault();selectKeyframe(clip.id,index);}}}/>)}
             {!locked&&<span className="clip-handle right" data-edge="out" title="Trim end"/>}
           </div>;
@@ -286,7 +295,7 @@ export function Timeline({
       <span>Double-click ruler · Add marker</span><span>Right-click marker · Remove marker</span>
       <button className="quiet" onClick={()=>setShortcuts(false)}>Close help</button>
     </div>}
-    {!compact&&<div ref={viewportRef} className="timeline-scroll" onWheel={event=>{if(event.ctrlKey||event.metaKey){setZoomAround(zoom*(event.deltaY>0?.85:1.15));}}}>
+    {!compact&&<div ref={viewportRef} className="timeline-scroll">
       <div className="timeline-sheet" style={{width:sheetWidth}}>
         <div className="ruler">
           <div className="ruler-label"><ListFilter size={12}/> TRACKS</div>
