@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Captions, Check, ChevronDown, CircleHelp, Clapperboard, Cloud, Download, Expand, FolderOpen, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Sparkles, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Cloud, Download, Expand, FolderOpen, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Sparkles, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { approveScript, compileMovie, missingRentMovie, reviseScript, startProduction, fromOutline, makeStoryScene } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
 import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
@@ -13,7 +13,8 @@ import { analyzeLipSync, type Recognizer } from './services/lipSync.ts';
 import { duplicateProject, duplicateScene, listLocal, mergeLocal, removeLocal, saveLocal,
   updateProjectOrganization, renameSavedProject, lastEditorSession, rememberEditorSession,
   type SavedProject, type ProjectCollection } from './services/projects.ts';
-import { characterUsage, removeCharacterFromProject, propUsage, audioUsage } from './engine/assetSafety.ts';
+import { characterUsage, removeCharacterFromProject, propUsage } from './engine/assetSafety.ts';
+import { addMovieScene, duplicateMovieScene, renameMovieScene, reorderMovieScene, removeMovieScene } from './engine/sceneWorkflow.ts';
 import { exampleDirector, hostedDirector } from './services/director.ts';
 import { speechProvider, synthesizeCached } from './services/speech.ts';
 import { replaceDialogueAsset, restoreDialogueAsset } from './engine/dialogueAudio.ts';
@@ -942,32 +943,34 @@ export default function App() {
       setWorkspace(value.production ? 'write' : 'direct'); setScriptTarget({}); close(); tell('Project restored as a new copy.');
     } catch (error) { showError(error); }
   }
-  function reorderDirectScene(id: string, step: number) {
-    edit(current => {
-      const scenes = [...current.scenes];
-      const index = scenes.findIndex(item => item.id === id);
-      if (!scenes[index] || !scenes[index + step]) return current;
-      [scenes[index], scenes[index + step]] = [scenes[index + step], scenes[index]];
-      const production = current.production;
-      if (!production) return { ...current, scenes };
-      const existing = new Set(scenes.map(item => item.id));
-      const compiled = scenes.flatMap(item => production.screenplay.scenes.filter(source => source.id === item.id));
-      const linked = production.screenplay.scenes.map(source => existing.has(source.id) ? compiled.shift()! : source);
-      const changed = linked.some((item, at) => item.id !== production.screenplay.scenes[at].id);
-      return { ...current, scenes, production: changed ? reviseScript(production, linked) : production };
+  function reorderDirectScene(id:string,step:number){
+    edit(current=>reorderMovieScene(current,id,step));
+  }
+  function renameDirectScene(id:string,name:string){
+    edit(current=>renameMovieScene(current,id,name));
+  }
+  function createDirectScene(){
+    run(()=>{
+      const current=useStudio.getState().project;
+      const result=addMovieScene(current);
+      useStudio.getState().edit(()=>result.project);
+      switchScene(result.scene);
     });
   }
-  function dropDirectScene(value: Scene) {
-    const linked = project.production?.screenplay.scenes.some(item => item.id === value.id);
-    ask(`Delete “${value.name}”?`, linked ? 'This removes the scene from the screenplay and timeline. Undo can restore it.' :
-      'This removes the scene and its timeline. Undo can restore it.', () => edit(current => {
-      const scenes = current.scenes.filter(item => item.id !== value.id);
-      const production = current.production;
-      if (!production) return { ...current, scenes };
-      const script = production.screenplay.scenes.filter(item => item.id !== value.id);
-      const updated = script.length !== production.screenplay.scenes.length ? reviseScript(production, script) : production;
-      return { ...current, scenes, production: { ...updated, graph: updated.graph.filter(item => item.sceneId !== value.id) } };
-    }));
+  function duplicateDirectScene(value:Scene){
+    run(()=>{
+      const current=useStudio.getState().project;
+      const result=duplicateMovieScene(current,value.id);
+      useStudio.getState().edit(()=>result.project);
+      switchScene(result.scene);
+    });
+  }
+  function dropDirectScene(value:Scene){
+    const linked=project.production?.screenplay.scenes.some(item=>item.id===value.id);
+    ask(`Delete "${value.name}"?`,
+      linked?'This also removes the corresponding screenplay and story outline scene. Undo will restore everything.':
+        'This removes the scene and its animation timeline. Undo can restore it.',
+      ()=>edit(current=>removeMovieScene(current,value.id)));
   }
   function showDialog(value: Dialog) { pause(); setDialog(value); }
   useEffect(() => {
@@ -1023,9 +1026,9 @@ export default function App() {
   if (dialog === 'audio') content = <AudioDialog key={session + scene.id} scene={scene} actors={actorNames} characters={project.characters} request={requestedAudio} account={account} add={addClip} close={close}/>;
   if (dialog === 'export') content = <ExportDialog project={project} initialFormat={format} initialSubtitles={subtitles} close={close}/>;
   if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value => { if (openProject(value)) { setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); setScriptTarget({}); } }} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
-  if (dialog === 'scenes') content = <ScenesDialog scenes={project.scenes} active={scene.id} close={close} open={switchScene} savePreset={saveWorld}
-    add={() => { if (project.scenes.length >= 30) { tell('A project can contain up to 30 scenes.', true); return; } const value = makeScene(); edit(current => ({ ...current, scenes: [...current.scenes, { ...value, name: `Scene ${String(current.scenes.length + 1).padStart(2, '0')} · ${value.name}` }] })); if (useStudio.getState().project.scenes.some(item => item.id === value.id)) switchScene(value); }}
-    copy={value => edit(current => ({ ...current, scenes: current.scenes.flatMap(item => item.id === value.id ? [item, duplicateScene(item)] : [item]) }))}
+  if (dialog === 'scenes') content = <ScenesDialog scenes={project.scenes} active={scene.id}
+    close={close} open={switchScene} rename={renameDirectScene} savePreset={saveWorld}
+    add={createDirectScene} copy={duplicateDirectScene}
     reorder={reorderDirectScene} drop={dropDirectScene}/>;
   if (dialog === 'ai') content = <Modal title="AI settings" description="Connect an OpenRouter key for brainstorming, screenwriting and directing. Your key stays in this tab and requests go directly to OpenRouter." close={close}>
     <form onSubmit={event => {
@@ -1116,7 +1119,21 @@ export default function App() {
           audio={()=>showAudio('audio')} music={()=>showAudio('music')}
           inspectAudio={inspectAssetAudio} duplicateAudio={duplicateAssetAudio} deleteAudio={deleteAssetAudio}/></div>
       <section className="stage-panel" aria-label="Studio stage">
-        <header className="stage-heading"><div><span className="stage-kicker"><i/> SCENE PREVIEW</span><button className="scene-title" onClick={() => showDialog('scenes')}>{scene.name}<ChevronDown size={14}/></button></div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
+        <header className="stage-heading"><div className="stage-scene-heading">
+          <span className="stage-kicker"><i/> SCENE PREVIEW</span>
+          <div className="stage-scene-switcher">
+            <button className="scene-title" onClick={()=>showDialog('scenes')}
+              title="Manage all scenes">{scene.name}<ChevronDown size={14}/></button>
+            <div className="stage-scene-pager" role="group" aria-label="Navigate scenes">
+              <button className="quiet" title="Previous scene" aria-label="Previous scene"
+                disabled={sceneIndex<=0} onClick={()=>switchScene(project.scenes[sceneIndex-1])}><ChevronLeft size={16}/></button>
+              <span>{sceneIndex+1} / {project.scenes.length}</span>
+              <button className="quiet" title="Next scene" aria-label="Next scene"
+                disabled={sceneIndex>=project.scenes.length-1}
+                onClick={()=>switchScene(project.scenes[sceneIndex+1])}><ChevronRight size={16}/></button>
+            </div>
+          </div>
+        </div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
         <div className={directorPreview?'viewer director-preview-active':'viewer'}>
           {directorPreview&&<div className="director-preview-label" role="status">AI PROPOSAL PREVIEW · NOT APPLIED</div>}
           <Stage key={session} project={project} scene={directorPreview??scene} time={time}
