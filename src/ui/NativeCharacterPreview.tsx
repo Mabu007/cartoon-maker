@@ -72,6 +72,14 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         <path d={silhouette} fill={c.skin} stroke="#252037" strokeWidth="4"/>
         <path d={'M ' + (-headW + 9) + ' ' + (headY + 8) + ' Q ' + (-headW + 6) + ' ' + (headY + 22) + ' ' + (-headW + 19) + ' ' + (headY + 32)} fill="none" stroke="#754634" strokeWidth="2" opacity=".4"/>
         {c.hair !== 'bald' && <path d={mainHair} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
+        {(c.hair === 'fade' || c.hair === 'buzz') && <g>
+          <path d={'M ' + (-headW+3) + ' ' + (headY-6) + ' Q ' + (-headW+3) + ' ' + (headY-26) + ' ' + (-headW+17) + ' ' + (headY-25) + ' Q ' + (-headW+19) + ' ' + (headY-12) + ' ' + (-headW+3) + ' ' + (headY-6) + ' Z'} fill={c.hair === 'fade' ? c.skin : c.hairColor} opacity={c.hair==='fade' ? .64 : 1}/>
+          {Array.from({ length: 7 }, (_, i) => {
+            const x=-headW*.66+i*headW*.23, y=headY-headH-8+Math.abs(i-3)*1.5;
+            return <path key={i} d={'M ' + x + ' ' + y + ' q 3 -4 6 0'} stroke="#96879f" strokeWidth="1.5" opacity=".5" fill="none"/>;
+          })}
+          {c.hair === 'fade' && <path d={'M ' + (-headW+7) + ' ' + (headY-18) + ' q 5 -9 12 -7'} stroke="#c1a298" strokeWidth="2" fill="none"/>}
+        </g>}
         {c.hair === 'afro' && <path d={'M ' + (-headW-7) + ' ' + (headY-12) + ' C ' + (-headW-25) + ' ' + (headY-35) + ' ' + (-headW-15) + ' ' + (headY-headH-20) + ' ' + (-headW+2) + ' ' + (headY-headH-22) + ' C ' + (-headW+8) + ' ' + (headY-headH-49) + ' 0 ' + (headY-headH-50) + ' 19 ' + (headY-headH-36) + ' C ' + (headW+34) + ' ' + (headY-headH-42) + ' ' + (headW+30) + ' ' + (headY-headH-4) + ' ' + (headW+10) + ' ' + (headY-12) + ' Q 0 ' + (headY-25) + ' ' + (-headW-7) + ' ' + (headY-12) + ' Z'} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
         {c.hair === 'puff' && <><path d={'M ' + (-headW*.5-32) + ' ' + (headY-headH-36) + ' C ' + (-headW*.5-48) + ' ' + (headY-headH-66) + ' ' + (-headW*.5-16) + ' ' + (headY-headH-90) + ' ' + (-headW*.5+3) + ' ' + (headY-headH-78) + ' C ' + (-headW*.5+35) + ' ' + (headY-headH-90) + ' ' + (-headW*.5+44) + ' ' + (headY-headH-41) + ' ' + (-headW*.5+20) + ' ' + (headY-headH-31) + ' Q ' + (-headW*.5-5) + ' ' + (headY-headH-21) + ' ' + (-headW*.5-32) + ' ' + (headY-headH-36) + ' Z'} fill={c.hairColor} stroke="#282036" strokeWidth="3"/><path d={'M ' + (-headW*.5-13) + ' ' + (headY-headH-16) + ' q 16 8 27 -1'} stroke="#c2a28a" strokeWidth="3" fill="none"/></>}
         {c.hair === 'curls' && <path d={'M ' + (-headW-6) + ' ' + (headY-13) + ' Q ' + (-headW-22) + ' ' + (headY-headH-11) + ' ' + (-headW+3) + ' ' + (headY-headH-25) + ' Q ' + (-headW+16) + ' ' + (headY-headH-49) + ' -9 ' + (headY-headH-37) + ' Q 10 ' + (headY-headH-63) + ' 25 ' + (headY-headH-36) + ' Q ' + (headW+26) + ' ' + (headY-headH-28) + ' ' + (headW+8) + ' ' + (headY-12) + ' Z'} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
