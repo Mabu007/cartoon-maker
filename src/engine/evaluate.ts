@@ -79,7 +79,7 @@ export function evaluate(scene: Scene, time: number) {
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
   // This evaluation is pure, so exporting frame 240 matches preview frame 240.
-  const activeSpeakers = actors.filter(actor => actor.speaking && actor.visible);
+  const activeSpeakers = actors.filter(actor => (actor.speaking || actor.action === 'talk') && actor.visible);
   for (const actor of actors) {
     const targetId = actor.gazeTarget;
     let focusX: number | undefined, focusY: number | undefined;
