@@ -9,6 +9,20 @@ export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
 const frameWeight = (clip: Clip, t: number) => ease(clamp(Math.min((t - clip.start) / .16, (clip.start + clip.length - t) / .15)));
+/** Pure deterministic sampler shared by preview, props and imported JSON playback. */
+export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, progress: number): { x: number; y: number } {
+  const t = clamp(progress);
+  const keys = clip.keyframes;
+  if (!keys) {
+    const weight = clip.gait ? t : ease(t);
+    return { x: mix(clip.fromX, clip.toX, weight), y: mix(clip.fromY, clip.toY, weight) };
+  }
+  const rightIndex = keys.findIndex(key => key.time >= t);
+  const right = keys[Math.max(1, rightIndex < 0 ? keys.length - 1 : rightIndex)];
+  const left = keys[Math.max(0, (rightIndex < 0 ? keys.length - 1 : rightIndex) - 1)];
+  const weight = clamp((t - left.time) / Math.max(1e-9, right.time - left.time));
+  return { x: mix(left.x, right.x, weight), y: mix(left.y, right.y, weight) };
+}
 export function evaluate(scene: Scene, time: number) {
   const t = clamp(time, 0, Math.max(0, scene.duration - .000001));
   const sounds = scene.clips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'music' || clip.track === 'dialogue') && active(clip, t));
@@ -20,9 +34,9 @@ export function evaluate(scene: Scene, time: number) {
     const gaze = latest(clips.filter(clip => clip.track === 'gaze' && active(clip, t)));
     const movement = latest(clips.filter((clip): clip is Extract<Clip, { track: 'movement' }> => clip.track === 'movement' && clip.start <= t));
     const progress = movement ? clamp((t - movement.start) / movement.length) : 0;
-    const motion = movement?.gait ? progress : ease(progress);
-    let x = movement ? mix(movement.fromX, movement.toX, motion) : actor.x;
-    let y = movement ? mix(movement.fromY, movement.toY, motion) : actor.y;
+    const position = movement ? movementPosition(movement, progress) : actor;
+    let x = position.x;
+    let y = position.y;
     const travelling = movement && active(movement, t) ? movement : undefined;
     const direction = movement && movement.fromX !== movement.toX ? Math.sign(movement.toX - movement.fromX) : undefined;
     let flip = direction ? direction !== viewForward(actor.view) : actor.flip;
@@ -165,8 +179,8 @@ export function evaluate(scene: Scene, time: number) {
     const move = latest(scene.clips.filter(clip => clip.track === 'movement' && clip.actor === cue.actor && clip.start <= cue.start));
     if (move?.track !== 'movement') return owner ? { ...object, x: owner.x + 42, y: owner.y - 35 } : object;
     const at = clamp((cue.start - move.start) / move.length);
-    const progress = move.gait ? at : ease(at);
-    return { ...object, x: mix(move.fromX, move.toX, progress) + 42, y: mix(move.fromY, move.toY, progress) - 35 };
+    const position = movementPosition(move, at);
+    return { ...object, x: position.x + 42, y: position.y - 35 };
   });
   return { actors, objects, sounds, camera, shot: cameraClip?.shot ?? 'wide', fade: transition?.effect === 'fade-in' ? 1 - fade : fade };
 }

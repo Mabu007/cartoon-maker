@@ -39,7 +39,9 @@ export const SkeletonDefinition = z.record(Joint, Joint.nullable());
 export const AnimationClip = z.strictObject({ id: z.enum(actions), duration: num(.1, 60), loop: z.boolean(), keys: z.array(z.strictObject({ time: num(0, 1), pose: z.partialRecord(Joint, z.number().finite()), lift: z.number().finite().optional() })).min(2), expression: z.enum(expressions).optional(), views: z.array(CharacterView).optional() });
 const time = { id, start: num(0, 180), length: num(.1, 180) };
 const ActorClip = z.strictObject({ ...time, track: z.literal('actors'), actor: id, visible: z.boolean().optional() });
-const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: id, fromX: position.x, fromY: position.y, toX: position.x, toY: position.y, gait: z.enum(['walk', 'run']).optional() });
+const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: id, fromX: position.x, fromY: position.y, toX: position.x, toY: position.y, gait: z.enum(['walk', 'run']).optional(),
+  /** Optional normalized spatial keys. When present they drive the evaluated path. */
+  keyframes: z.array(z.strictObject({ time: num(0, 1), x: position.x, y: position.y })).min(2).max(32).optional() });
 const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional() });
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });
 const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release']) });
@@ -151,6 +153,11 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
         (clip.track === 'gaze' ? clip.target === 'camera' || actors.has(clip.target) || objects.has(clip.target) : objects.has(clip.target));
       const clipPath = [...path, 'clips', clip.id];
       if (clip.start + clip.length > scene.duration + .0001) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip is outside the scene' });
+      if (clip.track === 'movement' && clip.keyframes) {
+        const keys = clip.keyframes;
+        if (keys[0].time !== 0 || keys[keys.length - 1].time !== 1 || keys.some((key, i) => i > 0 && key.time <= keys[i - 1].time))
+          ctx.addIssue({ code: 'custom', path: [...clipPath, 'keyframes'], message: 'Movement keyframes must begin at 0, end at 1 and have strictly increasing times' });
+      }
       if ('actor' in clip && !actors.has(clip.actor)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing actor' });
       if (!targetValid) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing target' });
       if ('focus' in clip && clip.focus && !actors.has(clip.focus)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Camera shot has unknown focus' });
@@ -176,3 +183,13 @@ export type SoundClip = Extract<Clip, { track: 'audio' | 'music' | 'dialogue' }>
 export const uid = () => crypto.randomUUID();
 export const label = (value: string) => ({ 'close-up': 'Close-up', 'two-shot': 'Two-shot', 'three-quarter': 'Front three-quarter', 'back-quarter': 'Back three-quarter', stand: 'Stand up', shake: 'Shake head', talk: 'Talking idle', listen: 'Listening', think: 'Thinking', angry: 'Angry', surprise: 'Surprised' })[value] ?? value.replaceAll('-', ' ').replace(/^./, first => first.toUpperCase());
 export const shotLabel = (shot: string) => shot === 'close-up' || shot === 'two-shot' ? label(shot) : `${label(shot)} shot`;
+
+/** Accept historical unversioned/v0 project data without modifying the stored original. */
+export function parseStoredProject(raw: unknown): Project {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const document = raw as Record<string, unknown>;
+    if (document.version === undefined || document.version === 0)
+      return ProjectDocument.parse({ ...document, version: 1 });
+  }
+  return ProjectDocument.parse(raw);
+}
