@@ -168,7 +168,7 @@ test('all illustrated hair and beard variants render in every camera view with n
     for (const beard of ['none', 'goatee', 'full'] as const) {
       const character = { ...characters[0], hair: style, beard };
       for (const view of views) {
-        for (const expression of ['neutral', 'happy', 'angry', 'surprised', 'sad', 'thinking'] as const) {
+        for (const expression of ['neutral', 'happy', 'excited', 'smug', 'confused', 'sleepy', 'angry', 'surprised', 'sad', 'thinking'] as const) {
           const body = new Graphics(), face = new Graphics();
           assert.doesNotThrow(() => drawActor(body, face, character, view, {}, expression, .4, undefined, 1.3, 'talk', 'actor-sbu'), style + ' / ' + beard + ' / ' + view + ' / ' + expression);
           assert(face.context.instructions.length > 3);
@@ -192,6 +192,8 @@ test('facial performances blink, move eyes and mouths, do not synchronize actors
   assert.equal(facialPerformance(1.5, 'actor-zee', 'idle', 'neutral').mouthOpen, 0);
   assert.equal(facialPerformance(1.5, 'actor-zee', 'cry', 'neutral').expression, 'sad');
   assert.equal(facialPerformance(1.5, 'actor-zee', 'laugh', 'neutral').expression, 'happy');
+  assert.equal(facialPerformance(1.5, 'actor-zee', 'shrug', 'neutral').expression, 'confused');
+  assert.equal(facialPerformance(1.5, 'actor-zee', 'celebrate', 'neutral').expression, 'excited');
 });
 
 test('seat deletion cannot leave characters sitting on air and can reassign another chair', () => {
@@ -245,4 +247,19 @@ test('legacy unsupported sit clips are repaired when loading projects', () => {
   assert(ProjectDocument.safeParse({ ...demo, scenes: [fixed] }).success);
   const badFrame = evaluate(oldScene, 2).actors.find(item => item.id === 'actor-zee')!;
   assert(badFrame.lift > -20, 'even un-migrated legacy clips cannot sit on air at runtime');
+});
+
+
+test('object deletion + undo/redo preserves the original object/action graph', () => {
+  useStudio.getState().open(demo);
+  useStudio.getState().editScene(current => removeObjectWithDecisions(current, 'sofa'));
+  const afterDelete = currentScene(useStudio.getState());
+  assert.equal(afterDelete.objects.some(item => item.id === 'sofa'), false);
+  assert(afterDelete.clips.some(clip => clip.track === 'body' && clip.actor === 'actor-zee' && clip.action === 'stand'));
+  useStudio.getState().undo();
+  const restored = currentScene(useStudio.getState());
+  assert(restored.objects.some(item => item.id === 'sofa'));
+  assert(restored.clips.some(clip => clip.track === 'body' && clip.target === 'sofa' && clip.action === 'sit'));
+  useStudio.getState().redo();
+  assert(!currentScene(useStudio.getState()).objects.some(item => item.id === 'sofa'));
 });
