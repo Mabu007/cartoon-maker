@@ -251,7 +251,8 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
     if (line.type === 'dialogue' && line.text.trim()) {
       const actor = actorById(line.characterId ?? speaker ?? '');
       if (!actor) { issue(line, 'Dialogue needs a speaker from the scene cast.'); continue; }
-      const voice = project.production!.bible.characters.find(character => character.characterId === actor.characterId)?.voice
+      const voice = project.characters.find(character => character.id === actor.characterId)?.voicePreset
+        ?? project.production!.bible.characters.find(character => character.characterId === actor.characterId)?.voice
         ?? (actor.characterId === 'zee' ? 'bright' : 'deep');
       const id = eventId(line.id, 'voice');
       const prior = existingClips.get(id);
@@ -267,7 +268,7 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
       }
       // Voice is part of the source signature, without adding engine-only metadata to the clip.
       const clip: Dialogue = { id, start: round(end), length: Math.max(.1, round(sound.seconds)), track: 'dialogue',
-        actor: actor.id, text: line.text, asset: sound.asset, offset: 0, volume: 1, muted: false };
+        actor: actor.id, text: line.text, asset: sound.asset, offset: 0, volume: 1, muted: false, voicePreset:voice };
       const applied = schedule(clip, line);
       if (applied) {
         end = Math.max(end, applied.start + applied.length + .18);

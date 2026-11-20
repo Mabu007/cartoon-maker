@@ -52,11 +52,11 @@ export function speechProvider(account: Account | null): SpeechProvider {
       if (!response.ok) {
         const issue = (await response.json().catch(() => ({}))) as { error?: string };
         // Hosted service can be limited or unconfigured; keep creation possible offline.
-        if ([429, 502, 503, 504].includes(response.status)) return localSpeech.synthesize(text, voice);
+        if ([401, 403, 429, 502, 503, 504].includes(response.status)) return localSpeech.synthesize(text, voice);
         throw new Error(issue.error || 'Hosted voice is unavailable. Use the local voice engine.');
       }
       const type = response.headers.get('content-type')?.split(';')[0].toLowerCase();
-      if (!type || !['audio/mpeg', 'audio/wav','audio/x-wav'].includes(type))
+      if (!type || !['audio/mpeg', 'audio/wav','audio/x-wav','audio/mp3'].includes(type))
         throw new Error('Hosted speech returned no playable audio. Switch to local voice generation.');
       const blob = await response.blob();
       if (!blob.size || blob.size > 20 * 1024 * 1024) throw new Error('The voice service returned an empty or oversized audio file.');

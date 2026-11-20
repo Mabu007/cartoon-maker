@@ -90,16 +90,16 @@ export function AudioDialog({ request, actors, characters, scene, account, add, 
     [voice, setVoice] = useState(getVoice(initialActor)?.voicePreset ?? 'warm');
   const [start, setStart] = useState(clamp(request.start, 0, scene.duration - .1)), [name, setName] = useState('');
   const [recording, setRecording] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [asset, setAsset] = useState<{ blob: Blob; url: string; length: number }>();
+  const [asset, setAsset] = useState<{ blob: Blob; url: string; length: number; generationText?: string }>();
   const [lipStatus, setLipStatus] = useState('');
   const recorder = useRef<MediaRecorder | undefined>(undefined), inputStream = useRef<MediaStream | undefined>(undefined), alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; inputStream.current?.getTracks().forEach(track => track.stop()); if (recorder.current?.state === 'recording') recorder.current.stop(); }; }, []);
   useEffect(() => () => { if (asset) URL.revokeObjectURL(asset.url); }, [asset]);
-  async function load(blob: Blob, label: string) {
+  async function load(blob: Blob, label: string, generationText?:string) {
     if (blob.size >= 20 * 1024 * 1024) throw new Error('Choose an audio file smaller than 20 MB.');
     const length = await audioLength(blob);
     if (length < .1) throw new Error('The recording is too short.');
-    if (alive.current) { setAsset({ blob, url: URL.createObjectURL(blob), length }); setName(label); }
+    if (alive.current) { setAsset({ blob, url: URL.createObjectURL(blob), length, generationText }); setName(label); }
   }
   async function work(command: () => Promise<void>) {
     setBusy(true); setError('');
@@ -124,6 +124,8 @@ export function AudioDialog({ request, actors, characters, scene, account, add, 
   }
   const save = () => work(async () => {
     if (!asset) return;
+    if (isDialogue && asset.generationText && asset.generationText!==text.trim())
+      throw new Error('The dialogue text changed since speech generation. Generate the updated line before adding it.');
     const at = clamp(start, 0, scene.duration - .1);
     const id = uid(); await putAudio(id, asset.blob);
     const common = { id: uid(), start: at, length: clamp(asset.length, .1, scene.duration - at), asset: `asset:${id}`, volume: 1, muted: false, offset: 0 };
@@ -140,7 +142,7 @@ export function AudioDialog({ request, actors, characters, scene, account, add, 
     }
   });
   return <Modal title={isDialogue ? 'Add dialogue' : request.track === 'music' ? 'Add music' : 'Add sound effect'} description={isDialogue ? 'Generate a voice, record your own, or attach an audio file.' : request.track === 'music' ? 'Import a soundtrack or music loop.' : 'Import a sound effect or recording.'} close={close}>
-    <div className="dialog-fields">{isDialogue && <><label className="field">Actor<Select aria="Dialogue actor" value={actor} onChange={value=>{setActor(value);setVoice(getVoice(value)?.voicePreset??'warm');}} options={Object.keys(actors)} render={id => actors[id]}/></label>{!actor && <p className="form-error">Add an actor to the scene first.</p>}<label className="field">Dialogue<textarea value={text} maxLength={400} onChange={e => setText(e.target.value)} placeholder="What does your character say?"/></label><div className="field-row"><label className="field">Voice<Select aria="Voice" value={voice} onChange={setVoice} options={voices.map(item => item.id)} render={id => voices.find(item => item.id === id)!.name}/></label><button disabled={!text.trim() || busy || recording} className="quiet generate-voice" onClick={() => work(async () => load(await synthesizeCached(speechProvider(account),text,voice,getVoice(actor)?.hostedVoiceId), 'Generated voice'))}><Sparkles size={16}/> Generate voice</button></div>{(!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') && <p className="small-text">Voice generation runs on this device. The first use downloads the voice engine.</p>}</>}
+    <div className="dialog-fields">{isDialogue && <><label className="field">Actor<Select aria="Dialogue actor" value={actor} onChange={value=>{setActor(value);setVoice(getVoice(value)?.voicePreset??'warm');}} options={Object.keys(actors)} render={id => actors[id]}/></label>{!actor && <p className="form-error">Add an actor to the scene first.</p>}<label className="field">Dialogue<textarea value={text} maxLength={400} onChange={e => setText(e.target.value)} placeholder="What does your character say?"/></label><div className="field-row"><label className="field">Voice<Select aria="Voice" value={voice} onChange={setVoice} options={voices.map(item => item.id)} render={id => voices.find(item => item.id === id)!.name}/></label><button disabled={!text.trim() || busy || recording} className="quiet generate-voice" onClick={() => work(async () => load(await synthesizeCached(speechProvider(account),text,voice,getVoice(actor)?.hostedVoiceId), 'Generated voice',text.trim()))}><Sparkles size={16}/> Generate voice</button></div>{(!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') && <p className="small-text">Voice generation runs on this device. The first use downloads the voice engine.</p>}</>}
     <div className="field-row"><label className={`quiet file-button ${busy || recording ? 'disabled' : ''}`}><FileAudio size={16}/> Upload audio<input type="file" accept="audio/*,.webm" disabled={busy || recording} onChange={e => { const file = e.target.files?.[0]; if (file) void work(() => load(file, file.name.replace(/\.[^.]+$/, ''))); e.currentTarget.value = ''; }}/></label><button className={`quiet ${recording ? 'recording' : ''}`} disabled={busy} onClick={() => void record()}>{recording ? <Square size={15}/> : <Mic size={16}/>} {recording ? 'Stop recording' : 'Record voice'}</button></div>
     {asset && <><audio controls src={asset.url} aria-label="Preview audio"/>{!isDialogue && <label className="field">Name<input value={name} maxLength={80} onChange={e => setName(e.target.value)}/></label>}</>}
     <label className="field">Start (seconds)<input type="number" step=".01" min={0} max={scene.duration - .1} value={Math.round(start * 100) / 100} onChange={e => setStart(Number(e.target.value))}/></label>
