@@ -102,14 +102,14 @@ async function readSound(asset: string) {
   }
   return pending;
 }
-export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is SoundClip => (clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music') && !scene.trackSettings?.[clip.track]?.muted);
+export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is SoundClip => clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music');
 export const projectAssets = (project: Project) => [...new Set(project.scenes.flatMap(scene => sceneSounds(scene).map(clip => clip.asset)).filter(asset => asset.startsWith('asset:')).map(asset => asset.slice(6)))];
 function soundEvents(scenes: Scene[]) {
   let sceneStart = 0;
   return scenes.flatMap(scene => {
     const start = sceneStart;
     sceneStart += scene.duration;
-    return sceneSounds(scene).filter(clip => !clip.muted).map(clip => ({ clip, position: start + clip.start }));
+    return sceneSounds(scene).filter(clip => !clip.muted && !scene.trackSettings?.[clip.track]?.muted).map(clip => ({ clip, position: start + clip.start }));
   });
 }
 export function soundPlayback(clip: SoundClip, position: number, bufferDuration: number, cursor = 0) {
@@ -146,7 +146,7 @@ export function createAudioMixer() {
   function monitor() { if (!monitoring) { limiter.connect(context.destination); monitoring = true; } }
   function stop() { for (const source of sources) { try { source.stop(); } catch { /* already ended */ } source.disconnect(); } sources = []; }
   async function prepare(scenes: Scene[]) {
-    const assets = new Set(scenes.flatMap(scene => sceneSounds(scene).filter(clip => !clip.muted).map(clip => clip.asset)));
+    const assets = new Set(scenes.flatMap(scene => sceneSounds(scene).filter(clip => !clip.muted && !scene.trackSettings?.[clip.track]?.muted).map(clip => clip.asset)));
     await Promise.all([...assets].map(async asset => { prepared.set(asset, await readSound(asset)); }));
   }
   function schedule(scenes: Scene[], offset: number, when = context.currentTime) {

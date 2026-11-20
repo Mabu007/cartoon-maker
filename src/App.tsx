@@ -457,8 +457,12 @@ export default function App() {
     run(() => {
       const state = useStudio.getState();
       if (state.session !== session || state.sceneId !== next.id) throw new Error('Scene changed during timeline edit.');
+      const previous = currentScene(state);
+      if (previous === next) return;
       commitScene(() => next);
       if (ids) useStudio.getState().selectClips(ids);
+      const updated = currentScene(useStudio.getState());
+      if (time.current.local > updated.duration) updateCursor(updated, updated.duration, false);
     });
   }
   function copyTimelineSelection() {
@@ -863,7 +867,7 @@ export default function App() {
       seek={seek} change={patchClip} add={showClip} remove={()=>run(deleteTimelineSelection)} duplicate={duplicateTimelineSelection}
       copy={copyTimelineSelection} cut={()=>run(cutTimelineSelection)} paste={pasteTimelineSelection} split={splitTimelineSelection}
       selectAll={()=>useStudio.getState().selectClips(scene.clips.map(c=>c.id))}
-      apply={editTimeline} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneBuildingContext(project, scene)).then(() => tell('AI scene-building context copied.'), showError); }} onCopyScene={() => { void navigator.clipboard.writeText(sceneToCode(scene)).then(() => tell('Current scene JSON copied.'), showError); }} onCopyProject={() => { void navigator.clipboard.writeText(movieToCode(project)).then(() => tell('Entire movie timeline JSON copied.'), showError); }} onResizeScene={duration => editScene(current => resizeSceneTimeline(current,duration))} playhead={time.current.local} onCompact={() => setCompact(value => !value)}/></>}
+      apply={editTimeline} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneBuildingContext(project, scene)).then(() => tell('AI scene-building context copied.'), showError); }} onCopyScene={() => { void navigator.clipboard.writeText(sceneToCode(scene)).then(() => tell('Current scene JSON copied.'), showError); }} onCopyProject={() => { void navigator.clipboard.writeText(movieToCode(project)).then(() => tell('Entire movie timeline JSON copied.'), showError); }} onResizeScene={duration => { editScene(current => resizeSceneTimeline(current,duration)); const updated=currentScene(useStudio.getState()); if(time.current.local>updated.duration)seek(updated.duration); }} playhead={time.current.local} onCompact={() => setCompact(value => !value)}/></>}
     <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
       const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
     }}/>

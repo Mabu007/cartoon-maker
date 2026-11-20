@@ -171,7 +171,8 @@ export function Timeline({
       }
     }
     if(sound && (track==='audio'||track==='music')){
-      const next:Clip={id:uid(),track,name:sound,start,length,volume:0.6,muted:false,offset:0,asset:'builtin:'+sound};
+      const base={id:uid(),name:sound,start,length,volume:0.6,muted:false,offset:0,asset:'builtin:'+sound};
+      const next:Clip=track==='audio'?{...base,track:'audio'}:{...base,track:'music'};
       apply({...scene,clips:[...scene.clips,next]},[next.id]);
     }
   }
@@ -284,7 +285,7 @@ export function Timeline({
       <span>Double-click ruler · Add marker</span><span>Right-click marker · Remove marker</span>
       <button className="quiet" onClick={()=>setShortcuts(false)}>Close help</button>
     </div>}
-    {!compact&&<div ref={viewportRef} className="timeline-scroll" onWheel={event=>{if(event.ctrlKey||event.metaKey){event.preventDefault();setZoomAround(zoom*(event.deltaY>0?.85:1.15));}}}>
+    {!compact&&<div ref={viewportRef} className="timeline-scroll" onWheel={event=>{if(event.ctrlKey||event.metaKey){setZoomAround(zoom*(event.deltaY>0?.85:1.15));}}}>
       <div className="timeline-sheet" style={{width:sheetWidth}}>
         <div className="ruler">
           <div className="ruler-label"><ListFilter size={12}/> TRACKS</div>
