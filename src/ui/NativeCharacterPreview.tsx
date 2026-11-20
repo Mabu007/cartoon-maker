@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { facialPerformance } from '../engine/facialAnimation.ts';
 import type { Action, Character, Expression, View } from '../engine/schema.ts';
 
 /**
@@ -8,6 +10,19 @@ import type { Action, Character, Expression, View } from '../engine/schema.ts';
 export function NativeCharacterPreview({ character: c, view, action, expression, flip, scale }: {
   character: Character; view: View; action: Action; expression: Expression; flip: boolean; scale: number;
 }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    let frame = 0, start = 0, last = -200;
+    const animate = (time: number) => {
+      if (!start) start = time;
+      if (!document.hidden && time - last >= 60) { setElapsed((time - start) / 1000); last = time; }
+      frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  const mood = facialPerformance(elapsed, c.id, action, expression);
+  const emotion = mood.expression;
   const rear = view === 'back' || view === 'back-quarter';
   const profile = view === 'side';
   const q = view === 'three-quarter' || view === 'back-quarter';
@@ -24,8 +39,9 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const faceShift = q ? 8 : profile ? 16 : 0;
   const noseX = faceShift + (profile ? 13 : 0);
   const animated = ['walk', 'run', 'wave', 'jump', 'celebrate', 'talk', 'laugh'].includes(action);
-  const mouthOpen = expression === 'surprised' || action === 'talk' || action === 'laugh';
-  const eyeH = expression === 'surprised' ? 11 : expression === 'angry' ? 5 : c.eyes === 'relaxed' ? 5 : 8;
+  const mouthOpen = emotion === 'surprised' || mood.mouthOpen > .16;
+  const eyeH = (emotion === 'surprised' ? 11 : emotion === 'angry' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
+  const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
   const silhouette = c.shape === 'square'
     ? 'M ' + (-headW + 14) + ' ' + (headY - headH) + ' Q ' + (-headW - 5) + ' ' + (headY - headH) + ' ' + (-headW) + ' ' + (headY - 9) + ' Q ' + (-headW - 4) + ' ' + (headY + headH) + ' 0 ' + (headY + headH) + ' Q ' + headW + ' ' + (headY + headH) + ' ' + headW + ' ' + (headY - 9) + ' Q ' + headW + ' ' + (headY - headH) + ' ' + (headW - 15) + ' ' + (headY - headH) + ' Z'
     : 'M 0 ' + (headY - headH) + ' C ' + (-headW * 1.3) + ' ' + (headY - headH) + ' ' + (-headW * 1.3) + ' ' + (headY + headH * .75) + ' 0 ' + (headY + headH) + ' C ' + (headW * 1.3) + ' ' + (headY + headH * 1.15) + ' ' + (headW * 1.3) + ' ' + (headY - headH) + ' 0 ' + (headY - headH) + ' Z';
@@ -60,15 +76,22 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         {(['locs', 'braids'].includes(c.hair)) && Array.from({ length: 6 }, (_, i) => <path key={i} d={'M ' + (-headW + 10 + i * (headW * 2 - 20) / 5) + ' ' + (headY - headH + 5) + ' q ' + (i % 2 ? 5 : -4) + ' 29 1 48'} stroke={c.hairColor} strokeWidth={c.hair === 'braids' ? 6 : 10} strokeLinecap="round" fill="none"/>)}
         {c.hat !== 'none' && <><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' Q 0 ' + (headY - headH - 35) + ' ' + (headW + 3) + ' ' + (headY - headH + 10) + ' Z'} fill={c.shirt} stroke="#252037" strokeWidth="3"/><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' H ' + (headW + 3)} stroke="#252037" strokeWidth="5"/></>}
         {!rear && <g>
+          {(emotion === 'happy' || emotion === 'sad') && !profile && [-24,24].map(offset => <ellipse key={offset} cx={Math.max(-headW+12,Math.min(headW-12,faceCenter+offset))} cy={headY+15} rx="6.5" ry="3.5" fill={emotion === 'happy' ? '#dc8877' : '#897195'} opacity=".22"/>)}
           {[profile ? faceShift : faceShift - 15 * c.eyeSpacing, ...(!profile ? [faceShift + 15 * c.eyeSpacing] : [])].map((x, i) => <g key={i}>
-            <ellipse cx={x} cy={eyeY} rx="7" ry={eyeH} fill="#fff5e7" stroke="#27213a" strokeWidth="2"/>
-            <circle cx={x + (q ? 2 : 0)} cy={eyeY + 1} r="3" fill="#27213a"/>
-            <circle cx={x - 1} cy={eyeY - 2} r="1.5" fill="white"/>
-            <path d={'M ' + (x - 7) + ' ' + (eyeY - eyeH - 5) + ' Q ' + x + ' ' + (eyeY - eyeH - (c.brows === 'arched' ? 11 : 5)) + ' ' + (x + 7) + ' ' + (eyeY - eyeH - (expression === 'angry' ? 2 : 5))} stroke="#242036" strokeWidth={c.brows === 'bold' ? 4 : 2.5} fill="none" strokeLinecap="round"/>
+            {eyeH < 1.4 ? <path d={'M ' + (x-7) + ' ' + eyeY + ' q 7 3 14 0'} stroke="#27213a" strokeWidth="2.5" fill="none"/> : <><ellipse cx={x} cy={eyeY} rx="7" ry={eyeH} fill="#fff5e7" stroke="#27213a" strokeWidth="2"/><circle cx={x+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY+Math.max(-eyeH+2, Math.min(eyeH-2, mood.gazeY))} r="3" fill="#27213a"/>{eyeH > 3 && <circle cx={x-1+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY-1.5+mood.gazeY} r="1.3" fill="white"/>}</>}
+            <path d={'M ' + (x-7) + ' ' + (eyeY-eyeH-5) + ' Q ' + x + ' ' + (eyeY-eyeH-(c.brows==='arched'?11:5)) + ' ' + (x+7) + ' ' + (eyeY-eyeH-(emotion==='angry'?2:5))} stroke="#242036" strokeWidth={c.brows==='bold'?4:2.5} fill="none" strokeLinecap="round"/>
           </g>)}
           <ellipse cx={noseX} cy={headY + 11} rx={c.nose === 'long' ? 7 : 5} ry={c.nose === 'long' ? 6 : 3.5} fill={c.skin} stroke="#2a2339" strokeWidth="2"/>
-          {c.beard !== 'none' && <path d={'M ' + (noseX - 13) + ' ' + (headY + 26) + ' Q ' + noseX + ' ' + (headY + (c.beard === 'full' ? 52 : 42)) + ' ' + (noseX + 13) + ' ' + (headY + 26)} stroke={c.hairColor} strokeWidth={c.beard === 'full' ? 8 : 3} fill="none"/>}
-          {mouthOpen ? <ellipse cx={noseX} cy={headY + 27} rx={expression === 'surprised' ? 7 : 11} ry={expression === 'surprised' ? 9 : 5} fill="#302033"/> : <path d={'M ' + (noseX - 10) + ' ' + (headY + 26) + ' Q ' + noseX + ' ' + (headY + (expression === 'sad' || expression === 'angry' ? 18 : 37)) + ' ' + (noseX + 10) + ' ' + (headY + 26)} stroke="#2a2038" strokeWidth="2.7" fill="none" strokeLinecap="round"/>}
+          {c.beard !== 'none' && <g fill={c.hairColor}>
+            <path d={'M ' + (noseX-1) + ' ' + (headY+17) + ' q -6 -5 -15 -1 q 4 7 13 4 Z'}/>
+            {!profile && <path d={'M ' + (noseX+1) + ' ' + (headY+17) + ' q 7 -5 15 -1 q -4 7 -13 4 Z'}/>}
+            {c.beard === 'goatee' ? <path d={'M ' + (noseX-8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+53) + ' ' + (noseX+8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+43) + ' ' + (noseX-8) + ' ' + (headY+33) + ' Z'}/> : <path d={'M ' + (-headW+4) + ' ' + (headY+13) + ' Q ' + (-headW+2) + ' ' + (headY+37) + ' 0 ' + (headY+54) + ' Q ' + (headW-2) + ' ' + (headY+37) + ' ' + (headW-4) + ' ' + (headY+13) + ' L ' + (headW-11) + ' ' + (headY+27) + ' Q 0 ' + (headY+50) + ' ' + (-headW+11) + ' ' + (headY+27) + ' Z'}/>}
+          </g>}
+          {emotion === 'surprised' ? <ellipse cx={noseX} cy={headY+27} rx="7" ry="10" fill="#302033"/> :
+            mouthOpen ? <><ellipse cx={noseX} cy={headY+27} rx={emotion==='happy'?13:10} ry={3+mood.mouthOpen*8} fill="#302033"/><path d={'M ' + (noseX-7) + ' ' + (headY+23) + ' h 14'} stroke="#ffedde" strokeWidth="3"/></> :
+            emotion === 'happy' ? <path d={'M ' + (noseX-13) + ' ' + (headY+24) + ' Q ' + noseX + ' ' + (headY+42) + ' ' + (noseX+13) + ' ' + (headY+24) + ' Q ' + noseX + ' ' + (headY+34) + ' ' + (noseX-13) + ' ' + (headY+24) + ' Z'} fill="#302033"/> :
+            emotion === 'thinking' ? <ellipse cx={noseX+3} cy={headY+27} rx="4" ry="3" fill="#302033"/> :
+            <path d={'M ' + (noseX-10) + ' ' + (headY+26) + ' Q ' + noseX + ' ' + (headY+(emotion==='sad'||emotion==='angry'?19:26.5)) + ' ' + (noseX+10) + ' ' + (headY+26)} stroke="#2a2038" strokeWidth="2.7" fill="none" strokeLinecap="round"/>}
           {c.glasses && <><ellipse cx={faceShift - 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>{!profile && <ellipse cx={faceShift + 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>}</>}
           {c.earrings && <circle cx={-headW + 2} cy={headY + 18} r="5" fill="none" stroke="#f5cf6b" strokeWidth="3"/>}
         </g>}
