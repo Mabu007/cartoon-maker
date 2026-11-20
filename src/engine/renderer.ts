@@ -9,7 +9,7 @@ const sizes: Record<Format, [number, number]> = { '16:9': [960, 540], '9:16': [3
 export const dimensions = (format: Format, scale = 1): [number, number] => sizes[format].map(n => Math.round(n * scale)) as [number, number];
 
 type Entity = { group: Container; art: Graphics; face?: Graphics; shadow?: Graphics; color?: string; kind?: string };
-export type RenderOptions = { selected?: string; staged?: Record<string, { x: number; y: number }>; edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
+export type RenderOptions = { characterPreview?: boolean; selected?: string; staged?: Record<string, { x: number; y: number }>; edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
   const app = new Application();
   const [width, height] = sizes[format];
@@ -49,7 +49,13 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   function draw(scene: Scene, characters: Character[], time: number, options: RenderOptions = {}) {
     lastFrame = evaluate(scene, time);
     const { actors, camera, sounds } = lastFrame;
-    if (lastEnvironment !== scene.environment) { drawWorld(background.clear(), scene.environment); lastEnvironment = scene.environment; }
+    if (options.characterPreview) {
+      background.clear().rect(0, 0, WIDTH, HEIGHT).fill('#635575');
+      background.rect(0, 435, WIDTH, 105).fill('#493b56');
+      for (let x = 0; x < WIDTH; x += 86) background.roundRect(x + 12, 25, 52, 400, 26).fill({ color: x % 172 === 0 ? '#756687' : '#6d5d80', alpha: .72 });
+      background.moveTo(0, 435).lineTo(WIDTH, 435).stroke({ color: '#b59ac6', width: 3, alpha: .55 });
+      lastEnvironment = undefined;
+    } else if (lastEnvironment !== scene.environment) { drawWorld(background.clear(), scene.environment); lastEnvironment = scene.environment; }
     const cropCenter = format === '16:9' || camera.zoom > 1 ? camera.x : WIDTH / 2;
     world.scale.set(options.edit ? 1 : camera.zoom);
     world.position.set(width / 2 - (options.edit ? WIDTH / 2 : cropCenter * camera.zoom), height / 2 - (options.edit ? HEIGHT / 2 : camera.y * camera.zoom));
