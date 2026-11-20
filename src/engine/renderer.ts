@@ -51,6 +51,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     await Promise.all([...urls].map(loadImage));
   }
   let requestedBackdrop: string | undefined;
+  let destroyed = false;
   const elements = new Container({ sortableChildren: true });
   const guides = new Graphics();
   const fade = new Graphics();
@@ -116,7 +117,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       } else {
         backdrop.visible = false;
         void loadImage(image).then(texture => {
-          if (requestedBackdrop !== image) return;
+          if (destroyed || requestedBackdrop !== image) return;
           backdrop.texture = texture; backdrop.width = WIDTH; backdrop.height = HEIGHT;
           backdrop.visible = true; app.render();
         }).catch(error => console.warn('Could not render background image:', error));
@@ -159,7 +160,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         } else {
           entity.art.visible = true;
           void loadImage(url).then(result => {
-            if (entity.imageData !== url || !entity.sprite) return;
+            if (destroyed || items.get(prop.id) !== entity || entity.imageData !== url || !entity.sprite) return;
             entity.sprite.texture = result;
             entity.sprite.width = prop.imageWidth ?? 140;
             entity.sprite.height = prop.imageHeight ?? 140;
@@ -211,7 +212,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
           holder.visible = true;
         } else {
           holder.visible = false;
-          void loadImage(url).then(() => app.render()).catch(() => {});
+          void loadImage(url).then(() => { if (!destroyed) app.render(); }).catch(() => {});
         }
       } else if (entity.heldSprite) entity.heldSprite.visible = false;
       const top = point.y - (172 * character.height + 49 * character.head) * actor.scale - lift;
@@ -247,6 +248,6 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return { id: hit?.id, x: point.x, y: point.y };
   }
   return { canvas: app.canvas, draw, pick, width, height, prepareImages,
-    destroy: () => { requests.clear(); textures.clear(); app.destroy(true, { children: true, texture: true, textureSource: true, context: true }); } };
+    destroy: () => { destroyed = true; requests.clear(); textures.clear(); app.destroy(true, { children: true, texture: true, textureSource: true, context: true }); } };
 }
 export type Renderer = Awaited<ReturnType<typeof createRenderer>>;
