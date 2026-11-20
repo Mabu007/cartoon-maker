@@ -200,19 +200,20 @@ export default function App() {
   function patchActor(value: ActorData) { editScene(current => ({ ...current, actors: current.actors.map(actor => actor.id === value.id ? value : actor) })); }
   function patchObject(value: Prop) { editScene(current => ({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
   function patchClip(value: Clip) {
+    let updated: Clip = value;
     if (value.track === 'body') {
+      const body = value;
       const current = currentScene(useStudio.getState());
-      if (value.action === 'sit') {
-        const compatible = compatibleObjects(current, 'sit');
-        const target = compatible.find(item => item.id === value.target) ?? nearestObject(current, value.actor, 'sit');
+      if (body.action === 'sit') {
+        const target = compatibleObjects(current, 'sit').find(item => item.id === body.target) ?? nearestObject(current, body.actor, 'sit');
         if (!target) { tell('Add a chair or sofa before using Sit. Characters cannot sit on air.', true); return; }
-        value = { ...value, layer: 'body', target: target.id };
-      } else if (value.target && !compatibleObjects(current, value.action).some(item => item.id === value.target)) {
-        const { target: _, ...rest } = value;
-        value = rest;
+        updated = { ...body, layer: 'body', target: target.id };
+      } else if (body.target && !compatibleObjects(current, body.action).some(item => item.id === body.target)) {
+        const { target: _, ...rest } = body;
+        updated = rest;
       }
     }
-    editScene(current => ({ ...current, clips: current.clips.map(clip => clip.id === value.id ? value : clip) }));
+    editScene(current => ({ ...current, clips: current.clips.map(clip => clip.id === updated.id ? updated : clip) }));
   }
   function addClip(value: Clip) {
     try {
