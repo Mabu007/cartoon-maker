@@ -102,8 +102,9 @@ export function copyClip(clip: Clip, duration: number, clips: Clip[] = []): Clip
     // recordings speaking over each other after a duplicate action.
     let start=clip.start+clip.length;
     if(clip.track==='dialogue'){
+      const speaker=clip.actor;
       const taken=clips.filter((item):item is Extract<Clip,{track:'dialogue'}> =>
-        item.track==='dialogue'&&item.actor===clip.actor)
+        item.track==='dialogue'&&item.actor===speaker)
         .sort((a,b)=>a.start-b.start);
       for(const other of taken){
         if(start+clip.length<=other.start+1e-9)break;
