@@ -27,6 +27,7 @@ import { Stage, type PreviewTime } from './ui/Stage.tsx';
 import { clock, formats, IconButton, Modal, Select } from './ui/shared.tsx';
 import { Timeline } from './ui/Timeline.tsx';
 import { TimelineCodeDialog } from './ui/TimelineCodeDialog.tsx';
+import { Welcome } from './ui/Welcome.tsx';
 import { insertCameraShot, sceneContext } from './engine/timelineCode.ts';
 
 const StoryStudio = lazy(() => import('./ui/StoryStudio.tsx').then(module => ({ default: module.StoryStudio })));
@@ -75,6 +76,8 @@ export default function App() {
   const project = useStudio(state => state.project), scene = useStudio(currentScene), selection = useStudio(state => state.selection), library = useStudio(state => state.library);
   const hasUndo = useStudio(state => state.past.length > 0), hasRedo = useStudio(state => state.future.length > 0);
   const [workspace, setWorkspace] = useState<'create' | 'write' | 'direct'>('direct');
+  const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(() => localStorage.getItem('toonroom.started') ? 'projects' : 'landing');
+  const [seedIdea, setSeedIdea] = useState('');
   const [directorOpen, setDirectorOpen] = useState(false);
   const [assetWidth, setAssetWidth] = useState(263), [inspectorWidth, setInspectorWidth] = useState(254);
   const [scriptTarget, setScriptTarget] = useState<{ sceneId?: string; lineId?: string; autoDraft?: boolean }>({});
@@ -236,7 +239,7 @@ export default function App() {
   function switchScene(value: Scene) { pause(); updateCursor(value, 0, false); useStudio.getState().setScene(value.id); close(); }
   function openProject(value: Project, isNew = false) {
     if (useStudio.getState().dirty) persist();
-    loadProject(value, isNew); close();
+    loadProject(value, isNew); close(); setHome('studio');
     setSaveStatus(isNew ? 'Saving…' : 'Saved on device');
   }
   const run = (command: () => void) => { try { if (livePlaying.current || livePreparing.current) pause(); command(); } catch (error) { showError(error); } };
@@ -458,9 +461,34 @@ export default function App() {
     setScriptTarget({ sceneId, lineId, autoDraft }); switchWorkspace('write');
   }
   function newMovie() {
+    setSeedIdea('');
     const next = makeProject();
     openProject({ ...next, production: startProduction(next) }, true);
     setWorkspace('create');
+  }
+  function startManualMovie() {
+    setSeedIdea('');
+    const next = makeProject();
+    openProject({ ...next, production: startProduction(next) }, true);
+    setWorkspace('write');
+  }
+  function startAIMovie(prompt: string) {
+    const next = makeProject();
+    const production = startProduction(next);
+    production.bible.profile.synopsis = prompt;
+    production.bible.profile.logline = prompt.slice(0, 500);
+    setSeedIdea(prompt);
+    openProject({ ...next, production }, true);
+    setWorkspace('create');
+  }
+  async function deleteHomeProject(item: Project) {
+    if (!window.confirm(`Delete "${item.name}" permanently? This cannot be undone.`)) return;
+    try {
+      if (account) { await cloudQueue.current; await deleteCloud(account, item.id); }
+      removeLocal(scope, item.id);
+      const saved = listLocal(scope); setItems(saved);
+      if (useStudio.getState().project.id === item.id) loadProject(saved[0]?.project ?? makeProject(), false, false);
+    } catch (error) { showError(error); }
   }
   function openRentExample() {
     openProject(missingRentMovie(), true); setWorkspace('create'); setScriptTarget({});
@@ -592,10 +620,18 @@ export default function App() {
   if (dialog === 'dependencies' && dependentObjectId) content = <ObjectDependenciesDialog scene={scene} objectId={dependentObjectId} actorNames={actorNames} close={close} confirm={confirmObjectDeletion}/>;
   if (dialog === 'confirm' && confirm) content = <Modal title={confirm.title} description={confirm.text} close={close}><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="danger" onClick={() => { close(); confirm.run(); }}>Confirm</button></footer></Modal>;
 
+  if (home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
+    <Welcome screen={home} items={items} openProjects={() => { localStorage.setItem('toonroom.started', '1'); setHome('projects'); }}
+      openProject={value => { setSeedIdea(''); openProject(value); setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); }}
+      createManual={startManualMovie} createAI={startAIMovie}
+      duplicate={value => { setSeedIdea(''); openProject(duplicateProject(value), true); }}
+      remove={value => { void deleteHomeProject(value); }}
+      openExample={openRentExample}/>
+  </div>;
   return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''}`}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
-      <div className="project-controls"><button className="quiet project-button" onClick={() => showDialog('projects')}><FolderOpen size={17}/><span>Projects</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label><span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
+      <div className="project-controls"><button className="quiet project-button" onClick={() => { pause(); if (useStudio.getState().dirty) persist(); close(); setHome('projects'); }}><FolderOpen size={17}/><span>Projects</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label><span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
       <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => {
         const value = theme === 'dark' ? 'light' : 'dark'; setTheme(value); localStorage.setItem('toonroom.theme', value);
       }}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
@@ -610,7 +646,7 @@ export default function App() {
     </nav>
     <Suspense fallback={<main className="film-empty" role="status">Opening workspace…</main>}>
     {workspace === 'create' && project.production && <StoryStudio key={project.id} project={project} production={project.production} update={updateProduction}
-      ai={ai} write={draft => openScript(undefined, undefined, draft)} loadExample={openRentExample}/>}
+      ai={ai} write={draft => openScript(undefined, undefined, draft)} initialIdea={seedIdea} loadExample={openRentExample}/>}
     {workspace === 'write' && project.production && <ScreenplayStudio key={project.id + (scriptTarget.sceneId ?? '') + (scriptTarget.lineId ?? '')}
       project={project} production={project.production} update={updateProduction} ai={ai} busy={compiling}
       initialScene={scriptTarget.sceneId} initialLine={scriptTarget.lineId} autoDraft={scriptTarget.autoDraft}
