@@ -77,6 +77,15 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         <path d={'M ' + (right - 2) + ' ' + shoulderY + ' Q ' + (right + 16) + ' ' + (shoulderY + 17) + ' ' + (right + 15) + ' ' + (shoulderY + 25)} stroke={c.shirt} strokeWidth={15 * c.thickness} fill="none" strokeLinecap="round"/>
         <path d={'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8) + ' ' + shoulderY + ' ' + (left + 3) + ' ' + (shoulderY + 34) + ' L ' + (-19 * width) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + (19 * width) + ' ' + shirtBottom + ' L ' + (right - 3) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={c.shirt} stroke="#242037" strokeWidth="3"/>
         {c.outfit === 'hoodie' ? <><path d={'M -15 ' + (shirtTop - 4) + ' Q 0 ' + (shirtTop + 26) + ' 15 ' + (shirtTop - 4)} fill="none" stroke="#41334b" strokeWidth="3"/><path d={'M -5 ' + (shirtTop + 15) + ' v 14 M 5 ' + (shirtTop + 15) + ' v 14'} stroke="#ffebcf" strokeWidth="2"/><path d={'M -14 ' + (shirtBottom - 19) + ' Q 0 ' + (shirtBottom - 11) + ' 14 ' + (shirtBottom - 19) + ' L 14 ' + (shirtBottom - 7) + ' L -14 ' + (shirtBottom - 7) + ' Z'} fill="none" stroke="#423248" strokeWidth="1.5"/></> : null}
+        <g stroke="#242037" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" fill={c.skin}>
+          <path d={'M ' + (left-17) + ' ' + (shoulderY+41) + ' q -8 -2 -10 4 q -1 6 4 11 q 7 4 13 -3 q 6 -6 2 -12 Z'}/>
+          <path d={action === 'point'
+            ? 'M ' + (right+8) + ' ' + (shoulderY+40) + ' q 7 -4 13 1 l 24 -4 q 6 0 6 4 q 0 4 -5 5 l -22 4 q 1 7 -7 10 q -11 4 -15 -6 q -1 -10 6 -14 Z'
+            : action === 'wave' || action === 'talk'
+              ? 'M ' + (right+7) + ' ' + (shoulderY+49) + ' q -7 -9 -5 -16 l -4 -17 q 0 -5 4 -5 q 5 0 7 14 l 2 -16 q 1 -5 5 -4 q 3 1 2 6 l 0 14 l 4 -14 q 2 -5 5 -3 q 3 2 1 7 l -3 14 q 5 -8 8 -4 q 3 4 -3 10 l -9 15 q -12 8 -17 -1 Z'
+              : 'M ' + (right+8) + ' ' + (shoulderY+42) + ' q -3 -8 5 -11 q 4 -3 9 0 q 5 -2 8 2 q 5 6 -1 12 q -5 9 -15 9 q -9 -2 -6 -12 Z'}/>
+          <path d={'M ' + (right+15) + ' ' + (shoulderY+40) + ' q 5 -3 7 1 M ' + (left-22) + ' ' + (shoulderY+49) + ' q 7 -3 10 2'} fill="none" stroke="#815544" strokeWidth="1.2"/>
+        </g>
         {(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
         {c.accessory === 'chain' && <path d={'M -13 ' + (shirtTop + 6) + ' Q 0 ' + (shirtTop + 36) + ' 13 ' + (shirtTop + 6)} fill="none" stroke="#f8d06d" strokeWidth="3"/>}
         <ellipse cx={-headW + 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>
