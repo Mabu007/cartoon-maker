@@ -4,7 +4,7 @@ import { sampleViseme, type Viseme } from './visemes.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 type State = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
-  speaking: boolean; viseme?: { shape: Viseme; weight: number }; focus?: { x: number; y: number }; held?: Prop };
+  speaking: boolean; locomotion: Action; viseme?: { shape: Viseme; weight: number }; focus?: { x: number; y: number }; held?: Prop };
 type Camera = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -28,6 +28,7 @@ export function evaluate(scene: Scene, time: number) {
     let expression = actor.expression;
     let held: Prop | undefined;
     let action: Action = body?.action ?? 'idle';
+    const locomotion: Action = body?.action ?? 'idle';
     for (const clip of [body, gesture]) {
       if (!clip) continue;
       const isGesture = clip.layer === 'gesture';
@@ -73,7 +74,7 @@ export function evaluate(scene: Scene, time: number) {
       ? sampleViseme(spoken.text, spoken.length, t - spoken.start)
       : undefined;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
-      speaking: Boolean(spoken), viseme, visible: !presence.length || presence.some(clip => active(clip, t)), held };
+      speaking: Boolean(spoken), locomotion, viseme, visible: !presence.length || presence.some(clip => active(clip, t)), held };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
