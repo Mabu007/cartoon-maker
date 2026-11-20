@@ -108,12 +108,19 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     if (!image) { backdrop.visible = false; requestedBackdrop = undefined; }
     else if (requestedBackdrop !== image) {
       requestedBackdrop = image;
-      backdrop.visible = false;
-      void loadImage(image).then(texture => {
-        if (requestedBackdrop !== image) return;
-        backdrop.texture = texture; backdrop.width = WIDTH; backdrop.height = HEIGHT;
-        backdrop.visible = true; app.render();
-      }).catch(error => console.warn('Could not render background image:', error));
+      const ready = textures.get(image);
+      if (ready) {
+        // Preloaded exports must include the artwork on their very first frame.
+        backdrop.texture = ready; backdrop.width = WIDTH; backdrop.height = HEIGHT;
+        backdrop.visible = true;
+      } else {
+        backdrop.visible = false;
+        void loadImage(image).then(texture => {
+          if (requestedBackdrop !== image) return;
+          backdrop.texture = texture; backdrop.width = WIDTH; backdrop.height = HEIGHT;
+          backdrop.visible = true; app.render();
+        }).catch(error => console.warn('Could not render background image:', error));
+      }
     } else if (textures.has(image) && !backdrop.visible) {
       backdrop.texture = textures.get(image)!;
       backdrop.width = WIDTH; backdrop.height = HEIGHT; backdrop.visible = true;
