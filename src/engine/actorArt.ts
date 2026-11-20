@@ -61,7 +61,7 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
   face.position.set(r.head.x, r.head.y);
   face.angle = r.angle;
   face.scale.set(c.head);
-  drawFace(face, c, art, facialPerformance(time, actorId, action, expression, speaking ? Math.max(amplitude, .55) : amplitude));
+  drawFace(face, c, art, facialPerformance(time, actorId, action, expression, speaking ? Math.max(amplitude, .15 + .62 * Math.abs(Math.sin(time * 13.7 + actorId.length))) : amplitude));
 }
 function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: FacialPerformance) {
   const { face, rear, profile, far } = art;
