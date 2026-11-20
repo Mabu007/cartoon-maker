@@ -21,7 +21,7 @@ export function compatibleObjects(scene: Scene, action: Action, excludeId?: stri
   return scene.objects.filter(object =>
     object.id !== excludeId && (action === 'sit'
       ? anchorFor(object)?.action === 'sit'
-      : anchors[object.kind]?.action === 'hold'));
+      : anchorFor(object)?.action === 'hold'));
 }
 export function nearestObject(scene: Scene, actorId: string, action: Action, excludeId?: string): Prop | undefined {
   const actor = scene.actors.find(item => item.id === actorId);
@@ -33,7 +33,7 @@ export function objectDependencies(scene: Scene, objectId: string, actorNames: R
   if (!object) return [];
   return scene.clips.flatMap(clip => {
     if (clip.track !== 'body' || clip.target !== objectId) return [];
-    const kind = anchors[object.kind]?.action;
+    const kind = anchorFor(object)?.action;
     const alternatives = scene.objects.filter(item => item.id !== objectId && anchorFor(item)?.action === kind);
     return [{ clip, actorName: actorNames[clip.actor] ?? scene.actors.find(item => item.id === clip.actor)?.id ?? 'Actor',
       targetName: object.name, alternatives }];
@@ -60,7 +60,7 @@ export function removeObjectWithDecisions(scene: Scene, objectId: string, decisi
     if (clip.track !== 'body' || clip.target !== objectId) return clip;
     const decision = decisions[clip.id];
     if (decision?.startsWith('object:')) {
-      const alternative = surviving.find(item => item.id === decision.slice(7) && anchors[item.kind]?.action === previousKind);
+      const alternative = surviving.find(item => item.id === decision.slice(7) && anchorFor(item)?.action === previousKind);
       if (alternative) return { ...clip, target: alternative.id };
     }
     return resolvedAction(clip, decision);
@@ -78,7 +78,7 @@ export function repairOrphanedObjectActions(scene: Scene): Scene {
       changed = true;
       return resolvedAction(clip, 'action:stand');
     }
-    if (clip.target && (!target || (clip.action !== 'sit' && anchors[target.kind]?.action === 'sit'))) {
+    if (clip.target && (!target || (clip.action !== 'sit' && anchorFor(target)?.action === 'sit'))) {
       changed = true;
       return resolvedAction(clip, 'action:' + (clip.action === 'sit' ? 'stand' : clip.action));
     }
