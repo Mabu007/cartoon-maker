@@ -68,7 +68,7 @@ export function repairOrphanedObjectActions(scene: Scene): Scene {
       changed = true;
       return resolvedAction(clip, 'action:stand');
     }
-    if (clip.target && !target) {
+    if (clip.target && (!target || (clip.action !== 'sit' && anchors[target.kind]?.action === 'sit'))) {
       changed = true;
       return resolvedAction(clip, 'action:' + (clip.action === 'sit' ? 'stand' : clip.action));
     }
