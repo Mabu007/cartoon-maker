@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { ProjectDocument, uid, type Clip, type Project, type Scene } from './engine/schema.ts';
 import { makeProject } from './engine/presets.ts';
 import { clamp } from './engine/animation.ts';
-import { removeObjectWithDecisions, repairOrphanedObjectActions } from './engine/interactions.ts';
+import { removeObjectWithDecisions, repairOrphanedObjectActions, repairGazeTargets } from './engine/interactions.ts';
 
 export const initial = makeProject(true);
 export type Selection = { kind: 'actor' | 'object' | 'clip'; id: string } | null;
@@ -14,13 +14,13 @@ export interface StudioState {
 }
 export function runEdit(project: Project, command: (project: Project) => Project) {
   const next = command(project);
-  return ProjectDocument.parse({ ...next, scenes: next.scenes.map(repairOrphanedObjectActions) });
+  return ProjectDocument.parse({ ...next, scenes: next.scenes.map(scene => repairGazeTargets(repairOrphanedObjectActions(scene))) });
 }
 export const currentScene = (state: Pick<StudioState, 'project' | 'sceneId'>) => state.project.scenes.find(scene => scene.id === state.sceneId) ?? state.project.scenes[0];
 export const useStudio = create<StudioState>((set, get) => ({
   project: initial, sceneId: initial.scenes[0].id, selection: null, library: 'Cast', past: [], future: [], dirty: false,
   open: (project, dirty = false) => {
-    const normalized = ProjectDocument.parse({ ...project, scenes: project.scenes.map(repairOrphanedObjectActions) });
+    const normalized = ProjectDocument.parse({ ...project, scenes: project.scenes.map(scene => repairGazeTargets(repairOrphanedObjectActions(scene))) });
     set({ project: normalized, sceneId: normalized.scenes[0].id, selection: null, past: [], future: [], dirty });
   },
   select: selection => set({ selection }), setLibrary: library => set({ library }), setScene: sceneId => set({ sceneId, selection: null }),
