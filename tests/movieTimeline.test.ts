@@ -128,3 +128,13 @@ test('whole movie Code Mode rejects overlapping shots without migrating away a v
   movie.scenes[0].clips.push({...shot, id: 'overlapping-shot'});
   assert.throws(() => parseMovieCode(movieToCode(movie), demo), /overlap/);
 });
+
+test('scene and movie editors validate archived recordings and allow reuse from the same movie', () => {
+  const movie = structuredClone(demo);
+  const scene = movie.scenes[0];
+  const line = scene.clips.find(clip => clip.track === 'dialogue')!;
+  line.versions = [{asset:'asset:previous-take',text:line.text,length:line.length,offset:0}];
+  assert.throws(() => parseMovieCode(movieToCode(movie), demo), /unknown audio asset/);
+  assert.throws(() => parseSceneCode(sceneToCode(scene), demo, scene.id), /unknown audio asset/);
+  assert.deepEqual(parseMovieCode(movieToCode(movie), movie), movie);
+});

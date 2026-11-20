@@ -13,7 +13,7 @@ type DragSession = {
   moved: boolean; preview: Scene; base: Scene; collapseOnClick: boolean; guides: number[]; lastDelta: number;
 };
 type ContextMenu = {x:number;y:number;id:string}|null;
-const TRACK_WIDTH_DESKTOP = 150, TRACK_WIDTH_MOBILE = 112;
+
 export function Timeline({
   scene, names, selection, selectedClipIds, selectedKeyframe, select, selectClips, selectKeyframe, seek, change, add, remove, duplicate, copy, cut, paste, split, selectAll, apply, compact, onCompact, onCode, onContext, onCopyScene, onCopyProject, onResizeScene, playhead
 }: {
@@ -29,7 +29,7 @@ export function Timeline({
   const viewportRef=useRef<HTMLDivElement>(null),surface=useRef<HTMLDivElement>(null),needle=useRef<HTMLDivElement>(null);
   const playheadRef=useRef(playhead),drag=useRef<DragSession|null>(null),scrub=useRef(false),contextRef=useRef<HTMLDivElement>(null);
   const anchor=useRef<string|null>(null);
-  const labelWidth=viewport<=790?TRACK_WIDTH_MOBILE:TRACK_WIDTH_DESKTOP;
+  const [labelWidth,setLabelWidth]=useState(200);
   const sheetWidth=Math.max(viewport,260)*zoom;
   const unitsPerPixel=scene.duration/Math.max(1,sheetWidth-labelWidth);
   const pixelsPerSecond=1/unitsPerPixel;
@@ -45,7 +45,10 @@ export function Timeline({
   useEffect(()=>{
     const element=viewportRef.current;
     if(!element)return;
-    const size=()=>setViewport(element.clientWidth);
+    const size=()=>{
+      setViewport(element.clientWidth);
+      setLabelWidth(parseFloat(getComputedStyle(element).getPropertyValue('--track-label')));
+    };
     size();
     const observer=new ResizeObserver(size);observer.observe(element);return()=>observer.disconnect();
   },[compact]);
@@ -304,7 +307,7 @@ export function Timeline({
           <div className="ruler-label"><ListFilter size={12}/> TRACKS</div>
           <div ref={surface} className="ruler-points" onPointerDown={event=>{if(event.button!==0)return;scrub.current=true;event.currentTarget.setPointerCapture(event.pointerId);seekAt(event);}} onPointerMove={event=>{if(scrub.current)seekAt(event);}} onPointerUp={()=>{scrub.current=false;}} onPointerCancel={()=>{scrub.current=false;}}
             onDoubleClick={event=>{const box=surface.current?.getBoundingClientRect();if(!box)return;const at=Math.round(clamp((event.clientX-box.left)/box.width)*scene.duration*100)/100;apply({...scene,markers:[...markers,{id:uid(),name:'Marker '+(markers.length+1),time:at}]});}}>
-            {ticks.map((value,index)=><span key={index} className={index===divisions?'last-tick':''} style={{left:index/divisions*100+'%'}}>{value.toFixed(zoom>1.8?1:0)}s</span>)}
+            {ticks.map((value,index)=><span key={index} className={index===divisions?'last-tick':''} style={{left:index/divisions*100+'%'}}>{Number(value.toFixed(2))}s</span>)}
             {markers.map(marker=><button type="button" key={marker.id} className="timeline-ruler-marker" title={marker.name+' · '+marker.time+'s (right-click to remove)'} aria-label={marker.name} style={{left:marker.time/scene.duration*100+'%'}} onPointerDown={event=>event.stopPropagation()} onClick={()=>seek(marker.time)} onContextMenu={event=>{event.preventDefault();apply({...scene,markers:markers.filter(item=>item.id!==marker.id)});}}><span/></button>)}
           </div>
         </div>

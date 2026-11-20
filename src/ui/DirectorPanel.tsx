@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Code2, Send, Sparkles, WandSparkles, Check, X, Undo2, ClipboardCopy, Eye } from 'lucide-react';
 import { applyTimelineEdits, countPendingSpeech, prepareDirectorSpeech,
   type TimelineEditProposal } from '../engine/timelineAI.ts';
@@ -75,8 +75,10 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
     ...soundNames.map(name=>`builtin:${name}`),
     ...project.scenes.flatMap(s=>s.clips.flatMap(c=>'asset' in c?[c.asset]:[]))
   ])];
-  const snapshot=sceneToCode(scene);
-  const characterStamp=JSON.stringify(project.characters);
+  const snapshot=useMemo(()=>sceneToCode(scene),[scene]);
+  const characterStamp=useMemo(()=>JSON.stringify(project.characters),[project.characters]);
+  const latest=useRef({snapshot, characterStamp});
+  latest.current={snapshot, characterStamp};
   function clear(){setPending(undefined);preview(undefined);}
   async function propose(){
     if(!prompt.trim()||loading||applying||!canUseAI(ai))return;
@@ -101,9 +103,11 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
         response=await filmmaker(ai,'timeline',attempt===0?request:
           `${request}\nYour previous proposed operations were invalid: ${issue}. Fix all IDs, collisions and timeline constraints. Return a valid fresh proposal.`,context);
         if(!activeRef.current)return; // Scene or project switched while the model was working.
+        if(base!==latest.current.snapshot || characterStamp!==latest.current.characterStamp)
+          throw new Error('The scene or cast changed. Request a new direction for the current edit.');
         try{
           const next=applyTimelineEdits(project,scene,response,{deferSpeech:true});
-          if(snapshot!==sceneToCode(scene))throw new Error('The scene changed while requesting direction.');
+
           const unresolved=countPendingSpeech(response);
           if(!response.edits.length){
             setHistory(old=>[...old,{role:'user' as const,text:request},{role:'assistant' as const,text:response!.message}].slice(-24));
@@ -142,7 +146,8 @@ export function DirectorPanel({project,scene,selection,getTime,ai,busy,apply,pre
             ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})}};
       }):{next:pending.next,generatedAssets:[]};
       // A delayed voice result from a closed or switched scene must never apply.
-      if(!activeRef.current)throw new Error('The scene closed while preparing speech. Original timeline remains unchanged.');
+      if(!activeRef.current || latest.current.snapshot!==pending.base || latest.current.characterStamp!==pending.characters)
+        throw new Error('The scene or cast changed while preparing the proposal. Request a new edit.');
       // Apply performs the canonical store comparison and creates one undo snapshot.
       apply(prepared.next,pending.base,prepared.generatedAssets);
       preview(undefined);

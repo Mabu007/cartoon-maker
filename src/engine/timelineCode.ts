@@ -1,4 +1,4 @@
-import { ProjectDocument, builtinVoiceNames, soundNames, tracks, actions, shots, expressions, environments, type Scene, type Project } from './schema.ts';
+import { ProjectDocument, builtinVoiceNames, soundNames, tracks, actions, shots, expressions, environments, type Clip, type Scene, type Project } from './schema.ts';
 import { repairOrphanedObjectActions } from './interactions.ts';
 
 /** Canonical scene interchange: editable code is the same scene the renderer executes. */
@@ -40,13 +40,24 @@ export function validateSceneReplacement(project: Project, sceneId: string, cand
   }
   const scene = result.data.scenes[index];
   validateTimelineChange(scene, project.scenes[index]);
-  const assets = new Set<string>([...soundNames, ...builtinVoiceNames].map(name => `builtin:${name}`));
-  for (const asset of extraAvailableAssets) assets.add(asset);
-  for (const current of project.scenes) for (const clip of current.clips) if ('asset' in clip) assets.add(clip.asset);
-  for (const clip of scene.clips) if ('asset' in clip && !assets.has(clip.asset)) {
-    throw new Error(`Clip "${clip.id}" references unknown audio "${clip.asset}". Attach its file in the studio first.`);
-  }
+  validateAudioReferences(project, [scene], extraAvailableAssets);
   return scene;
+}
+export function clipAudioAssets(clip: Clip): string[] {
+  if (!('asset' in clip)) return [];
+  return clip.track === 'dialogue'
+    ? [clip.asset, ...(clip.versions ?? []).map(version => version.asset)]
+    : [clip.asset];
+}
+export function validateAudioReferences(project: Project, scenes: Scene[], generated: readonly string[] = []) {
+  const assets = new Set([...soundNames, ...builtinVoiceNames].map(name => 'builtin:' + name));
+  for (const asset of generated) assets.add(asset);
+  for (const scene of project.scenes) for (const clip of scene.clips)
+    for (const asset of clipAudioAssets(clip)) assets.add(asset);
+  for (const scene of scenes) for (const clip of scene.clips) {
+    for (const asset of clipAudioAssets(clip)) if (!assets.has(asset))
+      throw new Error(`Clip "${clip.id}" references unknown audio asset "${asset}". Attach its file in the studio first.`);
+  }
 }
 export function sceneContext(project: Project, scene: Scene): string {
   const audioAssets = [...new Set(project.scenes.flatMap(item => item.clips.flatMap(clip => 'asset' in clip ? [clip.asset] : [])))];

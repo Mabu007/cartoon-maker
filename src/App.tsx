@@ -1076,14 +1076,21 @@ export default function App() {
   if (dialog === 'dependencies' && dependentObjectId) content = <ObjectDependenciesDialog scene={scene} objectId={dependentObjectId} actorNames={actorNames} close={close} confirm={confirmObjectDeletion}/>;
   if (dialog === 'confirm' && confirm) content = <Modal title={confirm.title} description={confirm.text} close={close}><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="danger" onClick={() => { close(); confirm.run(); }}>Confirm</button></footer></Modal>;
 
+  const backupInput = <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
+      const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
+    }}/>;
+  const noticeToast = notice && <div className={`toast ${notice.error ? 'toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{!notice.error && <Check size={16}/>}<span>{notice.message}</span><IconButton title="Dismiss notice" onClick={() => setNotice(null)}><X size={14}/></IconButton></div>;
   if (home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
     <Welcome screen={home} items={items} lastSession={lastEditorSession(scope)}
       openProjects={()=>{localStorage.setItem('toonroom.started','1');setHome('projects');}}
       openLanding={()=>setHome('landing')} openProject={openLibraryProject}
       createManual={startManualMovie} createAI={startAIMovie}
       duplicate={duplicateHomeProject} rename={renameHomeProject}
+      backup={value=>void backupMovie(value).catch(showError)} restore={()=>importFile.current?.click()}
       organize={organizeHomeProject} remove={deleteHomeProject} openExample={openRentExample}
       theme={theme==='dark'?'dark':'light'} toggleTheme={toggleTheme}/>
+    {backupInput}
+    {noticeToast}
   </div>;
   return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''}`}>
     <header className="topbar">
@@ -1188,10 +1195,8 @@ export default function App() {
       copy={copyTimelineSelection} cut={()=>run(cutTimelineSelection)} paste={pasteTimelineSelection} split={splitTimelineSelection}
       selectAll={()=>useStudio.getState().selectClips(scene.clips.map(c=>c.id))}
       apply={editTimeline} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneBuildingContext(project, scene)).then(() => tell('AI scene-building context copied.'), showError); }} onCopyScene={() => { void navigator.clipboard.writeText(sceneToCode(scene)).then(() => tell('Current scene JSON copied.'), showError); }} onCopyProject={() => { void navigator.clipboard.writeText(movieToCode(project)).then(() => tell('Entire movie timeline JSON copied.'), showError); }} onResizeScene={duration => { editScene(current => resizeSceneTimeline(current,duration)); const updated=currentScene(useStudio.getState()); if(time.current.local>updated.duration)seek(updated.duration); }} playhead={time.current.local} onCompact={() => setCompact(value => !value)}/></>}
-    <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
-      const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
-    }}/>
-    {notice && <div className={`toast ${notice.error ? 'toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{!notice.error && <Check size={16}/>}<span>{notice.message}</span><IconButton title="Dismiss notice" onClick={() => setNotice(null)}><X size={14}/></IconButton></div>}
+    {backupInput}
+    {noticeToast}
     {content}
   </div>;
 }

@@ -6,12 +6,12 @@ export type AnalyzeOptions={token?:string;recognizer?:Recognizer};
 const validShapes=new Set<Viseme>(['rest','closed','bite','wide','open','round','pucker','tongue']);
 export function validStoredAlignment(value:Analysis|undefined,key:string,duration:number):value is Analysis {
  if(value?.source!=='rhubarb'||value.cacheKey!==key||
-   Math.abs(value.analyzedDuration-duration)>=.08||
+   !Number.isFinite(duration)||!Number.isFinite(value.analyzedDuration)||Math.abs(value.analyzedDuration-duration)>=.08||
    !Array.isArray(value.cues)||!value.cues.length||value.cues.length>3000)return false;
  let last=0;
  for(const cue of value.cues) {
   if(!cue||!Number.isFinite(cue.start)||!Number.isFinite(cue.end)||
-     cue.start<last-.012||cue.end<=cue.start||cue.end>duration+.2||
+     cue.start<0||cue.start<last-.012||cue.end<=cue.start||cue.end>duration+.2||
      !validShapes.has(cue.shape)||cue.strength!==undefined&&
        (!Number.isFinite(cue.strength)||cue.strength<0||cue.strength>1))return false;
   last=cue.end;

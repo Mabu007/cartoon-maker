@@ -18,7 +18,7 @@
   --accent: #b9a4ff;
   --accent-text: #241a3a;
   --radius: 8px;
-  --track-label: 150px;
+  --track-label: 200px;
 }
 * {
   box-sizing: border-box;
@@ -2081,7 +2081,7 @@ select {
 
 @media (max-width: 790px) {
   :root {
-    --track-label: 112px;
+    --track-label: 148px;
   }
   .studio-shell {
     height: auto;

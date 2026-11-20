@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { actions, builtinVoiceNames, environments, expressions, ProjectDocument, SceneDefinition, TimelineClip, tracks, shots, soundNames, WIDTH, HEIGHT, type Project, type Scene } from './schema.ts';
-import { sceneContext, sceneToCode, validateTimelineChange } from './timelineCode.ts';
+import { sceneContext, sceneToCode, validateAudioReferences, validateTimelineChange } from './timelineCode.ts';
 
 /**
  * The ProjectDocument is the ONLY persisted/executed document. This versioned
@@ -40,15 +40,7 @@ export function validateMovieReplacement(previous: Project, raw: unknown): Proje
 
   // Audio binary lives in separate storage. JSON must only refer to assets
   // already available to this project, otherwise the movie would not play.
-  const available = new Set([
-    ...soundNames.map(id => 'builtin:' + id),
-    ...builtinVoiceNames.map(id => 'builtin:' + id),
-    ...previous.scenes.flatMap(scene => scene.clips.flatMap(clip => 'asset' in clip ? [clip.asset] : []))
-  ]);
-  for (const scene of next.scenes)
-    for (const clip of scene.clips)
-      if ('asset' in clip && !available.has(clip.asset))
-        throw new Error('Scene "' + scene.name + '", clip "' + clip.id + '": unknown audio asset ' + clip.asset + '. Import it in the studio first.');
+  validateAudioReferences(previous, next.scenes);
   return next;
 }
 

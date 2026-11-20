@@ -203,3 +203,13 @@ test('recompilation preserves manual recordings and clears mouth cues when a lin
   assert.equal(updated.offset, 0);
   assert.equal(updated.visemes, undefined);
 });
+
+test('long alignment stays on the dialogue and fits the screenplay edit history', async () => {
+  const visemes = Array.from({length: 95}, (_, i) => ({start:i/100, end:(i+1)/100, shape:'open' as const}));
+  const movie = await compileMovie(approved(), async () => ({...await speak(), visemes}));
+  const line = movie.scenes[0].clips.find(c => c.track === 'dialogue')!;
+  assert.deepEqual(line.visemes, visemes);
+  const signature = movie.production!.graph[0].events[line.id].signature;
+  assert.ok(signature.length < 2500);
+  assert.equal(JSON.parse(signature).asset, line.asset);
+});

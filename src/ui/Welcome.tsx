@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowRight, Clapperboard, Copy, Film, FolderOpen, Plus, Sparkles,
-  Trash2, WandSparkles, X, Star, Pencil, Clock3, Layers3, Moon, Sun, Search,
+  Download, Upload, Trash2, WandSparkles, X, Star, Pencil, Clock3, Layers3, Moon, Sun, Search,
   Check, Play, SlidersHorizontal, ChevronRight } from 'lucide-react';
 import { makeProject } from '../engine/presets.ts';
 import type { Project } from '../engine/schema.ts';
@@ -15,9 +15,10 @@ const publicExample=makeProject(true);
 const clipTimes=['20%','39%','56%','83%'];
 const tracks=['Camera','Performance','Dialogue','Music'];
 export function Welcome({screen,items,lastSession,openProjects,openLanding,openProject,
-  createManual,createAI,duplicate,rename,organize,remove,openExample,theme,toggleTheme}:{
+  createManual,createAI,duplicate,rename,organize,remove,openExample,theme,toggleTheme,backup,restore}:{
   screen:'landing'|'projects';items:SavedProject[];lastSession?:EditorSession;
   openProjects:()=>void;openLanding:()=>void;openProject:(project:Project)=>void;
+  backup:(project:Project)=>void;restore:()=>void;
   createManual:()=>void;createAI:(prompt:string)=>void;
   duplicate:(project:Project)=>void;rename:(project:Project,name:string)=>void|Promise<void>;
   organize:Organize;remove:(project:Project)=>void;openExample:()=>void;
@@ -139,7 +140,7 @@ export function Welcome({screen,items,lastSession,openProjects,openLanding,openP
       {resume&&<button className="home-resume" onClick={()=>openProject(resume.project)}>
         <span className="home-resume-symbol"><Play size={19} fill="currentColor"/></span>
         <span><strong>Continue your last session</strong><small>{resume.project.name} · {lastSession?.workspace==='direct'?'Directing':
-          lastSession?.workspace==='write'?'Writing':'Developing'} · Scene ${Math.max(1,resume.project.scenes.findIndex(s=>s.id===lastSession?.sceneId)+1)}</small></span>
+          lastSession?.workspace==='write'?'Writing':'Developing'} · Scene {Math.max(1,resume.project.scenes.findIndex(s=>s.id===lastSession?.sceneId)+1)}</small></span>
         <ChevronRight size={20}/>
       </button>}
       <div className="home-library-toolbar">
@@ -150,6 +151,7 @@ export function Welcome({screen,items,lastSession,openProjects,openLanding,openP
             {tab==='all'&&<small>{items.length}</small>}</button>)}
         </div>
         <div className="home-filter">
+          <button className="quiet" onClick={restore}><Upload size={15}/>Restore backup</button>
           <label className="home-search"><Search size={17}/><input aria-label="Search movies" value={search}
             placeholder="Find a movie, scene or character…" onChange={event=>{setSearch(event.target.value);setVisibleCount(20);}}/></label>
           <label className="home-sort"><SlidersHorizontal size={15}/><select aria-label="Sort movies"
@@ -191,6 +193,7 @@ export function Welcome({screen,items,lastSession,openProjects,openLanding,openP
                       <option key={k} value={k}>{collectionLabels[k]}</option>)}
                   </select></label>
                 <div className="home-card-actions">
+                  <button className="quiet" title="Download backup" aria-label={`Back up ${project.name}`} onClick={()=>backup(project)}><Download size={16}/></button>
                   <button className="quiet" title={`Rename ${project.name}`}
                     aria-label={`Rename ${project.name}`} onClick={()=>{setRenaming(project);setNewName(project.name);setError('');}}><Pencil size={16}/></button>
                   <button className="quiet" title={`Duplicate ${project.name}`}

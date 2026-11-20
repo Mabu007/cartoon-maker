@@ -72,7 +72,15 @@ export function fingerprint(value: unknown) {
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
 const eventId = (lineId: string, slot: string | number) => `cue-${fingerprint(lineId)}-${slot}`;
-const keyOf = (clip: Clip) => JSON.stringify(TimelineClip.parse(clip));
+function keyOf(clip: Clip) {
+  // The graph identifies authored timing and the recording. Derived cues and
+  // voice history already live on the canonical clip and can be much larger.
+  if (clip.track === 'dialogue') {
+    const {visemes, lipSync, versions, ...source} = clip;
+    return JSON.stringify(TimelineClip.parse(source));
+  }
+  return JSON.stringify(TimelineClip.parse(clip));
+}
 const overlaps = (a: Clip, b: Clip) => a.start < b.start + b.length - .001 && b.start < a.start + a.length - .001;
 const lane = (clip: Clip) => [clip.track, 'actor' in clip ? clip.actor : '', clip.track === 'body' ? clip.layer : ''].join(':');
 const exclusive = new Set<Clip['track']>(['movement', 'body', 'face', 'gaze', 'dialogue', 'camera', 'transition']);
@@ -150,11 +158,13 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
       if (clip.track === 'dialogue' && oldClip.track === 'dialogue' && !locks.has(clip.id)) {
         const original = JSON.parse(oldSource.signature) as Dialogue;
         const sameRecording = clip.asset === oldClip.asset && clip.text === original.text;
-        const { visemes, ...previous } = oldClip;
+        const { visemes, lipSync, ...previous } = oldClip;
+        const cues = sameRecording ? visemes : clip.visemes;
+        const alignment = sameRecording ? lipSync : clip.lipSync;
         result = { ...previous, text: sameRecording ? oldClip.text : clip.text, asset: clip.asset,
           offset: sameRecording ? oldClip.offset : 0,
           length: oldClip.length === original.length ? clip.length : oldClip.length,
-          ...(sameRecording && visemes ? { visemes } : {}) };
+          ...(cues ? {visemes: cues} : {}), ...(alignment ? {lipSync: alignment} : {}) };
       }
     }
     if (exclusive.has(result.track) && [...generated, ...manual].some(prev => lane(prev) === lane(result) && overlaps(prev, result))) {
@@ -333,7 +343,7 @@ export async function compileMovie(project: Project, speak: Speech): Promise<Pro
     const continuity = source.continues && previous?.environment === source.environment ? exitOf(previous) : { actors: {}, objects: {} };
     const entry = fingerprint(continuity);
     const set = source.setsFrom ? project.scenes.find(scene => scene.id === source.setsFrom) : undefined;
-    const signature = fingerprint([source, actors.filter(([id]) => source.cast.includes(id)), project.characters.filter(character => source.cast.includes(character.id)).map(character => character.id),
+    const signature = fingerprint([source, actors.filter(([id]) => source.cast.includes(id)), project.characters.filter(character => source.cast.includes(character.id)).map(character => [character.id, character.voicePreset]),
       set ? [set.objects, set.backgroundImage] : null]);
     const record = production.graph.find(scene => scene.sceneId === source.id);
     if (existing && record?.signature === signature && record.entry === entry) {
