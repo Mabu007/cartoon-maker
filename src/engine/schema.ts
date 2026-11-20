@@ -8,8 +8,8 @@ export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 's
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow', 'extreme-close-up', 'over-shoulder', 'establishing', 'reaction', 'pan', 'tilt', 'zoom', 'hold'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
 export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image'] as const;
-export const tracks = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue', 'audio', 'camera', 'transition'] as const;
-export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'Sound', camera: 'Camera', transition: 'Transitions' };
+export const tracks = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue', 'audio', 'music', 'camera', 'transition'] as const;
+export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'SFX', music: 'Music', camera: 'Camera', transition: 'Transitions' };
 const id = z.string().min(1).max(100);
 const color = z.string().regex(/^#[\da-f]{6}$/i);
 // Portable WebP thumbnails are embedded in project JSON. A strict budget keeps
@@ -46,11 +46,12 @@ const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id,
 const FaceClip = z.strictObject({ ...time, track: z.literal('face'), actor: id, expression: z.enum(expressions) });
 export const audioAsset = z.string().regex(/^(?:builtin:[a-z0-9-]+|asset:[a-zA-Z0-9-]+)$/);
 const sound = { asset: audioAsset, volume: num(0, 2), muted: z.boolean(), offset: num(0, 180).default(0) };
-export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal('dialogue'), actor: id, text: z.string().max(1000) });
+export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal('dialogue'), actor: id, text: z.string().max(1000), visemes: z.array(z.strictObject({ start: num(0, 180), end: num(0, 180), shape: z.enum(['rest', 'closed', 'bite', 'wide', 'open', 'round', 'pucker', 'tongue']) })).max(3000).optional() });
 const AudioClip = z.strictObject({ ...time, ...sound, track: z.literal('audio'), name: z.string().min(1).max(80) });
+const MusicClip = z.strictObject({ ...time, ...sound, track: z.literal('music'), name: z.string().min(1).max(80) });
 export const CameraShot = z.strictObject({ ...time, track: z.literal('camera'), shot: z.enum(shots), focus: id.optional(), transition: z.enum(['cut', 'glide']) });
 const Transition = z.strictObject({ ...time, track: z.literal('transition'), effect: z.enum(['fade-in', 'fade-out', 'dissolve']) });
-export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, CameraShot, Transition]);
+export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, MusicClip, CameraShot, Transition]);
 export const TimelineTrack = z.enum(tracks);
 export const SceneDefinition = z.strictObject({ id, name: z.string().trim().min(1).max(70), environment: z.enum(environments),
   backgroundImage: imageData.optional(), duration: num(1, 180),
@@ -168,7 +169,7 @@ export type Expression = typeof expressions[number];
 export type JointName = typeof joints[number];
 export type JointPose = Partial<Record<JointName, number>>;
 export type Animation = z.infer<typeof AnimationClip>;
-export type SoundClip = Extract<Clip, { track: 'audio' | 'dialogue' }>;
+export type SoundClip = Extract<Clip, { track: 'audio' | 'music' | 'dialogue' }>;
 export const uid = () => crypto.randomUUID();
 export const label = (value: string) => ({ 'close-up': 'Close-up', 'two-shot': 'Two-shot', 'three-quarter': 'Front three-quarter', 'back-quarter': 'Back three-quarter', stand: 'Stand up', shake: 'Shake head', talk: 'Talking idle', listen: 'Listening', think: 'Thinking', angry: 'Angry', surprise: 'Surprised' })[value] ?? value.replaceAll('-', ' ').replace(/^./, first => first.toUpperCase());
 export const shotLabel = (shot: string) => shot === 'close-up' || shot === 'two-shot' ? label(shot) : `${label(shot)} shot`;
