@@ -130,10 +130,15 @@ export function AudioDialog({ request, actors, characters, scene, account, add, 
     const id = uid(); await putAudio(id, asset.blob);
     const common = { id: uid(), start: at, length: clamp(asset.length, .1, scene.duration - at), asset: `asset:${id}`, volume: 1, muted: false, offset: 0 };
     if (isDialogue) {
-      const analysis = await analyzeLipSync(asset.blob, text.trim(), asset.length);
+      const analysis = await analyzeLipSync(asset.blob, text.trim(), asset.length,{
+        token:await account?.getIdToken().catch(()=>undefined)
+      });
       if (!alive.current) return;
-      setLipStatus(analysis.source === 'rhubarb' ? 'Audio-aligned mouth animation ready.' : 'Estimated mouth animation; Rhubarb unavailable.');
-      add({ ...common, track: 'dialogue', text: text.trim(), actor, voicePreset:voice as 'warm'|'bright'|'deep', visemes: analysis.cues });
+      setLipStatus(analysis.source === 'rhubarb' ? 'Rhubarb audio-derived mouth cues ready and cached.'
+        : 'Estimated lip-sync (NOT Rhubarb). '+(analysis.reason??'Analyzer unavailable.'));
+      add({ ...common, track: 'dialogue', text: text.trim(), actor, voicePreset:voice as 'warm'|'bright'|'deep', visemes: analysis.cues,
+        lipSync:{source:analysis.source,engine:analysis.engine,analyzedDuration:analysis.analyzedDuration,
+          ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})} });
     } else {
       if (!alive.current) return;
       const title = name.trim().slice(0, 80);

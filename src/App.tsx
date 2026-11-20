@@ -8,8 +8,8 @@ import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithD
 import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Production, type Project, type Prop, type Scene, type ScriptSceneData, type Track } from './engine/schema.ts';
 import type { Format } from './engine/renderer.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
-import { audioLength, putAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
-import { analyzeLipSync } from './services/lipSync.ts';
+import { audioLength, putAudio, getOrFetchAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
+import { analyzeLipSync, type Recognizer } from './services/lipSync.ts';
 import { duplicateProject, duplicateScene, listLocal, mergeLocal, removeLocal, saveLocal, type SavedProject } from './services/projects.ts';
 import { exampleDirector, hostedDirector } from './services/director.ts';
 import { speechProvider, synthesizeCached } from './services/speech.ts';
@@ -585,7 +585,7 @@ export default function App() {
     // remains untouched when synthesis, timing or alignment fails.
     const { validateDialogueReplacement } = await import('./engine/dialogueAudio.ts');
     validateDialogueReplacement(initialScene,clip,seconds);
-    const analysis = await analyzeLipSync(output,text.trim(),seconds);
+    const analysis = await analyzeLipSync(output,text.trim(),seconds,{token:await account?.getIdToken().catch(()=>undefined)});
     const audioId = uid();
     await putAudio(audioId,output);
     const state = useStudio.getState();
@@ -596,10 +596,44 @@ export default function App() {
       if (before?.track!=='dialogue' || JSON.stringify(before)!==JSON.stringify(clip))
         throw new Error('The dialogue changed while speech was being generated. Original audio remains unchanged.');
       return replaceDialogueAsset(current,clip.id,{text:text.trim(),asset:`asset:${audioId}`,
-        length:seconds,voicePreset:voice as 'warm'|'bright'|'deep',visemes:analysis.cues});
+        length:seconds,voicePreset:voice as 'warm'|'bright'|'deep',visemes:analysis.cues,
+        lipSync:{source:analysis.source,engine:analysis.engine,analyzedDuration:analysis.analyzedDuration,
+          ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})}});
     });
     const source=output.type==='audio/wav'?'Local voice engine':'Hosted speech or cached voice';
     return `${source}: this line was updated. Previous audio remains in version history. ${analysis.source==='rhubarb'?'Audio-aligned':'Estimated'} lip sync is active.`;
+  }
+  async function alignVoiceClip(clip:Extract<Clip,{track:'dialogue'}>,recognizer:Recognizer):Promise<string> {
+    const state=useStudio.getState(),scene=currentScene(state);
+    if(JSON.stringify(scene.clips.find(c=>c.id===clip.id))!==JSON.stringify(clip))
+      throw new Error('Dialogue changed before analysis. Reopen it.');
+    const blob=clip.asset.startsWith('asset:')?
+      await getOrFetchAudio(clip.asset.slice(6)):
+      clip.asset.startsWith('builtin:')?await fetch('/audio/'+clip.asset.slice(8)+'.mp3').then(async res=>{
+        if(!res.ok)throw new Error('Built-in recording is unavailable.');
+        return res.blob();
+      }):undefined;
+    if(!blob)throw new Error('Recording is missing. Restore a backup or reconnect cloud storage.');
+    const duration=await audioLength(blob);
+    const analysis=await analyzeLipSync(blob,clip.text,duration,{
+      recognizer,token:await account?.getIdToken().catch(()=>undefined)
+    });
+    const live=useStudio.getState();
+    if(live.session!==state.session||live.sceneId!==state.sceneId||live.project.id!==state.project.id)
+      throw new Error('Project changed while analyzing. Original cues remain untouched.');
+    editScene(current=>{
+      if(JSON.stringify(current.clips.find(c=>c.id===clip.id))!==JSON.stringify(clip))
+        throw new Error('Dialogue changed during analysis. Retry on the updated clip.');
+      if(current.trackSettings?.dialogue?.locked)throw new Error('Unlock the Dialogue track before analysis.');
+      return {...current,clips:current.clips.map(c=>c.id===clip.id?{
+        ...clip,visemes:analysis.cues,
+        lipSync:{source:analysis.source,engine:analysis.engine,analyzedDuration:analysis.analyzedDuration,
+          ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})}
+      }:c)};
+    });
+    return analysis.source==='rhubarb'
+      ? 'Real Rhubarb mouth cues cached. Edits to clip position, trim and offset reuse them.'
+      : 'Estimated lip-sync — not Rhubarb alignment. '+(analysis.reason??'Analyzer unavailable.');
   }
   async function restoreVoiceVersion(clip: Extract<Clip, {track:'dialogue'}>, index:number):Promise<string> {
     const version=clip.versions?.[index];
@@ -682,7 +716,7 @@ export default function App() {
     compileInFlight.current = true;
     pause(); setCompiling(true);
     try {
-      const output = await compileMovie(next, renderSpeech(speechProvider(account)));
+      const output = await compileMovie(next, renderSpeech(speechProvider(account),account?()=>account.getIdToken():undefined));
       if (useStudio.getState().project !== original) throw new Error('The project changed during compilation. Generate it again to use your latest edits.');
       useStudio.getState().edit(() => output);
       const chosen = output.scenes.find(item => item.id === target) ?? output.scenes[0];
@@ -890,7 +924,7 @@ export default function App() {
         ai={ai} busy={compiling} openCode={() => showDialog('code')} apply={(next, original) => {
           replaceScene(next, original);
           tell('AI direction applied to the timeline. You can undo this change.');
-        }}/> : <Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} regenerateVoice={regenerateVoice} restoreVoiceVersion={restoreVoiceVersion}/>}
+        }}/> : <Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} regenerateVoice={regenerateVoice} restoreVoiceVersion={restoreVoiceVersion} alignVoiceClip={alignVoiceClip}/>}
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>
