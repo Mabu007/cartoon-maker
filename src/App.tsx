@@ -11,7 +11,7 @@ import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, lo
 import { audioLength, putAudio, getOrFetchAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
 import { analyzeLipSync, type Recognizer } from './services/lipSync.ts';
 import { duplicateProject, duplicateScene, listLocal, mergeLocal, removeLocal, saveLocal,
-  updateProjectOrganization, renameSavedProject, lastEditorSession, rememberEditorSession,
+  updateProjectOrganization, renameSavedProject, lastEditorSession, editorSessionFor, rememberEditorSession,
   type SavedProject, type ProjectCollection } from './services/projects.ts';
 import { characterUsage, removeCharacterFromProject, propUsage } from './engine/assetSafety.ts';
 import { addMovieScene, duplicateMovieScene, renameMovieScene, reorderMovieScene, removeMovieScene } from './engine/sceneWorkflow.ts';
@@ -876,7 +876,8 @@ export default function App() {
   function openLibraryProject(value:Project){
     if(!openProject(value))return;
     setSeedIdea('');setScriptTarget({});
-    const previous=lastEditorSession(scope);
+    const previous=editorSessionFor(scope,value.id)??(
+      lastEditorSession(scope)?.projectId===value.id?lastEditorSession(scope):undefined);
     const originalWorkspace=value.production&&value.production.graph.length===0?'write':'direct';
     setWorkspace(previous?.projectId===value.id&&value.production?previous.workspace:originalWorkspace);
     if(previous?.projectId===value.id){
