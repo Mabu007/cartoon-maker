@@ -331,6 +331,15 @@ export default function App() {
       }
     }
     let updated: Clip = value;
+    // Moving or repositioning a keyed clip in the visual inspector should not
+    // leave invisible keyframes overriding the coordinates the user just set.
+    const prior = scene.clips.find(item => item.id === value.id);
+    if (value.track === 'movement' && prior?.track === 'movement' && prior.keyframes &&
+      (prior.fromX !== value.fromX || prior.toX !== value.toX || prior.fromY !== value.fromY || prior.toY !== value.toY)) {
+      const { keyframes: _, ...plain } = value;
+      updated = plain;
+      tell('Movement converted to simple from/to animation. Advanced keyframes can be edited in Code Mode.');
+    }
     if (value.track === 'body') {
       const body = value;
       const current = currentScene(useStudio.getState());

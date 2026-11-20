@@ -1,4 +1,4 @@
-import { ProjectDocument, uid, type Project, type Scene } from '../engine/schema.ts';
+import { ProjectDocument, parseStoredProject, uid, type Project, type Scene } from '../engine/schema.ts';
 
 export type SavedProject = { project: Project; updated: number };
 const key = (scope: string) => `toonroom.projects.v1.${scope}`;
@@ -11,8 +11,7 @@ function parseEntry(raw: unknown): SavedProject | undefined {
   if (!raw || typeof raw !== 'object') return;
   const { project, updated } = raw as Partial<SavedProject>;
   if (typeof updated !== 'number' || !Number.isFinite(updated)) return;
-  const parsed = ProjectDocument.safeParse(project);
-  if (parsed.success) return { project: parsed.data, updated };
+  try { return { project: parseStoredProject(project), updated }; } catch { /* Preserve invalid entries without deleting user data. */ }
 }
 export function listLocal(scope: string): SavedProject[] {
   return readLocal(scope).map(parseEntry).filter(entry => entry !== undefined).sort((a, b) => b.updated - a.updated);
