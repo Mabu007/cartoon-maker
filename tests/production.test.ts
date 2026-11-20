@@ -178,3 +178,28 @@ test('autosaved versions reopen with script and graph intact and damaged snapsho
     else Reflect.deleteProperty(globalThis, 'localStorage');
   }
 });
+
+
+test('recompilation preserves manual recordings and clears mouth cues when a line gets new audio', async () => {
+  const first = await compileMovie(approved(), speak);
+  const scene = first.scenes[0];
+  const line = scene.clips.find(clip => clip.track === 'dialogue')!;
+  assert.equal(line.track, 'dialogue');
+  if (line.track !== 'dialogue') throw new Error('Expected dialogue');
+  const replacement = { ...line, asset: 'asset:manual-recording', text: 'My take', offset: .2,
+    visemes: [{ start: .2, end: 1, shape: 'open' as const }] };
+  first.scenes[0] = { ...scene, clips: scene.clips.map(clip => clip.id === line.id ? replacement : clip) };
+  const fresh = rewrite(first, 0, source => ({ ...source, title: source.title + ' alternate' }));
+  const recompiled = await compileMovie(fresh, () => Promise.reject(new Error('Reuse the recording')));
+  assert.deepEqual(recompiled.scenes[0].clips.find(clip => clip.id === line.id), replacement);
+  const sourceLine = first.production!.graph[0].events[line.id].line;
+  const edited = rewrite(recompiled, 0, source => ({ ...source, elements: source.elements.map(element =>
+    element.id === sourceLine ? { ...element, text: 'A new spoken line' } : element) }));
+  const rendered = await compileMovie(edited, async () => ({ asset: 'asset:new-recording', seconds: line.length }));
+  const updated = rendered.scenes[0].clips.find(clip => clip.id === line.id)!;
+  assert.equal(updated.track, 'dialogue');
+  if (updated.track !== 'dialogue') throw new Error('Expected dialogue');
+  assert.equal(updated.asset, 'asset:new-recording');
+  assert.equal(updated.offset, 0);
+  assert.equal(updated.visemes, undefined);
+});

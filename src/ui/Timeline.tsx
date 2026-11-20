@@ -7,10 +7,10 @@ import { clipLabel, IconButton, trackIcon } from './shared.tsx';
 
 export function Timeline({ scene, names, selection, select, seek, change, add, remove, duplicate, compact, onCompact, onCode, onContext, onResizeScene }: {
   scene: Scene; names: Record<string, string>; selection: Selection; select: (value: Selection) => void; seek: (t: number) => void;
-  change: (clip: Clip) => void; add: (track?: Track) => void; remove: () => void; duplicate: () => void; compact: boolean; onCompact: () => void; onCode: () => void; onContext: () => void; onResizeScene: (duration: number) => void;
+  change: (clip: Clip, original: Clip) => void; add: (track?: Track) => void; remove: () => void; duplicate: () => void; compact: boolean; onCompact: () => void; onCode: () => void; onContext: () => void; onResizeScene: (duration: number) => void;
 }) {
-  const [zoom, setZoom] = useState(1), [draft, setDraft] = useState<Clip | null>(null), [shortcuts, setShortcuts] = useState(false);
-  const drag = useRef<{ clip: Clip; x: number; units: number; edge: 'move' | 'in' | 'out'; draft: Clip; moved: boolean } | null>(null);
+  const [zoom, setZoom] = useState(1), [draft, setDraft] = useState<{ sceneId: string; clip: Clip } | null>(null), [shortcuts, setShortcuts] = useState(false);
+  const drag = useRef<{ sceneId: string; clip: Clip; x: number; units: number; edge: 'move' | 'in' | 'out'; draft: Clip; moved: boolean } | null>(null);
   const needle = useRef<HTMLDivElement>(null), surface = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const timeChange = (event: Event) => { if (needle.current) needle.current.style.left = `${clamp((event as CustomEvent<number>).detail / scene.duration) * 100}%`; };
@@ -23,10 +23,11 @@ export function Timeline({ scene, names, selection, select, seek, change, add, r
   const lane = (track: Track) => {
     const icons = trackIcon[track];
     const Icon = icons;
-    const laneClips = scene.clips.filter(clip => clip.track === track).sort((a, b) => a.start - b.start);
+    const laneClips = scene.clips.filter(clip => clip.track === track).map(original => ({
+      original, clip: draft?.sceneId === scene.id && draft.clip.id === original.id ? draft.clip : original
+    })).sort((a, b) => a.clip.start - b.clip.start);
     const endings: number[] = [];
-    const stacked = laneClips.map(original => {
-      const clip = draft?.id === original.id ? draft : original;
+    const stacked = laneClips.map(({ original, clip }) => {
       let row = endings.findIndex(end => end <= clip.start + .001);
       if (row === -1) row = endings.length;
       endings[row] = clip.start + clip.length;
@@ -42,12 +43,12 @@ export function Timeline({ scene, names, selection, select, seek, change, add, r
             if (event.button !== 0) return;
             const target = event.target as HTMLElement, edge = target.dataset.edge as 'in' | 'out' | undefined;
             if (!surface.current) return;
-            drag.current = { clip: original, draft: original, x: event.clientX, units: scene.duration / surface.current.getBoundingClientRect().width, edge: edge ?? 'move', moved: false };
+            drag.current = { sceneId: scene.id, clip: original, draft: original, x: event.clientX, units: scene.duration / surface.current.getBoundingClientRect().width, edge: edge ?? 'move', moved: false };
             select({ kind: 'clip', id: original.id }); event.currentTarget.setPointerCapture(event.pointerId);
             event.stopPropagation();
           }} onPointerMove={event => {
             const item = drag.current;
-            if (!item) return;
+            if (!item || item.sceneId !== scene.id) return;
             if (!item.moved && Math.abs(event.clientX - item.x) < 4) return;
             item.moved = true;
             const delta = (event.clientX - item.x) * item.units;
@@ -56,12 +57,12 @@ export function Timeline({ scene, names, selection, select, seek, change, add, r
             else if (item.edge === 'in') { const end = start + length; start = clamp(start + delta, 0, end - .1); length = end - start; }
             else length += delta;
             item.draft = changeClipTiming(item.clip, start, length, scene.duration, item.edge === 'in');
-            setDraft(item.draft);
+            setDraft({ sceneId: item.sceneId, clip: item.draft });
           }} onPointerUp={() => {
             const item = drag.current; drag.current = null;
-            if (item?.moved) change(item.draft); else seek(original.start);
+            if (item?.sceneId === scene.id) { if (item.moved) change(item.draft, item.clip); else seek(original.start); }
             setDraft(null);
-          }} onPointerCancel={() => { drag.current = null; setDraft(null); }}>
+          }} onLostPointerCapture={() => { drag.current = null; setDraft(null); }}>
           <span className="clip-handle" data-edge="in"/><Icon size={11}/><span>{clipLabel(clip, names)}</span><span className="clip-handle right" data-edge="out"/>
         </div>)}
       </div>

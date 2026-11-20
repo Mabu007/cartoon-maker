@@ -6,9 +6,9 @@ import { Modal } from './shared.tsx';
 
 /** Visual timeline and JSON editor both write the same Scene in the Zustand store. */
 export function TimelineCodeDialog({ project, scene, apply, close }: {
-  project: Project; scene: Scene; apply: (next: Scene) => void; close: () => void;
+  project: Project; scene: Scene; apply: (next: Scene, base: string) => void; close: () => void;
 }) {
-  const original = sceneToCode(scene);
+  const [original] = useState(() => sceneToCode(scene));
   const [code, setCode] = useState(original);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -27,7 +27,7 @@ export function TimelineCodeDialog({ project, scene, apply, close }: {
   function commit() {
     const next = validate();
     if (!next) return;
-    try { apply(next); close(); }
+    try { apply(next, original); close(); }
     catch (error) { setError(error instanceof Error ? error.message : 'Could not apply the scene.'); }
   }
   return <Modal wide title="Timeline code" description="Your timeline is editable JSON. Changes here update the same scene used by the visual editor and animation engine." close={close}>

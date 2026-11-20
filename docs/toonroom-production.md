@@ -45,9 +45,15 @@ This branch is an **incremental implementation**, not a full release of the mult
 - Export/browser regression test verification and visual polish audited on all platforms.
 - Production-grade rate limiting and async worker hosting for Rhubarb.
 
-## Build validation blocker
+## Part 1 stabilization
 
-The Vercel account reported `api-deployments-free-per-day` (over 100 deployments, 24h restriction). No successful preview build has been verified for the branch; GitHub Actions checks currently report failure and must be investigated before merge. **Do not merge into production until build/tests are green and the new flows have been exercised in a real browser.**
+Visual edits, JSON imports, AI proposals and compiled scenes commit through the Zustand project store. A rejected command leaves the scene and Undo/Redo history intact. Undo/Redo restores the active scene and selection from the corresponding edit. Async artwork, dialogue and timeline edits check their destination before committing.
+
+Existing version 1 documents still load. Existing camera overlaps keep their playback order, and edits reject new overlaps. Local project writes retain records that the current schema cannot read. Cloud sync still uses timestamp-based conflict detection, and oversized projects can exceed the Firestore document limit while remaining editable locally.
+
+Preview and both video exporters use the same scene evaluator and renderer. Audio playback and export share clip scheduling and dialogue-envelope sampling. Automated tests cover scene cuts, project round trips, camera edits, history and data preservation.
+
+The previous branch head failed CI. The Part 1 build passes locally on Node 22. The connected browsers could inspect the existing deployment, but could not reach the workspace server for an end-to-end run of the patched editor. Firebase, hosted speech, Rhubarb and an actual video download remain to be verified from a reachable branch preview.
 
 ## Quality checks to perform
 

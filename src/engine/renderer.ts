@@ -68,8 +68,10 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   let lastFrame: ReturnType<typeof evaluate> | undefined;
   const hitboxes: { id: string; left: number; right: number; top: number; bottom: number; depth: number }[] = [];
   let lastSelectedId: string | undefined;
+  const entityKey = (id: string, isActor: boolean) => (isActor ? 'actor:' : 'prop:') + id;
   function get(id: string, isActor = false) {
-    let entity = items.get(id);
+    const key = entityKey(id, isActor);
+    let entity = items.get(key);
     if (!entity) {
       const art = new Graphics();
       const group = new Container();
@@ -85,7 +87,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         entity.sprite = sprite;
       }
       elements.addChild(group);
-      items.set(id, entity);
+      items.set(key, entity);
     }
     return entity;
   }
@@ -140,7 +142,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     const characterById = new Map(characters.map(character => [character.id, character]));
     const sourceActorById = new Map(scene.actors.map(actor => [actor.id, actor]));
     for (const prop of options.edit ? scene.objects : lastFrame.objects) {
-      used.add(prop.id);
+      const key = entityKey(prop.id, false);
+      used.add(key);
       const entity = get(prop.id);
       entity.group.visible = options.edit || !carrying.has(prop.id);
       if (!entity.group.visible) continue;
@@ -165,7 +168,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         } else {
           entity.art.visible = true;
           void loadImage(url).then(result => {
-            if (destroyed || items.get(prop.id) !== entity || entity.imageData !== url || !entity.sprite) return;
+            if (destroyed || items.get(key) !== entity || entity.imageData !== url || !entity.sprite) return;
             entity.sprite.texture = result;
             entity.sprite.width = prop.imageWidth ?? 140;
             entity.sprite.height = prop.imageHeight ?? 140;
@@ -181,7 +184,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     for (const actor of actors) {
       const character = characterById.get(actor.characterId);
       if (!character) continue;
-      used.add(actor.id);
+      used.add(entityKey(actor.id, true));
       const entity = get(actor.id, true);
       entity.group.visible = actor.visible || Boolean(options.edit);
       if (!entity.group.visible) continue;
@@ -219,7 +222,10 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
           holder.visible = true;
         } else {
           holder.visible = false;
-          void loadImage(url).then(() => { if (!destroyed) app.render(); }).catch(() => {});
+          const waitingFrame = lastFrame;
+          void loadImage(url).then(() => {
+            if (!destroyed && lastFrame === waitingFrame) draw(scene, characters, time, options);
+          }).catch(error => console.warn('Could not render held prop:', error));
         }
       } else if (entity.heldSprite) entity.heldSprite.visible = false;
       const top = point.y - (172 * character.height + 49 * character.head) * actor.scale - lift;
@@ -245,7 +251,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       caption.position.set(width / 2, height - 23);
       captionBackground.roundRect((width - caption.width) / 2 - 12, height - 28 - caption.height, caption.width + 24, caption.height + 10, 7).fill({ color: '#211b2c', alpha: .88 });
     }
-    if (!options.edit && !options.selected && lastFrame.fade) fade.rect(0, 0, width, height).fill({ color: '#171522', alpha: lastFrame.fade });
+    if (!options.edit && lastFrame.fade) fade.rect(0, 0, width, height).fill({ color: '#171522', alpha: lastFrame.fade });
     app.render();
     return lastFrame;
   }

@@ -41,7 +41,7 @@ function demoScene(): Scene {
   const face = (actor: string, expression: Extract<Clip, { track: 'face' }>['expression'], start: number, length: number): Clip => ({ id: uid(), track: 'face', actor, expression, start, length });
   const dialogue = (actor: string, text: string, asset: string, start: number, length: number): Clip => ({ id: uid(), track: 'dialogue', actor, text, asset: `builtin:${asset}`, start, length, volume: .92, muted: false, offset: 0 });
   const sound = (name: string, asset: string, start: number, length: number, volume = .5): Clip => ({ id: uid(), track: 'audio', name, asset: `builtin:${asset}`, start, length, volume, muted: false, offset: 0 });
-  const camera = (shot: Extract<Clip, { track: 'camera' }>['shot'], start: number, length: number, focus?: string, transition: 'cut' | 'glide' = 'cut'): Clip => ({ id: uid(), track: 'camera', shot, start, length, focus, transition });
+  const camera = (shot: Extract<Clip, { track: 'camera' }>['shot'], start: number, length: number, focus?: string, transition: 'cut' | 'glide' = 'cut'): Clip => ({ id: uid(), track: 'camera', shot, start, length, ...(focus ? { focus } : {}), transition });
   return { ...scene, name: 'Scene 01 · The living room', actors: [
     { id: s, characterId: 'sbu', x: 300, y: 454, scale: 1.11, rotation: 0, depth: 0, view: 'three-quarter', flip: false, expression: 'neutral' },
     { id: z, characterId: 'zee', x: 640, y: 423, scale: 1.02, rotation: 0, depth: 0, view: 'three-quarter', flip: true, expression: 'happy' }
@@ -59,7 +59,7 @@ function demoScene(): Scene {
 export function makeProject(demo = false): Project {
   return { version: 1, id: uid(), name: demo ? 'Who Ate My Food?' : 'Untitled cartoon', characters: structuredClone(characters), scenes: [demo ? demoScene() : makeScene()] };
 }
-export const soundNames = ['ding', 'pop', 'sting', 'whoosh', 'rimshot'] as const;
+export { soundNames } from './schema.ts';
 export const scenePalettes = {
   'Living room': ['#a9b793', '#c7c39f', '#967564', '#526b5a'], 'Classroom': ['#dfbe80', '#ebd39b', '#9d7163', '#426a65'],
   'Township street': ['#eab98a', '#e5a879', '#a98579', '#7d6e86'], 'Podcast studio': ['#646080', '#8580a2', '#776583', '#53536e']

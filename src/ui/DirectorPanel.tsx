@@ -44,7 +44,7 @@ export function DirectorPanel({ project, scene, selection, getTime, ai, busy, ap
         const next = applyTimelineEdits(project, scene, proposal);
         setPending({ base, next, proposal, request });
       } else {
-        setHistory(old => [...old, { role: 'user', text: request }, { role: 'assistant', text: proposal.message }].slice(-20));
+        setHistory(old => [...old, { role: 'user' as const, text: request }, { role: 'assistant' as const, text: proposal.message }].slice(-20));
         setPrompt('');
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not direct this scene.'); }
@@ -55,7 +55,7 @@ export function DirectorPanel({ project, scene, selection, getTime, ai, busy, ap
     if (!pending) return;
     try {
       apply(pending.next, pending.base);
-      setHistory(old => [...old, { role: 'user', text: pending.request }, { role: 'assistant', text: pending.proposal.message }].slice(-20));
+      setHistory(old => [...old, { role: 'user' as const, text: pending.request }, { role: 'assistant' as const, text: pending.proposal.message }].slice(-20));
       setPending(undefined);
       setPrompt('');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The scene changed. Request a fresh edit.'); }

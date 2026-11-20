@@ -171,6 +171,7 @@ export function evaluate(scene: Scene, time: number) {
   return { actors, objects, sounds, camera, shot: cameraClip?.shot ?? 'wide', fade: transition?.effect === 'fade-in' ? 1 - fade : fade };
 }
 export type SceneState = ReturnType<typeof evaluate>;
+export const MOVIE_FRAME_RATE = 30;
 export const projectDuration = (scenes: Scene[]) => scenes.reduce((sum, scene) => sum + scene.duration, 0);
 export function locate(scenes: Scene[], time: number) {
   let start = 0;

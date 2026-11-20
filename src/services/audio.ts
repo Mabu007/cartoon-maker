@@ -1,8 +1,8 @@
 import { clamp } from '../engine/animation.ts';
-import type { Project, Scene, SoundClip } from '../engine/schema.ts';
+import { builtinVoiceNames, soundNames, type Project, type Scene, type SoundClip } from '../engine/schema.ts';
 
-const builtinVoices = new Set(['zee-spicy', 'sbu-food', 'zee-safe', 'sbu-lunch', 'sbu-receipt']);
-const soundTypes = new Set(['ding', 'pop', 'sting', 'whoosh', 'rimshot']);
+const builtinVoices = new Set<string>(builtinVoiceNames);
+const soundTypes = new Set<string>(soundNames);
 let database: Promise<IDBDatabase> | undefined;
 function audioDatabase() {
   database ??= new Promise((resolve, reject) => {
@@ -50,7 +50,9 @@ function effect(context: BaseAudioContext, name: string) {
   }
   return buffer;
 }
-const decoders = new Map<string, Promise<{ buffer: AudioBuffer; envelope: Float32Array }>>();
+type DecodedSound = { buffer: AudioBuffer; envelope: Float32Array };
+const decoders = new Map<string, Promise<DecodedSound>>();
+let decoderContext: OfflineAudioContext | undefined;
 let remoteAudio: ((id: string) => Promise<Blob | undefined>) | undefined;
 export function setRemoteAudio(loader?: (id: string) => Promise<Blob | undefined>) { remoteAudio = loader; }
 export async function getOrFetchAudio(id: string) {
@@ -74,10 +76,12 @@ function envelope(buffer: AudioBuffer) {
   }
   return result;
 }
-export async function readSound(context: BaseAudioContext, asset: string) {
+async function readSound(asset: string) {
   let pending = decoders.get(asset);
   if (!pending) {
     pending = (async () => {
+      // Decode once at the movie mix rate, independent of the output device.
+      const context = decoderContext ??= new OfflineAudioContext(2, 1, 48000);
       const name = asset.split(':')[1];
       let buffer: AudioBuffer;
       if (asset.startsWith('builtin:') && soundTypes.has(name)) buffer = effect(context, name);
@@ -94,55 +98,74 @@ export async function readSound(context: BaseAudioContext, asset: string) {
     })();
     decoders.set(asset, pending);
     if (decoders.size > 48) decoders.delete(decoders.keys().next().value!);
-    pending.catch(() => decoders.delete(asset));
+    pending.catch(() => { if (decoders.get(asset) === pending) decoders.delete(asset); });
   }
   return pending;
 }
 export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is SoundClip => clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music');
 export const projectAssets = (project: Project) => [...new Set(project.scenes.flatMap(scene => sceneSounds(scene).map(clip => clip.asset)).filter(asset => asset.startsWith('asset:')).map(asset => asset.slice(6)))];
+function soundEvents(scenes: Scene[]) {
+  let sceneStart = 0;
+  return scenes.flatMap(scene => {
+    const start = sceneStart;
+    sceneStart += scene.duration;
+    return sceneSounds(scene).filter(clip => !clip.muted).map(clip => ({ clip, position: start + clip.start }));
+  });
+}
+export function soundPlayback(clip: SoundClip, position: number, bufferDuration: number, cursor = 0) {
+  const skip = Math.max(0, cursor - position);
+  const offset = clip.offset + skip;
+  const duration = Math.min(clip.length - skip, bufferDuration - offset);
+  return duration > 0 ? { delay: Math.max(0, position - cursor), offset, duration } : undefined;
+}
+
+export function dialogueAmplitude(scene: Scene, actor: string, time: number, envelopeFor: (asset: string) => Float32Array | undefined) {
+  let value = 0;
+  for (const clip of scene.clips) {
+    if (clip.track !== 'dialogue' || clip.actor !== actor || clip.muted || time < clip.start || time >= clip.start + clip.length) continue;
+    const frame = Math.floor((time - clip.start + clip.offset) * 50);
+    value = Math.max(value, (envelopeFor(clip.asset)?.[frame] ?? 0) * Math.min(1, clip.volume));
+  }
+  return value;
+}
+export async function prepareDialoguePreview(scene: Scene) {
+  const envelopes = new Map<string, Float32Array>();
+  const assets = new Set(scene.clips.flatMap(clip => clip.track === 'dialogue' && !clip.muted ? [clip.asset] : []));
+  await Promise.allSettled([...assets].map(async asset => { envelopes.set(asset, (await readSound(asset)).envelope); }));
+  return (actor: string, time: number) => dialogueAmplitude(scene, actor, time, asset => envelopes.get(asset));
+}
+
 export function createAudioMixer() {
   const context = new AudioContext();
   const master = context.createGain();
   const limiter = context.createDynamicsCompressor();
   master.connect(limiter);
-  const prepared = new Map<string, Awaited<ReturnType<typeof readSound>>>();
+  const prepared = new Map<string, DecodedSound>();
   let sources: AudioBufferSourceNode[] = [];
   let monitoring = false;
   function monitor() { if (!monitoring) { limiter.connect(context.destination); monitoring = true; } }
   function stop() { for (const source of sources) { try { source.stop(); } catch { /* already ended */ } source.disconnect(); } sources = []; }
   async function prepare(scenes: Scene[]) {
     const assets = new Set(scenes.flatMap(scene => sceneSounds(scene).filter(clip => !clip.muted).map(clip => clip.asset)));
-    await Promise.all([...assets].map(async asset => { prepared.set(asset, await readSound(context, asset)); }));
+    await Promise.all([...assets].map(async asset => { prepared.set(asset, await readSound(asset)); }));
   }
   function schedule(scenes: Scene[], offset: number, when = context.currentTime) {
     stop();
-    let sceneStart = 0;
-    for (const scene of scenes) {
-      for (const clip of sceneSounds(scene)) {
-        if (clip.muted) continue;
-        const audio = prepared.get(clip.asset);
-        if (!audio) continue;
-        const position = clip.start + sceneStart;
-        const skip = Math.max(0, offset - position);
-        const duration = Math.min(clip.length - skip, audio.buffer.duration - clip.offset - skip);
-        if (duration <= 0) continue;
-        const source = context.createBufferSource(), gain = context.createGain();
-        gain.gain.value = clip.volume;
-        source.buffer = audio.buffer; source.connect(gain); gain.connect(master);
-        source.onended = () => gain.disconnect();
-        source.start(when + Math.max(0, position - offset), clip.offset + skip, duration);
-        sources.push(source);
-      }
-      sceneStart += scene.duration;
+    for (const { clip, position } of soundEvents(scenes)) {
+      const audio = prepared.get(clip.asset);
+      if (!audio) continue;
+      const playback = soundPlayback(clip, position, audio.buffer.duration, offset);
+      if (!playback) continue;
+      const source = context.createBufferSource(), gain = context.createGain();
+      gain.gain.value = clip.volume;
+      source.buffer = audio.buffer; source.connect(gain); gain.connect(master);
+      source.onended = () => { source.disconnect(); gain.disconnect(); };
+      source.start(when + playback.delay, playback.offset, playback.duration);
+      sources.push(source);
     }
   }
   function amplitude(scene: Scene, actor: string, time: number) {
-    let value = 0;
-    for (const clip of sceneSounds(scene)) {
-      if (clip.track !== 'dialogue' || clip.actor !== actor || clip.muted || time < clip.start || time >= clip.start + clip.length) continue;
-      value = Math.max(value, (prepared.get(clip.asset)?.envelope[Math.floor((time - clip.start + clip.offset) * 50)] ?? 0) * Math.min(1, clip.volume));
-    }
-    return value;
+    return dialogueAmplitude(scene, actor, time, asset => prepared.get(asset)?.envelope);
   }
   return { context, master, output: limiter, monitor, prepare, schedule, amplitude, stop, close: () => { stop(); if (context.state !== 'closed') void context.close(); } };
 }
@@ -157,23 +180,17 @@ export async function mixOffline(scenes: Scene[], duration: number, signal: Abor
   const master = context.createGain();
   const limiter = context.createDynamicsCompressor();
   master.connect(limiter).connect(context.destination);
-  let start = 0;
-  const clips = scenes.flatMap(scene => {
-    const offset = start;
-    start += scene.duration;
-    return sceneSounds(scene).filter(clip => !clip.muted).map(clip => ({ clip, start: offset + clip.start }));
-  });
-  await Promise.all(clips.map(async ({ clip, start }) => {
-    const { buffer } = await readSound(context, clip.asset);
+  await Promise.all(soundEvents(scenes).map(async ({ clip, position }) => {
+    const { buffer } = await readSound(clip.asset);
     signal.throwIfAborted();
-    const length = Math.min(clip.length, buffer.duration - clip.offset);
-    if (length <= 0) return;
+    const playback = soundPlayback(clip, position, buffer.duration);
+    if (!playback) return;
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = buffer;
     gain.gain.value = clip.volume;
     source.connect(gain).connect(master);
-    source.start(start, clip.offset, length);
+    source.start(playback.delay, playback.offset, playback.duration);
   }));
   signal.throwIfAborted();
   return context.startRendering();

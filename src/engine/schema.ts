@@ -85,6 +85,7 @@ export const StoryBibleSchema = z.strictObject({
   worlds: z.array(storyWorld).max(30), scenes: z.array(storyScene).max(30)
 });
 const cueTime = { id: id.optional(), seconds: num(.1, 60).default(1), delay: num(0, 60).default(0), parallel: z.boolean().default(false) };
+export const builtinVoiceNames = ['zee-spicy', 'sbu-food', 'zee-safe', 'sbu-lunch', 'sbu-receipt'] as const;
 export const soundNames = ['ding', 'pop', 'sting', 'whoosh', 'rimshot'] as const;
 export const Direction = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('move'), ...cueTime, actor: id, x: position.x, y: position.y.optional(), gait: z.enum(['walk', 'run']) }),
@@ -148,9 +149,11 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
     for (const clip of scene.clips) {
       const targetValid = !('target' in clip) || !clip.target ||
         (clip.track === 'gaze' ? clip.target === 'camera' || actors.has(clip.target) || objects.has(clip.target) : objects.has(clip.target));
-      if (clip.start + clip.length > scene.duration + .0001 || ('actor' in clip && !actors.has(clip.actor)) || !targetValid || ('focus' in clip && clip.focus && !actors.has(clip.focus))) {
-        ctx.addIssue({ code: 'custom', path: [...path, 'clips', clip.id], message: 'Clip is outside the scene or has a missing target' });
-      }
+      const clipPath = [...path, 'clips', clip.id];
+      if (clip.start + clip.length > scene.duration + .0001) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip is outside the scene' });
+      if ('actor' in clip && !actors.has(clip.actor)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing actor' });
+      if (!targetValid) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing target' });
+      if ('focus' in clip && clip.focus && !actors.has(clip.focus)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Camera shot has unknown focus' });
     }
   });
 });

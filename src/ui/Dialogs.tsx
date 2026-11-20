@@ -126,9 +126,11 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
     const common = { id: uid(), start: at, length: clamp(asset.length, .1, scene.duration - at), asset: `asset:${id}`, volume: 1, muted: false, offset: 0 };
     if (isDialogue) {
       const analysis = await analyzeLipSync(asset.blob, text.trim(), asset.length);
+      if (!alive.current) return;
       setLipStatus(analysis.source === 'rhubarb' ? 'Audio-aligned mouth animation ready.' : 'Estimated mouth animation; Rhubarb unavailable.');
       add({ ...common, track: 'dialogue', text: text.trim(), actor, visemes: analysis.cues });
     } else {
+      if (!alive.current) return;
       const title = name.trim().slice(0, 80);
       if (request.track === 'music') add({ ...common, track: 'music', name: title || 'Music' });
       else add({ ...common, track: 'audio', name: title || 'SFX' });

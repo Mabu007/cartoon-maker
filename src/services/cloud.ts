@@ -35,7 +35,7 @@ export async function cloudProjects(user: Account) {
     try {
       const data = item.data();
       const project = ProjectDocument.parse(JSON.parse(data.document));
-      if (project.id !== item.id || typeof data.updated !== 'number') throw new Error('Invalid project');
+      if (project.id !== item.id || !Number.isFinite(data.updated)) throw new Error('Invalid project');
       documents.push({ project, updated: data.updated });
     } catch { skipped++; }
   }

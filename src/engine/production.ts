@@ -144,10 +144,16 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
     let result = clip;
     if (overridden) {
       if (keyOf(clip) !== oldSource.signature && (clip.track !== 'dialogue' || locks.has(clip.id))) issue(line, 'A manual timeline edit overrides the new timing or direction.');
-      // A technical timing/volume edit should survive a new dialogue recording.
-      result = clip.track === 'dialogue' && oldClip.track === 'dialogue' && !locks.has(clip.id)
-        ? { ...oldClip, text: clip.text, asset: clip.asset, offset: oldClip.asset === clip.asset ? oldClip.offset : 0, length: oldClip.length === (JSON.parse(oldSource.signature) as Dialogue).length ? clip.length : oldClip.length }
-        : oldClip;
+      result = oldClip;
+      if (clip.track === 'dialogue' && oldClip.track === 'dialogue' && !locks.has(clip.id)) {
+        const original = JSON.parse(oldSource.signature) as Dialogue;
+        const sameRecording = clip.asset === oldClip.asset && clip.text === original.text;
+        const { visemes, ...previous } = oldClip;
+        result = { ...previous, text: sameRecording ? oldClip.text : clip.text, asset: clip.asset,
+          offset: sameRecording ? oldClip.offset : 0,
+          length: oldClip.length === original.length ? clip.length : oldClip.length,
+          ...(sameRecording && visemes ? { visemes } : {}) };
+      }
     }
     if (exclusive.has(result.track) && [...generated, ...manual].some(prev => lane(prev) === lane(result) && overlaps(prev, result))) {
       issue(line, `Overlapping ${result.track} cues. Adjust the delay or clip timing.`);
@@ -282,6 +288,7 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
   const validClips = [...manual, ...generated].filter(clip => {
     const target = 'target' in clip && clip.target;
     const valid = (!('actor' in clip) || scene.actors.some(actor => actor.id === clip.actor))
+      && (clip.track !== 'camera' || !clip.focus || scene.actors.some(actor => actor.id === clip.focus))
       && (!target || Boolean(objectById(target)) || clip.track === 'gaze' && (target === 'camera' || Boolean(actorById(target))));
     if (!valid) diagnostics.push('A timeline cue refers to a removed asset and was excluded from playback.');
     return valid;
@@ -294,7 +301,7 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
     const camera = generated.find(clip => clip.id === id);
     if (camera) scene.clips.push(camera);
   }
-  scene.duration = Math.min(180, Math.max(1, cursor, ...scene.clips.map(clip => round(clip.start + clip.length))));
+  scene.duration = Math.min(180, Math.max(1, cursor, ...scene.clips.map(clip => clip.start + clip.length)));
   return { scene, diagnostics: diagnostics.slice(0, 150), events: sources, locked: [...locks], signature, entry, sceneId: source.id, exit: JSON.stringify(exitOf(scene)) };
 }
 

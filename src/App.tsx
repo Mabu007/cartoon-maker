@@ -2,15 +2,15 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSPrope
 import { Captions, Check, ChevronDown, CircleHelp, Clapperboard, Cloud, Download, Expand, FolderOpen, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Sparkles, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { approveScript, compileMovie, missingRentMovie, reviseScript, startProduction } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
-import { evaluate, locate, projectDuration } from './engine/evaluate.ts';
+import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
-import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
+import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
 import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Production, type Project, type Prop, type Scene, type ScriptSceneData, type Track } from './engine/schema.ts';
 import type { Format } from './engine/renderer.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
 import { audioLength, putAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
 import { analyzeLipSync } from './services/lipSync.ts';
-import { duplicateProject, duplicateScene, listLocal, removeLocal, saveLocal, writeLocal, type SavedProject } from './services/projects.ts';
+import { duplicateProject, duplicateScene, listLocal, mergeLocal, removeLocal, saveLocal, type SavedProject } from './services/projects.ts';
 import { exampleDirector, hostedDirector } from './services/director.ts';
 import { speechProvider } from './services/speech.ts';
 import { renderSpeech, type AiAccess } from './services/filmmaker.ts';
@@ -28,7 +28,7 @@ import { clock, formats, IconButton, Modal, Select } from './ui/shared.tsx';
 import { Timeline } from './ui/Timeline.tsx';
 import { TimelineCodeDialog } from './ui/TimelineCodeDialog.tsx';
 import { Welcome } from './ui/Welcome.tsx';
-import { insertCameraShot, sceneContext } from './engine/timelineCode.ts';
+import { insertCameraShot, sceneContext, sceneToCode, validateSceneReplacement } from './engine/timelineCode.ts';
 
 const StoryStudio = lazy(() => import('./ui/StoryStudio.tsx').then(module => ({ default: module.StoryStudio })));
 const ScreenplayStudio = lazy(() => import('./ui/ScreenplayStudio.tsx').then(module => ({ default: module.ScreenplayStudio })));
@@ -85,6 +85,8 @@ export default function App() {
   const [compiling, setCompiling] = useState(false);
   const compileInFlight = useRef(false);
   const importFile = useRef<HTMLInputElement>(null);
+  const session = useStudio(state => state.session);
+  const sceneTarget = { session, sceneId: scene.id };
   const dirty = useStudio(state => state.dirty);
   const sceneIndex = project.scenes.findIndex(item => item.id === scene.id);
   const [dialog, setDialog] = useState<Dialog>(null), [account, setAccount] = useState<Account | null>(null), [items, setItems] = useState<SavedProject[]>([]);
@@ -103,7 +105,8 @@ export default function App() {
   const [playing, setPlaying] = useState(false), [preparing, setPreparing] = useState(false), [loop, setLoop] = useState(false), [muted, setMuted] = useState(false), [shot, setShot] = useState('wide');
   const mixer = useRef<Mixer | null>(null), time = useRef<PreviewTime>({ scene, local: 0 });
   const range = useRef<HTMLInputElement>(null), counter = useRef<HTMLSpanElement>(null), frame = useRef(0), animationToken = useRef(0);
-  const livePlaying = useRef(false), livePreparing = useRef(false), settings = useRef({ loop, muted }), originalScope = useRef(scope), lastSave = useRef<{ id: string; updated: number } | undefined>(undefined);
+  const livePlaying = useRef(false), livePreparing = useRef(false), settings = useRef({ loop, muted }), originalScope = useRef(scope);
+  const cloudDeletes = useRef(new Set<string>());
   const cloudQueue = useRef<Promise<unknown>>(Promise.resolve());
   const saveToken = useRef(0);
   settings.current = { loop, muted };
@@ -138,60 +141,93 @@ export default function App() {
     livePlaying.current = false; livePreparing.current = false;
     setPlaying(false); setPreparing(false);
   }
-  function loadProject(next: Project, edited = false, preservePrevious = true) {
-    const previous = useStudio.getState();
-    if (preservePrevious && previous.dirty && previous.project.id !== next.id && originalScope.current === scope) persist(previous.project);
-    pause(); setArrange(false);
+  function loadProject(next: Project, edited = false) {
+    pause(); setArrange(false); close();
     useStudio.getState().open(next, edited);
-    updateCursor(next.scenes[0], 0, false);
+    updateCursor(currentScene(useStudio.getState()), 0, false);
+    saveToken.current++;
+    setSaveStatus(edited ? 'Saving…' : 'Saved on device');
   }
   useEffect(() => {
     let alive = true;
+    const active = useStudio.getState();
+    let local: SavedProject[];
     try {
-      const local = listLocal(scope);
-      setItems(local); setWorlds(worldPresets(scope));
+      if (originalScope.current !== scope && active.dirty) {
+        saveLocal(originalScope.current, active.project);
+        active.markSaved(active.project);
+      }
+      local = listLocal(scope);
       if (originalScope.current !== scope || local.length) loadProject(local[0]?.project ?? initial);
       originalScope.current = scope;
-    } catch (error) { tell(errorMessage(error), true); }
+      setItems(local); setWorlds(worldPresets(scope));
+    } catch (error) {
+      setSaveStatus('Save failed');
+      tell(errorMessage(error), true);
+      return;
+    }
     setRemoteAudio(account ? id => cloudAudio(account, id) : undefined);
+    const opened = useStudio.getState();
     if (account) void cloudProjects(account).then(result => {
       if (!alive) return;
-      const local = listLocal(scope), byId = new Map(local.map(entry => [entry.project.id, entry]));
-      for (const entry of result.documents) if ((byId.get(entry.project.id)?.updated ?? 0) < entry.updated) byId.set(entry.project.id, entry);
-      const merged = [...byId.values()].sort((a, b) => b.updated - a.updated);
-      writeLocal(scope, merged); setItems(merged);
-      if (merged.length && !useStudio.getState().dirty && useStudio.getState().project.id === initial.id && merged[0].project.id !== initial.id) loadProject(merged[0].project);
+      const merged = mergeLocal(scope, result.documents.filter(entry => !cloudDeletes.current.has(scope + '/' + entry.project.id)));
+      setItems(merged);
+      const current = useStudio.getState();
+      if (current.session === opened.session && current.project === opened.project && !current.dirty) {
+        const cached = local.find(entry => entry.project.id === current.project.id);
+        const latest = merged.find(entry => entry.project.id === current.project.id);
+        if (latest && (!cached || latest.updated > cached.updated)) loadProject(latest.project);
+        else if (current.project.id === initial.id && merged[0] && merged[0].project.id !== initial.id) loadProject(merged[0].project);
+      }
       if (result.skipped) tell(`${result.skipped} invalid cloud project(s) were skipped.`, true);
     }).catch(error => { if (alive) tell(`Cloud projects unavailable. ${errorMessage(error)}`, true); });
     return () => { alive = false; };
-  }, [scope, account]);
+  }, [scope]);
 
   function persist(document = useStudio.getState().project, manual = false) {
+    const saveScope = originalScope.current;
+    const syncAccount = saveScope === scope ? account : null;
+    const token = ++saveToken.current;
     try {
-      const updated = saveLocal(scope, document, Math.max(Date.now(), (lastSave.current?.updated ?? 0) + 1));
-      lastSave.current = { id: document.id, updated };
-      setItems(listLocal(scope)); setSaveStatus(account ? 'Syncing…' : 'Saved on device');
+      if (cloudDeletes.current.has(saveScope + '/' + document.id)) throw new Error('This project is being deleted.');
+      const updated = saveLocal(saveScope, document);
+      useStudio.getState().markSaved(document);
+      if (saveScope === scope) setItems(listLocal(saveScope));
+      setSaveStatus(syncAccount ? 'Syncing…' : 'Saved on device');
       if (manual) tell('Project saved on this device.');
-      if (!account) return;
-      const token = ++saveToken.current;
-      cloudQueue.current = cloudQueue.current.catch(() => {}).then(() => uploadProject(account, document, updated)).then(() => { if (saveToken.current === token) setSaveStatus('Saved to cloud'); }).catch(error => {
-        if (saveToken.current === token) { setSaveStatus('Cloud sync failed'); tell(`Saved on this device. ${errorMessage(error)}`, true); }
-      });
-    } catch (error) { setSaveStatus('Save failed'); showError(error); }
+      if (syncAccount) {
+        cloudQueue.current = cloudQueue.current.catch(() => {}).then(() => uploadProject(syncAccount, document, updated)).then(() => {
+          if (saveToken.current === token && useStudio.getState().project === document) setSaveStatus('Saved to cloud');
+        }).catch(error => {
+          if (saveToken.current === token && useStudio.getState().project === document) {
+            setSaveStatus('Cloud sync failed'); tell(`Saved on this device. ${errorMessage(error)}`, true);
+          }
+        });
+      }
+      return true;
+    } catch (error) { setSaveStatus('Save failed'); showError(error); return false; }
   }
   useEffect(() => {
     if (!dirty) return;
     setSaveStatus('Saving…');
-    const timer = window.setTimeout(() => persist(project), 520);
-    const flush = () => {
-      try { saveLocal(scope, project); } catch { /* the editor shows the last save attempt */ }
-    };
-    window.addEventListener('pagehide', flush);
-    return () => { clearTimeout(timer); window.removeEventListener('pagehide', flush); };
+    const timer = window.setTimeout(() => {
+      const current = useStudio.getState();
+      if (current.dirty && current.project === project) persist(project);
+    }, 520);
+    return () => clearTimeout(timer);
   }, [project, dirty, scope]);
   useEffect(() => {
+    const flush = () => {
+      const current = useStudio.getState();
+      if (!current.dirty || cloudDeletes.current.has(originalScope.current + '/' + current.project.id)) return;
+      try { saveLocal(originalScope.current, current.project); } catch { /* keep pending edits in memory */ }
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
+  useEffect(() => {
     const local = time.current.scene.id === scene.id ? clamp(time.current.local, 0, scene.duration) : 0;
-    updateCursor(scene, local, false);
+    updateCursor(scene, local, true);
   }, [scene]);
   useEffect(() => { if (mixer.current) mixer.current.master.gain.value = muted ? 0 : 1; }, [muted]);
 
@@ -214,13 +250,13 @@ export default function App() {
       audio.schedule(sequence, at, startTime);
       livePlaying.current = true; setPlaying(true);
       livePreparing.current = false; setPreparing(false);
-      let origin = startTime - at, lastFrame = -1;
+      let origin = startTime - at, earliest = at, lastFrame = -1;
       const duration = projectDuration(sequence);
       const tick = () => {
         if (token !== animationToken.current) return;
-        let elapsed = Math.max(0, audio.context.currentTime - origin);
+        let elapsed = Math.max(earliest, audio.context.currentTime - origin);
         if (elapsed >= duration) {
-          if (settings.current.loop && sequence.length === 1) { origin = audio.context.currentTime; elapsed = 0; audio.schedule(sequence, 0, origin); }
+          if (settings.current.loop && sequence.length === 1) { origin = audio.context.currentTime; earliest = 0; elapsed = 0; audio.schedule(sequence, 0, origin); }
           else { const last = sequence.at(-1)!; updateCursor(last, last.duration, true); pause(); return; }
         }
         const next = locate(sequence, elapsed);
@@ -228,7 +264,7 @@ export default function App() {
           time.current = { scene: next.scene, local: next.local };
           useStudio.getState().setScene(next.scene.id);
         }
-        const position = Math.floor(elapsed * 30);
+        const position = Math.floor(elapsed * MOVIE_FRAME_RATE);
         if (position !== lastFrame) { updateCursor(next.scene, next.local, false); lastFrame = position; }
         frame.current = requestAnimationFrame(tick);
       };
@@ -236,19 +272,39 @@ export default function App() {
     } catch (error) { if (token === animationToken.current) { pause(); showError(error); } }
   }
   function seek(value: number) { pause(); setArrange(false); const current = currentScene(useStudio.getState()); updateCursor(current, clamp(value, 0, current.duration), true); }
-  function switchScene(value: Scene) { pause(); updateCursor(value, 0, false); useStudio.getState().setScene(value.id); close(); }
+  function switchScene(value: Scene) {
+    const state = useStudio.getState();
+    if (state.session !== session) return;
+    const target = state.project.scenes.find(item => item.id === value.id);
+    if (!target) return;
+    pause(); updateCursor(target, 0, true); state.setScene(target.id); close();
+  }
   function openProject(value: Project, isNew = false) {
-    if (useStudio.getState().dirty) persist();
-    loadProject(value, isNew); close(); setHome('studio');
-    setSaveStatus(isNew ? 'Saving…' : 'Saved on device');
+    if (useStudio.getState().dirty && !persist()) return false;
+    loadProject(value, isNew); setHome('studio');
+    return true;
   }
   const run = (command: () => void) => { try { if (livePlaying.current || livePreparing.current) pause(); command(); } catch (error) { showError(error); } };
-  const edit = (command: (document: Project) => Project) => run(() => useStudio.getState().edit(command));
-  const editScene = (command: (value: Scene) => Scene) => run(() => useStudio.getState().editScene(command));
+  const edit = (command: (document: Project) => Project) => run(() => {
+    const state = useStudio.getState();
+    if (state.session !== session) throw new Error('The project changed. Start the edit again.');
+    state.edit(command);
+  });
+  function commitScene(command: (value: Scene) => Scene) {
+    if (livePlaying.current || livePreparing.current) pause();
+    useStudio.getState().editScene(command, sceneTarget);
+  }
+  const editScene = (command: (value: Scene) => Scene) => run(() => commitScene(command));
+  function replaceScene(next: Scene, base: string) {
+    commitScene(current => {
+      if (sceneToCode(current) !== base) throw new Error('The scene changed while this edit was open. Reopen it and try again.');
+      return validateSceneReplacement(useStudio.getState().project, current.id, next);
+    });
+  }
   const select = (value: Selection) => useStudio.getState().select(value);
   function patchActor(value: ActorData) { editScene(current => ({ ...current, actors: current.actors.map(actor => actor.id === value.id ? value : actor) })); }
-  function patchObject(value: Prop) { editScene(current => ({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
-  function patchClip(value: Clip) {
+  function patchObject(value: Prop) { editScene(current => repairOrphanedObjectActions({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
+  function patchClip(value: Clip, original?: Clip) {
     if (value.track === 'dialogue') {
       const before = scene.clips.find(clip => clip.id === value.id);
       const script = project.production?.screenplay.scenes.find(item => item.id === scene.id);
@@ -274,16 +330,21 @@ export default function App() {
         updated = rest;
       }
     }
-    editScene(current => ({ ...current, clips: updated.track === 'camera' ? insertCameraShot(current.clips, updated) : current.clips.map(clip => clip.id === updated.id ? updated : clip) }));
+    editScene(current => {
+      const before = current.clips.find(clip => clip.id === updated.id);
+      if (!before) throw new Error('This clip was removed.');
+      if (original && JSON.stringify(before) !== JSON.stringify(original)) throw new Error('This clip changed during the drag. Try again.');
+      return { ...current, clips: updated.track === 'camera' ? insertCameraShot(current.clips, updated, [...current.actors, ...current.objects].map(item => item.id)) :
+        current.clips.map(clip => clip.id === updated.id ? updated : clip) };
+    });
   }
   function addClip(value: Clip) {
-    try {
-      pause();
-      const current = currentScene(useStudio.getState());
-      if (current.clips.length >= 600) { tell('This scene already has the maximum 600 clips.', true); return; }
-      useStudio.getState().editScene(scene => { const clip = changeClipTiming(value, value.start, value.length, scene.duration); return { ...scene, clips: clip.track === 'camera' ? insertCameraShot(scene.clips, clip) : [...scene.clips, clip] }; });
-      setArrange(false); select({ kind: 'clip', id: value.id }); close();
-    } catch (error) { showError(error); }
+    commitScene(current => {
+      if (current.clips.some(clip => clip.id === value.id)) throw new Error('This clip already exists.');
+      const clip = value.track === 'camera' ? value : changeClipTiming(value, value.start, value.length, current.duration);
+      return { ...current, clips: clip.track === 'camera' ? insertCameraShot(current.clips, clip, [...current.actors, ...current.objects].map(item => item.id)) : [...current.clips, clip] };
+    });
+    setArrange(false); select({ kind: 'clip', id: value.id }); close();
   }
   function showClip(track?: Track, action?: Action) {
     pause();
@@ -320,7 +381,7 @@ export default function App() {
     try {
       const imported = await prepareArtwork(file, 'world');
       pause();
-      useStudio.getState().editScene(current => ({ ...current, backgroundImage: imported.data }));
+      commitScene(current => ({ ...current, backgroundImage: imported.data }));
       setMobilePanel('stage');
       tell('World image added. Your cast and props are still in place.');
     } catch (error) { showError(error); }
@@ -336,7 +397,7 @@ export default function App() {
         imageHeight: Math.max(10, Math.round(imported.height * sizing)), interaction: 'none'
       });
       pause();
-      useStudio.getState().editScene(current => ({ ...current, objects: [...current.objects, prop] }));
+      commitScene(current => ({ ...current, objects: [...current.objects, prop] }));
       select({ kind: 'object', id: prop.id });
       setMobilePanel('inspector');
       tell('Picture prop added. Set its interaction type in the inspector.');
@@ -374,7 +435,7 @@ export default function App() {
     const clip = current.clips.find(item => item.id === selected.id);
     const actor = current.actors.find(item => item.id === selected.id);
     const object = current.objects.find(item => item.id === selected.id);
-    if (clip) addClip(copyClip(clip, current.duration));
+    if (clip) run(() => addClip(copyClip(clip, current.duration, current.clips)));
     else if (actor) {
       const id = uid(); editScene(item => ({ ...item, actors: [...item.actors, { ...actor, id, x: clamp(actor.x + 40, -2000, 3000) }] })); select({ kind: 'actor', id });
     } else if (object) {
@@ -397,7 +458,7 @@ export default function App() {
     try {
       const targetId = dependentObjectId;
       pause();
-      useStudio.getState().editScene(scene => removeObjectWithDecisions(scene, targetId, decisions));
+      commitScene(scene => removeObjectWithDecisions(scene, targetId, decisions));
       select(null);
       setDependentObjectId(null);
       close();
@@ -415,39 +476,44 @@ export default function App() {
     }));
   }
   async function regenerateVoice(clip: Extract<Clip, { track: 'dialogue' }>, text: string, voice: string): Promise<string> {
-    const expectedProject = project.id, expectedScene = scene.id, expectedAsset = clip.asset;
     if (!text.trim() || text.length > 400) throw new Error('Enter a line with 1 to 400 characters.');
     const output = await speechProvider(account).synthesize(text, voice);
     const seconds = await audioLength(output);
     if (seconds < .1 || clip.start + seconds > 180) throw new Error('The generated line does not fit this scene. Shorten it or split the scene.');
     const analysis = await analyzeLipSync(output, text, seconds);
-    const state = useStudio.getState();
-    if (state.project.id !== expectedProject || currentScene(state).id !== expectedScene ||
-        currentScene(state).clips.find(item => item.id === clip.id)?.track !== 'dialogue' ||
-        currentScene(state).clips.find(item => item.id === clip.id && item.track === 'dialogue')?.asset !== expectedAsset)
-      throw new Error('The dialogue changed while voice generation was running. Nothing was replaced.');
     const audioId = uid();
     await putAudio(audioId, output);
-    editScene(current => ({
-      ...current, duration: Math.max(current.duration, Math.ceil((clip.start + seconds) * 100) / 100),
-      clips: current.clips.map(item => item.id === clip.id ? { ...clip, text, length: Math.round(seconds * 100) / 100,
-        asset: `asset:${audioId}`, offset: 0, visemes: analysis.cues } : item)
-    }));
+    commitScene(current => {
+      const before = current.clips.find(item => item.id === clip.id);
+      if (before?.track !== 'dialogue' || JSON.stringify(before) !== JSON.stringify(clip)) {
+        throw new Error('The dialogue changed while voice generation was running. Generate the line again.');
+      }
+      return { ...current, duration: Math.max(current.duration, Math.ceil((clip.start + seconds) * 100) / 100),
+        clips: current.clips.map(item => item.id === clip.id ? { ...before, text, length: Math.round(seconds * 100) / 100,
+          asset: `asset:${audioId}`, offset: 0, visemes: analysis.cues } : item) };
+    });
     return analysis.source === 'rhubarb' ? 'Voice regenerated and aligned to the recording.' : 'Voice regenerated; estimated mouth cues are active until Rhubarb analysis is configured.';
   }
-  function addSound(name: typeof soundNames[number]) { const start = clamp(time.current.local, 0, scene.duration - .1); addClip({ id: uid(), track: 'audio', name: label(name), asset: `builtin:${name}`, length: Math.min(.8, scene.duration - start), start, muted: false, volume: .8, offset: 0 }); }
+  function addSound(name: typeof soundNames[number]) { const start = clamp(time.current.local, 0, scene.duration - .1); run(() => addClip({ id: uid(), track: 'audio', name: label(name), asset: `builtin:${name}`, length: Math.min(.8, scene.duration - start), start, muted: false, volume: .8, offset: 0 })); }
+  async function deleteSavedProject(item: Project) {
+    const key = scope + '/' + item.id;
+    if (originalScope.current !== scope || cloudDeletes.current.has(key)) return;
+    cloudDeletes.current.add(key);
+    try {
+      if (account) { await cloudQueue.current; await deleteCloud(account, item.id); }
+      removeLocal(scope, item.id);
+      if (originalScope.current !== scope) return;
+      const entries = listLocal(scope);
+      setItems(entries);
+      if (useStudio.getState().project.id === item.id) loadProject(entries[0]?.project ?? makeProject());
+      tell('Project deleted.');
+    } catch (error) {
+      cloudDeletes.current.delete(key);
+      showError(error);
+    }
+  }
   function deleteProject(item: Project) {
-    ask(`Delete “${item.name}”?`, 'This permanently removes the saved project.', () => {
-      void (async () => {
-        try {
-          if (account) { await cloudQueue.current; await deleteCloud(account, item.id); }
-          removeLocal(scope, item.id);
-          const entries = listLocal(scope); setItems(entries);
-          if (useStudio.getState().project.id === item.id) loadProject(entries[0]?.project ?? makeProject(), false, false);
-          tell('Project deleted.');
-        } catch (error) { showError(error); }
-      })();
-    });
+    ask(`Delete “${item.name}”?`, 'This permanently removes the saved project.', () => void deleteSavedProject(item));
   }
   function updateProduction(change: (current: Production) => Production) {
     edit(current => ({ ...current, production: change(current.production ?? startProduction(current)) }));
@@ -463,13 +529,13 @@ export default function App() {
   function newMovie() {
     setSeedIdea('');
     const next = makeProject();
-    openProject({ ...next, production: startProduction(next) }, true);
+    if (!openProject({ ...next, production: startProduction(next) }, true)) return;
     setWorkspace('create');
   }
   function startManualMovie() {
     setSeedIdea('');
     const next = makeProject();
-    openProject({ ...next, production: startProduction(next) }, true);
+    if (!openProject({ ...next, production: startProduction(next) }, true)) return;
     setWorkspace('write');
   }
   function startAIMovie(prompt: string) {
@@ -478,20 +544,15 @@ export default function App() {
     production.bible.profile.synopsis = prompt;
     production.bible.profile.logline = prompt.slice(0, 500);
     setSeedIdea(prompt);
-    openProject({ ...next, production }, true);
+    if (!openProject({ ...next, production }, true)) return;
     setWorkspace('create');
   }
-  async function deleteHomeProject(item: Project) {
-    if (!window.confirm(`Delete "${item.name}" permanently? This cannot be undone.`)) return;
-    try {
-      if (account) { await cloudQueue.current; await deleteCloud(account, item.id); }
-      removeLocal(scope, item.id);
-      const saved = listLocal(scope); setItems(saved);
-      if (useStudio.getState().project.id === item.id) loadProject(saved[0]?.project ?? makeProject(), false, false);
-    } catch (error) { showError(error); }
+  function deleteHomeProject(item: Project) {
+    if (window.confirm(`Delete "${item.name}" permanently? This cannot be undone.`)) void deleteSavedProject(item);
   }
   function openRentExample() {
-    openProject(missingRentMovie(), true); setWorkspace('create'); setScriptTarget({});
+    if (!openProject(missingRentMovie(), true)) return;
+    setWorkspace('create'); setScriptTarget({});
   }
   async function compile(next: Project, original: Project, target?: string, playAfter = false) {
     if (compileInFlight.current) return false;
@@ -515,7 +576,9 @@ export default function App() {
     finally { compileInFlight.current = false; setCompiling(false); }
   }
   async function commitDirection(next: ScriptSceneData, expected: ScriptSceneData, note?: string, request?: string) {
-    const current = useStudio.getState().project;
+    const state = useStudio.getState();
+    if (state.session !== session) { tell('The project changed. Review a fresh direction proposal.', true); return false; }
+    const current = state.project;
     const production = current.production;
     if (!production || production.scriptStatus !== 'approved') {
       tell('Approve the current screenplay revision before making a timeline direction change.', true); return false;
@@ -534,7 +597,9 @@ export default function App() {
   async function exchange(file: File) {
     try {
       const value = await restoreMovie(file);
-      loadProject(value, true); setWorkspace(value.production ? 'write' : 'direct'); setScriptTarget({}); close(); tell('Project restored as a new copy.');
+      if (useStudio.getState().session !== session) throw new Error('The project changed while the backup was loading. Import it again.');
+      if (!openProject(value, true)) return;
+      setWorkspace(value.production ? 'write' : 'direct'); setScriptTarget({}); close(); tell('Project restored as a new copy.');
     } catch (error) { showError(error); }
   }
   function reorderDirectScene(id: string, step: number) {
@@ -588,13 +653,13 @@ export default function App() {
   const headerStatus = saveStatus === 'Saving…' || saveStatus === 'Syncing…' ? saveStatus : saveStatus === 'Save failed' || saveStatus === 'Cloud sync failed' ? saveStatus : account && saveStatus === 'Saved to cloud' ? 'Saved to cloud' : 'Saved locally';
   let content: ReactNode;
   if (dialog === 'character') content = <CharacterFactory source={factory} save={saveCharacter} close={close} remove={deleteCharacter}/>;
-  if (dialog === 'clip') content = <AddClipDialog scene={scene} actors={actorNames} time={time.current.local} request={requestedClip} close={close} add={addClip} audio={showAudio}/>;
-  if (dialog === 'code') content = <TimelineCodeDialog project={project} scene={scene} close={close} apply={next => editScene(current => ({ ...next, id: current.id }))}/>;
-  if (dialog === 'audio') content = <AudioDialog scene={scene} actors={actorNames} request={requestedAudio} account={account} add={addClip} close={close}/>;
+  if (dialog === 'clip') content = <AddClipDialog scene={scene} actors={actorNames} time={time.current.local} request={requestedClip} close={close} add={clip => run(() => addClip(clip))} audio={showAudio}/>;
+  if (dialog === 'code') content = <TimelineCodeDialog key={session + scene.id} project={project} scene={scene} close={close} apply={replaceScene}/>;
+  if (dialog === 'audio') content = <AudioDialog key={session + scene.id} scene={scene} actors={actorNames} request={requestedAudio} account={account} add={addClip} close={close}/>;
   if (dialog === 'export') content = <ExportDialog project={project} initialFormat={format} initialSubtitles={subtitles} close={close}/>;
-  if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value => { setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); setScriptTarget({}); openProject(value); }} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
+  if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value => { if (openProject(value)) { setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); setScriptTarget({}); } }} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
   if (dialog === 'scenes') content = <ScenesDialog scenes={project.scenes} active={scene.id} close={close} open={switchScene} savePreset={saveWorld}
-    add={() => { if (project.scenes.length >= 30) { tell('A project can contain up to 30 scenes.', true); return; } const value = makeScene(); edit(current => ({ ...current, scenes: [...current.scenes, { ...value, name: `Scene ${String(current.scenes.length + 1).padStart(2, '0')} · ${value.name}` }] })); switchScene(value); }}
+    add={() => { if (project.scenes.length >= 30) { tell('A project can contain up to 30 scenes.', true); return; } const value = makeScene(); edit(current => ({ ...current, scenes: [...current.scenes, { ...value, name: `Scene ${String(current.scenes.length + 1).padStart(2, '0')} · ${value.name}` }] })); if (useStudio.getState().project.scenes.some(item => item.id === value.id)) switchScene(value); }}
     copy={value => edit(current => ({ ...current, scenes: current.scenes.flatMap(item => item.id === value.id ? [item, duplicateScene(item)] : [item]) }))}
     reorder={reorderDirectScene} drop={dropDirectScene}/>;
   if (dialog === 'ai') content = <Modal title="AI settings" description="Connect an OpenRouter key for brainstorming, screenwriting and directing. Your key stays in this tab and requests go directly to OpenRouter." close={close}>
@@ -614,15 +679,22 @@ export default function App() {
         <span className="spacer"/><button className="primary" type="submit">Use for this session</button></footer>
     </form>
   </Modal>;
-  if (dialog === 'account') content = <AccountDialog available={cloudEnabled} account={account} login={login} logout={logout} close={close}/>;
+  if (dialog === 'account') content = <AccountDialog available={cloudEnabled} account={account} login={login} logout={async () => {
+    if (useStudio.getState().dirty && !persist()) throw new Error('Save your current project before signing out.');
+    await logout();
+  }} close={close}/>;
   if (dialog === 'help') content = <HelpDialog close={close} demo={() => openProject(exampleDirector.example(), true)}/>;
-  if (dialog === 'director') content = <DirectorDialog close={close} example={() => openProject(exampleDirector.example(), true)} generate={account && import.meta.env.VITE_HOSTED_DIRECTOR === 'true' ? async story => openProject(await hostedDirector(account, speechProvider(account)).generate!(story), true) : undefined}/>;
+  if (dialog === 'director') content = <DirectorDialog close={close} example={() => openProject(exampleDirector.example(), true)} generate={account && import.meta.env.VITE_HOSTED_DIRECTOR === 'true' ? async story => {
+    const next = await hostedDirector(account, speechProvider(account)).generate!(story);
+    if (useStudio.getState().session !== session) throw new Error('The project changed while directing this story.');
+    if (!openProject(next, true)) throw new Error('Save the active project before opening the generated story.');
+  } : undefined}/>;
   if (dialog === 'dependencies' && dependentObjectId) content = <ObjectDependenciesDialog scene={scene} objectId={dependentObjectId} actorNames={actorNames} close={close} confirm={confirmObjectDeletion}/>;
   if (dialog === 'confirm' && confirm) content = <Modal title={confirm.title} description={confirm.text} close={close}><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="danger" onClick={() => { close(); confirm.run(); }}>Confirm</button></footer></Modal>;
 
   if (home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
     <Welcome screen={home} items={items} openProjects={() => { localStorage.setItem('toonroom.started', '1'); setHome('projects'); }}
-      openProject={value => { setSeedIdea(''); openProject(value); setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); }}
+      openProject={value => { if (openProject(value)) { setSeedIdea(''); setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); } }}
       createManual={startManualMovie} createAI={startAIMovie}
       duplicate={value => { setSeedIdea(''); openProject(duplicateProject(value), true); }}
       remove={value => { void deleteHomeProject(value); }}
@@ -631,7 +703,7 @@ export default function App() {
   return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''}`}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
-      <div className="project-controls"><button className="quiet project-button" onClick={() => { pause(); if (useStudio.getState().dirty) persist(); close(); setHome('projects'); }}><FolderOpen size={17}/><span>Projects</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label><span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
+      <div className="project-controls"><button className="quiet project-button" onClick={() => { pause(); if (useStudio.getState().dirty && !persist()) return; close(); setHome('projects'); }}><FolderOpen size={17}/><span>Projects</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label><span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
       <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => {
         const value = theme === 'dark' ? 'light' : 'dark'; setTheme(value); localStorage.setItem('toonroom.theme', value);
       }}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
@@ -657,26 +729,24 @@ export default function App() {
       <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary} characters={project.characters} scene={scene} newCharacter={() => editCharacter()} editCharacter={editCharacter} addActor={addActor} setWorld={setWorld} uploadWorld={uploadWorld} addProp={addObject} uploadProp={uploadProp} addAction={action => showClip(action === 'walk' || action === 'run' ? 'movement' : 'body', action)} addSound={addSound} dialogue={() => showAudio('dialogue')} audio={() => showAudio('audio')} music={() => showAudio('music')}/>{library === 'Worlds' && !!worlds.length && <div className="saved-worlds"><h3>Saved worlds</h3>{worlds.map(item => <button className="quiet full" key={item.name} onClick={() => setWorld(item.environment, item.objects, item.backgroundImage)}>{item.name}</button>)}</div>}</div>
       <section className="stage-panel" aria-label="Studio stage">
         <header className="stage-heading"><div><span className="stage-kicker"><i/> SCENE PREVIEW</span><button className="scene-title" onClick={() => showDialog('scenes')}>{scene.name}<ChevronDown size={14}/></button></div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
-        <div className="viewer"><Stage project={project} scene={scene} time={time} playing={playing} edit={arrange} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
+        <div className="viewer"><Stage key={session} project={project} scene={scene} time={time} playing={playing} edit={arrange} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
           const actor = scene.actors.find(item => item.id === id), object = scene.objects.find(item => item.id === id);
           if (actor) {
             const dx = coords.x - actor.x, dy = coords.y - actor.y;
             editScene(current => ({ ...current, actors: current.actors.map(item => item.id === id ? { ...item, ...coords } : item), clips: current.clips.map(clip => clip.track === 'movement' && clip.actor === id ? { ...clip, fromX: clamp(clip.fromX + dx, -2000, 3000), toX: clamp(clip.toX + dx, -2000, 3000), fromY: clamp(clip.fromY + dy, -2000, 3000), toY: clamp(clip.toY + dy, -2000, 3000) } : clip) }));
           } else if (object) patchObject({ ...object, ...coords });
         }}/></div>
-        <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock(scene.duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={scene.duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
+        <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock(scene.duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={scene.duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
       </section>
-      {directorOpen ? <DirectorPanel key={scene.id} project={project} scene={scene} selection={selection} getTime={() => time.current.local}
+      {directorOpen ? <DirectorPanel key={session + scene.id} project={project} scene={scene} selection={selection} getTime={() => time.current.local}
         ai={ai} busy={compiling} openCode={() => showDialog('code')} apply={(next, original) => {
-          const current = useStudio.getState(), previous = currentScene(current);
-          if (JSON.stringify({ schemaVersion: 1, scene: previous }) !== original) throw new Error('The scene changed since this AI proposal. Request a new edit.');
-          editScene(() => next);
+          replaceScene(next, original);
           tell('AI direction applied to the timeline. You can undo this change.');
         }}/> : <Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} regenerateVoice={regenerateVoice}/>}
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>
-    <Timeline scene={scene} names={actorNames} selection={selection} select={select} seek={seek} change={patchClip} add={showClip} remove={removeSelection} duplicate={duplicateSelection} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneContext(project, scene)).then(() => tell('AI scene context copied.'), showError); }} onResizeScene={duration => editScene(current => ({ ...current, duration }))} onCompact={() => setCompact(value => !value)}/></>}
+    <Timeline key={session} scene={scene} names={actorNames} selection={selection} select={select} seek={seek} change={patchClip} add={showClip} remove={removeSelection} duplicate={duplicateSelection} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneContext(project, scene)).then(() => tell('AI scene context copied.'), showError); }} onResizeScene={duration => editScene(current => ({ ...current, duration }))} onCompact={() => setCompact(value => !value)}/></>}
     <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
       const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
     }}/>
