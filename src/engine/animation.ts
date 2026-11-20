@@ -88,6 +88,18 @@ export function armIK(shoulder: Point, target: Point, upper: number, lower: numb
   const flex = Math.acos(clamp((upper ** 2 + distance ** 2 - lower ** 2) / (2 * upper * distance), -1, 1));
   return [{ x: shoulder.x + Math.cos(angle + flex * bend) * upper, y: shoulder.y + Math.sin(angle + flex * bend) * upper }, { x: shoulder.x + Math.cos(angle) * distance, y: shoulder.y + Math.sin(angle) * distance }];
 }
+/** Predictable, foot-planted gait trajectory. Each leg has a stance phase
+ * locked to the floor and a short raised recovery arc, never skating in air.
+ */
+export function footContactAt(time: number, action: 'walk' | 'run', side: 'left' | 'right') {
+  const duration = animations[action].duration;
+  const phase = (((time / duration) + (side === 'right' ? .5 : 0)) % 1) + 1;
+  const progress = phase % 1;
+  const stance = .57, stride = action === 'run' ? 22 : 15;
+  if (progress <= stance) return { x: stride * (.5 - progress / stance), y: 0, planted: true };
+  const recovery = (progress - stance) / (1 - stance);
+  return { x: stride * (-.5 + recovery), y: -Math.sin(recovery * Math.PI) * (action === 'run' ? 19 : 10), planted: false };
+}
 export function rig(c: Character, pose: JointPose, width: number) {
   const p = (joint: JointName) => pose[joint] ?? 0;
   const hip = { x: 0, y: -76 * c.legs * c.height };
