@@ -52,10 +52,10 @@ export function insertCameraShot(clips: Clip[], incoming: CameraClip, reservedId
     const before = start - clip.start, after = clipEnd - end;
     const keepBefore = before >= MIN_CAMERA_LENGTH - EPS;
     const keepAfter = after >= MIN_CAMERA_LENGTH - EPS;
-    if (keepBefore) result.push({ ...clip, length: before });
+    if (keepBefore) result.push({ ...clip, length: Math.max(MIN_CAMERA_LENGTH, before) });
     if (keepAfter) result.push({
       ...clip, id: keepBefore ? allocate(clip.id) : clip.id,
-      start: end, length: after
+      start: end, length: Math.max(MIN_CAMERA_LENGTH, after)
     });
   }
   if (replacementIndex >= 0) result.splice(Math.min(replacementIndex, result.length), 0, incoming);
