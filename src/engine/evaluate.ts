@@ -11,7 +11,7 @@ const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((foun
 const frameWeight = (clip: Clip, t: number) => ease(clamp(Math.min((t - clip.start) / .16, (clip.start + clip.length - t) / .15)));
 export function evaluate(scene: Scene, time: number) {
   const t = clamp(time, 0, Math.max(0, scene.duration - .000001));
-  const sounds = scene.clips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'dialogue') && active(clip, t));
+  const sounds = scene.clips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'music' || clip.track === 'dialogue') && active(clip, t));
   const actors = scene.actors.map((actor): CharacterState => {
     const clips = scene.clips.filter(clip => 'actor' in clip && clip.actor === actor.id);
     const presence = clips.filter(clip => clip.track === 'actors' && clip.visible === undefined);
