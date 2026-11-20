@@ -18,6 +18,12 @@ function stroke(g: Graphics, joints: Point[], width: number, color: string) {
   line(g, joints, INK, width + 4.5);
   line(g, joints, color, width);
 }
+/** Identical arm IK used to draw the gripping hand; shared with attached image props. */
+export function heldGripPoint(character: Character, view: View, pose: JointPose): Point {
+  const art=viewArt[view], r=rig(character,pose,art.width);
+  const [, hand]=armIK(r.right.shoulder,{x:r.head.x+(art.rear?-26:45),y:r.head.y+43},28*character.arms,28*character.arms,1);
+  return {x:hand.x+7,y:hand.y+9};
+}
 export function drawActor(g: Graphics, face: Graphics, c: Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view), actionTime = time) {
