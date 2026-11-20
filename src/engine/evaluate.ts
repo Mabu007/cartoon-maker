@@ -1,8 +1,10 @@
 import { animations, blend, clamp, ease, mix, sample } from './animation.ts';
 import { anchors } from './presets.ts';
+import { sampleViseme, type Viseme } from './visemes.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
-type State = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action; speaking: boolean; held?: Prop };
+type State = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
+  speaking: boolean; viseme?: { shape: Viseme; weight: number }; focus?: { x: number; y: number }; held?: Prop };
 type Camera = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -66,8 +68,47 @@ export function evaluate(scene: Scene, time: number) {
     }
     const face = latest(clips.filter((clip): clip is Extract<Clip, { track: 'face' }> => clip.track === 'face' && active(clip, t)));
     if (face) expression = face.expression;
-    return { ...actor, x, y, view, flip, pose, lift, expression, action, speaking: sounds.some(clip => clip.track === 'dialogue' && clip.actor === actor.id && !clip.muted), visible: !presence.length || presence.some(clip => active(clip, t)), held };
+    const spoken = sounds.find(clip => clip.track === 'dialogue' && clip.actor === actor.id && !clip.muted);
+    const viseme = spoken?.track === 'dialogue'
+      ? sampleViseme(spoken.text, spoken.length, t - spoken.start)
+      : undefined;
+    return { ...actor, x, y, view, flip, pose, lift, expression, action,
+      speaking: Boolean(spoken), viseme, visible: !presence.length || presence.some(clip => active(clip, t)), held };
   });
+  // Directors can explicitly select a gaze target. Without one, the person
+  // listening follows the current speaker, and the speaker picks a listener.
+  // This evaluation is pure, so exporting frame 240 matches preview frame 240.
+  const activeSpeakers = actors.filter(actor => actor.speaking && actor.visible);
+  for (const actor of actors) {
+    const targetId = actor.gazeTarget;
+    let focusX: number | undefined, focusY: number | undefined;
+    if (targetId === 'camera') {
+      actor.focus = { x: 0, y: -.08 };
+      continue;
+    }
+    const targetActor = targetId ? actors.find(item => item.id === targetId && item.visible) : undefined;
+    const targetProp = targetId ? scene.objects.find(item => item.id === targetId) : undefined;
+    const implicit = !targetId && activeSpeakers.length
+      ? (activeSpeakers.some(item => item.id === actor.id)
+        ? actors.find(item => item.id !== actor.id && item.visible)
+        : activeSpeakers.find(item => item.id !== actor.id))
+      : undefined;
+    const other = targetActor ?? implicit;
+    if (other) {
+      focusX = other.x;
+      focusY = other.y - 150 * other.scale;
+    } else if (targetProp) {
+      focusX = targetProp.x;
+      focusY = targetProp.y - (targetProp.imageHeight ?? 50) * targetProp.scale * .55;
+    } else if (actor.held && !targetId && !actor.speaking) {
+      focusX = actor.held.x; focusY = actor.held.y;
+    }
+    if (focusX !== undefined && focusY !== undefined) {
+      const deltaX = (focusX - actor.x) * (actor.flip ? -1 : 1);
+      const eyeHeight = actor.y - 153 * actor.scale - actor.lift;
+      actor.focus = { x: clamp(deltaX / 190, -1, 1), y: clamp((focusY - eyeHeight) / 140, -1, 1) };
+    }
+  }
   const cameraClips = scene.clips.filter(clip => clip.track === 'camera');
   const cameraClip = latest(cameraClips.filter(clip => active(clip, t)));
   function frame(clip?: typeof cameraClip): Camera {
