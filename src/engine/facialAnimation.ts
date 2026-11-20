@@ -41,9 +41,9 @@ export function facialPerformance(
     think: 'thinking', shrug: 'confused', celebrate: 'excited'
   };
   const resolved: Expression = expression === 'neutral' ? expressive[action] ?? 'neutral' : expression;
-  const animationSpeech = action === 'talk'
-    ? .36 + .45 * (Math.sin(t * 15.1 + seed * 7) ** 2)
-    : action === 'laugh' ? .22 + .32 * (Math.sin(t * 10.2) ** 2) : 0;
+  // Dialogue mouth movement is audio-driven; the Talk gesture does not flap
+  // a silent character's jaw. Nonverbal Laugh may still animate expressively.
+  const animationSpeech = action === 'laugh' ? .22 + .32 * (Math.sin(t * 10.2) ** 2) : 0;
   const speaking = Boolean(speechCue && speechCue.weight > 0);
   const envelope = clamp(Number.isFinite(audioAmplitude) ? audioAmplitude : 0);
   // Text supplies the viseme. Audio drives emphasis; silence closes the jaw.

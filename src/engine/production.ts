@@ -8,7 +8,8 @@ import { ProjectDocument, TimelineClip, uid, type ActorData, type Clip, type Dir
 type GraphScene = Production['graph'][number];
 type Dialogue = Extract<Clip, { track: 'dialogue' }>;
 type Voice = Production['bible']['characters'][number]['voice'];
-type Speech = (text: string, voice: Voice) => Promise<{ asset: Dialogue['asset']; seconds: number }>;
+type Speech = (text: string, voice: Voice) => Promise<{ asset: Dialogue['asset']; seconds: number;
+  visemes?: Dialogue['visemes']; lipSync?: Dialogue['lipSync'] }>;
 type Continuity = {
   actors: Record<string, Pick<ActorData, 'x' | 'y' | 'view' | 'flip'> & { held?: string; visible: boolean }>;
   objects: Record<string, { x: number; y: number }>;
@@ -268,7 +269,9 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
       }
       // Voice is part of the source signature, without adding engine-only metadata to the clip.
       const clip: Dialogue = { id, start: round(end), length: Math.max(.1, round(sound.seconds)), track: 'dialogue',
-        actor: actor.id, text: line.text, asset: sound.asset, offset: 0, volume: 1, muted: false, voicePreset:voice };
+        actor: actor.id, text: line.text, asset: sound.asset, offset: 0, volume: 1, muted: false, voicePreset:voice,
+        ...(sound.visemes?{visemes:sound.visemes}:{}),
+        ...(sound.lipSync?{lipSync:sound.lipSync}:{}) };
       const applied = schedule(clip, line);
       if (applied) {
         end = Math.max(end, applied.start + applied.length + .18);
