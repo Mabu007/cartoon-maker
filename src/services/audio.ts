@@ -98,7 +98,7 @@ export async function readSound(context: BaseAudioContext, asset: string) {
   }
   return pending;
 }
-export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is SoundClip => clip.track === 'dialogue' || clip.track === 'audio');
+export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is SoundClip => clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music');
 export const projectAssets = (project: Project) => [...new Set(project.scenes.flatMap(scene => sceneSounds(scene).map(clip => clip.asset)).filter(asset => asset.startsWith('asset:')).map(asset => asset.slice(6)))];
 export function createAudioMixer() {
   const context = new AudioContext();
