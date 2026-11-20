@@ -1086,7 +1086,18 @@ export default function App() {
     {workspace === 'write' && project.production && <ScreenplayStudio key={project.id + (scriptTarget.sceneId ?? '') + (scriptTarget.lineId ?? '')}
       project={project} production={project.production} update={updateProduction} ai={ai} busy={compiling}
       initialScene={scriptTarget.sceneId} initialLine={scriptTarget.lineId} autoDraft={scriptTarget.autoDraft}
-      approve={() => updateProduction(approveScript)} generate={() => { const current = useStudio.getState().project; void compile(current, current); }}/> }
+      approve={()=>updateProduction(approveScript)}
+      direct={()=>{switchWorkspace('direct');setMobilePanel('stage');}}
+      generate={()=>{
+        const current=useStudio.getState().project;
+        if(!current.production||!current.production.screenplay.scenes.length){
+          tell('Write at least one screenplay scene before animating.',true);return;
+        }
+        // Explicit Compile action creates the approved snapshot at the moment
+        // requested. It is not a prerequisite to manual directing.
+        const ready={...current,production:approveScript(current.production)};
+        void compile(ready,current);
+      }}/> }
     </Suspense>
     {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button></nav>
     <main className={`workspace mobile-${mobilePanel}`} style={{ '--asset-width': `${assetWidth}px`, '--inspector-width': `${inspectorWidth}px` } as CSSProperties}>
