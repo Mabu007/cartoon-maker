@@ -4,7 +4,7 @@ import { cameraConflicts, normalizeCameraTimeline } from './cameraTimeline.ts';
 export const WIDTH = 960;
 export const HEIGHT = 540;
 export const views = ['front', 'three-quarter', 'side', 'back-quarter', 'back'] as const;
-export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', 'sleepy', 'angry', 'surprised', 'sad', 'thinking'] as const;
+export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', 'sleepy', 'angry', 'surprised', 'sad', 'thinking', 'nervous'] as const;
 export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think', 'lean', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away'] as const;
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow', 'extreme-close-up', 'over-shoulder', 'establishing', 'reaction', 'pan', 'tilt', 'zoom', 'hold'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;

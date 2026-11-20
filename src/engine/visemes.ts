@@ -7,6 +7,7 @@ import { clamp } from './animation.ts';
 export const visemeNames = ['rest', 'closed', 'bite', 'wide', 'open', 'round', 'pucker', 'tongue'] as const;
 export type Viseme = typeof visemeNames[number];
 export type VisemeCue = { start: number; end: number; shape: Viseme; strength?: number };
+export type VisemeSample = { shape:Viseme;weight:number;from?:Viseme;blend?:number };
 const cache = new Map<string, VisemeCue[]>();
 const MAX_CACHE = 100;
 const groups: { test: RegExp; shape: Viseme; weight: number }[] = [
@@ -81,7 +82,7 @@ export function sampleViseme(text: string, duration: number, localTime: number):
 
 /** Samples genuine audio-derived mouth cues by audio media time (including clip offset).
  * Independent of render frame rate, so seeking/export reproduce identical poses. */
-export function sampleTimedViseme(cues: readonly VisemeCue[], audioTime: number): { shape: Viseme; weight: number } {
+export function sampleTimedViseme(cues: readonly VisemeCue[], audioTime: number): VisemeSample {
   if (!Number.isFinite(audioTime) || audioTime < 0 || !cues.length) return {shape:'rest',weight:0};
   let lo=0,hi=cues.length-1;
   while(lo<=hi) {
@@ -91,9 +92,14 @@ export function sampleTimedViseme(cues: readonly VisemeCue[], audioTime: number)
     else {
       if(cue.shape==='rest')return {shape:'rest',weight:0};
       // Bilabial B/M/P sounds must reach full closure even when only ~30ms long.
-      if(cue.shape==='closed')return {shape:'closed',weight:1};
+      if(cue.shape==='closed')return {shape:'closed',weight:1,blend:1};
       const ease=Math.min(clamp((audioTime-cue.start)/.018),clamp((cue.end-audioTime)/.018));
-      return {shape:cue.shape,weight:clamp(cue.strength??1)*(.55+.45*ease)};
+      const previous=index>0?cues[index-1].shape:cue.shape;
+      // The first ~36ms of a vowel morphs from the preceding mouth pose.
+      // A closed/rest target is handled above, so consonants remain precise.
+      const blend=clamp((audioTime-cue.start)/.036);
+      return {shape:cue.shape,from:previous,blend:blend*blend*(3-2*blend),
+        weight:clamp(cue.strength??1)*(.55+.45*ease)};
     }
   }
   // Gaps, trailing silence and pre-roll never produce random mouth movement.
