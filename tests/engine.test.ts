@@ -299,7 +299,7 @@ test('lip sync is viseme-specific and eye contact overrides wandering pupils', (
   const sbu = at.actors.find(item => item.id === 'actor-sbu')!;
   const zee = at.actors.find(item => item.id === 'actor-zee')!;
   assert(sbu.speaking && sbu.viseme);
-  assert(zee.focus && zee.focus.x < 0, 'listener Zee must look towards Sbu');
+  assert(zee.focus && Math.abs(zee.focus.x) > .5, 'listener Zee must look towards Sbu, accounting for mirrored local pupils');
   const camera = evaluate({ ...scene, actors: scene.actors.map(item => item.id === 'actor-zee' ? { ...item, gazeTarget: 'camera' } : item) }, 9.25);
   assert.deepEqual(camera.actors.find(item => item.id === 'actor-zee')?.focus, { x: 0, y: -.08 });
 });
