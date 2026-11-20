@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { Copy, Maximize2, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { createRenderer } from '../engine/renderer.ts';
+import { fitCharacterPreview } from '../engine/previewLayout.ts';
 import { NativeCharacterPreview } from './NativeCharacterPreview.tsx';
 import { actions, expressions, label, uid, views, type Action, type Character, type Expression, type Scene, type View } from '../engine/schema.ts';
 import { characters } from '../engine/presets.ts';
@@ -19,7 +20,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   const [draft, setDraft] = useState<Character>(() => source ?? { ...characters[0], id: uid(), name: 'New character' });
   const [section, setSection] = useState<keyof typeof styleGroups>('Hair'), [view, setView] = useState<View>('three-quarter');
   const [action, setAction] = useState<Action>('idle'), [expression, setExpression] = useState<Expression>('neutral');
-  const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.14), [fallback, setFallback] = useState(false);
+  const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.4), [fallback, setFallback] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const canvas = useRef<HTMLDivElement>(null);
   const frame = useRef({ draft, action, expression, view, flip, scale });
@@ -44,14 +45,27 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         renderer.destroy();
       };
       canvas.current?.replaceChildren(renderer.canvas);
+      const scene: Scene = {
+        id: 'character-preview', name: 'Character', environment: 'Podcast studio', duration: 8,
+        actors: [{ id: 'preview', characterId: frame.current.draft.id, x: 480, y: 443, scale: 1, rotation: 0, depth: 0, view: 'three-quarter', flip: false, expression: 'neutral' }],
+        objects: [],
+        clips: [{ id: 'pose', track: 'body', layer: 'body', actor: 'preview', action: 'idle', start: 0, length: 8 },
+          { id: 'expression', track: 'face', expression: 'neutral', actor: 'preview', start: 0, length: 8 }]
+      };
       let reset = performance.now(), lastAction = '', previous = -1;
       const animate = (now: number) => {
         const { draft, action, expression, view, flip, scale } = frame.current;
         if (lastAction !== action) { lastAction = action; reset = now; }
         const time = ((now - reset) / 1000) % 8;
-        if (Math.floor(time * 24) !== previous) {
+        if (!document.hidden && Math.floor(time * 24) !== previous) {
           previous = Math.floor(time * 24);
-          const scene: Scene = { id: 'character-preview', name: 'Character', environment: 'Podcast studio', duration: 8, actors: [{ id: 'preview', characterId: draft.id, x: 480, y: 458, scale, rotation: 0, depth: 0, view, flip, expression }], objects: [], clips: [{ id: 'pose', track: 'body', layer: 'body', actor: 'preview', action, start: 0, length: 8 }, { id: 'expression', track: 'face', expression, actor: 'preview', start: 0, length: 8 }] };
+          const layout = fitCharacterPreview(draft, scale, action);
+          const actor = scene.actors[0];
+          actor.characterId = draft.id; actor.x = layout.x; actor.y = layout.y; actor.scale = layout.scale;
+          actor.view = view; actor.flip = flip; actor.expression = expression;
+          const body = scene.clips[0], face = scene.clips[1];
+          if (body.track === 'body') body.action = action;
+          if (face.track === 'face') face.expression = expression;
           try {
             renderer.draw(scene, [draft], time, { characterPreview: true });
           } catch (cause) {
@@ -63,11 +77,11 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       };
       handle = requestAnimationFrame(animate);
     }).catch(useNativePreview);
-    return () => { alive = false; cancelAnimationFrame(handle); dispose(); };
+    return () => { alive = false; cancelAnimationFrame(handle); try { dispose(); } catch { /* fallback already disposed the renderer */ } };
   }, []);
   const update = <K extends keyof Character>(key: K, value: Character[K]) => setDraft(item => ({ ...item, [key]: value }));
   return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
-    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas" ref={canvas}>{fallback && <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={scale}/>}</div><div className="factory-zoom"><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
+    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas">{fallback ? <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={fitCharacterPreview(draft, scale, action).scale}/> : <div className="factory-renderer-mount" ref={canvas}/>}</div><div className="factory-zoom"><IconButton title="Fit entire character" onClick={() => setScale(1.4)}><Maximize2 size={15}/></IconButton><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
       <div className="segmented view-choice" aria-label="Character view">{views.map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{viewLabels[item]}</button>)}</div>
       <div className="field-row"><label>Preview action<Select aria="Preview action" value={action} onChange={setAction} options={actions}/></label><label>Expression<Select aria="Preview expression" value={expression} onChange={setExpression} options={expressions}/></label></div>
     </div><div className="factory-edit"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>

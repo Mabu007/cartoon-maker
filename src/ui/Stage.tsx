@@ -16,17 +16,36 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), repaint = useRef<() => void>(() => {});
   const [status, setStatus] = useState('Loading preview…');
+  const [restart, setRestart] = useState(0);
   const props = useRef({ project, scene, time, playing, edit, selection, subtitles, mixer, onFrame });
   props.current = { project, scene, time, playing, edit, selection, subtitles, mixer, onFrame };
   useEffect(() => {
-    let alive = true, handle = 0, lastShot = '';
+    let alive = true, handle = 0, lastShot = '', failed = false;
+    let activeRenderer: Renderer | null = null;
+    let contextLost: ((event: Event) => void) | undefined;
+    const fail = (error: unknown) => {
+      if (!alive || failed) return;
+      failed = true;
+      console.warn('Stage renderer failed; a retry is available inside the studio.', error);
+      setStatus('Preview interrupted. Retry here without changing browser settings.');
+    };
     setStatus('Loading preview…');
     createRenderer(format, quality ? 1 : .75).then(renderer => {
       if (!alive) { renderer.destroy(); return; }
+      activeRenderer = renderer;
       engine.current = renderer;
+      const onContextLost = (event: Event) => {
+        event.preventDefault();
+        fail(new Error('Graphics context lost'));
+        if (restart < 2) setRestart(value => value + 1);
+      };
+      contextLost = onContextLost;
+      renderer.canvas.addEventListener('webglcontextlost', onContextLost);
       mount.current?.replaceChildren(renderer.canvas);
       setStatus('');
       const draw = () => {
+        if (failed || !alive) return;
+        try {
         const p = props.current;
         const { scene: live, local } = p.time.current;
         const scene = p.playing ? live : p.scene;
@@ -36,29 +55,40 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
           edit: p.edit && !p.playing, subtitles: p.subtitles, amplitude: (id, t) => p.mixer.current?.amplitude(scene, id, t) ?? 0
         });
         if (frame.shot !== lastShot) { lastShot = frame.shot; p.onFrame?.(frame.shot); }
+        } catch (error) { fail(error); }
       };
       repaint.current = draw;
       draw();
       let previewTime = -1;
       const tick = () => {
-        if (!alive) return;
+        if (!alive || failed) return;
         const p = props.current;
         if (p.playing && !document.hidden && Math.floor(p.time.current.local * 30) !== previewTime) {
           previewTime = Math.floor(p.time.current.local * 30);
-          try { draw(); } catch (error) { setStatus(error instanceof Error ? error.message : 'Preview failed.'); return; }
+          draw();
         }
         handle = requestAnimationFrame(tick);
       };
       handle = requestAnimationFrame(tick);
-    }).catch(() => { if (alive) setStatus('The preview needs WebGL. Enable hardware acceleration or try a different browser.'); });
-    return () => { alive = false; cancelAnimationFrame(handle); repaint.current = () => {}; engine.current?.destroy(); engine.current = null; };
-  }, [format, quality]);
+    }).catch(fail);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(handle);
+      repaint.current = () => {};
+      if (engine.current === activeRenderer) engine.current = null;
+      if (activeRenderer) {
+        if (contextLost) activeRenderer.canvas.removeEventListener('webglcontextlost', contextLost);
+        try { activeRenderer.destroy(); } catch (error) { console.warn('Stage renderer cleanup:', error); }
+      }
+    };
+  }, [format, quality, restart]);
   useEffect(() => { if (!playing) repaint.current(); }, [project, scene, playing, edit, selection, subtitles]);
   useEffect(() => { const refresh = () => repaint.current(); window.addEventListener('toonroom-seek', refresh); return () => window.removeEventListener('toonroom-seek', refresh); }, []);
   function pointer(event: PointerEvent) {
     const renderer = engine.current;
     if (!renderer) return;
     const box = renderer.canvas.getBoundingClientRect();
+    if (!box.width || !box.height) return;
     return renderer.pick((event.clientX - box.left) * renderer.width / box.width, (event.clientY - box.top) * renderer.height / box.height);
   }
   return <div className={`stage-format format-${format.replace(':', '-')}`}>
@@ -85,6 +115,6 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         item.current = { x: clamp(Math.round((item.origin.x + dx) / grid) * grid, -100, 1060), y: clamp(Math.round((item.origin.y + dy) / grid) * grid, 30, 570) };
         repaint.current();
       }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved) move(item.id, item.current); repaint.current(); }} onPointerCancel={() => { drag.current = null; repaint.current(); }} />
-    {status && <div className="stage-status">{status.startsWith('Loading') ? <Clapperboard size={22}/> : <AlertCircle size={22}/>}<span>{status}</span></div>}
+    {status && <div className="stage-status">{status.startsWith('Loading') ? <Clapperboard size={22}/> : <AlertCircle size={22}/>}<span>{status}</span>{!status.startsWith('Loading') && <button type="button" className="quiet" onClick={() => setRestart(value => value + 1)}>Retry preview</button>}</div>}
   </div>;
 }

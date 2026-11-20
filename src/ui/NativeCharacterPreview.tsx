@@ -33,10 +33,10 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   return <svg className="native-character-svg" viewBox="0 0 540 540" role="img" aria-label={'Character preview: ' + c.name + ', ' + view + ' view'}>
     <rect width="540" height="540" fill="#665777"/>
     {Array.from({ length: 6 }, (_, i) => <rect key={i} x={16 + i * 91} y="24" width="65" height="404" rx="31" fill={i % 2 ? '#7c6a90' : '#705f83'}/>)}
-    <path d="M 0 436 H 540 V 540 H 0 Z" fill="#4b3c56"/>
-    <path d="M 0 436 H 540" stroke="#b99ac7" strokeWidth="3"/>
-    <ellipse cx="270" cy="445" rx={37 * scale} ry="7" fill="#382d45" opacity=".4"/>
-    <g transform={'translate(270 440) scale(' + (flip ? -scale : scale) + ' ' + scale + ')'}>
+    <path d="M 0 443 H 540 V 540 H 0 Z" fill="#4b3c56"/>
+    <path d="M 0 443 H 540" stroke="#b99ac7" strokeWidth="3"/>
+    <ellipse cx="270" cy="443" rx={37 * scale} ry="7" fill="#382d45" opacity=".4"/>
+    <g transform={'translate(270 443) scale(' + (flip ? -scale : scale) + ' ' + scale + ')'}>
       <g className={animated ? 'native-actor native-actor-' + action : ''}>
         <path d={'M -15 ' + shirtBottom + ' Q -20 -28 -18 -3'} stroke="#211e33" strokeWidth={13 * c.thickness} strokeLinecap="round" fill="none" className="native-leg-left"/>
         <path d={'M 15 ' + shirtBottom + ' Q 21 -31 18 -3'} stroke="#211e33" strokeWidth={13 * c.thickness} strokeLinecap="round" fill="none" className="native-leg-right"/>

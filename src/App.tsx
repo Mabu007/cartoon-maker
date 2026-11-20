@@ -198,8 +198,13 @@ export default function App() {
   function patchObject(value: Prop) { editScene(current => ({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
   function patchClip(value: Clip) { editScene(current => ({ ...current, clips: current.clips.map(clip => clip.id === value.id ? value : clip) })); }
   function addClip(value: Clip) {
-    editScene(current => ({ ...current, clips: [...current.clips, changeClipTiming(value, value.start, value.length, current.duration)] }));
-    setArrange(false); select({ kind: 'clip', id: value.id }); close();
+    try {
+      pause();
+      const current = currentScene(useStudio.getState());
+      if (current.clips.length >= 600) { tell('This scene already has the maximum 600 clips.', true); return; }
+      useStudio.getState().editScene(scene => ({ ...scene, clips: [...scene.clips, changeClipTiming(value, value.start, value.length, scene.duration)] }));
+      setArrange(false); select({ kind: 'clip', id: value.id }); close();
+    } catch (error) { showError(error); }
   }
   function showClip(track?: Track, action?: Action) {
     pause();
@@ -208,12 +213,14 @@ export default function App() {
   }
   function showAudio(track: AudioRequest['track'], actor?: string, start = time.current.local) { pause(); setRequestedAudio({ track, actor: actor ?? (selection?.kind === 'actor' ? selection.id : undefined), start }); setDialog('audio'); }
   function addActor(character: Character) {
+    if (scene.actors.length >= 24) { tell('A scene can have up to 24 actors.', true); return; }
     const id = uid();
     editScene(current => ({ ...current, actors: [...current.actors, { id, characterId: character.id, x: 320 + (current.actors.length % 5) * 115, y: 441, scale: 1, rotation: 0, depth: 0, view: 'three-quarter', expression: 'neutral', flip: false }] }));
     select({ id, kind: 'actor' });
     setMobilePanel('stage'); setArrange(true);
   }
   function addObject(kind: Prop['kind']) {
+    if (scene.objects.length >= 100) { tell('A scene can have up to 100 props.', true); return; }
     const value = makeProp(kind, 475 + (scene.objects.length % 5) * 25, 430);
     editScene(current => ({ ...current, objects: [...current.objects, value] }));
     select({ id: value.id, kind: 'object' }); setMobilePanel('stage'); setArrange(true);
@@ -239,8 +246,16 @@ export default function App() {
   }
   function editCharacter(value?: Character) { pause(); setFactory(value); setDialog('character'); }
   function saveCharacter(value: Character) {
-    edit(current => ({ ...current, characters: current.characters.some(item => item.id === value.id) ? current.characters.map(item => item.id === value.id ? value : item) : [...current.characters, value] }));
-    close(); tell(`${value.name} saved to your cast.`);
+    try {
+      pause();
+      const current = useStudio.getState().project;
+      if (!current.characters.some(item => item.id === value.id) && current.characters.length >= 80) {
+        tell('Your cast is full (80 characters). Delete or reuse a character before adding another.', true);
+        return;
+      }
+      useStudio.getState().edit(document => ({ ...document, characters: document.characters.some(item => item.id === value.id) ? document.characters.map(item => item.id === value.id ? value : item) : [...document.characters, value] }));
+      close(); tell(`${value.name} saved to your cast.`);
+    } catch (error) { showError(error); }
   }
   function ask(title: string, text: string, command: () => void) { setConfirm({ title, text, run: command }); setDialog('confirm'); }
   function deleteCharacter(id: string) {

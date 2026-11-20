@@ -17,11 +17,20 @@ export function shade(hex: string, amount: number) {
   return '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - fraction) + target * fraction).toString(16).padStart(2, '0')).join('');
 }
 
-function part(g: Graphics, d: string, fill: string, stroke = INK, width = 3) {
-  // SVG path data is parsed directly into Pixi geometry, without DOMParser.
-  // Graphics.svg() requires a complete <svg> root and was crashing for a bare
-  // <path> at every animation frame; GraphicsPath also avoids browser reflows.
+// Reuse stable vector outlines instead of reparsing them on every animation
+// frame. The cache is bounded because posed arms/legs produce unique paths.
+const pathCache = new Map<string, GraphicsPath>();
+const MAX_CACHED_PATHS = 384;
+export function illustratedPath(d: string): GraphicsPath {
+  const cached = pathCache.get(d);
+  if (cached) return cached;
   const path = new GraphicsPath(d);
+  if (pathCache.size >= MAX_CACHED_PATHS) pathCache.delete(pathCache.keys().next().value!);
+  pathCache.set(d, path);
+  return path;
+}
+function part(g: Graphics, d: string, fill: string, stroke = INK, width = 3) {
+  const path = illustratedPath(d);
   if (fill !== 'none') g.path(path).fill(fill);
   if (stroke !== 'none' && width > 0) g.path(path).stroke({ color: stroke, width, cap: 'round', join: 'round' });
 }
