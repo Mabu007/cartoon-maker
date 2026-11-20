@@ -27,7 +27,7 @@ export function parseSceneCode(text: string, project: Project, activeSceneId: st
     throw new Error(`Unsupported scene schema version ${String(obj.schemaVersion)}. Expected ${SCENE_CODE_VERSION}.`);
   return validateSceneReplacement(project, activeSceneId, obj.scene ?? parsed);
 }
-export function validateSceneReplacement(project: Project, sceneId: string, candidate: unknown): Scene {
+export function validateSceneReplacement(project: Project, sceneId: string, candidate: unknown, extraAvailableAssets: readonly string[] = []): Scene {
   const index = project.scenes.findIndex(scene => scene.id === sceneId);
   if (index < 0) throw new Error('This scene no longer exists.');
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) throw new Error('Expected a scene object.');
@@ -41,6 +41,7 @@ export function validateSceneReplacement(project: Project, sceneId: string, cand
   const scene = result.data.scenes[index];
   validateTimelineChange(scene, project.scenes[index]);
   const assets = new Set<string>([...soundNames, ...builtinVoiceNames].map(name => `builtin:${name}`));
+  for (const asset of extraAvailableAssets) assets.add(asset);
   for (const current of project.scenes) for (const clip of current.clips) if ('asset' in clip) assets.add(clip.asset);
   for (const clip of scene.clips) if ('asset' in clip && !assets.has(clip.asset)) {
     throw new Error(`Clip "${clip.id}" references unknown audio "${clip.asset}". Attach its file in the studio first.`);
