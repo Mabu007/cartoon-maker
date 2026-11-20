@@ -36,6 +36,17 @@ function clipById(scene:Scene,id:string){
 function setClip(scene:Scene,clip:Clip):Scene{
   return {...scene,clips:scene.clips.map(item=>item.id===clip.id?clip:item)};
 }
+function overlapping(a:{start:number;length:number},b:{start:number;length:number}){
+  return a.start<b.start+b.length-.00001 && b.start<a.start+a.length-.00001;
+}
+function rejectNewDialogueCollision(scene:Scene,candidate:Extract<Clip,{track:'dialogue'}>,
+  previous?:Extract<Clip,{track:'dialogue'}>){
+  for(const other of scene.clips) {
+    if(other.track!=='dialogue'||other.id===candidate.id)continue;
+    if(overlapping(other,candidate)&&(!previous||!overlapping(other,previous)))
+      throw new Error(`Dialogue clip "${candidate.id}" would newly overlap "${other.id}". Adjust its timing.`);
+  }
+}
 function isDialogueTextChanged(previous:Clip|undefined,next:Clip){
   if(next.track!=='dialogue')return false;
   return previous?.track==='dialogue' && previous.text!==next.text && previous.asset===next.asset;
@@ -95,6 +106,7 @@ export function applyTimelineEdits(project:Project,scene:Scene,
       locked(next,edit.clip.track);
       if([...next.clips,...next.actors,...next.objects].some(item=>item.id===edit.clip.id))
         throw new Error(`ID "${edit.clip.id}" is already in use.`);
+      if(edit.clip.track==='dialogue')rejectNewDialogueCollision(next,edit.clip);
       next={...next,clips:[...next.clips,edit.clip]};continue;
     }
     const previous=clipById(next,edit.clipId);
@@ -114,8 +126,10 @@ export function applyTimelineEdits(project:Project,scene:Scene,
     }
     if(isDialogueTextChanged(previous,candidate))
       throw new Error('A changed dialogue line needs voice generation. Use the speak operation.');
-    if(previous.track==='dialogue'&&candidate.track==='dialogue')
+    if(previous.track==='dialogue'&&candidate.track==='dialogue'){
       validateDialogueReplacement(next,previous,candidate.length);
+      rejectNewDialogueCollision(next,candidate,previous);
+    }
     next=setClip(next,candidate);
   }
   return validateSceneReplacement(project,scene.id,next,options.generatedAssets??[]);
@@ -159,6 +173,7 @@ export async function prepareDirectorSpeech(
         text:edit.text,asset:result.asset,length:result.length,
         voicePreset:voice,visemes:result.visemes,lipSync:result.lipSync});
       newClip=clipById(replaced,previous.id) as Extract<Clip,{track:'dialogue'}>;
+      rejectNewDialogueCollision(candidate,newClip,previous);
     }else{
       const collision=candidate.clips.find(item=>item.track==='dialogue' &&
         item.start<end-.00001 && item.start+item.length>edit.start+.00001);
