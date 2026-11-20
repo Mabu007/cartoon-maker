@@ -8,6 +8,7 @@ import { type Format } from '../engine/renderer.ts';
 import { evaluate, projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
+import { analyzeLipSync } from '../services/lipSync.ts';
 import { speechProvider, voices } from '../services/speech.ts';
 import { browserExporter, exportCodec } from '../services/export.ts';
 import type { SavedProject } from '../services/projects.ts';
@@ -87,6 +88,7 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
   const [start, setStart] = useState(clamp(request.start, 0, scene.duration - .1)), [name, setName] = useState('');
   const [recording, setRecording] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [asset, setAsset] = useState<{ blob: Blob; url: string; length: number }>();
+  const [lipStatus, setLipStatus] = useState('');
   const recorder = useRef<MediaRecorder | undefined>(undefined), inputStream = useRef<MediaStream | undefined>(undefined), alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; inputStream.current?.getTracks().forEach(track => track.stop()); if (recorder.current?.state === 'recording') recorder.current.stop(); }; }, []);
   useEffect(() => () => { if (asset) URL.revokeObjectURL(asset.url); }, [asset]);
@@ -122,7 +124,13 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
     const at = clamp(start, 0, scene.duration - .1);
     const id = uid(); await putAudio(id, asset.blob);
     const common = { id: uid(), start: at, length: clamp(asset.length, .1, scene.duration - at), asset: `asset:${id}`, volume: 1, muted: false, offset: 0 };
-    add(isDialogue ? { ...common, track: 'dialogue', text: text.trim(), actor } : { ...common, track: request.track, name: name.trim().slice(0, 80) || (request.track === 'music' ? 'Music' : 'SFX') });
+    if (isDialogue) {
+      const analysis = await analyzeLipSync(asset.blob, text.trim(), asset.length);
+      setLipStatus(analysis.source === 'rhubarb' ? 'Audio-aligned mouth animation ready.' : 'Estimated mouth animation; Rhubarb unavailable.');
+      add({ ...common, track: 'dialogue', text: text.trim(), actor, visemes: analysis.cues });
+    } else {
+      add({ ...common, track: request.track === 'music' ? 'music' : 'audio', name: name.trim().slice(0, 80) || (request.track === 'music' ? 'Music' : 'SFX') });
+    }
   });
   return <Modal title={isDialogue ? 'Add dialogue' : request.track === 'music' ? 'Add music' : 'Add sound effect'} description={isDialogue ? 'Generate a voice, record your own, or attach an audio file.' : request.track === 'music' ? 'Import a soundtrack or music loop.' : 'Import a sound effect or recording.'} close={close}>
     <div className="dialog-fields">{isDialogue && <><label className="field">Actor<Select aria="Dialogue actor" value={actor} onChange={setActor} options={Object.keys(actors)} render={id => actors[id]}/></label>{!actor && <p className="form-error">Add an actor to the scene first.</p>}<label className="field">Dialogue<textarea value={text} maxLength={400} onChange={e => setText(e.target.value)} placeholder="What does your character say?"/></label><div className="field-row"><label className="field">Voice<Select aria="Voice" value={voice} onChange={setVoice} options={voices.map(item => item.id)} render={id => voices.find(item => item.id === id)!.name}/></label><button disabled={!text.trim() || busy || recording} className="quiet generate-voice" onClick={() => work(async () => load(await speechProvider(account).synthesize(text, voice), 'Generated voice'))}><Sparkles size={16}/> Generate voice</button></div>{(!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') && <p className="small-text">Voice generation runs on this device. The first use downloads the voice engine.</p>}</>}
@@ -130,7 +138,7 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
     {asset && <><audio controls src={asset.url} aria-label="Preview audio"/>{!isDialogue && <label className="field">Name<input value={name} maxLength={80} onChange={e => setName(e.target.value)}/></label>}</>}
     <label className="field">Start (seconds)<input type="number" step=".01" min={0} max={scene.duration - .1} value={Math.round(start * 100) / 100} onChange={e => setStart(Number(e.target.value))}/></label>
     {asset && start + asset.length > scene.duration && <p className="small-text">Audio will trim at the end of this scene.</p>}
-    {busy && <p className="small-text" role="status">Preparing audio…</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>
+    {lipStatus && <p className="small-text" role="status">{lipStatus}</p>}{busy && <p className="small-text" role="status">Preparing audio / syncing mouth cues…</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>
     <footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!asset || busy || recording || (isDialogue && !actor)} onClick={() => void save()}><Plus size={16}/> Add to timeline</button></footer>
   </Modal>;
 }
