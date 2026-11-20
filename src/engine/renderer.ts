@@ -1,6 +1,7 @@
 import { viewForward } from './animation.ts';
 import { Application, Container, Graphics, Text, Sprite, Texture } from 'pixi.js';
-import { drawActor } from './actorArt.ts';
+import { drawActor, heldGripPoint } from './actorArt.ts';
+import { cameraViewport, screenToWorld, worldEntityBounds, pointHitsEntity, renderDepth, type WorldEntityRect } from './cameraTransform.ts';
 import { drawProp, drawWorld, ellipse, propSize, rect } from './art.ts';
 import { evaluate } from './evaluate.ts';
 import { HEIGHT, WIDTH, type Character, type Scene } from './schema.ts';
@@ -66,7 +67,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   let lastEnvironment: Scene['environment'] | undefined;
   let wasCharacterPreview = false;
   let lastFrame: ReturnType<typeof evaluate> | undefined;
-  const hitboxes: { id: string; left: number; right: number; top: number; bottom: number; depth: number }[] = [];
+  const hitboxes: { id: string; rect: WorldEntityRect; bounds: ReturnType<typeof worldEntityBounds>; depth: number }[] = [];
+  let currentCamera = { x: WIDTH / 2, y: HEIGHT / 2, zoom: 1 };
   let lastSelectedId: string | undefined;
   const entityKey = (id: string, isActor: boolean) => (isActor ? 'actor:' : 'prop:') + id;
   function get(id: string, isActor = false) {
@@ -130,11 +132,11 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       backdrop.texture = textures.get(image)!;
       backdrop.width = WIDTH; backdrop.height = HEIGHT; backdrop.visible = true;
     }
-    const cropCenter = format === '16:9' || camera.zoom > 1 ? camera.x : WIDTH / 2;
-    // Editing shares the exact preview camera transform; pointer picking uses
-    // world.toLocal to invert it, so props remain draggable in close-ups.
-    world.scale.set(camera.zoom);
-    world.position.set(width / 2 - cropCenter * camera.zoom, height / 2 - camera.y * camera.zoom);
+    currentCamera = camera;
+    // Preview, export and stage picking share one exact camera projection.
+    const transform = cameraViewport(camera, { width, height }, format);
+    world.scale.set(transform.zoom);
+    world.position.set(transform.x, transform.y);
     guides.clear(); fade.clear(); hitboxes.length = 0;
     lastSelectedId = options.selected;
     const used = new Set<string>();
@@ -151,7 +153,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.position.set(point.x, point.y);
       entity.group.scale.set(prop.scale);
       entity.group.angle = prop.rotation;
-      entity.group.zIndex = prop.depth * 1000 + point.y;
+      entity.group.zIndex = renderDepth(prop.depth, point.y);
       if (entity.kind !== prop.kind || entity.color !== prop.color || entity.imageData !== prop.imageData) {
         drawProp(entity.art.clear(), prop);
         entity.kind = prop.kind; entity.color = prop.color; entity.imageData = prop.imageData;
@@ -179,7 +181,10 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       } else { entity.art.visible = true; if (entity.sprite) entity.sprite.visible = false; }
       const [w, h] = [prop.imageData ? prop.imageWidth ?? 140 : propSize[prop.kind][0],
         prop.imageData ? prop.imageHeight ?? 140 : propSize[prop.kind][1]].map(n => n * prop.scale);
-      hitboxes.push({ id: prop.id, left: point.x - w / 2, right: point.x + w / 2, top: point.y - h, bottom: point.y + 5, depth: entity.group.zIndex });
+      const rect: WorldEntityRect = { x: point.x, y: point.y, scaleX: prop.scale, scaleY: prop.scale,
+        angle: prop.rotation, left: -w / (2 * prop.scale), right: w / (2 * prop.scale),
+        top: -h / prop.scale, bottom: 5 };
+      hitboxes.push({ id: prop.id, rect, bounds: worldEntityBounds(rect), depth: entity.group.zIndex });
     }
     for (const actor of actors) {
       const character = characterById.get(actor.characterId);
@@ -196,7 +201,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       const view = (options.edit ? source.view : camera.view) ?? actor.view;
       const directionFlip = options.edit ? source.flip : actor.flip !== (viewForward(view) !== viewForward(actor.view));
       entity.group.scale.set((directionFlip ? -1 : 1) * actor.scale, actor.scale);
-      entity.group.zIndex = actor.depth * 1000 + point.y;
+      entity.group.zIndex = renderDepth(actor.depth, point.y);
       entity.art.position.y = -lift;
       ellipse(entity.shadow!.clear(), 0, 3, 39 - Math.min(10, Math.max(0, lift / 5)), 7, '#816a61');
       drawActor(entity.art.clear(), entity.face!.clear(), character, view,
@@ -216,9 +221,11 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         if (place) {
           holder.texture = place;
           const ratio = (actor.held.imageWidth ?? 80) / Math.max(1, actor.held.imageHeight ?? 80);
-          holder.width = Math.min(58, 57 * ratio);
-          holder.height = Math.min(60, holder.width / ratio);
-          holder.position.set(45, -102 - lift);
+          holder.width = Math.min(76, 58 * ratio) * actor.held.scale;
+          holder.height = Math.min(76, holder.width / ratio);
+          const grip = heldGripPoint(character, view, options.edit ? {} : actor.pose);
+          holder.position.set(grip.x, grip.y - lift);
+          holder.angle = actor.held.rotation;
           holder.visible = true;
         } else {
           holder.visible = false;
@@ -228,18 +235,21 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
           }).catch(error => console.warn('Could not render held prop:', error));
         }
       } else if (entity.heldSprite) entity.heldSprite.visible = false;
-      const top = point.y - (172 * character.height + 49 * character.head) * actor.scale - lift;
-      hitboxes.push({ id: actor.id, left: point.x - 55 * actor.scale, right: point.x + 64 * actor.scale, top, bottom: point.y + 10, depth: entity.group.zIndex });
+      const rect: WorldEntityRect = { x: point.x, y: point.y, scaleX: (directionFlip ? -1 : 1) * actor.scale,
+        scaleY: actor.scale, angle: actor.rotation, left: -55, right: 64,
+        top: -(172 * character.height + 49 * character.head) - lift / actor.scale, bottom: 10 / actor.scale };
+      hitboxes.push({ id: actor.id, rect, bounds: worldEntityBounds(rect), depth: entity.group.zIndex });
     }
     for (const [id, entity] of items) if (!used.has(id)) { entity.group.destroy({ children: true }); items.delete(id); }
     const outline = hitboxes.find(hit => hit.id === options.selected);
     if (outline) {
-      const w = outline.right - outline.left + 12, h = outline.bottom - outline.top + 12;
-      guides.roundRect(outline.left - 6, outline.top - 6, w, h, 7).stroke({ color: '#f7e3af', width: 2, alpha: .95 });
-      for (const x of [outline.left - 6, outline.right + 6]) for (const y of [outline.top - 6, outline.bottom + 6]) rect(guides, x - 3, y - 3, 6, 6, '#f7e3af', 1);
+      const { left, right, top, bottom } = outline.bounds;
+      const w = right - left + 12, h = bottom - top + 12;
+      guides.roundRect(left - 6, top - 6, w, h, 7).stroke({ color: '#f7e3af', width: 2, alpha: .95 });
+      for (const x of [left - 6, right + 6]) for (const y of [top - 6, bottom + 6]) rect(guides, x - 3, y - 3, 6, 6, '#f7e3af', 1);
       if (options.staged) {
-        const x = (outline.right + outline.left) / 2;
-        const y = options.staged[outline.id]?.y ?? outline.bottom;
+        const x = (right + left) / 2;
+        const y = options.staged[outline.id]?.y ?? bottom;
         guides.moveTo(x, 0).lineTo(x, HEIGHT).moveTo(0, y).lineTo(WIDTH, y).stroke({ color: '#f8dc9c', width: 1, alpha: .7 });
       }
     }
@@ -256,8 +266,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return lastFrame;
   }
   function pick(x: number, y: number) {
-    const point = world.toLocal({ x: x * pixelWidth / width, y: y * pixelHeight / height });
-    const matches = hitboxes.filter(item => point.x >= item.left && point.x <= item.right && point.y >= item.top && point.y <= item.bottom).sort((a, b) => b.depth - a.depth);
+    const point = screenToWorld({ x, y }, currentCamera, { width, height }, format);
+    const matches = hitboxes.filter(item => pointHitsEntity(point, item.rect)).sort((a, b) => b.depth - a.depth);
     // Keep a selected prop draggable even when its geometry intersects an
     // actor's hitbox at higher render depth.
     const hit = matches.find(item => item.id === lastSelectedId) ?? matches[0];
