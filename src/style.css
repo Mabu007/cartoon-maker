@@ -88,9 +88,9 @@ select {
 }
 .studio-shell {
   height: 100dvh;
-  min-height: 740px;
+  min-height: 450px;
   display: grid;
-  grid-template-rows: 62px minmax(0, 1fr) clamp(213px, 29vh, 305px);
+  grid-template-rows: 62px minmax(0, 1fr) clamp(170px, 32vh, 305px);
   overflow: hidden;
 }
 .topbar {
@@ -2026,6 +2026,17 @@ select {
     gap: 3px;
   }
 }
+@media (min-width: 791px) and (max-height: 680px) {
+  .topbar { gap: 12px; }
+  .stage-panel { padding-top: 10px; padding-bottom: 7px; }
+  .stage-heading { margin-bottom: 8px; }
+  .asset-content { padding-top: 10px; }
+  .asset-heading { margin-bottom: 8px; }
+  .character-card { min-height: 47px; padding-block: 3px; }
+  .character-card .avatar { width: 40px; height: 40px; }
+  .inspector-top { min-height: 40px; }
+}
+
 @media (max-width: 790px) {
   :root {
     --track-label: 112px;

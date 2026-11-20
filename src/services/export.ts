@@ -60,7 +60,11 @@ export const browserExporter: VideoExporter = {
         frameHandle = requestAnimationFrame(tick);
       });
       if (!movie.size) throw new Error('The encoder returned an empty recording.');
-      return { blob: movie, extension: movie.type.includes('mp4') ? 'mp4' : 'webm' };
+      if (movie.type.includes('mp4')) return { blob: movie, extension: 'mp4' };
+      const { default: setDuration } = await import('fix-webm-duration');
+      const blob = await setDuration(movie, duration * 1000, { logger: false });
+      signal.throwIfAborted();
+      return { blob, extension: 'webm' };
     } finally {
       if (recorder && recorder.state !== 'inactive') recorder.stop();
       stream?.getTracks().forEach(track => track.stop());

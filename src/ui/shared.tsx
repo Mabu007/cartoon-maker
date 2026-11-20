@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X, ChevronDown, Armchair, BookOpen, DoorOpen, LampFloor, Monitor, Coffee, Smartphone, Sprout, Mic, PanelTop, Table2, Store, Cable, Sofa, UserRound, MoveRight, Activity, Smile, AudioLines, Music2, Clapperboard, Blend } from 'lucide-react';
-import { label, type Character, type Clip } from '../engine/schema.ts';
+import { label, shotLabel, type Character, type Clip } from '../engine/schema.ts';
 import type { Format } from '../engine/renderer.ts';
 
 export function IconButton({ title, children, onClick, disabled, active, className = '' }: { title: string; children: ReactNode; onClick?: () => void; disabled?: boolean; active?: boolean; className?: string }) {
@@ -35,7 +35,7 @@ export const clipLabel = (clip: Clip, names: Record<string, string> = {}) => {
     case 'face': return label(clip.expression);
     case 'dialogue': return clip.text || 'Recorded dialogue';
     case 'audio': return clip.name;
-    case 'camera': return `${label(clip.shot)} shot`;
+    case 'camera': return shotLabel(clip.shot);
     case 'transition': return label(clip.effect);
   }
 };

@@ -82,4 +82,5 @@ export type JointPose = Partial<Record<JointName, number>>;
 export type Animation = z.infer<typeof AnimationClip>;
 export type SoundClip = Extract<Clip, { track: 'audio' | 'dialogue' }>;
 export const uid = () => crypto.randomUUID();
-export const label = (value: string) => value.replaceAll('-', ' ').replace(/^./, first => first.toUpperCase());
+export const label = (value: string) => ({ 'close-up': 'Close-up', 'two-shot': 'Two-shot', 'three-quarter': 'Front three-quarter', 'back-quarter': 'Back three-quarter', stand: 'Stand up', shake: 'Shake head', talk: 'Talking idle', listen: 'Listening', think: 'Thinking', angry: 'Angry', surprise: 'Surprised' })[value] ?? value.replaceAll('-', ' ').replace(/^./, first => first.toUpperCase());
+export const shotLabel = (shot: string) => shot === 'close-up' || shot === 'two-shot' ? label(shot) : `${label(shot)} shot`;

@@ -15,7 +15,7 @@ Use Node.js 22.18+ or 24. The editor runs without service credentials and saves 
 
 ## Connect Firebase and deploy
 
-1. Create or select a dedicated Firebase project and web application. Enable the Email/Password sign-in provider, create Firestore and Storage, and add the Vercel hostname to Authorized Domains.
+1. Create or select a dedicated Firebase project and web application. Enable the Email/Password sign-in provider, create Firestore and Storage (Firebase requires the Blaze plan for Cloud Storage), and add the Vercel hostname to Authorized Domains.
 2. Deploy the repository's `firestore.rules` and `storage.rules` to that project using `firebase deploy --only firestore:rules,storage --project YOUR_PROJECT_ID`. For authenticated browser audio downloads, configure the Storage bucket CORS policy for the Vercel hostname.
 3. Set the five `VITE_FIREBASE_*` variables from `.env.example` in Vercel and redeploy. The client Firebase config identifies your app. Firestore and Storage rules enforce access using the signed-in user's UID.
 4. Optionally enable hosted speech or story generation with the variables in `.env.example`. Keep provider keys and the Firebase token verification key server-side. The editor comes with an offline-capable Flite speech engine, voice recording and an editable scripted story example. Natural-language story generation requires a compatible provider and a signed-in user.

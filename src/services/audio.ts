@@ -104,6 +104,8 @@ export function createAudioMixer() {
   master.connect(limiter);
   const prepared = new Map<string, Awaited<ReturnType<typeof readSound>>>();
   let sources: AudioBufferSourceNode[] = [];
+  let monitoring = false;
+  function monitor() { if (!monitoring) { limiter.connect(context.destination); monitoring = true; } }
   function stop() { for (const source of sources) { try { source.stop(); } catch { /* already ended */ } source.disconnect(); } sources = []; }
   async function prepare(scenes: Scene[]) {
     const assets = new Set(scenes.flatMap(scene => sceneSounds(scene).filter(clip => !clip.muted).map(clip => clip.asset)));
@@ -139,7 +141,7 @@ export function createAudioMixer() {
     }
     return value;
   }
-  return { context, master, output: limiter, prepare, schedule, amplitude, stop, close: () => { stop(); if (context.state !== 'closed') void context.close(); } };
+  return { context, master, output: limiter, monitor, prepare, schedule, amplitude, stop, close: () => { stop(); if (context.state !== 'closed') void context.close(); } };
 }
 export type Mixer = ReturnType<typeof createAudioMixer>;
 export async function audioLength(blob: Blob) {
