@@ -3,6 +3,7 @@ import { Captions, Check, ChevronDown, CircleHelp, Clapperboard, Cloud, Download
 import { clamp } from './engine/animation.ts';
 import { evaluate, locate, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
+import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
 import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import type { Format } from './engine/renderer.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
@@ -14,13 +15,14 @@ import { changeClipTiming, copyClip, currentScene, initial, removeEntity, useStu
 import { AssetLibrary } from './ui/AssetLibrary.tsx';
 import { CharacterFactory } from './ui/CharacterFactory.tsx';
 import { AccountDialog, AddClipDialog, AudioDialog, DirectorDialog, ExportDialog, HelpDialog, ProjectsDialog, ScenesDialog, type AudioRequest, type ClipRequest } from './ui/Dialogs.tsx';
+import { ObjectDependenciesDialog } from './ui/ObjectDependenciesDialog.tsx';
 import { Inspector } from './ui/Inspector.tsx';
 import { Stage, type PreviewTime } from './ui/Stage.tsx';
 import { clock, formats, IconButton, Modal, Select } from './ui/shared.tsx';
 import { Timeline } from './ui/Timeline.tsx';
 
 const studioName = import.meta.env.VITE_STUDIO_NAME?.trim() || 'Toonroom';
-type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | null;
+type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | null;
 type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[] };
 const worldKey = (scope: string) => `toonroom.worlds.v1.${scope}`;
 function worldPresets(scope: string): WorldPreset[] {
@@ -47,6 +49,7 @@ export default function App() {
   const [factory, setFactory] = useState<Character>(), [requestedClip, setRequestedClip] = useState<ClipRequest>({});
   const [requestedAudio, setRequestedAudio] = useState<AudioRequest>({ track: 'dialogue', start: 0 });
   const [confirm, setConfirm] = useState<{ title: string; text: string; run: () => void }>();
+  const [dependentObjectId, setDependentObjectId] = useState<string | null>(null);
   const [format, setFormat] = useState<Format>('16:9'), [arrange, setArrange] = useState(false), [subtitles, setSubtitles] = useState(true), [quality, setQuality] = useState(true);
   const [snap, setSnap] = useState(true), [compact, setCompact] = useState(false), [focus, setFocus] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'stage' | 'library' | 'inspector'>('stage');
@@ -196,7 +199,21 @@ export default function App() {
   const select = (value: Selection) => useStudio.getState().select(value);
   function patchActor(value: ActorData) { editScene(current => ({ ...current, actors: current.actors.map(actor => actor.id === value.id ? value : actor) })); }
   function patchObject(value: Prop) { editScene(current => ({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
-  function patchClip(value: Clip) { editScene(current => ({ ...current, clips: current.clips.map(clip => clip.id === value.id ? value : clip) })); }
+  function patchClip(value: Clip) {
+    if (value.track === 'body') {
+      const current = currentScene(useStudio.getState());
+      if (value.action === 'sit') {
+        const compatible = compatibleObjects(current, 'sit');
+        const target = compatible.find(item => item.id === value.target) ?? nearestObject(current, value.actor, 'sit');
+        if (!target) { tell('Add a chair or sofa before using Sit. Characters cannot sit on air.', true); return; }
+        value = { ...value, layer: 'body', target: target.id };
+      } else if (value.target && !compatibleObjects(current, value.action).some(item => item.id === value.target)) {
+        const { target: _, ...rest } = value;
+        value = rest;
+      }
+    }
+    editScene(current => ({ ...current, clips: current.clips.map(clip => clip.id === value.id ? value : clip) }));
+  }
   function addClip(value: Clip) {
     try {
       pause();
@@ -227,15 +244,15 @@ export default function App() {
   }
   function applyWorld(environment: Scene['environment'], furnished?: Prop[]) {
     const preset = furnished ?? makeScene(environment).objects;
-    editScene(current => ({ ...current, environment, objects: preset.map(object => ({ ...object, id: uid() })), clips: current.clips.map(clip => {
-      if (clip.track === 'body' && clip.target) { const { target, ...rest } = clip; return rest; }
-      return clip;
-    }) }));
+    editScene(current => replaceWorldObjects({ ...current, environment }, preset.map(object => ({ ...object, id: uid() }))));
     select(null); setMobilePanel('stage');
   }
   function setWorld(environment: Scene['environment'], furnished?: Prop[]) {
     if (scene.environment === environment && !furnished) return;
-    if (scene.objects.length) ask('Change the furnished world?', 'This replaces the current props and clears their interaction links. Use Undo to recover the original world.', () => applyWorld(environment, furnished));
+    if (scene.objects.length) {
+      const used = scene.clips.filter(clip => clip.track === 'body' && clip.target && scene.objects.some(object => object.id === clip.target)).length;
+      ask('Change the furnished world?', 'This replaces the current props.' + (used ? ' ' + used + ' dependent timeline action(s) will safely change to standing/empty-handed actions.' : '') + ' Use Undo to restore the original world.', () => applyWorld(environment, furnished));
+    }
     else applyWorld(environment, furnished);
   }
   function saveWorld(value: Scene) {
@@ -277,7 +294,29 @@ export default function App() {
       const id = uid(); editScene(item => ({ ...item, objects: [...item.objects, { ...object, id, x: clamp(object.x + 36, -2000, 3000) }] })); select({ kind: 'object', id });
     }
   }
-  function removeSelection() { const item = useStudio.getState().selection; if (item) { editScene(current => removeEntity(current, item.id)); select(null); } }
+  function removeSelection() {
+    const state = useStudio.getState(), item = state.selection;
+    if (!item) return;
+    const current = currentScene(state);
+    if (item.kind === 'object' && objectDependencies(current, item.id).length) {
+      pause(); setDependentObjectId(item.id); setDialog('dependencies');
+      return;
+    }
+    editScene(scene => removeEntity(scene, item.id));
+    select(null);
+  }
+  function confirmObjectDeletion(decisions: ObjectDependencyDecision) {
+    if (!dependentObjectId) return;
+    try {
+      const targetId = dependentObjectId;
+      pause();
+      useStudio.getState().editScene(scene => removeObjectWithDecisions(scene, targetId, decisions));
+      select(null);
+      setDependentObjectId(null);
+      close();
+      tell('Object removed. Dependent actions were updated.');
+    } catch (error) { showError(error); }
+  }
   function rename(value: string) { const name = value.trim(); if (name && name !== project.name) edit(current => ({ ...current, name })); }
   function addSound(name: typeof soundNames[number]) { const start = clamp(time.current.local, 0, scene.duration - .1); addClip({ id: uid(), track: 'audio', name: label(name), asset: `builtin:${name}`, length: Math.min(.8, scene.duration - start), start, muted: false, volume: .8, offset: 0 }); }
   function deleteProject(item: Project) {
@@ -329,6 +368,7 @@ export default function App() {
   if (dialog === 'account') content = <AccountDialog available={cloudEnabled} account={account} login={login} logout={logout} close={close}/>;
   if (dialog === 'help') content = <HelpDialog close={close} demo={() => openProject(exampleDirector.example(), true)}/>;
   if (dialog === 'director') content = <DirectorDialog close={close} example={() => openProject(exampleDirector.example(), true)} generate={account && import.meta.env.VITE_HOSTED_DIRECTOR === 'true' ? async story => openProject(await hostedDirector(account, speechProvider(account)).generate!(story), true) : undefined}/>;
+  if (dialog === 'dependencies' && dependentObjectId) content = <ObjectDependenciesDialog scene={scene} objectId={dependentObjectId} actorNames={actorNames} close={close} confirm={confirmObjectDeletion}/>;
   if (dialog === 'confirm' && confirm) content = <Modal title={confirm.title} description={confirm.text} close={close}><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="danger" onClick={() => { close(); confirm.run(); }}>Confirm</button></footer></Modal>;
 
   return <div className={`studio-shell ${focus ? 'focus-mode' : ''}`}>
