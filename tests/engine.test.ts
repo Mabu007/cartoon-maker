@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { Graphics, GraphicsPath } from 'pixi.js';
 import { illustratedPath } from '../src/engine/illustration.ts';
+import { facialPerformance } from '../src/engine/facialAnimation.ts';
+import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects } from '../src/engine/interactions.ts';
 import { fitCharacterPreview, PREVIEW_FOOT_PADDING, PREVIEW_GROUND_Y, PREVIEW_TOP_PADDING } from '../src/engine/previewLayout.ts';
 import { drawActor } from '../src/engine/actorArt.ts';
 import test from 'node:test';
@@ -158,4 +160,89 @@ test('illustrated SVG paths are reused without changing character geometry or re
   assert(front.context.instructions.length > 0 && face.context.instructions.length > 0);
   front.destroy();
   face.destroy();
+});
+
+
+test('all illustrated hair and beard variants render in every camera view with neutral and strong facial expressions', () => {
+  for (const style of ['fade', 'puff', 'locs', 'buzz', 'bald', 'afro', 'braids', 'curls'] as const) {
+    for (const beard of ['none', 'goatee', 'full'] as const) {
+      const character = { ...characters[0], hair: style, beard };
+      for (const view of views) {
+        for (const expression of ['neutral', 'happy', 'angry', 'surprised', 'sad', 'thinking'] as const) {
+          const body = new Graphics(), face = new Graphics();
+          assert.doesNotThrow(() => drawActor(body, face, character, view, {}, expression, .4, undefined, 1.3, 'talk', 'actor-sbu'), style + ' / ' + beard + ' / ' + view + ' / ' + expression);
+          assert(face.context.instructions.length > 3);
+          body.destroy(); face.destroy();
+        }
+      }
+    }
+  }
+});
+
+test('facial performances blink, move eyes and mouths, do not synchronize actors, and are reproducible', () => {
+  const times = Array.from({ length: 700 }, (_, index) => index * .02);
+  const sbu = times.map(time => facialPerformance(time, 'actor-sbu', 'idle', 'neutral'));
+  const zee = times.map(time => facialPerformance(time, 'actor-zee', 'idle', 'neutral'));
+  assert(sbu.some(face => face.blink > .9), 'Sbu closes eyes');
+  assert(sbu.some(face => face.blink === 0), 'Sbu reopens eyes');
+  assert(sbu.some((face, index) => Math.abs(face.gazeX - sbu[0].gazeX) > .5 && index > 10), 'gaze moves');
+  assert(sbu.some((face, index) => Math.abs(face.blink - zee[index].blink) > .5), 'actors blink independently');
+  assert.deepEqual(facialPerformance(2.75, 'actor-zee', 'talk', 'neutral'), facialPerformance(2.75, 'actor-zee', 'talk', 'neutral'));
+  assert(facialPerformance(1.5, 'actor-zee', 'talk', 'neutral').mouthOpen > .2);
+  assert.equal(facialPerformance(1.5, 'actor-zee', 'idle', 'neutral').mouthOpen, 0);
+  assert.equal(facialPerformance(1.5, 'actor-zee', 'cry', 'neutral').expression, 'sad');
+  assert.equal(facialPerformance(1.5, 'actor-zee', 'laugh', 'neutral').expression, 'happy');
+});
+
+test('seat deletion cannot leave characters sitting on air and can reassign another chair', () => {
+  const extra = { id: 'alternate-chair', name: 'Alternative chair', kind: 'chair' as const,
+    x: 590, y: 420, scale: 1, rotation: 0, depth: 0, color: '#cc8877' };
+  const withChair = { ...scene, objects: [...scene.objects, extra] };
+  const deps = objectDependencies(withChair, 'sofa', { 'actor-zee': 'Zee' });
+  assert.equal(deps.length, 1);
+  assert.equal(deps[0].clip.action, 'sit');
+  assert.equal(deps[0].actorName, 'Zee');
+  assert(deps[0].alternatives.some(item => item.id === extra.id));
+  assert(compatibleObjects(withChair, 'sit').some(item => item.id === 'alternate-chair'));
+  assert.equal(nearestObject(withChair, 'actor-zee', 'sit')?.id, 'sofa');
+
+  const withoutSofa = removeObjectWithDecisions(withChair, 'sofa');
+  const safeClip = withoutSofa.clips.find(item => item.id === deps[0].clip.id);
+  assert.equal(safeClip?.track, 'body');
+  assert.equal(safeClip?.track === 'body' && safeClip.action, 'stand');
+  assert.equal(safeClip?.track === 'body' && safeClip.target, undefined);
+  const standing = evaluate(withoutSofa, 2).actors.find(item => item.id === 'actor-zee')!;
+  assert(standing.lift > -20, 'actor must be standing on scene floor');
+  assert(ProjectDocument.safeParse({ ...demo, scenes: [withoutSofa] }).success);
+
+  const reassigned = removeObjectWithDecisions(withChair, 'sofa', { [deps[0].clip.id]: 'object:alternate-chair' });
+  const seated = reassigned.clips.find(item => item.id === deps[0].clip.id);
+  assert.equal(seated?.track === 'body' && seated.target, 'alternate-chair');
+  assert.equal(seated?.track === 'body' && seated.action, 'sit');
+  assert.equal(evaluate(reassigned, 2).actors.find(item => item.id === 'actor-zee')?.lift, -49);
+  assert(ProjectDocument.safeParse({ ...demo, scenes: [reassigned] }).success);
+});
+
+test('holding props and whole-world replacement never preserve missing targets', () => {
+  const cupDependencies = objectDependencies(scene, 'cup');
+  assert.equal(cupDependencies.length, 1);
+  const withoutCup = removeObjectWithDecisions(scene, 'cup', { [cupDependencies[0].clip.id]: 'action:think' });
+  const think = withoutCup.clips.find(item => item.id === cupDependencies[0].clip.id);
+  assert(think?.track === 'body' && think.action === 'think');
+  assert(think?.track === 'body' && think.target === undefined);
+  assert.equal(evaluate(withoutCup, 1.6).actors.find(item => item.id === 'actor-zee')?.held, undefined);
+  const newWorld = replaceWorldObjects(scene, makeScene('Classroom').objects);
+  assert(newWorld.clips.every(item => item.track !== 'body' || !item.target || newWorld.objects.some(object => object.id === item.target)));
+  assert(newWorld.clips.some(item => item.track === 'body' && item.action === 'stand'));
+  assert(ProjectDocument.safeParse({ ...demo, scenes: [newWorld] }).success);
+});
+
+test('legacy unsupported sit clips are repaired when loading projects', () => {
+  const sit = scene.clips.find(clip => clip.track === 'body' && clip.action === 'sit')!;
+  const oldScene = { ...scene, clips: scene.clips.map(clip => clip.id === sit.id ? { ...sit, target: undefined } : clip) };
+  const fixed = repairOrphanedObjectActions(oldScene);
+  assert(fixed.clips.some(item => item.id === sit.id && item.track === 'body' && item.action === 'stand'));
+  assert(ProjectDocument.safeParse({ ...demo, scenes: [fixed] }).success);
+  const badFrame = evaluate(oldScene, 2).actors.find(item => item.id === 'actor-zee')!;
+  assert(badFrame.lift > -20, 'even un-migrated legacy clips cannot sit on air at runtime');
 });
