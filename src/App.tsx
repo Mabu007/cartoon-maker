@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Captions, Check, ChevronDown, CircleHelp, Clapperboard, Cloud, Download, Expand, FolderOpen, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Sparkles, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
-import { approveScript, compileMovie, missingRentMovie, reviseScript, startProduction } from './engine/production.ts';
+import { approveScript, compileMovie, missingRentMovie, reviseScript, startProduction, fromOutline, makeStoryScene } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
 import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
@@ -10,7 +10,10 @@ import type { Format } from './engine/renderer.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
 import { audioLength, putAudio, getOrFetchAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
 import { analyzeLipSync, type Recognizer } from './services/lipSync.ts';
-import { duplicateProject, duplicateScene, listLocal, mergeLocal, removeLocal, saveLocal, type SavedProject } from './services/projects.ts';
+import { duplicateProject, duplicateScene, listLocal, mergeLocal, removeLocal, saveLocal,
+  updateProjectOrganization, renameSavedProject, lastEditorSession, rememberEditorSession,
+  type SavedProject, type ProjectCollection } from './services/projects.ts';
+import { characterUsage, removeCharacterFromProject, propUsage, audioUsage } from './engine/assetSafety.ts';
 import { exampleDirector, hostedDirector } from './services/director.ts';
 import { speechProvider, synthesizeCached } from './services/speech.ts';
 import { replaceDialogueAsset, restoreDialogueAsset } from './engine/dialogueAudio.ts';
@@ -119,6 +122,11 @@ export default function App() {
   settings.current = { loop, muted };
   const actorNames = Object.fromEntries(scene.actors.map(actor => [actor.id, project.characters.find(character => character.id === actor.characterId)?.name ?? 'Actor']));
   const tell = useCallback((message: string, error = false) => setNotice({ message, error }), []);
+  const toggleTheme = () => setTheme(current => {
+    const value = current === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('toonroom.theme', value);
+    return value;
+  });
   const close = () => setDialog(null);
   const showError = (error: unknown) => tell(errorMessage(error), true);
   useEffect(() => { if (notice) { const timer = window.setTimeout(() => setNotice(null), notice.error ? 7200 : 3200); return () => clearTimeout(timer); } }, [notice]);
@@ -133,6 +141,20 @@ export default function App() {
     return () => { alive = false; dispose?.(); };
   }, [tell]);
   useEffect(() => () => { cancelAnimationFrame(frame.current); mixer.current?.close(); }, []);
+  useEffect(() => {
+    if(home!=='studio')return;
+    const remember=()=>{
+      const current=useStudio.getState();
+      try{rememberEditorSession(scope,{
+        projectId:current.project.id,sceneId:current.sceneId,workspace,
+        playhead:time.current.local
+      });}catch(error){console.warn('Could not save editor position',error);}
+    };
+    remember();
+    const timer=window.setInterval(remember,2500);
+    window.addEventListener('pagehide',remember);
+    return ()=>{remember();window.clearInterval(timer);window.removeEventListener('pagehide',remember);};
+  },[home,scope,workspace,project.id,scene.id]);
 
   function updateCursor(scene: Scene, pos: number, redraw: boolean) {
     time.current = { scene, local: pos };
@@ -455,9 +477,12 @@ export default function App() {
   }
   function ask(title: string, text: string, command: () => void) { setConfirm({ title, text, run: command }); setDialog('confirm'); }
   function deleteCharacter(id: string) {
-    ask('Delete this character?', 'This removes their actors and attached clips from every scene.', () => {
-      edit(current => ({ ...current, characters: current.characters.filter(item => item.id !== id), scenes: current.scenes.map(item => item.actors.filter(actor => actor.characterId === id).reduce((value, actor) => removeEntity(value, actor.id), item)) })); select(null);
-    });
+    const character=project.characters.find(item=>item.id===id);
+    if(!character)return;
+    const usage=characterUsage(project,id);
+    ask(`Delete ${character.name}?`,
+      `This affects ${usage.sceneActors} scene appearance(s), ${usage.actorClips} animation clip(s), ${usage.screenplay} screenplay reference(s) and ${usage.outline} story outline(s). Related timeline clips will be removed; screenplay text remains for reassignment. Undo can restore the movie.`,
+      ()=>{edit(current=>removeCharacterFromProject(current,id));select(null);});
   }
   function editTimeline(next: Scene, ids?: string[]) {
     run(() => {
@@ -694,9 +719,15 @@ export default function App() {
   }
   function startManualMovie() {
     setSeedIdea('');
-    const next = makeProject();
-    if (!openProject({ ...next, production: startProduction(next) }, true)) return;
-    setWorkspace('write');
+    const next=makeProject();
+    const first=next.scenes[0],initialCast=next.characters.slice(0,2).map(c=>c.id);
+    const outline={...makeStoryScene(first.name,initialCast),id:first.id,
+      environment:first.environment,location:first.environment};
+    const production=startProduction(next);
+    production.bible.scenes=[outline];
+    production.screenplay.scenes=[fromOutline(outline)];
+    if(!openProject({...next,production},true))return;
+    setWorkspace('write');setScriptTarget({sceneId:first.id});
   }
   function startAIMovie(prompt: string) {
     const next = makeProject();
@@ -708,7 +739,52 @@ export default function App() {
     setWorkspace('create');
   }
   function deleteHomeProject(item: Project) {
-    if (window.confirm(`Delete "${item.name}" permanently? This cannot be undone.`)) void deleteSavedProject(item);
+    // The dedicated Projects UI displays the destructive confirmation.
+    void deleteSavedProject(item);
+  }
+  function organizeHomeProject(id:string,changes:{favorite?:boolean;collection?:ProjectCollection}){
+    try{setItems(updateProjectOrganization(scope,id,changes));}
+    catch(error){showError(error);}
+  }
+  async function renameHomeProject(value:Project,name:string) {
+    const next=renameSavedProject(scope,value.id,name);
+    const current=useStudio.getState();
+    if(current.project.id===value.id){
+      current.edit(existing=>({...existing,name:next.name,...(existing.production?.bible.status!=='locked'&&existing.production?
+        {production:{...existing.production,bible:{...existing.production.bible,
+          profile:{...existing.production.bible.profile,title:next.name}}}}:{})}));
+    }
+    setItems(listLocal(scope));
+    if(account){
+      const entry=listLocal(scope).find(item=>item.project.id===next.id);
+      if(entry){
+        cloudQueue.current=cloudQueue.current.catch(()=>{}).then(()=>uploadProject(account,entry.project,entry.updated));
+        try{await cloudQueue.current;}catch(error){tell('Renamed locally; cloud sync will need another attempt.',true);}
+      }
+    }
+  }
+  function duplicateHomeProject(value:Project) {
+    try{
+      const copy=duplicateProject(value);
+      const updated=saveLocal(scope,copy);
+      setItems(listLocal(scope));
+      if(account)cloudQueue.current=cloudQueue.current.catch(()=>{}).then(()=>uploadProject(account,copy,updated))
+        .catch(error=>tell('Duplicate saved locally; cloud copy failed: '+errorMessage(error),true));
+    }catch(error){showError(error);}
+  }
+  function openLibraryProject(value:Project){
+    if(!openProject(value))return;
+    setSeedIdea('');setScriptTarget({});
+    const previous=lastEditorSession(scope);
+    const originalWorkspace=value.production&&value.production.graph.length===0?'write':'direct';
+    setWorkspace(previous?.projectId===value.id&&value.production?previous.workspace:originalWorkspace);
+    if(previous?.projectId===value.id){
+      const target=value.scenes.find(item=>item.id===previous.sceneId);
+      if(target){
+        useStudio.getState().setScene(target.id);
+        updateCursor(target,clamp(previous.playhead,0,target.duration),true);
+      }
+    }
   }
   function openRentExample() {
     if (!openProject(missingRentMovie(), true)) return;
@@ -882,20 +958,19 @@ export default function App() {
   if (dialog === 'confirm' && confirm) content = <Modal title={confirm.title} description={confirm.text} close={close}><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="danger" onClick={() => { close(); confirm.run(); }}>Confirm</button></footer></Modal>;
 
   if (home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
-    <Welcome screen={home} items={items} openProjects={() => { localStorage.setItem('toonroom.started', '1'); setHome('projects'); }}
-      openProject={value => { if (openProject(value)) { setSeedIdea(''); setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); } }}
+    <Welcome screen={home} items={items} lastSession={lastEditorSession(scope)}
+      openProjects={()=>{localStorage.setItem('toonroom.started','1');setHome('projects');}}
+      openLanding={()=>setHome('landing')} openProject={openLibraryProject}
       createManual={startManualMovie} createAI={startAIMovie}
-      duplicate={value => { setSeedIdea(''); openProject(duplicateProject(value), true); }}
-      remove={value => { void deleteHomeProject(value); }}
-      openExample={openRentExample}/>
+      duplicate={duplicateHomeProject} rename={renameHomeProject}
+      organize={organizeHomeProject} remove={deleteHomeProject} openExample={openRentExample}
+      theme={theme==='dark'?'dark':'light'} toggleTheme={toggleTheme}/>
   </div>;
   return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''}`}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
       <div className="project-controls"><button className="quiet project-button" onClick={() => { pause(); if (useStudio.getState().dirty && !persist()) return; close(); setHome('projects'); }}><FolderOpen size={17}/><span>Projects</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label><span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
-      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => {
-        const value = theme === 'dark' ? 'light' : 'dark'; setTheme(value); localStorage.setItem('toonroom.theme', value);
-      }}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
+      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
     </header>
     <nav className="filmmaking-nav" aria-label="Filmmaking workspaces">
       <button className={workspace === 'create' ? 'active' : ''} aria-current={workspace === 'create' ? 'page' : undefined} onClick={() => switchWorkspace('create')}>Create</button>
