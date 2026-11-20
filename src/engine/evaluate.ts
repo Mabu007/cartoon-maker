@@ -35,7 +35,14 @@ export function evaluate(scene: Scene, time: number) {
       const definition = animations[activeAction];
       if (!isGesture) action = activeAction;
       else if (activeAction === 'talk' || activeAction === 'laugh' || activeAction === 'cry') action = activeAction;
-      const offsets = activeAction === 'sit' && clip.start === 0 ? definition.duration : 0;
+      const supportedSitBefore = clips.some(previous =>
+        previous.track === 'body' && previous.action === 'sit' && previous.layer === 'body' &&
+        previous.start + previous.length <= clip.start + .05 &&
+        previous.target && scene.objects.some(item => item.id === previous.target && anchors[item.kind]?.action === 'sit'));
+      // A replacement Stand action must immediately put the feet on the floor,
+      // not replay the seated opening pose for the first 0.8 seconds.
+      const offsets = (activeAction === 'sit' && clip.start === 0) ||
+        (activeAction === 'stand' && !supportedSitBefore) ? definition.duration : 0;
       const next = sample(definition, t - clip.start + offsets);
       const weight = activeAction === 'sit' || activeAction === 'stand' ? 1 : frameWeight(clip, t);
       pose = blend(pose, next.pose, weight, isGesture);
