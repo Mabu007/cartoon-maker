@@ -10,7 +10,9 @@ Mapping is based on Rhubarb's actual A–H/X definitions, not unrelated phoneme-
 A=bilabial closure (M/B/P), B=slightly-open clenched teeth, C=open, D=wide open, E=rounded, F=pucker, G=lower lip to upper teeth (F/V), H=raised tongue (L), X=idle/rest/silence.
 Toonroom maps these to `closed/wide/open/open/round/pucker/bite/tongue/rest`, and stores intensity for intermediate openings. Closed consonants retain full weight, gaps insert explicit rest.
 
-## Deployed architecture
+## Analyzer architecture (worker deployment required)
+
+**Deployment status:** Source code for the worker and authenticated API exists, but running an actual Rhubarb container in production has **not** been verified. The accurate lip-sync path needs a reachable configured worker and successful real-audio smoke test. Without this, Toonroom must label speech cues *Estimated — NOT audio aligned*.
 1. Each generated, uploaded or microphone recording is decoded in-browser and resampled into a **16 kHz mono 16-bit PCM WAV** (max 120 seconds / 5 MB normalized); original audio remains intact.
 2. The `/api/lipsync` endpoint authenticates Firebase bearer tokens by default, enforces length/header/recognizer limits, and runs either configured native `RHUBARB_BINARY` or a private dedicated worker at `RHUBARB_WORKER_URL`. No client-controlled command, binary path, or worker URL.
 3. The worker in `workers/rhubarb/` is **real** Node+native CLI, not a stub. It downloads official Rhubarb v1.14.0 Linux with its model resources at image build time, limits concurrent executions to two, imposes a 40s subprocess timeout, validates WAV and returned cues, cleans temp directories, and requires a 32+ character private `WORKER_TOKEN`.
