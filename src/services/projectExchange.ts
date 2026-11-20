@@ -47,7 +47,9 @@ export async function restoreMovie(file: File) {
   for (const [id, blob] of files) await putAudio(id, blob);
   const remap = (asset: string) => mapping.has(asset.slice(6)) && asset.startsWith('asset:') ? `asset:${mapping.get(asset.slice(6))}` : asset;
   return ProjectDocument.parse({ ...project, id: uid(), scenes: project.scenes.map(scene => ({ ...scene,
-    clips: scene.clips.map(clip => 'asset' in clip ? { ...clip, asset: remap(clip.asset) } : clip) })),
+    clips: scene.clips.map(clip => 'asset' in clip ? { ...clip, asset: remap(clip.asset),
+      ...(clip.track === 'dialogue' && clip.versions ? { versions: clip.versions.map(version => ({...version,asset:remap(version.asset)})) } : {})
+    } : clip) })),
     ...(project.production ? { production: { ...project.production, graph: project.production.graph.map(record => ({ ...record,
       events: Object.fromEntries(Object.entries(record.events).map(([id, event]) => {
         const clip = JSON.parse(event.signature);

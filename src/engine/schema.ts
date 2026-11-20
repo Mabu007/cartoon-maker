@@ -20,13 +20,16 @@ const propImageData = z.string().regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+=
 const num = (min: number, max: number) => z.number().finite().min(min).max(max);
 const position = { x: num(-2000, 3000), y: num(-2000, 3000), scale: num(.2, 4), rotation: num(-360, 360), depth: num(-1000, 1000) };
 export const CharacterView = z.enum(views);
+export const VoicePreset = z.enum(['warm','bright','deep']);
+export const HostedVoiceId = z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9_.:-]+$/);
 export const CharacterDefinition = z.strictObject({
   id, name: z.string().trim().min(1).max(60), skin: color, shirt: color, pants: color, hairColor: color, shoes: color,
   height: num(.75, 1.3), head: num(.75, 1.35), torso: num(.75, 1.3), arms: num(.75, 1.3), legs: num(.75, 1.3), thickness: num(.65, 1.45), eyeSpacing: num(.65, 1.4),
   shape: z.enum(['round', 'oval', 'square']), eyes: z.enum(['round', 'relaxed', 'wide']), brows: z.enum(['arched', 'straight', 'bold']),
   nose: z.enum(['button', 'long', 'flat']), mouth: z.enum(['smile', 'line', 'full']), ears: z.enum(['round', 'small', 'wide']),
   hair: z.enum(['fade', 'puff', 'locs', 'buzz', 'bald', 'afro', 'braids', 'curls']), beard: z.enum(['none', 'goatee', 'full']), hat: z.enum(['none', 'cap', 'beanie']),
-  glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(['tee', 'hoodie', 'jacket', 'sweater', 'uniform']), accessory: z.enum(['none', 'chain', 'scarf']), goldTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional()
+  glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(['tee', 'hoodie', 'jacket', 'sweater', 'uniform']), accessory: z.enum(['none', 'chain', 'scarf']), goldTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional(),
+  voicePreset: VoicePreset.optional(), hostedVoiceId: HostedVoiceId.optional()
 });
 export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.string().min(1).max(60), color, ...position,
   imageData: propImageData.optional(), imageWidth: num(10, 800).optional(), imageHeight: num(10, 800).optional(),
@@ -48,8 +51,13 @@ const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, 
 const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release']) });
 const FaceClip = z.strictObject({ ...time, track: z.literal('face'), actor: id, expression: z.enum(expressions) });
 export const audioAsset = z.string().regex(/^(?:builtin:[a-z0-9-]+|asset:[a-zA-Z0-9-]+)$/);
-const sound = { asset: audioAsset, volume: num(0, 2), muted: z.boolean(), offset: num(0, 180).default(0) };
-export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal('dialogue'), actor: id, text: z.string().max(1000), visemes: z.array(z.strictObject({ start: num(0, 180), end: num(0, 180), shape: z.enum(['rest', 'closed', 'bite', 'wide', 'open', 'round', 'pucker', 'tongue']) })).max(3000).optional() });
+const sound = { asset: audioAsset, volume: num(0, 2), muted: z.boolean(), offset: num(0, 180).default(0),
+  fadeIn: num(0, 180).optional(), fadeOut: num(0, 180).optional(), loop: z.boolean().optional() };
+const mouthCues = z.array(z.strictObject({ start: num(0, 180), end: num(0, 180), shape: z.enum(['rest', 'closed', 'bite', 'wide', 'open', 'round', 'pucker', 'tongue']) })).max(3000);
+export const DialogueVersion = z.strictObject({ asset: audioAsset, text: z.string().max(1000),
+  length: num(.1,180), offset: num(0,180), voicePreset: VoicePreset.optional(), visemes: mouthCues.optional() });
+export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal('dialogue'), actor: id, text: z.string().max(1000),
+  voicePreset: VoicePreset.optional(), versions: z.array(DialogueVersion).max(5).optional(), visemes: mouthCues.optional() });
 const AudioClip = z.strictObject({ ...time, ...sound, track: z.literal('audio'), name: z.string().min(1).max(80) });
 const MusicClip = z.strictObject({ ...time, ...sound, track: z.literal('music'), name: z.string().min(1).max(80) });
 export const CameraShot = z.strictObject({ ...time, track: z.literal('camera'), shot: z.enum(shots), focus: id.optional(), transition: z.enum(['cut', 'glide']) });
@@ -57,7 +65,7 @@ const Transition = z.strictObject({ ...time, track: z.literal('transition'), eff
 export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, MusicClip, CameraShot, Transition]);
 export const TimelineTrack = z.enum(tracks);
 export const TimelineMarker = z.strictObject({ id, name: z.string().trim().min(1).max(60), time: num(0, 180) });
-export const TimelineTrackSettings = z.strictObject({ muted: z.boolean().optional(), locked: z.boolean().optional(), collapsed: z.boolean().optional() });
+export const TimelineTrackSettings = z.strictObject({ muted: z.boolean().optional(), solo: z.boolean().optional(), locked: z.boolean().optional(), collapsed: z.boolean().optional() });
 export const SceneDefinition = z.strictObject({ id, name: z.string().trim().min(1).max(70), environment: z.enum(environments),
   markers: z.array(TimelineMarker).max(60).optional(), trackSettings: z.partialRecord(TimelineTrack, TimelineTrackSettings).optional(),
   backgroundImage: imageData.optional(), duration: num(1, 180),
