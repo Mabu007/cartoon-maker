@@ -127,7 +127,9 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         item.moved = true;
         item.current = { x: clamp(Math.round((item.origin.x + dx) / grid) * grid, -2000, 3000), y: clamp(Math.round((item.origin.y + dy) / grid) * grid, -2000, 3000) };
         repaint.current();
-      }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved && item.sceneId === scene.id) move(item.id, item.current); repaint.current(); }} onPointerCancel={() => { drag.current = null; repaint.current(); }} />
+      }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved && item.sceneId === scene.id) move(item.id, item.current); repaint.current(); }}
+      onPointerCancel={() => { drag.current = null; repaint.current(); }}
+      onLostPointerCapture={() => { drag.current = null; repaint.current(); }} />
     {status && <div className="stage-status">{status.startsWith('Loading') ? <Clapperboard size={22}/> : <AlertCircle size={22}/>}<span>{status}</span>{!status.startsWith('Loading') && <button type="button" className="quiet" onClick={() => setRestart(value => value + 1)}>Retry preview</button>}</div>}
   </div>;
 }

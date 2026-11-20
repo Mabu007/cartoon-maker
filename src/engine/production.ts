@@ -1,3 +1,4 @@
+import { normalizeCameraTimeline, cameraConflicts } from './cameraTimeline.ts';
 import { gaitSpeeds } from './animation.ts';
 import { evaluate } from './evaluate.ts';
 import { anchorFor } from './interactions.ts';
@@ -294,6 +295,12 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
     return valid;
   });
   scene.clips = validClips;
+  if (cameraConflicts(scene.clips).length) {
+    // Legacy/manual camera overrides must never produce two simultaneous images.
+    // Later authored cues take precedence, retaining uncovered earlier footage.
+    scene.clips = normalizeCameraTimeline(scene).clips;
+    diagnostics.push('Overlapping camera overrides were consolidated into a single camera track.');
+  }
   if (!scene.clips.some(clip => clip.track === 'camera') && scene.clips.length < 600) {
     const line = source.elements[0];
     const id = eventId(line.id, 'wide');

@@ -150,9 +150,17 @@ export function evaluate(scene: Scene, time: number) {
     const target = actors.find(actor => actor.id === clip?.focus && actor.visible) ?? actors.find(actor => actor.visible);
     if (!clip || clip.shot === 'wide' || clip.shot === 'establishing' || !target) return { x: WIDTH / 2, y: HEIGHT / 2, zoom: 1 };
     if (clip.shot === 'two-shot') {
-      const visible = actors.filter(actor => actor.visible);
-      const mid = visible.reduce((sum, actor) => sum + actor.x, 0) / Math.max(1, visible.length);
-      return { x: clamp(mid, 380, 580), y: 297, zoom: 1.17 };
+      // Frame the focused character and their nearest visible scene partner,
+      // not the average of every actor (which could leave both off-camera).
+      const partner = actors.filter(actor => actor.visible && actor.id !== target.id)
+        .sort((a, b) => Math.abs(a.x - target.x) - Math.abs(b.x - target.x))[0];
+      const pair = partner ? [target, partner] : [target];
+      const spread = partner ? Math.abs(target.x - partner.x) : 0;
+      const zoom = clamp((WIDTH - 180) / (spread + 200), 1, 1.55);
+      const mid = pair.reduce((sum, actor) => sum + actor.x, 0) / pair.length;
+      const midY = pair.reduce((sum, actor) => sum + actor.y - 120 * actor.scale - actor.lift, 0) / pair.length;
+      return { x: clamp(mid, WIDTH / (2 * zoom), WIDTH - WIDTH / (2 * zoom)),
+        y: clamp(midY, HEIGHT / (2 * zoom), HEIGHT - HEIGHT / (2 * zoom)), zoom };
     }
     const close = ['close-up', 'reaction', 'extreme-close-up'].includes(clip.shot);
     const zoom = clip.shot === 'extreme-close-up' ? 3.35 : close ? 2.26 : clip.shot === 'over-shoulder' ? 1.95 : clip.shot === 'medium' || clip.shot === 'zoom' ? 1.64 : 1.28;

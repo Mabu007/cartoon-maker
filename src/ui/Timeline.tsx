@@ -222,8 +222,8 @@ export function Timeline({
           const selected=chosen.has(clip.id);
           const tiny=clip.length*pixelsPerSecond<26;
           return <div role="button" tabIndex={0} key={clip.id} aria-label={`${trackNames[track]}: ${clipLabel(clip,names)}`}
-            aria-pressed={selected} title={`${clipLabel(clip,names)} · ${clip.start.toFixed(2)}–${(clip.start+clip.length).toFixed(2)}s`}
-            className={`clip clip-${track} ${selected?'clip-selected':''} ${tiny?'clip-tiny':''} ${drag.current?.ids.includes(clip.id)?'clip-preview':''}`}
+            aria-pressed={selected} title={`${clipLabel(clip,names)} · ${clip.start.toFixed(2)}–${(clip.start+clip.length).toFixed(2)}s${clip.track==='camera'?' · '+clip.transition+' · '+(clip.focus?names[clip.focus]??clip.focus:'auto focus')+' · exclusive':''}`}
+            className={`clip clip-${track} ${selected?'clip-selected':''} ${tiny?'clip-tiny':''} ${drag.current?.ids.includes(clip.id)?'clip-preview':''} ${clip.track==='camera'?'cinematic-shot':''}`}
             style={{left:clip.start/scene.duration*100+'%',width:clip.length/scene.duration*100+'%',top:4+row*27}}
             onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();selectionFor(clip.id,event);seek(clip.start);}}}
             onContextMenu={event=>{event.preventDefault();if(!selected)selectClips([clip.id]);setMenu({x:Math.min(event.clientX,window.innerWidth-204),y:Math.min(event.clientY,window.innerHeight-266),id:clip.id});}}
@@ -233,7 +233,7 @@ export function Timeline({
             onPointerCancel={()=>{drag.current=null;setPreview(null);}}
             onLostPointerCapture={()=>{drag.current=null;setPreview(null);}}>
             {!locked&&<span className="clip-handle" data-edge="in" title="Trim start"/>}
-            <Icon size={11}/><span className="clip-text">{clipLabel(clip,names)}</span>
+            <Icon size={11}/><span className="clip-text">{clipLabel(clip,names)}{clip.track==='camera'&&<small className="camera-clip-mode"> {clip.transition === 'glide' ? '↝' : '│'}</small>}</span>
             {clip.track==='movement'&&clip.keyframes?.map((key,index)=><span key={index} role="button" tabIndex={0}
               className={`timeline-keyframe ${selectedKeyframe?.clipId===clip.id&&selectedKeyframe.index===index?'selected':''}`}
               style={{left:key.time*100+'%'}} title={`Keyframe ${index+1} · ${(clip.start+clip.length*key.time).toFixed(2)}s`}

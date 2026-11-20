@@ -450,3 +450,16 @@
 .professional-timeline .timeline-sheet { min-width:0; }
 .professional-timeline .lane:focus-visible { outline:1px dashed #ad80e8; outline-offset:-2px; }
 .professional-timeline .timeline-context-menu { overflow:auto; }
+
+/* A single camera sequence reads as contiguous film shots, with focused edge
+   grips and a compact cut/glide indicator; timing is always real scene seconds. */
+.professional-timeline .clip-camera.cinematic-shot {
+  background:linear-gradient(180deg,#674a87,#42345f); border-color:#a48bcb;
+  box-shadow:inset 0 2px #bda0ed66,0 1px 4px #03020a60;
+}
+.professional-timeline .clip-camera.cinematic-shot.clip-selected {
+  outline:2px solid #f9ddff; box-shadow:0 0 0 2px #bd8bee66,0 0 13px #a281cf55;
+}
+.professional-timeline .clip-camera .clip-handle {width:8px;}
+.professional-timeline .camera-clip-mode {font-size:10px; color:#ddc8ff; font-weight:800;}
+.camera-inspector-hint {border-left:2px solid #aa8ad1; padding:7px 8px; background:#8362aa17; border-radius:4px;}
