@@ -78,3 +78,22 @@ export function sampleViseme(text: string, duration: number, localTime: number):
   }
   return { shape: 'rest', weight: 0 };
 }
+
+/** Samples genuine audio-derived mouth cues by audio media time (including clip offset).
+ * Independent of render frame rate, so seeking/export reproduce identical poses. */
+export function sampleTimedViseme(cues: readonly VisemeCue[], audioTime: number): { shape: Viseme; weight: number } {
+  if (!Number.isFinite(audioTime) || audioTime < 0 || !cues.length) return { shape: 'rest', weight: 0 };
+  let left = 0, right = cues.length - 1;
+  while (left <= right) {
+    const middle = (left + right) >>> 1, item = cues[middle];
+    if (audioTime < item.start) right = middle - 1;
+    else if (audioTime >= item.end) left = middle + 1;
+    else {
+      if (item.shape === 'rest') return { shape: 'rest', weight: 0 };
+      // Small easing at pose boundaries, never sacrificing a complete B/M/P closure.
+      const fade = item.shape === 'closed' ? 1 : clamp(Math.min(audioTime - item.start, item.end - audioTime) / .022);
+      return { shape: item.shape, weight: .67 + .33 * fade };
+    }
+  }
+  return { shape: 'rest', weight: 0 };
+}
