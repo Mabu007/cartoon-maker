@@ -262,7 +262,10 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
       const unchanged = prior?.track === 'dialogue' && priorSource?.text === line.text && priorSource.actor === actor.id
         && record?.events[id]?.voice === voice;
       let sound: Awaited<ReturnType<Speech>>;
-      if (unchanged) sound = { asset: prior.asset, seconds: priorSource.length };
+      if (unchanged && prior?.track==='dialogue' && priorSource)
+        sound = {asset:prior.asset,seconds:priorSource.length,
+          ...(prior.visemes?{visemes:prior.visemes}:{}),
+          ...(prior.lipSync?{lipSync:prior.lipSync}:{})};
       else {
         try { sound = await speak(line.text, voice); }
         catch (error) { throw new Error(`Voice generation failed for “${line.text.slice(0, 48)}”. ${error instanceof Error ? error.message : ''}`); }

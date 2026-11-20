@@ -12,7 +12,7 @@ const mapping:Record<string,{shape:Viseme;strength?:number}>={
 export function parseRhubarbOutput(value:unknown,duration:number):VisemeCue[]{
  if(!Number.isFinite(duration)||duration<.1||duration>180)throw Error('Invalid audio duration.');
  const result=value as {mouthCues?:{start:number;end:number;value:string}[];metadata?:{duration?:number}}|null;
- if(!Array.isArray(result?.mouthCues)||!result.mouthCues.length||result.mouthCues.length>3000)throw Error('Rhubarb returned no mouth cues or too many cues.');
+ if(!result||!Array.isArray(result.mouthCues)||!result.mouthCues.length||result.mouthCues.length>3000)throw Error('Rhubarb returned no mouth cues or too many cues.');
  if(result.metadata?.duration!==undefined&&(!Number.isFinite(result.metadata.duration)||Math.abs(result.metadata.duration-duration)>.35))throw Error('Rhubarb analyzed a recording of different duration.');
  const cues:VisemeCue[]=[];let previous=0;
  for(const cue of result.mouthCues){
