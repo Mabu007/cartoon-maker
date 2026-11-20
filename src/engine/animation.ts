@@ -29,6 +29,15 @@ export function travelSpeed(progress:number,ramp=.14) {
   if(t>1-r)return (1-t)/(r*total);
   return 1/total;
 }
+/** Compresses a turning head just as a new 2D view appears, hiding view
+ * discontinuities without stretching lip or eye geometry.
+ */
+export function turnHeadScale(progress:number){
+  const t=clamp(progress);
+  const at=.3333333333333333,b=.6666666666666666;
+  const distance=Math.min(Math.abs(t-at),Math.abs(t-b));
+  return .24+.76*ease(clamp(distance/.105));
+}
 export function motionBlend(time:number,start:number,length:number,fadeIn=.2,fadeOut=.24) {
   if(time<=start||time>=start+length)return 0;
   return Math.min(ease(clamp((time-start)/Math.min(fadeIn,length*.4))),

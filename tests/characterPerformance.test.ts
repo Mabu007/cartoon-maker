@@ -6,7 +6,7 @@ import { mouthGeometry,mouthParameters,blendMouthParameters } from '../src/engin
 import { facialPerformance } from '../src/engine/facialAnimation.ts';
 import { performanceHandPose } from '../src/engine/handPerformance.ts';
 import { sampleTimedViseme,visemeNames } from '../src/engine/visemes.ts';
-import { motionBlend,travelProgress,travelSpeed,footContactAt } from '../src/engine/animation.ts';
+import { motionBlend,travelProgress,travelSpeed,footContactAt,turnHeadScale } from '../src/engine/animation.ts';
 import { evaluate,movementPosition,MOVIE_FRAME_RATE } from '../src/engine/evaluate.ts';
 const project=makeProject(true),c=project.characters[0];
 const mood=(shape:typeof visemeNames[number],time=1)=>
@@ -194,4 +194,13 @@ test('preview and export at identical timestamps reproduce exactly the same pose
   const moodB=facialPerformance(time,actor.id,second.action,second.expression,.6,second.viseme,second.focus);
   assert.deepEqual(mouthGeometry(c,moodA,first.view),mouthGeometry(c,moodB,second.view));
  }
+});
+
+test('turning squashes the head at view boundaries and recovers full proportions',()=>{
+  assert.equal(turnHeadScale(0),1);
+  assert.equal(turnHeadScale(1),1);
+  assert(turnHeadScale(1/3)<.26);
+  assert(turnHeadScale(2/3)<.26);
+  assert(turnHeadScale(.5)>.95);
+  for(let i=0;i<=100;i++)assert(turnHeadScale(i/100)>=.23);
 });

@@ -32,7 +32,7 @@ export function heldGripPoint(character: Character, view: View, pose: JointPose)
 export function drawActor(g: Graphics, face: Graphics, c: Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
-  actionTime = time, gaitWeight=1, listening=false) {
+  actionTime = time, gaitWeight=1, listening=false, turnScale=1) {
   const art = viewArt[view];
   const r = rig(c, pose, art.width);
   const limbWidth = 10 * c.thickness;
@@ -91,7 +91,7 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
   arm('right', Boolean(held));
   face.position.set(r.head.x, r.head.y);
   face.angle = r.angle + (listening ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
-  face.scale.set(c.head);
+  face.scale.set(c.head*turnScale,c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
   const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus);
   if (action === 'blink' && actionTime < .22) mood.blink = Math.max(mood.blink, 1 - Math.abs(actionTime - .11) / .11);
