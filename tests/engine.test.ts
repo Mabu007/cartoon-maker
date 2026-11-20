@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { Graphics, GraphicsPath } from 'pixi.js';
+import { illustratedPath } from '../src/engine/illustration.ts';
+import { fitCharacterPreview, PREVIEW_FOOT_PADDING, PREVIEW_GROUND_Y, PREVIEW_TOP_PADDING } from '../src/engine/previewLayout.ts';
 import { drawActor } from '../src/engine/actorArt.ts';
 import test from 'node:test';
 import { animations, armIK, blend, rig, sample, skeleton } from '../src/engine/animation.ts';
@@ -128,4 +130,32 @@ test('illustrated character paths render without a DOM, WebGL, or SVG document i
     body.destroy();
     face.destroy();
   }
+});
+
+test('all character presets and extreme proportions fit head, hair, and shoes in the preview', () => {
+  const tall = { ...characters[0], height: 1.3, head: 1.35, torso: 1.3, arms: 1.3, legs: 1.3, hair: 'afro' as const };
+  const short = { ...characters[1], height: .75, head: .75, torso: .75, arms: .75, legs: .75, hair: 'braids' as const };
+  for (const character of [...characters, tall, short]) {
+    for (const action of actions) {
+      const fit = fitCharacterPreview(character, 1.85, action);
+      assert(fit.scale > 0 && fit.scale <= 1.85);
+      assert(fit.footY < 540, character.name + ' / ' + action + ' feet');
+      assert.equal(fit.y, PREVIEW_GROUND_Y);
+      assert(fit.maximumZoom >= fit.scale);
+      const top = rig(character, {}, 1).head.y - (50 + (['afro', 'puff', 'curls'].includes(character.hair) ? 28 : ['braids', 'locs'].includes(character.hair) ? 19 : 9)) * character.head;
+      assert(PREVIEW_GROUND_Y + top * fit.scale >= PREVIEW_TOP_PADDING - .01, character.name + ' / ' + action + ' hair');
+    }
+  }
+  assert.equal(PREVIEW_FOOT_PADDING, 14);
+  assert(Number.isFinite(fitCharacterPreview(characters[0], Number.NaN).scale));
+});
+
+test('illustrated SVG paths are reused without changing character geometry or rendering', () => {
+  const d = 'M 0 0 L 12 0 C 12 7 5 12 0 0 Z';
+  assert.strictEqual(illustratedPath(d), illustratedPath(d));
+  const front = new Graphics(), face = new Graphics();
+  drawActor(front, face, characters[0], 'front', {}, 'happy', 0);
+  assert(front.context.instructions.length > 0 && face.context.instructions.length > 0);
+  front.destroy();
+  face.destroy();
 });
