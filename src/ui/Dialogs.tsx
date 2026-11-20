@@ -129,7 +129,9 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
       setLipStatus(analysis.source === 'rhubarb' ? 'Audio-aligned mouth animation ready.' : 'Estimated mouth animation; Rhubarb unavailable.');
       add({ ...common, track: 'dialogue', text: text.trim(), actor, visemes: analysis.cues });
     } else {
-      add({ ...common, track: request.track === 'music' ? 'music' : 'audio', name: name.trim().slice(0, 80) || (request.track === 'music' ? 'Music' : 'SFX') });
+      const title = name.trim().slice(0, 80);
+      if (request.track === 'music') add({ ...common, track: 'music', name: title || 'Music' });
+      else add({ ...common, track: 'audio', name: title || 'SFX' });
     }
   });
   return <Modal title={isDialogue ? 'Add dialogue' : request.track === 'music' ? 'Add music' : 'Add sound effect'} description={isDialogue ? 'Generate a voice, record your own, or attach an audio file.' : request.track === 'music' ? 'Import a soundtrack or music loop.' : 'Import a sound effect or recording.'} close={close}>
