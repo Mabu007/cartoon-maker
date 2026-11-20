@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { ScriptElement, StoryBibleSchema, type DirectionData, type Production, type ScriptLine, type ScriptSceneData } from './schema.ts';
+import { TimelineClip, ScriptElement, StoryBibleSchema, type DirectionData, type Production, type ScriptLine, type ScriptSceneData } from './schema.ts';
 
-export const aiTasks = ['brainstorm', 'screenplay', 'direct'] as const;
+export const aiTasks = ['brainstorm', 'screenplay', 'direct', 'timeline'] as const;
 export type AiTask = typeof aiTasks[number];
 const id = z.string().min(1).max(100);
 const content = ScriptElement.omit({ id: true });
@@ -14,10 +14,19 @@ export const directionEdits = z.strictObject({
     z.strictObject({ op: z.literal('remove'), lineId: id })
   ])).max(20)
 });
+export const timelineEdits = z.strictObject({
+  message: z.string().min(1).max(1500),
+  edits: z.array(z.discriminatedUnion('op', [
+    z.strictObject({ op: z.literal('insert'), clip: TimelineClip }),
+    z.strictObject({ op: z.literal('replace'), clipId: id, clip: TimelineClip }),
+    z.strictObject({ op: z.literal('remove'), clipId: id })
+  ])).max(20)
+});
 export const aiSchemas = {
   brainstorm: z.strictObject({ message: z.string().min(1).max(3500), proposal: StoryBibleSchema.optional() }),
   screenplay: sceneDraft,
-  direct: directionEdits
+  direct: directionEdits,
+  timeline: timelineEdits
 };
 export type DirectorEdit = z.infer<typeof directionEdits>;
 
