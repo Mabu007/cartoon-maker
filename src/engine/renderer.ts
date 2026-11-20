@@ -51,9 +51,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     const { actors, camera, sounds } = lastFrame;
     if (options.characterPreview) {
       background.clear().rect(0, 0, WIDTH, HEIGHT).fill('#635575');
-      background.rect(0, 435, WIDTH, 105).fill('#493b56');
+      background.rect(0, 443, WIDTH, 97).fill('#493b56');
       for (let x = 0; x < WIDTH; x += 86) background.roundRect(x + 12, 25, 52, 400, 26).fill({ color: x % 172 === 0 ? '#756687' : '#6d5d80', alpha: .72 });
-      background.moveTo(0, 435).lineTo(WIDTH, 435).stroke({ color: '#b59ac6', width: 3, alpha: .55 });
+      background.moveTo(0, 443).lineTo(WIDTH, 443).stroke({ color: '#b59ac6', width: 3, alpha: .55 });
       lastEnvironment = undefined;
     } else if (lastEnvironment !== scene.environment) { drawWorld(background.clear(), scene.environment); lastEnvironment = scene.environment; }
     const cropCenter = format === '16:9' || camera.zoom > 1 ? camera.x : WIDTH / 2;
