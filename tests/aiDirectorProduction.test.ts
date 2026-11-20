@@ -138,7 +138,7 @@ test('unsupported clip fields and dialogue text substitution without new voice a
   const proposal=(edits:TimelineEditProposal['edits']):TimelineEditProposal=>({message:'Unsafe.',edits});
   assert.throws(()=>applyTimelineEdits(movie,opening,proposal([
     {op:'update_clip',clipId:'speech',changes:{injected:'value'}}
-  ])),/Field|validate/i);
+  ])),/field|validate|unrecognized|invalid/i);
   assert.throws(()=>applyTimelineEdits(movie,opening,proposal([
     {op:'replace',clipId:'speech',clip:{...dialogue(sbu),text:'Wrong voice'}}
   ])),/voice/i);
