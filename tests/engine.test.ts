@@ -215,6 +215,7 @@ test('seat deletion cannot leave characters sitting on air and can reassign anot
   assert.equal(safeClip?.track === 'body' && safeClip.target, undefined);
   const standing = evaluate(withoutSofa, 2).actors.find(item => item.id === 'actor-zee')!;
   assert(standing.lift > -20, 'actor must be standing on scene floor');
+  assert(evaluate(withoutSofa, 0).actors.find(item => item.id === 'actor-zee')!.lift > -5, 'actor must never spend the first frames sitting without a chair');
   assert(ProjectDocument.safeParse({ ...demo, scenes: [withoutSofa] }).success);
 
   const reassigned = removeObjectWithDecisions(withChair, 'sofa', { [deps[0].clip.id]: 'object:alternate-chair' });
