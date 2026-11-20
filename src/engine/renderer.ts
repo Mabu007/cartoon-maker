@@ -67,6 +67,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   let wasCharacterPreview = false;
   let lastFrame: ReturnType<typeof evaluate> | undefined;
   const hitboxes: { id: string; left: number; right: number; top: number; bottom: number; depth: number }[] = [];
+  let lastSelectedId: string | undefined;
   function get(id: string, isActor = false) {
     let entity = items.get(id);
     if (!entity) {
@@ -128,9 +129,12 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       backdrop.width = WIDTH; backdrop.height = HEIGHT; backdrop.visible = true;
     }
     const cropCenter = format === '16:9' || camera.zoom > 1 ? camera.x : WIDTH / 2;
-    world.scale.set(options.edit ? 1 : camera.zoom);
-    world.position.set(width / 2 - (options.edit ? WIDTH / 2 : cropCenter * camera.zoom), height / 2 - (options.edit ? HEIGHT / 2 : camera.y * camera.zoom));
+    // Editing shares the exact preview camera transform; pointer picking uses
+    // world.toLocal to invert it, so props remain draggable in close-ups.
+    world.scale.set(camera.zoom);
+    world.position.set(width / 2 - cropCenter * camera.zoom, height / 2 - camera.y * camera.zoom);
     guides.clear(); fade.clear(); hitboxes.length = 0;
+    lastSelectedId = options.selected;
     const used = new Set<string>();
     const carrying = new Set(actors.flatMap(actor => actor.held && actor.visible ? [actor.held.id] : []));
     const characterById = new Map(characters.map(character => [character.id, character]));
@@ -247,7 +251,10 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   }
   function pick(x: number, y: number) {
     const point = world.toLocal({ x: x * pixelWidth / width, y: y * pixelHeight / height });
-    const hit = hitboxes.filter(item => point.x >= item.left && point.x <= item.right && point.y >= item.top && point.y <= item.bottom).sort((a, b) => b.depth - a.depth)[0];
+    const matches = hitboxes.filter(item => point.x >= item.left && point.x <= item.right && point.y >= item.top && point.y <= item.bottom).sort((a, b) => b.depth - a.depth);
+    // Keep a selected prop draggable even when its geometry intersects an
+    // actor's hitbox at higher render depth.
+    const hit = matches.find(item => item.id === lastSelectedId) ?? matches[0];
     return { id: hit?.id, x: point.x, y: point.y };
   }
   return { canvas: app.canvas, draw, pick, width, height, prepareImages,
