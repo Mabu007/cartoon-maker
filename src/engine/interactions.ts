@@ -15,7 +15,7 @@ export function anchorFor(object: Prop): Anchor | undefined {
   }
   return anchors[object.kind];
 }
-const fallbackFor = (clip: DependentAction): Action => clip.action === 'sit' ? 'stand' : 'idle';
+const fallbackFor = (clip: DependentAction): Action => clip.action === 'sit' ? 'sit' : 'idle';
 
 export function compatibleObjects(scene: Scene, action: Action, excludeId?: string): Prop[] {
   return scene.objects.filter(object =>
@@ -43,13 +43,13 @@ export const defaultObjectDecision = (clip: DependentAction): string => 'action:
 
 function resolvedAction(clip: DependentAction, decision: string | undefined): DependentAction {
   const actionName = decision?.startsWith('action:') ? decision.slice(7) : fallbackFor(clip);
-  const action: Action = (actions as readonly string[]).includes(actionName) && actionName !== 'sit' ? actionName as Action : fallbackFor(clip);
+  const action: Action = (actions as readonly string[]).includes(actionName) ? actionName as Action : fallbackFor(clip);
   const { target: _target, ...rest } = clip;
   return { ...rest, action, layer: action === 'stand' ? 'body' : clip.layer };
 }
 
-/** Strong deletion invariant: a removed prop can never leave a dangling target
- * or an unsupported seated pose, regardless of which UI route caused deletion.
+/** Removing a prop clears dangling targets but preserves independent
+ * character actions, including free-form sitting.
  */
 export function removeObjectWithDecisions(scene: Scene, objectId: string, decisions: ObjectDependencyDecision = {}): Scene {
   const removed = scene.objects.find(item => item.id === objectId);
@@ -78,9 +78,9 @@ export function repairOrphanedObjectActions(scene: Scene): Scene {
   const clips = valid.map(clip => {
     if (clip.track !== 'body') return clip;
     const target = clip.target ? scene.objects.find(item => item.id === clip.target) : undefined;
-    if (clip.action === 'sit' && (!target || anchorFor(target)?.action !== 'sit')) {
+    if (clip.action === 'sit' && clip.target && (!target || anchorFor(target)?.action !== 'sit')) {
       changed = true;
-      return resolvedAction(clip, 'action:stand');
+      return resolvedAction(clip, 'action:sit');
     }
     if (clip.target && (!target || (clip.action !== 'sit' && anchorFor(target)?.action === 'sit'))) {
       changed = true;
