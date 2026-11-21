@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { makeProject } from '../src/engine/presets.ts';
+import { ProjectDocument } from '../src/engine/schema.ts';
+import { evaluate } from '../src/engine/evaluate.ts';
+import { addSceneActor, enterSceneActor, exitSceneActor, setActorVisibleAt } from '../src/engine/actorPresence.ts';
+import { mediaKey, mediaLimits, mediaTypes, presignMedia, validAssetId } from '../server/r2.ts';
+
+test('third cast member enters at playhead, runs on the movement track, then remains in scene',()=>{
+  const movie=makeProject(false);
+  const cast=movie.characters;
+  const first=addSceneActor(movie.scenes[0],cast[0].id,0,'place');
+  const second=addSceneActor(first.scene,cast[1].id,0,'place');
+  const third=addSceneActor(second.scene,cast[2].id,8,'run');
+  const early=evaluate(third.scene,7).actors;
+  assert.equal(early.find(a=>a.id===third.actorId)?.visible,false);
+  assert.equal(early.filter(a=>a.visible).length,2);
+  assert.equal(evaluate(third.scene,8).actors.find(a=>a.id===third.actorId)?.visible,true);
+  const move=third.scene.clips.find(c=>c.track==='movement'&&c.actor===third.actorId);
+  assert(move&&move.track==='movement');
+  assert.equal(move.gait,'run');
+  assert.equal(evaluate(third.scene,8).actors.find(a=>a.id===third.actorId)?.x,move.fromX);
+  assert.equal(evaluate(third.scene,move.start+move.length+.01).actors.find(a=>a.id===third.actorId)?.x,move.toX);
+  assert(ProjectDocument.safeParse({...movie,scenes:[third.scene]}).success);
+});
+test('a character can walk out, disappear at the scheduled exit, and return later',()=>{
+  const movie=makeProject(false);
+  const first=addSceneActor(movie.scenes[0],movie.characters[0].id,0,'place');
+  const out=exitSceneActor(first.scene,first.actorId,4,'run');
+  const movement=out.clips.find(c=>c.track==='movement'&&c.actor===first.actorId);
+  assert(movement&&movement.track==='movement');
+  assert.equal(evaluate(out,3.9).actors[0].visible,true);
+  assert.equal(evaluate(out,movement.start+movement.length+.11).actors[0].visible,false);
+  const back=enterSceneActor(out,first.actorId,13,'walk');
+  assert.equal(evaluate(back,13).actors[0].visible,true);
+  assert.equal(evaluate(back,25).actors[0].visible,true);
+  assert(ProjectDocument.safeParse({...movie,scenes:[back]}).success);
+});
+test('actor visibility cues remain editable and preserve older untimed presence clips',()=>{
+  const movie=makeProject(false);
+  const first=addSceneActor(movie.scenes[0],movie.characters[0].id,0,'place');
+  const hidden=setActorVisibleAt(first.scene,first.actorId,6,false);
+  const shown=setActorVisibleAt(hidden,first.actorId,9,true);
+  assert.equal(evaluate(hidden,7).actors[0].visible,false);
+  assert.equal(evaluate(shown,7).actors[0].visible,false);
+  assert.equal(evaluate(shown,10).actors[0].visible,true);
+  assert(ProjectDocument.safeParse({...movie,scenes:[shown]}).success);
+});
+test('actor scheduling refuses overlapping movement clips, missing characters and late exits',()=>{
+  const movie=makeProject(false);
+  const added=addSceneActor(movie.scenes[0],movie.characters[0].id,2,'walk');
+  assert.throws(()=>exitSceneActor(added.scene,added.actorId,2.3,'walk'),/overlaps/i);
+  assert.throws(()=>addSceneActor(added.scene,'',0),/Choose/);
+  assert.throws(()=>exitSceneActor(added.scene,added.actorId,added.scene.duration-.05,'walk'),/earlier/i);
+});
+test('R2 signed URLs restrict paths, preserve content types and do not reveal secrets',()=>{
+  const creds={endpoint:'https://test123.r2.cloudflarestorage.com',bucket:'toonroom-private',accessKeyId:'ACCESS_TEST',secretAccessKey:'DO_NOT_EXPOSE'};
+  const id='6740c0b0-0000-4000-8000-06b1d303b1a1';
+  assert(validAssetId(id));
+  const key=mediaKey('userid_123','audio',id);
+  assert.equal(key,'users/userid_123/audio/'+id);
+  assert.throws(()=>mediaKey('../victim','audio',id));
+  assert.equal(validAssetId('../../other'),false);
+  const at=new Date('2026-11-21T10:20:00.000Z');
+  const get=presignMedia(creds,key,'GET',undefined,at,120);
+  const put=presignMedia(creds,key,'PUT','audio/webm',at,120);
+  assert(get.includes('X-Amz-Signature='));
+  assert(put.includes('X-Amz-SignedHeaders=content-type%3Bhost'));
+  assert.equal(new URL(put).pathname,'/toonroom-private/'+key);
+  assert(!get.includes(creds.secretAccessKey));
+  assert.notEqual(get,put);
+  assert.equal(presignMedia(creds,key,'GET',undefined,at,120),get);
+  assert.equal(mediaTypes.audio.has('audio/webm'),true);
+  assert(mediaLimits.video>mediaLimits.audio);
+});
+test('R2 image references are accepted in saved projects without embedded media',()=>{
+  const movie=makeProject(false);
+  const image='r2:image:6740c0b0-0000-4000-8000-06b1d303b1a1';
+  const scene={...movie.scenes[0],backgroundImage:image};
+  const parsed=ProjectDocument.parse({...movie,scenes:[scene]});
+  assert.equal(parsed.scenes[0].backgroundImage,image);
+});
