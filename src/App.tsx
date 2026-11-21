@@ -973,7 +973,6 @@ export default function App() {
          duplicateEntity={()=>duplicateSelection()} removeEntity={()=>removeSelection()} move={(id, coords) => {
           const actor = scene.actors.find(item => item.id === id), object = scene.objects.find(item => item.id === id);
           if (actor) {
-            const dx = coords.x - actor.x, dy = coords.y - actor.y;
             editScene(current => translateSceneActor(current,id,coords));
           } else if (object) patchObject({ ...object, ...coords });
         }}/></div>
