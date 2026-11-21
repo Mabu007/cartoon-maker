@@ -100,7 +100,8 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
   async function load(blob:Blob,name:string){
     if(!blob.size||blob.size>20*1024*1024)throw Error('Choose an audio file smaller than 20 MB.');
     let length:number;try{length=await audioLength(blob);}catch{throw Error('This audio could not be decoded. Try WAV, MP3, M4A or WebM.');}
-    if(length<.1||length>180)throw Error('Record between 0.1 and 180 seconds.');
+    if(length<.1 || length>(isDialogue?180:1200))
+      throw Error(isDialogue?'Record dialogue between 0.1 and 180 seconds.':'Use a song or sound effect shorter than 20 minutes.');
     if(alive.current)setAsset({blob,name,url:URL.createObjectURL(blob),length});
   }
   async function record(){
