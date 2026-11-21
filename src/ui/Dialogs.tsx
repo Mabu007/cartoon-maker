@@ -4,14 +4,14 @@ import { animations, clamp, gaitSpeeds } from '../engine/animation.ts';
 import { soundNames } from '../engine/presets.ts';
 import { anchorFor, compatibleObjects } from '../engine/interactions.ts';
 import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track, type Character } from '../engine/schema.ts';
-import { type Format } from '../engine/renderer.ts';
+import { exportFormatLabel, type Format } from '../engine/videoFormats.ts';
 import { evaluate, projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
 import { RecordingWaveform } from './RecordingWaveform.tsx';
 
-import { browserExporter, exportCodec } from '../services/export.ts';
+import { browserExporter, canExportVideo } from '../services/export.ts';
 import type { SavedProject } from '../services/projects.ts';
 import { clipLabel, clock, formats, IconButton, Modal, Select, trackIcon } from './shared.tsx';
 
@@ -153,7 +153,7 @@ export function ExportDialog({ project, initialFormat, initialSubtitles, close }
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => () => { if (download) URL.revokeObjectURL(download.url); }, [download]);
-  const codec = exportCodec();
+  const exportAvailable = canExportVideo();
   const start = async () => {
     const controller = new AbortController(); request.current = controller; setError(''); setProgress(0); setDownload(undefined);
     try {
@@ -165,12 +165,13 @@ export function ExportDialog({ project, initialFormat, initialSubtitles, close }
   const filename = project.name.replace(/[^\w -]/g, '').trim().replaceAll(' ', '-') || 'cartoon';
   return <Modal title="Export video" description="Render every scene in project order, with voices and sound mixed in." close={close}>
     <div className="dialog-fields"><div className="export-summary"><Clapperboard size={25}/><div><strong>{project.name}</strong><small>{project.scenes.length} {project.scenes.length === 1 ? 'scene' : 'scenes'} · {clock(projectDuration(project.scenes))}</small></div></div>
-    <label className="field">Frame size<Select aria="Export frame size" value={format} onChange={setFormat} options={formats} render={id => id === '16:9' ? '16:9 · 1280 × 720' : id === '9:16' ? '9:16 · 720 × 1280' : '1:1 · 720 × 720'}/></label>
-    <label className="check"><input type="checkbox" checked={subtitles} onChange={e => setSubtitles(e.target.checked)}/><Captions size={16}/> Include subtitles</label>
-    <p className="small-text">{codec ? `Format: ${codec.includes('mp4') ? 'MP4' : 'WebM'} · 30 fps target. Keep this tab visible while the cartoon renders.` : 'This browser cannot export a canvas video with audio.'}</p>
+    <label className="field">Frame size<Select aria="Export frame size" value={format} onChange={value=>{setFormat(value);setDownload(undefined);}} options={formats} render={exportFormatLabel} disabled={progress!==null}/></label>
+    <label className="check"><input type="checkbox" checked={subtitles} disabled={progress!==null} onChange={e => {setSubtitles(e.target.checked);setDownload(undefined);}}/><Captions size={16}/> Include subtitles</label>
+    <p className="small-text">{exportAvailable ? '30 fps. MP4 when supported by your browser, with WebM as the fallback. Keep this tab visible during export.' : 'This browser cannot export video with audio.'}</p>
     {progress !== null && <div className="export-progress"><span role="status">Rendering video… {Math.round(progress * 100)}%</span><progress value={progress} max={1}/></div>}
-    {error && <p className="form-error" role="alert">{error}</p>}{download && <video className="export-preview" controls src={download.url} aria-label="Exported video preview"/>}</div>
-    <footer className="modal-footer"><span className="spacer"/>{progress !== null ? <button className="quiet" onClick={() => request.current?.abort()}>Cancel export</button> : <><button className="quiet" onClick={close}>Close</button>{download ? <a className="primary" href={download.url} download={`${filename}.${download.extension}`}><Download size={17}/> Download {download.extension.toUpperCase()}</a> : <button className="primary" disabled={!codec} onClick={() => void start()}><Download size={17}/> Render video</button>}</>}</footer>
+    {error && <p className="form-error" role="alert">{error}</p>}{download && <video className="export-preview" controls src={download.url} aria-label="Exported video preview"/>}
+    {format==='9:16'&&download?.extension==='webm'&&<p className="small-text">This browser produced a WebM. TikTok uploads use MP4 or another supported video format.</p>}</div>
+    <footer className="modal-footer"><span className="spacer"/>{progress !== null ? <button className="quiet" onClick={() => request.current?.abort()}>Cancel export</button> : <><button className="quiet" onClick={close}>Close</button>{download ? <a className="primary" href={download.url} download={`${filename}.${download.extension}`}><Download size={17}/> Download {download.extension.toUpperCase()}</a> : <button className="primary" disabled={!exportAvailable} onClick={() => void start()}><Download size={17}/> Render video</button>}</>}</footer>
   </Modal>;
 }
 

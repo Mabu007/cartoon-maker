@@ -10,10 +10,13 @@ import { cameraViewport, screenToWorld, worldEntityBounds, pointHitsEntity, rend
 import { drawProp, drawWorld, ellipse, propSize, rect } from './art.ts';
 import { evaluate } from './evaluate.ts';
 import { HEIGHT, WIDTH, type Character, type Scene } from './schema.ts';
+import { videoFormats, type Format } from './videoFormats.ts';
 
-export type Format = '16:9' | '9:16' | '1:1';
-const sizes: Record<Format, [number, number]> = { '16:9': [960, 540], '9:16': [303.75, 540], '1:1': [540, 540] };
-export const dimensions = (format: Format, scale = 1): [number, number] => sizes[format].map(n => Math.round(n * scale)) as [number, number];
+export type { Format } from './videoFormats.ts';
+export const dimensions = (format: Format, scale = 1): [number, number] => {
+  const [width, height] = videoFormats[format].viewport;
+  return [Math.round(width * scale), Math.round(height * scale)];
+};
 
 type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
   foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; imageData?: string };
@@ -22,7 +25,7 @@ export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: nu
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
   const app = new Application();
-  const [width, height] = sizes[format];
+  const [width, height] = videoFormats[format].viewport;
   const [pixelWidth, pixelHeight] = dimensions(format, resolution);
   await app.init({ width: pixelWidth, height: pixelHeight, resolution: 1, antialias: true, autoStart: false, background: '#24202c', preference: ['webgl', 'webgpu', 'canvas'], preserveDrawingBuffer: capture, powerPreference: 'low-power', hello: false });
   app.canvas.setAttribute('aria-label', 'Cartoon scene preview');
@@ -119,7 +122,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   function draw(scene: Scene, characters: Character[], time: number, options: RenderOptions = {}) {
     repaintCostume=()=>{draw(scene,characters,time,options);};
     const characterById = new Map(characters.map(character => [character.id, character]));
-    lastFrame = evaluate(scene, time, characterById);
+    lastFrame = evaluate(scene, time, characterById, width);
     const { actors, camera, sounds } = lastFrame;
     if (options.characterPreview) {
       if (!wasCharacterPreview) {

@@ -841,8 +841,8 @@ select {
   touch-action: none;
 }
 .stage-format.format-9-16 {
-  width: min(100cqw, calc(100cqh * 304 / 540));
-  aspect-ratio: 304 / 540;
+  width: min(100cqw, calc(100cqh * 9 / 16));
+  aspect-ratio: 9 / 16;
 }
 .stage-format.format-1-1 {
   width: min(100cqw, 100cqh);

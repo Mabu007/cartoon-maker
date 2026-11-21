@@ -3,13 +3,13 @@ import type { SeatingKind } from '../engine/seatingCatalog.ts';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X, ChevronDown, Armchair, BookOpen, DoorOpen, LampFloor, Monitor, Coffee, Smartphone, Sprout, Mic, PanelTop, Table2, Store, Cable, Sofa, UserRound, MoveRight, Activity, Smile, AudioLines, Music2, Clapperboard, Blend, Image, Eye, Hand } from 'lucide-react';
 import { label, shotLabel, type Character, type Clip } from '../engine/schema.ts';
-import type { Format } from '../engine/renderer.ts';
+export { formats } from '../engine/videoFormats.ts';
 
 export function IconButton({ title, children, onClick, disabled, active, className = '' }: { title: string; children: ReactNode; onClick?: () => void; disabled?: boolean; active?: boolean; className?: string }) {
   return <button type="button" aria-label={title} title={title} className={`icon-button ${active ? 'active' : ''} ${className}`} onClick={onClick} disabled={disabled}>{children}</button>;
 }
-export function Select<T extends string>({ value, onChange, options, aria, render = label }: { value: T; onChange: (value: T) => void; options: readonly T[]; aria: string; render?: (value: T) => string }) {
-  return <span className="select-wrap"><select aria-label={aria} value={value} onChange={event => onChange(event.target.value as T)}>{options.map(item => <option key={item} value={item}>{render(item)}</option>)}</select><ChevronDown size={13} /></span>;
+export function Select<T extends string>({ value, onChange, options, aria, render = label, disabled }: { value: T; onChange: (value: T) => void; options: readonly T[]; aria: string; render?: (value: T) => string; disabled?: boolean }) {
+  return <span className="select-wrap"><select aria-label={aria} value={value} disabled={disabled} onChange={event => onChange(event.target.value as T)}>{options.map(item => <option key={item} value={item}>{render(item)}</option>)}</select><ChevronDown size={13} /></span>;
 }
 export function NumberField({ value, onChange, text, min, max, step = 1 }: { value: number; onChange: (value: number) => void; text: string; min: number; max: number; step?: number }) {
   return <label className="number-field"><span>{text}</span><input key={value} aria-label={text} type="number" step={step} min={min} max={max} defaultValue={Math.round(value * 100) / 100} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} onBlur={e => { const next = Number(e.target.value); if (e.target.value.trim() && Number.isFinite(next)) { const valid = Math.min(max, Math.max(min, next)); if (valid !== value) onChange(valid); e.target.value = String(valid); } else e.target.value = String(value); }} /></label>;
@@ -28,7 +28,6 @@ export function Avatar({ character: c, large = false }: { character: Character; 
 }
 export const propIcon = { sofa: Sofa, chair: Armchair, table: Table2, desk: Table2, door: DoorOpen, window: PanelTop, television: Monitor, lamp: LampFloor, cup: Coffee, book: BookOpen, phone: Smartphone, plant: Sprout, microphone: Mic, streetlight: Cable, counter: Store, image: Image, ...Object.fromEntries(seatingStyles.map(kind=>[kind,Armchair])) as Record<SeatingKind,typeof Armchair> };
 export const trackIcon = { actors: UserRound, movement: MoveRight, body: Activity, face: Smile, gaze: Eye, props: Hand, dialogue: AudioLines, audio: AudioLines, music: Music2, camera: Clapperboard, transition: Blend };
-export const formats: Format[] = ['16:9', '9:16', '1:1'];
 export const clipLabel = (clip: Clip, names: Record<string, string> = {}) => {
   switch (clip.track) {
     case 'actors': return (names[clip.actor] ?? 'Actor') + (clip.visible===true?' · appears':clip.visible===false?' · disappears':' · on screen');

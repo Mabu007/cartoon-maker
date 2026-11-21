@@ -28,7 +28,7 @@ export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, pro
   const weight = clamp((t - left.time) / Math.max(1e-9, right.time - left.time));
   return { x: mix(left.x, right.x, weight), y: mix(left.y, right.y, weight) };
 }
-export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<string,Character>) {
+export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<string,Character>, viewportWidth: number = WIDTH) {
   const t = clamp(time, 0, Math.max(0, scene.duration - .000001));
   const timelineClips = scene.clips.filter(clip => !scene.trackSettings?.[clip.track]?.muted);
   const sounds = timelineClips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'music' || clip.track === 'dialogue') && audibleAudioTrack(scene,clip.track) && active(clip, t));
@@ -194,7 +194,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   const cameraClip = latest(cameraClips.filter(clip => active(clip, t)));
   function frame(clip?: typeof cameraClip): CameraState {
     const target = actors.find(actor => actor.id === clip?.focus && actor.visible) ?? actors.find(actor => actor.visible);
-    if (!clip || clip.shot === 'wide' || clip.shot === 'establishing' || !target) return { x: WIDTH / 2, y: HEIGHT / 2, zoom: 1 };
+    const horizontal = (x: number, zoom: number) => clamp(x, viewportWidth / (2 * zoom), WIDTH - viewportWidth / (2 * zoom));
+    if (!clip || !target) return { x: WIDTH / 2, y: HEIGHT / 2, zoom: 1 };
+    if (clip.shot === 'wide' || clip.shot === 'establishing')
+      return { x: horizontal(clip.focus ? target.x : WIDTH / 2, 1), y: HEIGHT / 2, zoom: 1 };
     if (clip.shot === 'two-shot') {
       // Frame the focused character and their nearest visible scene partner,
       // not the average of every actor (which could leave both off-camera).
@@ -202,10 +205,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         .sort((a, b) => Math.abs(a.x - target.x) - Math.abs(b.x - target.x))[0];
       const pair = partner ? [target, partner] : [target];
       const spread = partner ? Math.abs(target.x - partner.x) : 0;
-      const zoom = clamp((WIDTH - 180) / (spread + 200), 1, 1.55);
+      const zoom = clamp((viewportWidth - 180) / (spread + 200), 1, 1.55);
       const mid = pair.reduce((sum, actor) => sum + actor.x, 0) / pair.length;
       const midY = pair.reduce((sum, actor) => sum + actor.y - 120 * actor.scale - actor.lift, 0) / pair.length;
-      return { x: clamp(mid, WIDTH / (2 * zoom), WIDTH - WIDTH / (2 * zoom)),
+      return { x: horizontal(mid, zoom),
         y: clamp(midY, HEIGHT / (2 * zoom), HEIGHT - HEIGHT / (2 * zoom)), zoom };
     }
     const close = ['close-up', 'reaction', 'extreme-close-up'].includes(clip.shot);
@@ -214,7 +217,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const shoulder = clip.shot === 'over-shoulder' ? actors.find(actor => actor.id !== target.id && actor.visible) : undefined;
     const desiredX = shoulder ? target.x + (shoulder.x - target.x) * .24 : target.x;
     const view = clip.shot === 'front' || clip.shot === 'side' || clip.shot === 'back' ? clip.shot : undefined;
-    return { x: clamp(desiredX, WIDTH / (2 * zoom), WIDTH - WIDTH / (2 * zoom)), y: clamp(desiredY, HEIGHT / (2 * zoom), HEIGHT - HEIGHT / (2 * zoom)), zoom, view };
+    return { x: horizontal(desiredX, zoom), y: clamp(desiredY, HEIGHT / (2 * zoom), HEIGHT - HEIGHT / (2 * zoom)), zoom, view };
   }
   const previous = frame(cameraClip && latest(cameraClips.filter(clip => clip.start < cameraClip.start)));
   const camera = cameraClip?.shot === 'hold' ? previous : frame(cameraClip);
