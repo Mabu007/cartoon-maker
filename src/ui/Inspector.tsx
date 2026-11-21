@@ -1,5 +1,5 @@
 import { MediaImage } from './MediaImage.tsx';
-import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, ArrowLeft, ArrowRight, FlipHorizontal } from 'lucide-react';
+import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, ArrowLeft, ArrowRight, FlipHorizontal, Footprints, Zap, Eye, EyeOff } from 'lucide-react';
 import { actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
 import { anchorFor, compatibleObjects, objectDependencies } from '../engine/interactions.ts';
 import { anchors } from '../engine/presets.ts';
@@ -8,7 +8,8 @@ import { changeClipTiming, type Selection } from '../studio.ts';
 import { resizeSceneTimeline } from '../engine/timelineEditing.ts';
 import { VoiceClipControls } from './VoiceClipControls.tsx';
 
-export function Inspector({ scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, setDestination, precision, rerecord, regenerateVoice, restoreVoiceVersion, alignVoiceClip }: {
+export function Inspector({ onPresence, scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, setDestination, precision, rerecord, regenerateVoice, restoreVoiceVersion, alignVoiceClip }: {
+  onPresence:(id:string,action:'walk-in'|'run-in'|'walk-out'|'run-out'|'show'|'hide')=>void;
   scene: Scene; actors: Record<string, string>; characters: Character[]; selection: Selection; select: (value: Selection) => void;
   patchActor: (actor: ActorData) => void; patchObject: (object: Prop) => void; patchClip: (clip: Clip) => void; patchScene: (patch: Partial<Scene>) => void;
   editCharacter: (character: Character) => void; addDialogue: () => void; addAction: () => void; scenes: number; sceneIndex: number; openScenes: () => void; remove: () => void; duplicate: () => void;
@@ -40,6 +41,18 @@ export function Inspector({ scene, actors, characters, selection, select, patchA
        <button type="button" className={actor.view==='side'&&actor.flip?'active':''} aria-pressed={actor.view==='side'&&actor.flip} onClick={()=>patchActor({...actor,view:'side',flip:true})}><ArrowLeft size={15}/> Face left</button>
        <button type="button" className={actor.view==='side'&&!actor.flip?'active':''} aria-pressed={actor.view==='side'&&!actor.flip} onClick={()=>patchActor({...actor,view:'side',flip:false})}><ArrowRight size={15}/> Face right</button>
        <button type="button" aria-label="Flip actor horizontally" title="Flip selected actor" onClick={()=>patchActor({...actor,flip:!actor.flip})}><FlipHorizontal size={16}/> Flip</button>
+     </div>
+     <div className="actor-entrance-section">
+       <strong>On-screen timing</strong>
+       <p className="small-text">Position the playhead first. Entrance and exit clips are editable on the timeline.</p>
+       <div className="actor-entrance-grid">
+         <button type="button" onClick={()=>onPresence(actor.id,'walk-in')}><Footprints size={15}/> Walk in</button>
+         <button type="button" onClick={()=>onPresence(actor.id,'run-in')}><Zap size={15}/> Run in</button>
+         <button type="button" onClick={()=>onPresence(actor.id,'walk-out')}><Footprints size={15}/> Walk out</button>
+         <button type="button" onClick={()=>onPresence(actor.id,'run-out')}><Zap size={15}/> Run out</button>
+         <button type="button" onClick={()=>onPresence(actor.id,'show')}><Eye size={15}/> Show now</button>
+         <button type="button" onClick={()=>onPresence(actor.id,'hide')}><EyeOff size={15}/> Hide now</button>
+       </div>
      </div><p className="small-text">Movement clips automatically orient actors in their travel direction.</p><button className="quiet full" onClick={addAction}><Clapperboard size={15}/> Choose action</button><button className="quiet full" onClick={addDialogue}><AudioLines size={15}/> Add dialogue</button>{character && <button className="quiet full" onClick={() => editCharacter(character)}>Edit character</button>}</details>}
       {object && <details open><summary>Appearance</summary>
          <button type="button" className="flip-prop-button" aria-pressed={!!object.flip} onClick={()=>patchObject({...object,flip:!object.flip})}><FlipHorizontal size={16}/> Flip object horizontally</button>
