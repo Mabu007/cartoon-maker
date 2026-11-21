@@ -9,6 +9,8 @@ import { evaluate, projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
+import { uploadR2Media } from '../services/media.ts';
+import { RecordingWaveform } from './RecordingWaveform.tsx';
 
 import { browserExporter, exportCodec } from '../services/export.ts';
 import type { SavedProject } from '../services/projects.ts';
@@ -90,7 +92,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
 }
 
 export type AudioRequest = { track: 'dialogue' | 'audio' | 'music'; actor?: string; start: number; replaceId?: string };
-export function AudioDialog({ request, actors, scene, add, close }: { request: AudioRequest; actors: Record<string, string>; characters: Character[]; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
+export function AudioDialog({ request, actors, scene, account, add, close }: { request: AudioRequest; actors: Record<string, string>; characters: Character[]; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
   const isDialogue=request.track==='dialogue';
   const [actor,setActor]=useState(request.actor??Object.keys(actors)[0]??''),[start,setStart]=useState(clamp(request.start,0,scene.duration-.1));
   const [asset,setAsset]=useState<{blob:Blob;url:string;length:number;name:string}>();
@@ -108,6 +110,7 @@ export function AudioDialog({ request, actors, scene, add, close }: { request: A
   async function record(){
     if(recorder.current?.state==='recording'){clearTimeout(limit.current);recorder.current.stop();return;}
     await work(async()=>{
+      setAsset(undefined);
       if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined')throw Error('Recording is unavailable in this browser. Upload audio instead.');
       let input:MediaStream;try{input=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}catch(e){throw Error(e instanceof DOMException&&e.name==='NotAllowedError'?'Microphone permission was denied. Allow the microphone in your browser or upload audio.':'No working microphone was found. Connect one or upload audio.');}
       if(!alive.current){input.getTracks().forEach(t=>t.stop());return;}
@@ -115,7 +118,7 @@ export function AudioDialog({ request, actors, scene, add, close }: { request: A
       try{
         const mic=new MediaRecorder(input);recorder.current=mic;const chunks:Blob[]=[];
         mic.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-        mic.onstop=()=>{clearTimeout(limit.current);input.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);void work(()=>load(new Blob(chunks,{type:mic.mimeType}),'Voice recording'));}};
+        mic.onstop=()=>{clearTimeout(limit.current);input.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);void work(()=>load(new Blob(chunks,{type:mic.mimeType.split(';')[0]||'audio/webm'}),'Voice recording'));}};
         mic.onerror=()=>{clearTimeout(limit.current);input.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);setError('The recording stopped unexpectedly. Try again or upload audio.');}};
         mic.start();setRecording(true);limit.current=setTimeout(()=>{if(mic.state==='recording')mic.stop();},179000);
       }catch(e){input.getTracks().forEach(t=>t.stop());throw e;}
@@ -125,7 +128,9 @@ export function AudioDialog({ request, actors, scene, add, close }: { request: A
     if(!asset)return;
     const analysis=isDialogue?await analyzeLocalLipSync(asset.blob):undefined;
     if(!alive.current)return;
-    const id=uid();await putAudio(id,asset.blob);if(!alive.current)return;
+    const id=uid();
+    if(account) await uploadR2Media(account,'audio',asset.blob,id);
+    await putAudio(id,asset.blob);if(!alive.current)return;
     const common={id:uid(),start,length:Math.min(asset.length,scene.duration-start),asset:'asset:'+id,offset:0,volume:1,muted:false};
     if(isDialogue&&analysis)add({...common,track:'dialogue',actor,text:'',visemes:analysis.cues,lipSync:{source:'dsp',engine:analysis.engine,cacheKey:analysis.cacheKey,analyzedDuration:analysis.duration}});
     else if(request.track==='music')add({...common,track:'music',name:asset.name.slice(0,80)});
@@ -134,8 +139,9 @@ export function AudioDialog({ request, actors, scene, add, close }: { request: A
   return <Modal title={isDialogue?(request.replaceId?'Replace voice':'Give your character a voice'):request.track==='music'?'Add music':'Add sound'} description={isDialogue?'Record yourself or upload audio. Mouth animation is created automatically on this device.':request.track==='music'?'Choose a soundtrack to place on the Music track. MP3, WAV, M4A and WebM supported.':'Choose a sound effect to place on the SFX track. MP3, WAV, M4A and WebM supported.'} close={close}>
     <div className="dialog-fields">{isDialogue&&<label className="field">Character<Select aria="Dialogue actor" value={actor} options={Object.keys(actors)} onChange={setActor} render={id=>actors[id]}/></label>}
     <div className="voice-source-buttons"><button className={recording?'danger':'primary'} disabled={busy} onClick={()=>void record()}>{recording?<Square size={19}/>:<Mic size={19}/>} {recording?'Stop recording':isDialogue?'Record voice':request.track==='music'?'Record music':'Record sound'}</button><label className="quiet file-button"><FileAudio size={18}/>{isDialogue?'Upload voice':request.track==='music'?'Upload music':'Upload SFX'}<input type="file" aria-label={isDialogue?'Upload voice recording':request.track==='music'?'Upload background music':'Upload sound effect'} accept="audio/*,.mp3,.wav,.ogg,.webm,.m4a" disabled={busy||recording} onChange={e=>{const file=e.target.files?.[0];if(file)void work(()=>load(file,file.name.replace(/\.[^.]+$/,'')));e.target.value='';}}/></label></div>
-    {recording&&<p className="recording-indicator" role="status">Recording… Speak naturally, then press Stop.</p>}
+    <RecordingWaveform stream={recording?stream.current:null} recording={recording} preview={asset?.blob}/>
     {asset&&<><audio controls src={asset.url} aria-label="Preview audio"/><p className="small-text">{asset.name} · {asset.length.toFixed(2)} seconds</p></>}
+    {!account&&<p className="small-text">Sign in to save recordings and other media to your private cloud library. Guest recordings are stored on this device.</p>}
     <label className="field">Start on timeline (seconds)<input aria-label="Recording start" type="number" min={0} max={scene.duration-.1} step={.01} value={start} onChange={e=>setStart(clamp(Number(e.target.value),0,scene.duration-.1))}/></label>
     {asset&&asset.length+start>scene.duration&&<p className="small-text">This recording will trim at the scene end. Extend the scene to hear the rest.</p>}
     {busy&&<p role="status">Preparing audio and automatic lip sync…</p>}{error&&<p className="form-error" role="alert">{error}</p>}</div><footer className="modal-footer"><button className="quiet" onClick={close}>Cancel</button><span className="spacer"/><button className="primary" disabled={!asset||busy||recording||(isDialogue&&!actor)} onClick={()=>void save()}>{request.replaceId?'Replace recording':'Add to timeline'}</button></footer>
