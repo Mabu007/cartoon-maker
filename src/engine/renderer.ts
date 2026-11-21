@@ -13,7 +13,7 @@ export const dimensions = (format: Format, scale = 1): [number, number] => sizes
 type Entity = { group: Container; art: Graphics; face?: Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
   sprite?: Sprite; heldSprite?: Sprite; imageData?: string };
 export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: number; y: number };
-  previewViseme?: import('./visemes.ts').Viseme; selected?: string; staged?: Record<string, { x: number; y: number }>;
+  previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
   const app = new Application();
@@ -249,12 +249,18 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       hitboxes.push({ id: actor.id, rect, bounds: worldEntityBounds(rect), depth: entity.group.zIndex });
     }
     for (const [id, entity] of items) if (!used.has(id)) { entity.group.destroy({ children: true }); items.delete(id); }
+    const hovered = hitboxes.find(hit => hit.id === options.hovered && hit.id !== options.selected);
+    if (hovered) {
+      const {left,right,top,bottom}=hovered.bounds;
+      guides.roundRect(left - 4,top - 4,right-left + 8,bottom-top + 8,8)
+        .stroke({color:'#9662ff',width:2,alpha:.86});
+    }
     const outline = hitboxes.find(hit => hit.id === options.selected);
     if (outline) {
       const { left, right, top, bottom } = outline.bounds;
       const w = right - left + 12, h = bottom - top + 12;
-      guides.roundRect(left - 6, top - 6, w, h, 7).stroke({ color: '#f7e3af', width: 2, alpha: .95 });
-      for (const x of [left - 6, right + 6]) for (const y of [top - 6, bottom + 6]) rect(guides, x - 3, y - 3, 6, 6, '#f7e3af', 1);
+      guides.roundRect(left - 6, top - 6, w, h, 8).stroke({ color: '#9d6cff', width: 2.6, alpha: 1 });
+      for (const x of [left - 6, right + 6]) for (const y of [top - 6, bottom + 6]) rect(guides, x - 4, y - 4, 8, 8, '#ffffff', 1);
       if (options.staged) {
         const x = (right + left) / 2;
         const y = options.staged[outline.id]?.y ?? bottom;
