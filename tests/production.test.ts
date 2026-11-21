@@ -116,7 +116,7 @@ test('missing assets, impossible overlapping actions, invalid AI JSON and stale 
   const compiled = await compileMovie(project, speak);
   const diagnostics = compiled.production!.graph[0].diagnostics.join('\n');
   assert.match(diagnostics, /Gaze target missing/);
-  assert.match(diagnostics, /chair or sofa/);
+  assert.doesNotMatch(diagnostics, /chair or sofa/,'Sitting no longer needs furniture');
   assert.match(diagnostics, /Overlapping body/);
   assert.equal(directionEdits.safeParse({ message: 'Wrong tool', edits: [{ op: 'run_code' }] }).success, false);
   assert.throws(() => applyDirectorEdits(project.production!.screenplay.scenes[0], { message: 'Wrong scene', edits: [{ op: 'remove', lineId: 'foreign-id' }] }, () => 'id'), /outside/);

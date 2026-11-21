@@ -214,8 +214,8 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
         }
         case 'action': {
           const target = direction.target ? objectById(direction.target) : undefined;
-          if (direction.target && !target || direction.action === 'sit' && (!target || anchorFor(target)?.action !== 'sit')) {
-            issue(line, direction.action === 'sit' ? 'Sit needs a compatible chair or sofa.' : `Missing interaction prop ${direction.target}.`);
+          if ((direction.target && !target) || (direction.action === 'sit' && target && anchorFor(target)?.action !== 'sit')) {
+            issue(line, `Missing or incompatible interaction prop ${direction.target}.`);
             continue;
           }
           clip = { ...base, ...performer, track: 'body', action: direction.action, layer: direction.layer, ...(target ? { target: target.id } : {}) };

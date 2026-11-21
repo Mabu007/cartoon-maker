@@ -29,7 +29,7 @@ export const trackIcon = { actors: UserRound, movement: MoveRight, body: Activit
 export const formats: Format[] = ['16:9', '9:16', '1:1'];
 export const clipLabel = (clip: Clip, names: Record<string, string> = {}) => {
   switch (clip.track) {
-    case 'actors': return names[clip.actor] ?? 'Actor';
+    case 'actors': return (names[clip.actor] ?? 'Actor') + (clip.visible===true?' · appears':clip.visible===false?' · disappears':' · on screen');
     case 'movement': return `${names[clip.actor] ?? 'Actor'} ${clip.gait === 'run' ? 'runs' : clip.gait === 'walk' ? 'walks' : 'moves'}`;
     case 'gaze': return 'Look at ' + (names[clip.target] ?? clip.target);
     case 'props': return label(clip.interaction) + ' ' + clip.target;

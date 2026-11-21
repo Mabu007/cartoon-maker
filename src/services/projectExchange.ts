@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ProjectDocument, parseStoredProject, uid, type Project } from '../engine/schema.ts';
 import { getOrFetchAudio, projectAssets, putAudio } from './audio.ts';
+import { isR2MediaRef, mediaUrl } from './media.ts';
 
 export function download(name: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
@@ -8,7 +9,7 @@ export function download(name: string, blob: Blob) {
   link.href = url; link.download = name; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
-export const fileName = (name: string) => name.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'Toonroom';
+export const fileName = (name: string) => name.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'SIRVIBE';
 
 const backup = z.strictObject({
   format: z.literal('toonroom-backup-1'), project: z.unknown(),
@@ -22,14 +23,30 @@ function asData(file: Blob) {
     reader.readAsDataURL(file);
   });
 }
+async function portableImage(source:string|undefined) {
+  if(!source || !isR2MediaRef(source))return source;
+  const url=await mediaUrl(source);
+  const response=await fetch(url);
+  if(!response.ok)throw Error('Could not include an image in the offline backup.');
+  const blob=await response.blob();
+  if(blob.type!=='image/webp')throw Error('Cloud artwork has an unexpected format.');
+  return 'data:image/webp;base64,'+await asData(blob);
+}
 export async function backupMovie(project: Project) {
+  const scenes=await Promise.all(project.scenes.map(async scene=>({
+    ...scene,
+    ...(scene.backgroundImage?{backgroundImage:await portableImage(scene.backgroundImage)}:{}),
+    objects:await Promise.all(scene.objects.map(async object=>object.imageData
+      ? {...object,imageData:await portableImage(object.imageData)} : object))
+  })));
+  const offline=ProjectDocument.parse({...project,scenes});
   const audio: z.infer<typeof backup>['audio'] = {};
-  for (const id of projectAssets(project)) {
+  for (const id of projectAssets(offline)) {
     const file = await getOrFetchAudio(id);
     if (!file) throw new Error(`Missing audio ${id}. Reopen the original project to restore it first.`);
     audio[id] = { type: file.type, data: await asData(file) };
   }
-  download(`${fileName(project.name)}.toonroom.json`, new Blob([JSON.stringify({ format: 'toonroom-backup-1', project, audio })], { type: 'application/json' }));
+  download(`${fileName(project.name)}.sirvibe.json`, new Blob([JSON.stringify({ format: 'toonroom-backup-1', project:offline, audio })], { type: 'application/json' }));
 }
 export async function restoreMovie(file: File) {
   if (file.size > 160_000_000) throw new Error('This backup is larger than 160 MB.');

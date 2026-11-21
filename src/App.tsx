@@ -4,7 +4,7 @@ import { missingRentMovie } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
-import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
+import { compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
 import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import type { Format } from './engine/renderer.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
@@ -19,6 +19,8 @@ import { backupMovie, restoreMovie } from './services/projectExchange.ts';
 import { PrecisionLipSyncEditor } from './ui/PrecisionLipSyncEditor.tsx';
 import { analyzeLocalLipSync } from './services/localLipSync.ts';
 import { prepareArtwork } from './services/artwork.ts';
+import { imageToR2, setMediaUser } from './services/media.ts';
+import { addSceneActor, enterSceneActor, exitSceneActor, setActorVisibleAt, type ActorEntrance } from './engine/actorPresence.ts';
 import { changeClipTiming, copyClip, currentScene, initial, removeEntity, useStudio, type Selection } from './studio.ts';
 import { AssetLibrary } from './ui/AssetLibrary.tsx';
 import { CharacterFactory } from './ui/CharacterFactory.tsx';
@@ -58,7 +60,7 @@ function PanelResize({ side, value, change }: { side: 'left' | 'right'; value: n
     onDoubleClick={() => change(side === 'left' ? 263 : 254)}/>;
 }
 
-const studioName = import.meta.env.VITE_STUDIO_NAME?.trim() || 'Toonroom';
+const studioName = 'SIRVIBE';
 type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | 'code' | 'lipsync' | null;
 type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[]; backgroundImage?: string };
 const worldKey = (scope: string) => `toonroom.worlds.v1.${scope}`;
@@ -79,7 +81,7 @@ export default function App() {
   const selectedClipIds = useStudio(state => state.clipIds), selectedKeyframe = useStudio(state => state.selectedKeyframe);
   const hasUndo = useStudio(state => state.past.length > 0), hasRedo = useStudio(state => state.future.length > 0);
   const workspace='direct';
-  const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(() => localStorage.getItem('toonroom.started') ? 'projects' : 'landing');
+  const [home, setHome] = useState<'landing' | 'projects' | 'studio'>('landing');
   const [placingDestination,setPlacingDestination]=useState(false);
   const [assetWidth, setAssetWidth] = useState(326), [inspectorWidth, setInspectorWidth] = useState(288);
   const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'dark' ? 'dark' : 'light');
@@ -89,6 +91,7 @@ export default function App() {
   const dirty = useStudio(state => state.dirty);
   const sceneIndex = project.scenes.findIndex(item => item.id === scene.id);
   const [dialog, setDialog] = useState<Dialog>(null), [account, setAccount] = useState<Account | null>(null), [items, setItems] = useState<SavedProject[]>([]);
+  const [authReady,setAuthReady]=useState(!cloudEnabled);
   const scope = account?.uid ?? 'guest';
   const [worlds, setWorlds] = useState<WorldPreset[]>([]);
   const [saveStatus, setSaveStatus] = useState('Saved on device'), [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
@@ -119,14 +122,14 @@ export default function App() {
   const close = () => setDialog(null);
   const showError = (error: unknown) => tell(errorMessage(error), true);
   useEffect(() => { if (notice) { const timer = window.setTimeout(() => setNotice(null), notice.error ? 7200 : 3200); return () => clearTimeout(timer); } }, [notice]);
-  useEffect(() => { document.title = `${project.name} · ${studioName}`; }, [project.name]);
+  useEffect(() => { document.title = home==='landing' ? 'SIRVIBE — Make the stories only you can tell' : `${project.name} · ${studioName}`; }, [project.name,home]);
   useEffect(() => {
     if (window.matchMedia('(max-width: 790px)').matches) setQuality(false);
   }, []);
   useEffect(() => {
     if (!cloudEnabled) return;
     let dispose: (() => void) | undefined, alive = true;
-    listenAccount(user => { if (alive) setAccount(user); }).then(unsubscribe => { if (alive) dispose = unsubscribe; else unsubscribe(); }).catch(err => tell(errorMessage(err), true));
+    listenAccount(user => { if (alive) { setAccount(user); setAuthReady(true); if(!user)setHome('landing'); } }).then(unsubscribe => { if (alive) dispose = unsubscribe; else unsubscribe(); }).catch(err => { if(alive){setAuthReady(true);tell(errorMessage(err),true);} });
     return () => { alive = false; dispose?.(); };
   }, [tell]);
   useEffect(() => () => { cancelAnimationFrame(frame.current); mixer.current?.close(); }, []);
@@ -184,6 +187,7 @@ export default function App() {
       tell(errorMessage(error), true);
       return;
     }
+    setMediaUser(account);
     setRemoteAudio(account ? id => cloudAudio(account, id) : undefined);
     const opened = useStudio.getState();
     if (account) void cloudProjects(account).then(result => {
@@ -355,9 +359,11 @@ export default function App() {
       const body = value;
       const current = currentScene(useStudio.getState());
       if (body.action === 'sit') {
-        const target = compatibleObjects(current, 'sit').find(item => item.id === body.target) ?? nearestObject(current, body.actor, 'sit');
-        if (!target) { tell('Add a chair or sofa before using Sit. Characters cannot sit on air.', true); return; }
-        updated = { ...body, layer: 'body', target: target.id };
+        // Sitting is a self-contained body pose. Objects remain optional;
+        // never force a nearby chair, which caused characters to slide/float.
+        const target = body.target ? compatibleObjects(current, 'sit').find(item => item.id === body.target) : undefined;
+        const { target: _old, ...freeSit } = body;
+        updated = { ...freeSit, layer: 'body', ...(target ? { target: target.id } : {}) };
       } else if (body.target && !compatibleObjects(current, body.action).some(item => item.id === body.target)) {
         const { target: _, ...rest } = body;
         updated = rest;
@@ -386,12 +392,29 @@ export default function App() {
     setRequestedClip({ track, action, actor: selection?.kind === 'actor' ? selection.id : undefined }); setDialog('clip');
   }
   function showAudio(track: AudioRequest['track'], actor?: string, start = time.current.local) { pause(); setRequestedAudio({ track, actor: actor ?? (selection?.kind === 'actor' ? selection.id : undefined), start }); setDialog('audio'); }
-  function addActor(character: Character) {
-    if (scene.actors.length >= 24) { tell('A scene can have up to 24 actors.', true); return; }
-    const id = uid();
-    editScene(current => ({ ...current, actors: [...current.actors, { id, characterId: character.id, x: 320 + (current.actors.length % 5) * 115, y: 441, scale: 1, rotation: 0, depth: 0, view: 'three-quarter', expression: 'neutral', flip: false }] }));
-    select({ id, kind: 'actor' });
-    setMobilePanel('stage'); setArrange(true);
+  function addActor(character: Character, mode: ActorEntrance='place') {
+    run(() => {
+      const current=currentScene(useStudio.getState());
+      const at=time.current.local;
+      const result=addSceneActor(current,character.id,at,mode);
+      commitScene(()=>result.scene);
+      select({id:result.actorId,kind:'actor'});
+      setMobilePanel('stage');setArrange(true);
+      if(mode!=='place')tell(`${character.name} will ${mode} into the scene from ${at.toFixed(1)}s. Edit the new clips on Actors and Movement.`);
+    });
+  }
+  function actorPresence(id:string, action:'walk-in'|'run-in'|'walk-out'|'run-out'|'show'|'hide') {
+    run(()=>{
+      const current=currentScene(useStudio.getState()),at=time.current.local;
+      const next=action==='show'||action==='hide'
+        ? setActorVisibleAt(current,id,at,action==='show')
+        : action.endsWith('-in')
+          ? enterSceneActor(current,id,at,action.startsWith('run')?'run':'walk')
+          : exitSceneActor(current,id,at,action.startsWith('run')?'run':'walk');
+      commitScene(()=>next);
+      select({kind:'actor',id});
+      tell('Character '+action.replace('-', ' ')+' scheduled at '+at.toFixed(1)+'s. Edit timing on the Actors and Movement tracks.');
+    });
   }
   function addObject(kind: Prop['kind']) {
     if (scene.objects.length >= 100) { tell('A scene can have up to 100 props.', true); return; }
@@ -415,9 +438,11 @@ export default function App() {
     try {
       const imported = await prepareArtwork(file, 'world');
       pause();
-      commitScene(current => ({ ...current, backgroundImage: imported.data }));
+      let artwork=imported.data, cloudPending=false;
+      if(account){try{artwork=await imageToR2(account,imported.data);}catch{cloudPending=true;}}
+      commitScene(current => ({ ...current, backgroundImage: artwork }));
       setMobilePanel('stage');
-      tell('World image added. Your cast and props are still in place.');
+      tell(cloudPending?'World added locally. R2 upload will be retried on cloud save; check your bucket CORS if sync fails.':'World image added. Your cast and props are still in place.',cloudPending);
     } catch (error) { showError(error); }
   }
   async function uploadProp(file: File) {
@@ -425,16 +450,19 @@ export default function App() {
       const imported = await prepareArtwork(file, 'prop');
       const maxDimension = Math.max(imported.width, imported.height);
       const sizing = Math.min(1, 165 / maxDimension);
+      let artwork=imported.data,cloudPending=false;
+      if(account){try{artwork=await imageToR2(account,imported.data);}catch{cloudPending=true;}}
       const prop = makeProp('image', 480, 435, {
         name: file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Picture prop',
-        imageData: imported.data, imageWidth: Math.max(10, Math.round(imported.width * sizing)),
+        imageData: artwork,
+        imageWidth: Math.max(10, Math.round(imported.width * sizing)),
         imageHeight: Math.max(10, Math.round(imported.height * sizing)), interaction: 'none'
       });
       pause();
       commitScene(current => ({ ...current, objects: [...current.objects, prop] }));
       select({ kind: 'object', id: prop.id });
       setMobilePanel('inspector');
-      tell('Picture prop added. Set its interaction type in the inspector.');
+      tell(cloudPending?'Picture added locally. R2 upload pending; check your bucket CORS if cloud sync fails.':'Picture prop added. Set its interaction type in the inspector.',cloudPending);
     } catch (error) { showError(error); }
   }
   function storeWorlds(next:WorldPreset[]){
@@ -905,13 +933,16 @@ export default function App() {
   if (dialog === 'dependencies' && dependentObjectId) content = <ObjectDependenciesDialog scene={scene} objectId={dependentObjectId} actorNames={actorNames} close={close} confirm={confirmObjectDeletion}/>;
   if (dialog === 'confirm' && confirm) content = <Modal title={confirm.title} description={confirm.text} close={close}><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="danger" onClick={() => { close(); confirm.run(); }}>Confirm</button></footer></Modal>;
 
-  const backupInput = <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
+  const backupInput = <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import SIRVIBE project backup" onChange={event => {
       const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
     }}/>;
   const noticeToast = notice && <div className={`toast ${notice.error ? 'toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{!notice.error && <Check size={16}/>}<span>{notice.message}</span><IconButton title="Dismiss notice" onClick={() => setNotice(null)}><X size={14}/></IconButton></div>;
-  if (home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
-    <Welcome screen={home} items={items} lastSession={lastEditorSession(scope)}
-      openProjects={()=>{localStorage.setItem('toonroom.started','1');setHome('projects');}}
+  if (!account || !authReady || home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
+    <Welcome screen={account&&authReady&&home==='projects'?'projects':'landing'} items={items} lastSession={lastEditorSession(scope)}
+      account={account} authAvailable={cloudEnabled&&authReady} login={login}
+      logout={async()=>{await logout();setHome('landing');}}
+      enter={()=>setHome('projects')}
+      openProjects={()=>{if(account)setHome('projects');else setHome('landing');}}
       openLanding={()=>setHome('landing')} openProject={openLibraryProject}
       createManual={startManualMovie}
       duplicate={duplicateHomeProject} rename={renameHomeProject}
@@ -978,7 +1009,7 @@ export default function App() {
         }}/></div>
         <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock((scene).duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={(scene).duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><details className="playback-range-controls"><summary title="Play a selected time range">Range</summary><div><label>From<input aria-label="Playback range start" type="number" step=".1" min={0} max={scene.duration-.1} value={playbackRange?.start??0} onChange={e=>{pause();setPlaybackRange({start:clamp(Number(e.target.value),0,(playbackRange?.end??scene.duration)-.1),end:playbackRange?.end??scene.duration});}}/></label><label>To<input aria-label="Playback range end" type="number" step=".1" min={(playbackRange?.start??0)+.1} max={scene.duration} value={playbackRange?.end??scene.duration} onChange={e=>{pause();setPlaybackRange({start:playbackRange?.start??0,end:clamp(Number(e.target.value),(playbackRange?.start??0)+.1,scene.duration)});}}/></label><button className="quiet" onClick={()=>{pause();setPlaybackRange(undefined);}}>Whole film</button></div></details><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
       </section>
-      {<Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} setDestination={() => {pause();setPlacingDestination(true);tell('Click the stage to set the walking destination.');}} alignVoiceClip={alignVoiceClip} precision={() => showDialog('lipsync')} rerecord={() => { const clip=scene.clips.find(c=>c.id===selection?.id); if(clip?.track==='dialogue'){pause();setRequestedAudio({track:'dialogue',actor:clip.actor,start:clip.start,replaceId:clip.id});setDialog('audio');} }}/>}
+      {<Inspector onPresence={actorPresence} scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} setDestination={() => {pause();setPlacingDestination(true);tell('Click the stage to set the walking destination.');}} alignVoiceClip={alignVoiceClip} precision={() => showDialog('lipsync')} rerecord={() => { const clip=scene.clips.find(c=>c.id===selection?.id); if(clip?.track==='dialogue'){pause();setRequestedAudio({track:'dialogue',actor:clip.actor,start:clip.start,replaceId:clip.id});setDialog('audio');} }}/>}
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>

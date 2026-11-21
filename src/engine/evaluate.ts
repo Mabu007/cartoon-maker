@@ -88,16 +88,15 @@ export function evaluate(scene: Scene, time: number) {
       if (!clip) continue;
       const isGesture = clip.layer === 'gesture';
       const target = clip.target ? objectsById.get(clip.target) : undefined;
-      const supported = clip.action !== 'sit' || (target && anchorFor(target)?.action === 'sit');
-      const activeAction: Action = supported ? clip.action : 'stand';
+      // Body actions belong to the actor, not to props. Sit works even with
+      // no seat; an optional object may influence facing, never position.
+      const activeAction: Action = clip.action;
       const definition = animations[activeAction];
       if (!isGesture) action = activeAction;
       else if (['talk', 'laugh', 'cry', 'point', 'wave', 'celebrate', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away'].includes(activeAction)) action = activeAction;
       const supportedSitBefore = clips.some(previous =>
         previous.track === 'body' && previous.action === 'sit' && previous.layer === 'body' &&
-        previous.start + previous.length <= clip.start + .05 &&
-        previous.target && objectsById.has(previous.target) &&
-        anchorFor(objectsById.get(previous.target)!)?.action==='sit');
+        previous.start + previous.length <= clip.start + .05);
       // A replacement Stand action must immediately put the feet on the floor,
       // not replay the seated opening pose for the first 0.8 seconds.
       const offsets = (activeAction === 'sit' && clip.start === 0) ||
@@ -114,11 +113,10 @@ export function evaluate(scene: Scene, time: number) {
       }
       const object = target;
       const anchor = object && anchorFor(object);
+      // Never teleport / slide actors to a seating prop as the pose begins.
+      // Position remains the authored actor/movement position; this is crucial
+      // when a chair is placed far away or a creator sits on the ground.
       if (object && anchor?.action === 'sit' && activeAction === 'sit') {
-        const amount = clip.start === 0 ? 1 : ease(clamp((t - clip.start) / .65));
-        const angle = object.rotation * Math.PI / 180;
-        x = mix(x, object.x + (anchor.x * Math.cos(angle) - anchor.y * Math.sin(angle)) * object.scale, amount);
-        y = mix(y, object.y + (anchor.x * Math.sin(angle) + anchor.y * Math.cos(angle)) * object.scale + 47 - 47 * actor.scale, amount);
         view = anchor.facing ?? view;
       }
       if (object && anchor?.action === 'hold') held = object;

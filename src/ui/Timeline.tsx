@@ -3,7 +3,6 @@ import { ChevronDown, ChevronUp, ClipboardCopy, Code2, Copy, Keyboard, Plus, Tra
 import { AudioWaveform } from './AudioWaveform.tsx';
 import { clamp } from '../engine/animation.ts';
 import { tracks, trackNames, uid, type Clip, type Scene, type Track } from '../engine/schema.ts';
-import { compatibleObjects } from '../engine/interactions.ts';
 import { selectClipRange, snapGuides, snapTime, snapMoveDelta, moveTimelineClips, trimTimelineClip, resizeSceneTimeline, trackIsLocked } from '../engine/timelineEditing.ts';
 import { type Selection } from '../studio.ts';
 import { clipLabel, IconButton, trackIcon } from './shared.tsx';
@@ -179,8 +178,7 @@ export function Timeline({
         apply({...scene,clips:[...scene.clips,next]},[next.id]);return;
       }
       if(track==='body'){
-        const target=action==='sit'?compatibleObjects(scene,'sit')[0]?.id:undefined;
-        if(action==='sit'&&!target)return;
+        const target: string|undefined=undefined;
         const next:Clip={id:uid(),track:'body',actor:actor.id,start,length,action:action as Extract<Clip,{track:'body'}>['action'],layer:(['idle','sit','stand','walk','run','jump','turn'].includes(action)?'body':'gesture'),...(target?{target}: {})};
         apply({...scene,clips:[...scene.clips,next]},[next.id]);return;
       }
@@ -205,11 +203,19 @@ export function Timeline({
     const source=byTrack[track];
     const endings:number[]=[];
     const rows=collapsed?[]:source.map(clip=>{
+      // Actor presence is one row per on-screen character. Unlike automatic
+      // interval packing, rows do not jump when the user trims visibility cues.
+      if(track==='actors' && 'actor' in clip){
+        const row=Math.max(0,scene.actors.findIndex(actor=>actor.id===clip.actor));
+        endings[row]=Math.max(endings[row]??0,clip.start+clip.length);
+        return {clip,row};
+      }
       let row=endings.findIndex(end=>end<=clip.start+0.0001);
       if(row<0)row=endings.length;
       endings[row]=clip.start+clip.length;return {clip,row};
     });
-    return <div className={`timeline-row ${collapsed?'track-collapsed':''} ${locked?'track-locked':''} ${settings?.muted?'track-muted':''}`} data-timeline-track={track} key={track} style={{minHeight:collapsed?30:Math.max(37,endings.length*27+8)}}>
+    const rowCount=track==='actors'?Math.max(scene.actors.length,endings.length):endings.length;
+    return <div className={`timeline-row ${collapsed?'track-collapsed':''} ${locked?'track-locked':''} ${settings?.muted?'track-muted':''}`} data-timeline-track={track} key={track} style={{minHeight:collapsed?30:Math.max(37,rowCount*27+8)}}>
       <div className="track-name">
         <button type="button" title={collapsed?'Expand track':'Collapse track'} aria-label={(collapsed?'Expand ':'Collapse ')+trackNames[track]} onClick={()=>toggle(track,'collapsed')}>{collapsed?<ChevronRight size={13}/>:<ChevronDown size={13}/>}</button>
         <span className={`track-icon track-${track}`}><Icon size={14}/></span>
@@ -225,6 +231,9 @@ export function Timeline({
         onDragOver={event=>{if(!locked){event.preventDefault();event.dataTransfer.dropEffect='copy';setDropTrack(track);}}}
         onDragLeave={()=>setDropTrack(null)}
         onDrop={event=>insertDropped(event,track)}>
+        {track==='actors'&&!collapsed&&scene.actors.map((actor,index)=>
+          <span key={actor.id} className="actor-lane-name" style={{top:8+index*27}}
+            title={names[actor.id]??'Character'}>{names[actor.id]??'Character'}</span>)}
         {rows.map(({clip,row})=>{
           const selected=chosen.has(clip.id);
           const tiny=clip.length*pixelsPerSecond<26;
@@ -303,7 +312,7 @@ export function Timeline({
           </div>
         </div>
         <div className="timeline-grid" aria-hidden="true"><div className="grid-lines">{ticks.slice(1).map((value,index)=><i key={index} style={{left:(index+1)/divisions*100+'%'}}/>)}</div><div className="playhead" ref={needle} style={{left:playhead/scene.duration*100+'%'}}><i/></div></div>
-        {tracks.filter(track=>['movement','body','face','dialogue','audio','music','camera'].includes(track)||byTrack[track].length).map(lane)}
+        {tracks.filter(track=>['actors','movement','body','face','dialogue','audio','music','camera'].includes(track)||byTrack[track].length).map(lane)}
       </div>
     </div>}
     {menu&&<div className="timeline-context-menu" role="menu" style={{left:menu.x,top:menu.y}}>

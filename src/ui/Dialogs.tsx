@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles, Pencil, Check, X } from 'lucide-react';
 import { animations, clamp, gaitSpeeds } from '../engine/animation.ts';
 import { soundNames } from '../engine/presets.ts';
-import { anchorFor, compatibleObjects, nearestObject } from '../engine/interactions.ts';
+import { anchorFor, compatibleObjects } from '../engine/interactions.ts';
 import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track, type Character } from '../engine/schema.ts';
 import { type Format } from '../engine/renderer.ts';
 import { evaluate, projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
+import { RecordingWaveform } from './RecordingWaveform.tsx';
 
 import { browserExporter, exportCodec } from '../services/export.ts';
 import type { SavedProject } from '../services/projects.ts';
@@ -17,6 +18,7 @@ import { clipLabel, clock, formats, IconButton, Modal, Select, trackIcon } from 
 export type ClipRequest = { track?: Track; action?: Action; actor?: string };
 export function AddClipDialog({ close, request, scene, actors, time, add, audio }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; add: (clip: Clip) => void; audio: (track: 'dialogue' | 'audio' | 'music', actor: string, start: number) => void }) {
   const [track, setTrack] = useState<Track>(request.track ?? 'body');
+  const [presence, setPresence] = useState<'show'|'hide'|'span'>('show');
   const [actor, setActor] = useState(request.actor ?? Object.keys(actors)[0] ?? '');
   const [action, setAction] = useState<Action>(request.action ?? 'walk');
   const [layer, setLayer] = useState<'body' | 'gesture'>(request.action && ['wave', 'point', 'nod', 'shake', 'talk'].includes(request.action) ? 'gesture' : 'body');
@@ -40,10 +42,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
   const door = scene.objects.find(item=>item.id===cueTarget)?.kind==='door';
   const resolvedInteraction = door ? (interaction==='close'?'close':'open') : (interaction==='release'?'release':'equip');
   const choices = compatibleObjects(scene, action);
-  const seat = action === 'sit' ? nearestObject(scene, actor, 'sit') : undefined;
-  const selectedTarget = action === 'sit'
-    ? choices.find(item => item.id === target)?.id ?? seat?.id ?? ''
-    : choices.some(item => item.id === target) ? target : '';
+  const selectedTarget = choices.some(item => item.id === target) ? target : '';
   function submit() {
     const at = clamp(start, 0, scene.duration - .1);
     const base = { id: uid(), start: at, length: clamp(length, .1, scene.duration - at) };
@@ -52,14 +51,14 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     if (track === 'transition') return add({ ...base, track, effect });
     if (track === 'audio') return add({ ...base, track, name: label(sound), asset: `builtin:${sound}`, volume: .75, muted: false, offset: 0 });
     if (!place) return;
-    if (track === 'actors') return add({ ...base, track, actor });
+    if (track === 'actors') return add({ ...base, track, actor,
+      ...(presence==='span'?{}:{length:.1,visible:presence==='show'}) });
     if (track === 'movement' && evaluated && travelLength <= scene.duration - at + .0001)
       return add({ ...base, length: travelLength, track, actor, gait, fromX: evaluated.x, fromY: evaluated.y, toX: clamp(toX, -2000, 3000), toY: clamp(toY, -2000, 3000) });
     if (track === 'movement') return;
     if (track === 'gaze') return cueTarget ? add({ ...base, track, actor, target: cueTarget }) : undefined;
     if (track === 'props') return cueTarget ? add({ ...base, track, actor, target: cueTarget, interaction:resolvedInteraction }) : undefined;
     if (track === 'face') return add({ ...base, track, actor, expression });
-    if (action === 'sit' && !selectedTarget) return;
     return add({ ...base, track, actor, action, layer: action === 'sit' ? 'body' : layer,
       ...(selectedTarget ? { target: selectedTarget } : {}) });
   }
@@ -67,10 +66,14 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     <div className="dialog-fields"><label className="field">Track<Select aria="Track" value={track} options={tracks} onChange={setTrack} render={id => trackNames[id]}/></label>
     {(needsActor || track === 'camera') && <label className="field">{track === 'camera' ? 'Focus' : 'Actor'}<Select aria="Actor" value={actor} onChange={value => { setActor(value); setTarget(''); const item = scene.actors.find(entry => entry.id === value); if (item) { setToX(item.x + 145); setToY(item.y); } }} options={track === 'camera' ? ['', ...Object.keys(actors)] : Object.keys(actors)} render={id => actors[id] ?? 'Automatic'}/></label>}
     {needsActor && !actor && <p className="form-error">Add an actor to the scene first.</p>}
-    {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setTarget(''); setLayer(['wave','point','nod','shake','shrug','laugh','talk','listen','think'].includes(value)?'gesture':'body'); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={action === 'sit' ? 'body' : layer} onChange={setLayer} options={action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label></div>{action === 'sit' && !choices.length && <p className="form-error" role="alert">Add a chair or sofa to this scene before making a character sit.</p>}
+    {track==='actors'&&<><label className="field">On-screen event<Select aria="Actor visibility event"
+      value={presence} onChange={setPresence} options={['show','hide','span'] as const}
+      render={value=>value==='show'?'Show from this time':value==='hide'?'Hide from this time':'Visible only during clip'}/></label>
+      <p className="small-text">Use Show/Hide to let characters enter and leave. Visible-only clips use their own duration.</p></>}
+    {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setTarget(''); setLayer(['wave','point','nod','shake','shrug','laugh','talk','listen','think'].includes(value)?'gesture':'body'); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={action === 'sit' ? 'body' : layer} onChange={setLayer} options={action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label></div>{action==='sit'&&<p className="small-text">Sit anywhere. Linking a chair or sofa is optional; characters stay where you placed them.</p>}
       {!!choices.length && <label className="field">{action === 'sit' ? 'Sit on' : 'Interact with'}<Select aria={action === 'sit' ? 'Seat' : 'Interact with'} value={selectedTarget} onChange={setTarget}
-        options={action === 'sit' ? choices.map(item => item.id) : ['', ...choices.map(item => item.id)]}
-        render={id => choices.find(item => item.id === id)?.name ?? 'Empty hands'}/></label>}</>}
+        options={['', ...choices.map(item => item.id)]}
+        render={id => id==='' ? action==='sit'?'Sit where placed (no seat)':'No object' : choices.find(item => item.id === id)?.name ?? 'No object'}/></label>}</>}
     {(track === 'gaze' || track === 'props') && <label className="field">Target<Select aria="Cue target" value={cueTarget ?? ''} options={cueTargets} onChange={setTarget} render={id => actors[id] ?? scene.objects.find(item => item.id === id)?.name ?? label(id)}/></label>}
     {track === 'props' && <label className="field">Interaction<Select aria="Prop interaction" value={interaction} options={['equip', 'release']} onChange={setInteraction}/></label>}
     {track === 'movement' && <><label className="field">Travel pace<Select aria="Travel pace" value={gait} options={['walk', 'run']} onChange={setGait}/></label><div className="field-row"><label className="field">End X<input type="number" value={toX} onChange={e => setToX(Number(e.target.value))}/></label><label className="field">End Y<input type="number" value={toY} onChange={e => setToY(Number(e.target.value))}/></label></div><small>{travelLength.toFixed(2)} seconds at {gait} pace</small>{travelLength > scene.duration - start && <p className="form-error">Move the start earlier or choose a closer destination.</p>}</>}
@@ -79,12 +82,12 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     {track === 'transition' && <label className="field">Effect<Select aria="Effect" value={effect} onChange={setEffect} options={['fade-in', 'fade-out']}/></label>}
     {(track === 'audio') && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={setSound} options={soundNames}/></label>}
     <div className="field-row"><label className="field">Start (seconds)<input aria-label="Clip start" type="number" value={Math.round(start * 100) / 100} min={0} max={scene.duration - .1} step="any" onChange={e => setStart(Number(e.target.value))}/></label>{track !== 'dialogue' && track !== 'movement' && <label className="field">Length (seconds)<input aria-label="Clip length" type="number" value={length} min={.1} max={180} step="any" onChange={e => setLength(Number(e.target.value))}/></label>}</div></div>
-    <footer className="modal-footer">{(track === 'audio' || track === 'music') && <button type="button" className="quiet" onClick={() => audio(track, '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={(needsActor && !actor) || (track === 'movement' && travelLength > scene.duration - start) || (['gaze', 'props'].includes(track) && !cueTarget) || (track === 'body' && action === 'sit' && !selectedTarget)}><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
+    <footer className="modal-footer">{(track === 'audio' || track === 'music') && <button type="button" className="quiet" onClick={() => audio(track, '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={(needsActor && !actor) || (track === 'movement' && travelLength > scene.duration - start) || (['gaze', 'props'].includes(track) && !cueTarget) }><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
   </form></Modal>;
 }
 
 export type AudioRequest = { track: 'dialogue' | 'audio' | 'music'; actor?: string; start: number; replaceId?: string };
-export function AudioDialog({ request, actors, scene, add, close }: { request: AudioRequest; actors: Record<string, string>; characters: Character[]; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
+export function AudioDialog({ request, actors, scene, account, add, close }: { request: AudioRequest; actors: Record<string, string>; characters: Character[]; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
   const isDialogue=request.track==='dialogue';
   const [actor,setActor]=useState(request.actor??Object.keys(actors)[0]??''),[start,setStart]=useState(clamp(request.start,0,scene.duration-.1));
   const [asset,setAsset]=useState<{blob:Blob;url:string;length:number;name:string}>();
@@ -96,12 +99,14 @@ export function AudioDialog({ request, actors, scene, add, close }: { request: A
   async function load(blob:Blob,name:string){
     if(!blob.size||blob.size>20*1024*1024)throw Error('Choose an audio file smaller than 20 MB.');
     let length:number;try{length=await audioLength(blob);}catch{throw Error('This audio could not be decoded. Try WAV, MP3, M4A or WebM.');}
-    if(length<.1||length>180)throw Error('Record between 0.1 and 180 seconds.');
+    if(length<.1 || length>(isDialogue?180:1200))
+      throw Error(isDialogue?'Record dialogue between 0.1 and 180 seconds.':'Use a song or sound effect shorter than 20 minutes.');
     if(alive.current)setAsset({blob,name,url:URL.createObjectURL(blob),length});
   }
   async function record(){
     if(recorder.current?.state==='recording'){clearTimeout(limit.current);recorder.current.stop();return;}
     await work(async()=>{
+      setAsset(undefined);
       if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined')throw Error('Recording is unavailable in this browser. Upload audio instead.');
       let input:MediaStream;try{input=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}catch(e){throw Error(e instanceof DOMException&&e.name==='NotAllowedError'?'Microphone permission was denied. Allow the microphone in your browser or upload audio.':'No working microphone was found. Connect one or upload audio.');}
       if(!alive.current){input.getTracks().forEach(t=>t.stop());return;}
@@ -109,7 +114,7 @@ export function AudioDialog({ request, actors, scene, add, close }: { request: A
       try{
         const mic=new MediaRecorder(input);recorder.current=mic;const chunks:Blob[]=[];
         mic.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-        mic.onstop=()=>{clearTimeout(limit.current);input.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);void work(()=>load(new Blob(chunks,{type:mic.mimeType}),'Voice recording'));}};
+        mic.onstop=()=>{clearTimeout(limit.current);input.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);void work(()=>load(new Blob(chunks,{type:mic.mimeType.split(';')[0]||'audio/webm'}),'Voice recording'));}};
         mic.onerror=()=>{clearTimeout(limit.current);input.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);setError('The recording stopped unexpectedly. Try again or upload audio.');}};
         mic.start();setRecording(true);limit.current=setTimeout(()=>{if(mic.state==='recording')mic.stop();},179000);
       }catch(e){input.getTracks().forEach(t=>t.stop());throw e;}
@@ -119,7 +124,12 @@ export function AudioDialog({ request, actors, scene, add, close }: { request: A
     if(!asset)return;
     const analysis=isDialogue?await analyzeLocalLipSync(asset.blob):undefined;
     if(!alive.current)return;
-    const id=uid();await putAudio(id,asset.blob);if(!alive.current)return;
+    const id=uid();
+    // Always preserve the creator's recording immediately. The project's
+    // autosave uploads this asset to private R2 before its Firestore commit.
+    // If R2 is unavailable, the clip still plays on this device and the
+    // studio's existing cloud-sync error state stays visible.
+    await putAudio(id,asset.blob);if(!alive.current)return;
     const common={id:uid(),start,length:Math.min(asset.length,scene.duration-start),asset:'asset:'+id,offset:0,volume:1,muted:false};
     if(isDialogue&&analysis)add({...common,track:'dialogue',actor,text:'',visemes:analysis.cues,lipSync:{source:'dsp',engine:analysis.engine,cacheKey:analysis.cacheKey,analyzedDuration:analysis.duration}});
     else if(request.track==='music')add({...common,track:'music',name:asset.name.slice(0,80)});
@@ -128,8 +138,9 @@ export function AudioDialog({ request, actors, scene, add, close }: { request: A
   return <Modal title={isDialogue?(request.replaceId?'Replace voice':'Give your character a voice'):request.track==='music'?'Add music':'Add sound'} description={isDialogue?'Record yourself or upload audio. Mouth animation is created automatically on this device.':request.track==='music'?'Choose a soundtrack to place on the Music track. MP3, WAV, M4A and WebM supported.':'Choose a sound effect to place on the SFX track. MP3, WAV, M4A and WebM supported.'} close={close}>
     <div className="dialog-fields">{isDialogue&&<label className="field">Character<Select aria="Dialogue actor" value={actor} options={Object.keys(actors)} onChange={setActor} render={id=>actors[id]}/></label>}
     <div className="voice-source-buttons"><button className={recording?'danger':'primary'} disabled={busy} onClick={()=>void record()}>{recording?<Square size={19}/>:<Mic size={19}/>} {recording?'Stop recording':isDialogue?'Record voice':request.track==='music'?'Record music':'Record sound'}</button><label className="quiet file-button"><FileAudio size={18}/>{isDialogue?'Upload voice':request.track==='music'?'Upload music':'Upload SFX'}<input type="file" aria-label={isDialogue?'Upload voice recording':request.track==='music'?'Upload background music':'Upload sound effect'} accept="audio/*,.mp3,.wav,.ogg,.webm,.m4a" disabled={busy||recording} onChange={e=>{const file=e.target.files?.[0];if(file)void work(()=>load(file,file.name.replace(/\.[^.]+$/,'')));e.target.value='';}}/></label></div>
-    {recording&&<p className="recording-indicator" role="status">Recording… Speak naturally, then press Stop.</p>}
+    <RecordingWaveform stream={recording?stream.current:null} recording={recording} preview={asset?.blob}/>
     {asset&&<><audio controls src={asset.url} aria-label="Preview audio"/><p className="small-text">{asset.name} · {asset.length.toFixed(2)} seconds</p></>}
+    {!account&&<p className="small-text">Sign in to save recordings and other media to your private cloud library. Guest recordings are stored on this device.</p>}
     <label className="field">Start on timeline (seconds)<input aria-label="Recording start" type="number" min={0} max={scene.duration-.1} step={.01} value={start} onChange={e=>setStart(clamp(Number(e.target.value),0,scene.duration-.1))}/></label>
     {asset&&asset.length+start>scene.duration&&<p className="small-text">This recording will trim at the scene end. Extend the scene to hear the rest.</p>}
     {busy&&<p role="status">Preparing audio and automatic lip sync…</p>}{error&&<p className="form-error" role="alert">{error}</p>}</div><footer className="modal-footer"><button className="quiet" onClick={close}>Cancel</button><span className="spacer"/><button className="primary" disabled={!asset||busy||recording||(isDialogue&&!actor)} onClick={()=>void save()}>{request.replaceId?'Replace recording':'Add to timeline'}</button></footer>
