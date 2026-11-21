@@ -65,7 +65,15 @@ export async function uploadProject(user:Account, project:Project, updated:numbe
     if(uploaded.has(path))return;
     const file=await getAudio(id);
     if(file)await uploadR2Media(user,'audio',file,id);
-    else await readR2Media(user,'audio',id);
+    else {
+      // A previous Toonroom release may have saved this clip only in Firebase
+      // Storage. Recover it before committing an R2-backed project reference.
+      try { await readR2Media(user,'audio',id); }
+      catch {
+        const legacy=await cloudAudio(user,id);
+        await uploadR2Media(user,'audio',legacy,id);
+      }
+    }
     uploaded.add(path);
   }));
   const portable=await r2ProjectImages(user,project);
