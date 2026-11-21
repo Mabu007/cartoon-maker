@@ -180,3 +180,30 @@ test('duplicating audio with no remaining space rejects instead of silently over
     start:15,length:15,offset:0,volume:1,muted:false};
   assert.throws(()=>copyClip(music,30,[music]),/make room/);
 });
+
+test('editing one scene keeps the other scene data and undo history intact', () => {
+  const movie = makeProject(true);
+  movie.scenes.push(makeScene('Classroom'));
+  useStudio.getState().open(movie);
+  const before = useStudio.getState();
+  const unchanged = before.project.scenes[1];
+  before.editScene(scene => ({ ...scene, name:'Opening shot' }));
+  assert.equal(useStudio.getState().project.scenes[1], unchanged);
+  assert.throws(() => useStudio.getState().editScene(scene => ({
+    ...scene, actors: scene.actors.map(actor => ({...actor, characterId:'missing-character'}))
+  })), /missing character/);
+  useStudio.getState().undo();
+  assert.equal(useStudio.getState().project, before.project);
+});
+
+test('a local movie can store individually valid high-resolution backgrounds across several scenes', () => {
+  const movie = makeProject();
+  const bitmap = 'data:image/webp;base64,' + 'A'.repeat(240_000);
+  movie.scenes = Array.from({length:5},(_, index) => ({
+    ...makeScene(), name:'Scene '+(index+1), backgroundImage: bitmap.slice(0,-4)+String(index).repeat(4)
+  }));
+  useStudio.getState().open(ProjectDocument.parse(movie));
+  assert.equal(useStudio.getState().project.scenes.length,5);
+  useStudio.getState().editScene(scene=>({...scene, name:'Changed opening'}));
+  assert.equal(useStudio.getState().project.scenes[4].backgroundImage,movie.scenes[4].backgroundImage);
+});

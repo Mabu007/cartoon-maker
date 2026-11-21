@@ -38,11 +38,11 @@
 .filmmaking-shell[data-theme="light"] {--page:#f3f0f8;--panel:#fff;--raised:#eae4f2;--text:#2b233a;--muted:#685f79;--line:#d6cde2}
 @media(pointer:coarse){.lip-edge{width:12px}.clip-handle{width:12px}.mobile-nav button{min-height:42px}}
 /* Override the parked five-row workflow grid at every breakpoint. */
-.studio-shell.filmmaking-shell.mode-direct {grid-template-rows:62px minmax(0,1fr) clamp(200px,34vh,330px)}
+.studio-shell.filmmaking-shell.mode-direct {grid-template-rows:62px minmax(0,1fr) clamp(170px,var(--timeline-height,clamp(200px,34vh,330px)),max(170px,calc(100dvh - 235px)))}
 .studio-shell.filmmaking-shell.mode-direct:has(.timeline-compact) {grid-template-rows:62px minmax(0,1fr) 44px}
 .studio-shell.filmmaking-shell.mode-direct.focus-mode {grid-template-rows:62px minmax(0,1fr)}
 @media(max-width:790px){
-  .studio-shell.filmmaking-shell.mode-direct {height:auto;min-height:100dvh;overflow:visible;grid-template-rows:auto 42px minmax(300px,1fr) clamp(180px,30dvh,260px)}
+  .studio-shell.filmmaking-shell.mode-direct {height:auto;min-height:100dvh;overflow:visible;grid-template-rows:auto 42px minmax(300px,1fr) clamp(180px,var(--timeline-height,clamp(180px,30dvh,260px)),max(180px,80dvh))}
   .studio-shell.filmmaking-shell.mode-direct:has(.timeline-compact) {grid-template-rows:auto 42px minmax(300px,1fr) 44px}
   .studio-shell.filmmaking-shell.mode-direct.focus-mode {grid-template-rows:auto 42px minmax(300px,1fr)}
 }

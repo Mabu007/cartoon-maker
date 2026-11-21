@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { audioBlob } from '../services/localLipSync.ts';
 
 export function waveformPath(peaks: readonly number[], offset: number, length: number, width=1000, height=60) {
-  const start=Math.floor(offset*50), count=Math.max(1,Math.ceil(length*50)), columns=Math.min(width,count), max=Math.max(.01,...peaks);
+  const start=Math.floor(offset*50), count=Math.max(1,Math.ceil(length*50)), columns=Math.min(width,count), max=peaks.reduce((max,peak)=>Math.max(max,peak),.01);
   let path='';
   for(let x=0;x<columns;x++){
     let peak=0;const from=start+Math.floor(x*count/columns),to=start+Math.ceil((x+1)*count/columns);

@@ -9,7 +9,7 @@ import type { Selection } from '../studio.ts';
 
 type Position = { x: number; y: number };
 type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
-export type PreviewTime = { scene: Scene; local: number };
+export type PreviewTime = { scene: Scene; local: number; movie: number };
 export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, flipEntity, duplicateEntity, removeEntity }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
   selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
@@ -17,6 +17,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   flipEntity?: (id: string) => void; duplicateEntity?: (id: string) => void; removeEntity?: (id: string) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), hover = useRef<string | undefined>(undefined), repaint = useRef<() => void>(() => {});
+  const renderedFrame=useRef<ReturnType<typeof evaluate> | undefined>(undefined);
   const dialogue = useRef<{ scene: Scene; amplitude: Awaited<ReturnType<typeof prepareDialoguePreview>> } | null>(null);
   useEffect(() => {
     let active = true;
@@ -33,6 +34,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   props.current = { project, scene, time, playing, edit, selection, subtitles, mixer, onFrame };
   useEffect(() => {
     let alive = true, lastShot = '', failed = false;
+    let lastSceneId = '', lastScenes: Scene[] | undefined;
     let timeListener: (() => void) | undefined;
     let visibilityListener: (() => void) | undefined;
     let activeRenderer: Renderer | null = null;
@@ -62,7 +64,13 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         try {
         const p = props.current;
         const { scene: live, local } = p.time.current;
-        const scene = p.playing ? live : p.scene;
+        const scene = live;
+        if (lastSceneId !== scene.id || lastScenes !== p.project.scenes) {
+          lastSceneId = scene.id;
+          lastScenes = p.project.scenes;
+          const index = lastScenes.findIndex(item => item.id === scene.id);
+          renderer.preloadBackground(lastScenes[index + 1]?.backgroundImage);
+        }
         const frame = renderer.draw(scene, p.project.characters, local, {
           selected: p.selection?.kind !== 'clip' && !p.playing ? p.selection?.id : undefined,
            hovered: !p.playing ? hover.current : undefined,
@@ -72,6 +80,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
             ? dialogue.current.amplitude(id, t)
             : p.mixer.current?.amplitude(scene, id, t) ?? 0
         });
+        renderedFrame.current=frame;
         if (frame.shot !== lastShot) { lastShot = frame.shot; p.onFrame?.(frame.shot); }
         } catch (error) { fail(error); }
       };
@@ -126,8 +135,8 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         const kind = actor ? 'actor' : 'object';
         selected({ kind, id: entity.id });
         if (!edit) return;
-        const frame=evaluate(scene,time.current.local);
-        const origin=frame.actors.find(a=>a.id===entity.id)??frame.objects.find(o=>o.id===entity.id)??entity;
+        const frame=renderedFrame.current;
+        const origin=frame?.actors.find(a=>a.id===entity.id)??frame?.objects.find(o=>o.id===entity.id)??entity;
         drag.current = { sceneId: scene.id, id: entity.id, origin, pointer: hit, current: origin, moved: false };
         event.currentTarget.setPointerCapture(event.pointerId);
       }} onPointerMove={event => {

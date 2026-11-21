@@ -65,15 +65,16 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     await Promise.all([...urls].map(loadImage));
   }
   const badCostumes = new Set<string>();
-  let repaintCostume: (()=>void)|undefined;
-  let costumeFrame=0;
+  let repaintLatestFrame: (()=>void)|undefined;
+  let imageFrame=0;
+  function repaintWhenReady() {
+    if(destroyed||imageFrame)return;
+    imageFrame=requestAnimationFrame(()=>{imageFrame=0;if(!destroyed)repaintLatestFrame?.();});
+  }
   function costumeTexture(data:string):Texture|undefined {
     const ready=textures.get(data);
     if(!ready&&!badCostumes.has(data)&&!requests.has(data)) {
-      void loadImage(data).then(()=>{
-        if(destroyed||costumeFrame)return;
-        costumeFrame=requestAnimationFrame(()=>{costumeFrame=0;if(!destroyed)repaintCostume?.();});
-      }).catch(()=>{badCostumes.add(data);});
+      void loadImage(data).then(repaintWhenReady).catch(()=>{badCostumes.add(data);});
     }
     return ready;
   }
@@ -120,7 +121,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return entity;
   }
   function draw(scene: Scene, characters: Character[], time: number, options: RenderOptions = {}) {
-    repaintCostume=()=>{draw(scene,characters,time,options);};
+    repaintLatestFrame=()=>{draw(scene,characters,time,options);};
     const characterById = new Map(characters.map(character => [character.id, character]));
     lastFrame = evaluate(scene, time, characterById, width);
     const { actors, camera, sounds } = lastFrame;
@@ -150,10 +151,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         backdrop.visible = true;
       } else {
         backdrop.visible = false;
-        void loadImage(image).then(texture => {
-          if (destroyed || requestedBackdrop !== image) return;
-          backdrop.texture = texture; backdrop.width = WIDTH * (scene.backgroundTransform?.scale??1); backdrop.height = HEIGHT * (scene.backgroundTransform?.scale??1);
-          backdrop.visible = true; app.render();
+        void loadImage(image).then(() => {
+          if (requestedBackdrop === image) repaintWhenReady();
         }).catch(error => console.warn('Could not render background image:', error));
       }
     } else if (textures.has(image) && !backdrop.visible) {
@@ -341,10 +340,11 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return { id: hit?.id, x: point.x, y: point.y };
   }
   return { canvas: app.canvas, draw, pick, width, height, prepareImages,
+    preloadBackground: (image: string | undefined) => {if (image) void loadImage(image).catch(()=>{});},
     destroy: () => {
       destroyed=true;
-      cancelAnimationFrame(costumeFrame);
-      repaintCostume=undefined;
+      cancelAnimationFrame(imageFrame);
+      repaintLatestFrame=undefined;
       requests.clear();
       // Actor previews and exports can close while a separate stage is active.
       // Keep Pixi's global render pools valid for those remaining renderers.

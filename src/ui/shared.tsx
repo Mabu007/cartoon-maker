@@ -42,4 +42,7 @@ export const clipLabel = (clip: Clip, names: Record<string, string> = {}) => {
     case 'transition': return label(clip.effect);
   }
 };
-export const clock = (time: number) => `${String(Math.floor(time / 60)).padStart(2, '0')}:${(time % 60).toFixed(2).padStart(5, '0')}`;
+export const clock = (time: number) => {
+  const ticks = Math.round(time * 100);
+  return `${String(Math.floor(ticks / 6000)).padStart(2, '0')}:${((ticks % 6000) / 100).toFixed(2).padStart(5, '0')}`;
+};
