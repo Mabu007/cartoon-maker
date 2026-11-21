@@ -9,7 +9,7 @@ export function download(name: string, blob: Blob) {
   link.href = url; link.download = name; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
-export const fileName = (name: string) => name.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'Toonroom';
+export const fileName = (name: string) => name.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'SIRVIBE';
 
 const backup = z.strictObject({
   format: z.literal('toonroom-backup-1'), project: z.unknown(),
@@ -46,7 +46,7 @@ export async function backupMovie(project: Project) {
     if (!file) throw new Error(`Missing audio ${id}. Reopen the original project to restore it first.`);
     audio[id] = { type: file.type, data: await asData(file) };
   }
-  download(`${fileName(project.name)}.toonroom.json`, new Blob([JSON.stringify({ format: 'toonroom-backup-1', project:offline, audio })], { type: 'application/json' }));
+  download(`${fileName(project.name)}.sirvibe.json`, new Blob([JSON.stringify({ format: 'toonroom-backup-1', project:offline, audio })], { type: 'application/json' }));
 }
 export async function restoreMovie(file: File) {
   if (file.size > 160_000_000) throw new Error('This backup is larger than 160 MB.');
