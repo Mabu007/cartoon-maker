@@ -60,7 +60,7 @@ function PanelResize({ side, value, change }: { side: 'left' | 'right'; value: n
     onDoubleClick={() => change(side === 'left' ? 263 : 254)}/>;
 }
 
-const studioName = import.meta.env.VITE_STUDIO_NAME?.trim() || 'Toonroom';
+const studioName = 'SIRVIBE';
 type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | 'code' | 'lipsync' | null;
 type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[]; backgroundImage?: string };
 const worldKey = (scope: string) => `toonroom.worlds.v1.${scope}`;
@@ -81,7 +81,7 @@ export default function App() {
   const selectedClipIds = useStudio(state => state.clipIds), selectedKeyframe = useStudio(state => state.selectedKeyframe);
   const hasUndo = useStudio(state => state.past.length > 0), hasRedo = useStudio(state => state.future.length > 0);
   const workspace='direct';
-  const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(() => localStorage.getItem('toonroom.started') ? 'projects' : 'landing');
+  const [home, setHome] = useState<'landing' | 'projects' | 'studio'>('landing');
   const [placingDestination,setPlacingDestination]=useState(false);
   const [assetWidth, setAssetWidth] = useState(326), [inspectorWidth, setInspectorWidth] = useState(288);
   const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'dark' ? 'dark' : 'light');
@@ -91,6 +91,7 @@ export default function App() {
   const dirty = useStudio(state => state.dirty);
   const sceneIndex = project.scenes.findIndex(item => item.id === scene.id);
   const [dialog, setDialog] = useState<Dialog>(null), [account, setAccount] = useState<Account | null>(null), [items, setItems] = useState<SavedProject[]>([]);
+  const [authReady,setAuthReady]=useState(!cloudEnabled);
   const scope = account?.uid ?? 'guest';
   const [worlds, setWorlds] = useState<WorldPreset[]>([]);
   const [saveStatus, setSaveStatus] = useState('Saved on device'), [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
@@ -121,14 +122,14 @@ export default function App() {
   const close = () => setDialog(null);
   const showError = (error: unknown) => tell(errorMessage(error), true);
   useEffect(() => { if (notice) { const timer = window.setTimeout(() => setNotice(null), notice.error ? 7200 : 3200); return () => clearTimeout(timer); } }, [notice]);
-  useEffect(() => { document.title = `${project.name} · ${studioName}`; }, [project.name]);
+  useEffect(() => { document.title = home==='landing' ? 'SIRVIBE — Make the stories only you can tell' : `${project.name} · ${studioName}`; }, [project.name,home]);
   useEffect(() => {
     if (window.matchMedia('(max-width: 790px)').matches) setQuality(false);
   }, []);
   useEffect(() => {
     if (!cloudEnabled) return;
     let dispose: (() => void) | undefined, alive = true;
-    listenAccount(user => { if (alive) setAccount(user); }).then(unsubscribe => { if (alive) dispose = unsubscribe; else unsubscribe(); }).catch(err => tell(errorMessage(err), true));
+    listenAccount(user => { if (alive) { setAccount(user); setAuthReady(true); if(!user)setHome('landing'); } }).then(unsubscribe => { if (alive) dispose = unsubscribe; else unsubscribe(); }).catch(err => { if(alive){setAuthReady(true);tell(errorMessage(err),true);} });
     return () => { alive = false; dispose?.(); };
   }, [tell]);
   useEffect(() => () => { cancelAnimationFrame(frame.current); mixer.current?.close(); }, []);
@@ -931,9 +932,12 @@ export default function App() {
       const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
     }}/>;
   const noticeToast = notice && <div className={`toast ${notice.error ? 'toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{!notice.error && <Check size={16}/>}<span>{notice.message}</span><IconButton title="Dismiss notice" onClick={() => setNotice(null)}><X size={14}/></IconButton></div>;
-  if (home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
-    <Welcome screen={home} items={items} lastSession={lastEditorSession(scope)}
-      openProjects={()=>{localStorage.setItem('toonroom.started','1');setHome('projects');}}
+  if (!account || !authReady || home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
+    <Welcome screen={account&&authReady&&home==='projects'?'projects':'landing'} items={items} lastSession={lastEditorSession(scope)}
+      account={account} authAvailable={cloudEnabled&&authReady} login={login}
+      logout={async()=>{await logout();setHome('landing');}}
+      enter={()=>setHome('projects')}
+      openProjects={()=>{if(account)setHome('projects');else setHome('landing');}}
       openLanding={()=>setHome('landing')} openProject={openLibraryProject}
       createManual={startManualMovie}
       duplicate={duplicateHomeProject} rename={renameHomeProject}
