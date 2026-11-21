@@ -1,3 +1,4 @@
+import { MediaImage } from './MediaImage.tsx';
 import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, ArrowLeft, ArrowRight, FlipHorizontal } from 'lucide-react';
 import { actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
 import { anchorFor, compatibleObjects, objectDependencies } from '../engine/interactions.ts';
@@ -43,7 +44,7 @@ export function Inspector({ scene, actors, characters, selection, select, patchA
       {object && <details open><summary>Appearance</summary>
          <button type="button" className="flip-prop-button" aria-pressed={!!object.flip} onClick={()=>patchObject({...object,flip:!object.flip})}><FlipHorizontal size={16}/> Flip object horizontally</button>
         {object.imageData ? <>
-          <img src={object.imageData} alt={object.name} className="inspector-image-preview"/>
+          <MediaImage source={object.imageData} alt={object.name} className="inspector-image-preview"/>
           <label className="field">Interaction type<Select aria="Image prop interaction" value={object.interaction ?? 'none'}
             onChange={interaction => patchObject({ ...object, interaction })} options={['none', 'hold', 'sit'] as const}
             render={kind => kind === 'none' ? 'Decoration' : kind === 'sit' ? 'Seat · character can sit' : 'Holdable · character can carry'}/></label>
