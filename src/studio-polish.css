@@ -200,3 +200,13 @@
 @media (prefers-reduced-motion:reduce) {
   .mode-direct .asset-rail button, .mode-direct .asset-list :is(.world-card,.prop-card,.asset-row,.asset-manage-row) { transition:none; transform:none; }
 }
+
+/* Media import actions, searchable alongside the existing sound library. */
+.mode-direct .asset-media-actions { display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:3px 0 12px; }
+.mode-direct .asset-media-tile { position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0;min-height:123px;padding:13px 11px;background:var(--studio-subtle);border:1px solid var(--studio-outline);border-radius:15px;color:var(--studio-strong);text-align:left; }
+.mode-direct .asset-media-tile:hover { background:var(--studio-hover);border-color:#a888df;box-shadow:0 5px 18px #4c278211; }
+.mode-direct .asset-media-icon { width:36px;height:36px;display:grid;place-items:center;border-radius:12px;background:#def3f8;color:#148ca5; }
+.mode-direct .asset-media-icon.music { background:#f0e2ff;color:#873bd4; }
+.mode-direct .asset-media-tile strong { font-size:12px;font-weight:750; }
+.mode-direct .asset-media-tile small { color:var(--studio-secondary);font-size:10px; }
+.mode-direct .asset-media-plus { position:absolute;right:10px;top:10px;color:var(--studio-secondary); }
