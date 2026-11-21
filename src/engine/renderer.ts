@@ -1,3 +1,4 @@
+import { mediaUrl } from '../services/media.ts';
 import { viewForward } from './animation.ts';
 import { Application, Container, Graphics, Text, Sprite, Texture } from 'pixi.js';
 import { drawActor, heldGripPoint } from './actorArt.ts';
@@ -32,7 +33,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     if (existing) return Promise.resolve(existing);
     const running = requests.get(data);
     if (running) return running;
-    const load = new Promise<Texture>((resolve, reject) => {
+    const load = mediaUrl(data).then(source => new Promise<Texture>((resolve, reject) => {
       const image = new Image();
       image.onload = () => {
         try {
@@ -42,8 +43,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         } catch (error) { reject(error); }
       };
       image.onerror = () => reject(new Error('Could not load a saved image.'));
-      image.src = data;
-    }).finally(() => { requests.delete(data); });
+      image.src = source;
+    })).finally(() => { requests.delete(data); });
     requests.set(data, load);
     return load;
   }
