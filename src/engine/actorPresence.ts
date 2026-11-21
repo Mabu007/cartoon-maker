@@ -61,6 +61,7 @@ export function exitSceneActor(scene:Scene,id:string,time:number,gait:Gait) {
   const actor=evaluate(scene,start).actors.find(item=>item.id===id);
   if(!actor)throw Error('Select a character in this scene.');
   if(!actor.visible)throw Error('This character is already hidden. Use Walk in or Run in instead.');
+  if(blocked(scene,id,start,start+.15))throw Error('Another movement overlaps this exit. Move or trim it first.');
   const toX=offscreen(actor.x);
   const duration=travelDuration(Math.abs(toX-actor.x),gait,scene.duration-start-.11);
   if(duration<.2)throw Error('Move the playhead earlier to leave time for an exit.');
