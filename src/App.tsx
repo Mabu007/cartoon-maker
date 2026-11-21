@@ -359,9 +359,11 @@ export default function App() {
       const body = value;
       const current = currentScene(useStudio.getState());
       if (body.action === 'sit') {
-        const target = compatibleObjects(current, 'sit').find(item => item.id === body.target) ?? nearestObject(current, body.actor, 'sit');
-        if (!target) { tell('Add a chair or sofa before using Sit. Characters cannot sit on air.', true); return; }
-        updated = { ...body, layer: 'body', target: target.id };
+        // Sitting is a self-contained body pose. Objects remain optional;
+        // never force a nearby chair, which caused characters to slide/float.
+        const target = body.target ? compatibleObjects(current, 'sit').find(item => item.id === body.target) : undefined;
+        const { target: _old, ...freeSit } = body;
+        updated = { ...freeSit, layer: 'body', ...(target ? { target: target.id } : {}) };
       } else if (body.target && !compatibleObjects(current, body.action).some(item => item.id === body.target)) {
         const { target: _, ...rest } = body;
         updated = rest;
