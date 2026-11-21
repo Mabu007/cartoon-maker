@@ -143,3 +143,21 @@ test('duration changes drive whole-movie frame selection identically for preview
     assert.equal(preview.shot,exportedFrame.shot);
   }
 });
+
+test('optional prop flipping preserves old projects and round-trips through the canonical movie schema',()=>{
+  const prop=original.objects[0];
+  assert(prop,'a fixture object is needed');
+  const mirrored={...prop,flip:true};
+  const next={...movie,scenes:[{...original,objects:[mirrored,...original.objects.slice(1)]}]};
+  const saved=ProjectDocument.parse(next);
+  assert.equal(saved.scenes[0].objects[0].flip,true);
+  const reloaded=ProjectDocument.parse(JSON.parse(JSON.stringify(saved)));
+  assert.equal(reloaded.scenes[0].objects[0].flip,true);
+  const legacy={...movie,scenes:[{...original,objects:[prop,...original.objects.slice(1)]}]};
+  assert.equal(ProjectDocument.parse(legacy).scenes[0].objects[0].flip,undefined);
+  const source:WorldEntityRect={x:mirrored.x,y:mirrored.y,scaleX:-mirrored.scale,scaleY:mirrored.scale,angle:mirrored.rotation,left:-25,right:25,top:-60,bottom:5};
+  const local={x:13,y:-20};
+  const roundTrip=worldToEntity(entityToWorld(local,source),source);
+  assert(Math.abs(roundTrip.x-local.x)<.00001);
+  assert(Math.abs(roundTrip.y-local.y)<.00001);
+});
