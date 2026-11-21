@@ -17,6 +17,7 @@ import { clipLabel, clock, formats, IconButton, Modal, Select, trackIcon } from 
 export type ClipRequest = { track?: Track; action?: Action; actor?: string };
 export function AddClipDialog({ close, request, scene, actors, time, add, audio }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; add: (clip: Clip) => void; audio: (track: 'dialogue' | 'audio' | 'music', actor: string, start: number) => void }) {
   const [track, setTrack] = useState<Track>(request.track ?? 'body');
+  const [presence, setPresence] = useState<'show'|'hide'|'span'>('show');
   const [actor, setActor] = useState(request.actor ?? Object.keys(actors)[0] ?? '');
   const [action, setAction] = useState<Action>(request.action ?? 'walk');
   const [layer, setLayer] = useState<'body' | 'gesture'>(request.action && ['wave', 'point', 'nod', 'shake', 'talk'].includes(request.action) ? 'gesture' : 'body');
@@ -52,7 +53,8 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     if (track === 'transition') return add({ ...base, track, effect });
     if (track === 'audio') return add({ ...base, track, name: label(sound), asset: `builtin:${sound}`, volume: .75, muted: false, offset: 0 });
     if (!place) return;
-    if (track === 'actors') return add({ ...base, track, actor });
+    if (track === 'actors') return add({ ...base, track, actor,
+      ...(presence==='span'?{}:{length:.1,visible:presence==='show'}) });
     if (track === 'movement' && evaluated && travelLength <= scene.duration - at + .0001)
       return add({ ...base, length: travelLength, track, actor, gait, fromX: evaluated.x, fromY: evaluated.y, toX: clamp(toX, -2000, 3000), toY: clamp(toY, -2000, 3000) });
     if (track === 'movement') return;
@@ -67,6 +69,10 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     <div className="dialog-fields"><label className="field">Track<Select aria="Track" value={track} options={tracks} onChange={setTrack} render={id => trackNames[id]}/></label>
     {(needsActor || track === 'camera') && <label className="field">{track === 'camera' ? 'Focus' : 'Actor'}<Select aria="Actor" value={actor} onChange={value => { setActor(value); setTarget(''); const item = scene.actors.find(entry => entry.id === value); if (item) { setToX(item.x + 145); setToY(item.y); } }} options={track === 'camera' ? ['', ...Object.keys(actors)] : Object.keys(actors)} render={id => actors[id] ?? 'Automatic'}/></label>}
     {needsActor && !actor && <p className="form-error">Add an actor to the scene first.</p>}
+    {track==='actors'&&<><label className="field">On-screen event<Select aria="Actor visibility event"
+      value={presence} onChange={setPresence} options={['show','hide','span'] as const}
+      render={value=>value==='show'?'Show from this time':value==='hide'?'Hide from this time':'Visible only during clip'}/></label>
+      <p className="small-text">Use Show/Hide to let characters enter and leave. Visible-only clips use their own duration.</p></>}
     {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setTarget(''); setLayer(['wave','point','nod','shake','shrug','laugh','talk','listen','think'].includes(value)?'gesture':'body'); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={action === 'sit' ? 'body' : layer} onChange={setLayer} options={action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label></div>{action === 'sit' && !choices.length && <p className="form-error" role="alert">Add a chair or sofa to this scene before making a character sit.</p>}
       {!!choices.length && <label className="field">{action === 'sit' ? 'Sit on' : 'Interact with'}<Select aria={action === 'sit' ? 'Seat' : 'Interact with'} value={selectedTarget} onChange={setTarget}
         options={action === 'sit' ? choices.map(item => item.id) : ['', ...choices.map(item => item.id)]}
