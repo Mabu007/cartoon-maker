@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react';
-import { AlertCircle, Clapperboard } from 'lucide-react';
+import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2 } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
 import { type Project, type Scene } from '../engine/schema.ts';
 import { evaluate } from '../engine/evaluate.ts';
@@ -10,10 +10,11 @@ import type { Selection } from '../studio.ts';
 type Position = { x: number; y: number };
 type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
 export type PreviewTime = { scene: Scene; local: number };
-export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination }: {
+export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, flipEntity, duplicateEntity, removeEntity }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
   selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
   onDestination?: (position: Position) => void; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
+  flipEntity?: (id: string) => void; duplicateEntity?: (id: string) => void; removeEntity?: (id: string) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), repaint = useRef<() => void>(() => {});
   const dialogue = useRef<{ scene: Scene; amplitude: Awaited<ReturnType<typeof prepareDialoguePreview>> } | null>(null);
@@ -101,6 +102,9 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   }, [format, quality, restart]);
   useEffect(() => { if (!playing) repaint.current(); }, [project, scene, playing, edit, selection, subtitles]);
   useEffect(() => { const refresh = () => repaint.current(); window.addEventListener('toonroom-seek', refresh); return () => window.removeEventListener('toonroom-seek', refresh); }, []);
+  const selectedActor = selection?.kind === 'actor' ? scene.actors.find(item=>item.id===selection.id) : undefined;
+  const selectedObject = selection?.kind === 'object' ? scene.objects.find(item=>item.id===selection.id) : undefined;
+  const selectedName = selectedActor ? (project.characters.find(item=>item.id===selectedActor.characterId)?.name ?? 'Character') : selectedObject?.name;
   function pointer(event: PointerEvent) {
     const renderer = engine.current;
     if (!renderer) return;
@@ -126,8 +130,12 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         drag.current = { sceneId: scene.id, id: entity.id, origin, pointer: hit, current: origin, moved: false };
         event.currentTarget.setPointerCapture(event.pointerId);
       }} onPointerMove={event => {
-        const item = drag.current, hit = item && pointer(event);
-        if (!item || !hit || item.sceneId !== scene.id) return;
+        const item = drag.current, hit = pointer(event);
+         if (!item) {
+           event.currentTarget.dataset.hoverEntity = hit?.id ? 'true' : 'false';
+           return;
+         }
+         if (!hit || item.sceneId !== scene.id) return;
         const dx = hit.x - item.pointer.x, dy = hit.y - item.pointer.y;
         if (Math.hypot(dx, dy) < 3 && !item.moved) return;
         const grid = snap ? 10 : 1;
@@ -137,6 +145,12 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved && item.sceneId === scene.id) { const source=scene.actors.find(a=>a.id===item.id)??scene.objects.find(o=>o.id===item.id);if(source)move(item.id,{x:source.x+item.current.x-item.origin.x,y:source.y+item.current.y-item.origin.y}); } repaint.current(); }}
       onPointerCancel={() => { drag.current = null; repaint.current(); }}
       onLostPointerCapture={() => { drag.current = null; repaint.current(); }} />
-    {status && <div className="stage-status">{status.startsWith('Loading') ? <Clapperboard size={22}/> : <AlertCircle size={22}/>}<span>{status}</span>{!status.startsWith('Loading') && <button type="button" className="quiet" onClick={() => setRestart(value => value + 1)}>Retry preview</button>}</div>}
+    {selectedName && !playing && !onDestination && selection && <div className="stage-context-toolbar" role="toolbar" aria-label={selectedName+' scene tools'}>
+       <span className="stage-context-selection"><MousePointer2 size={15}/><strong>{selectedName}</strong><small>Drag to move</small></span>
+       <button type="button" title="Flip horizontally" aria-label={'Flip '+selectedName+' horizontally'} onClick={()=>flipEntity?.(selection.id)}><FlipHorizontal size={16}/><span>Flip</span></button>
+       <button type="button" title="Duplicate selected item" aria-label={'Duplicate '+selectedName} onClick={()=>duplicateEntity?.(selection.id)}><Copy size={15}/></button>
+       <button type="button" title="Remove selected item" aria-label={'Delete '+selectedName} onClick={()=>removeEntity?.(selection.id)}><Trash2 size={15}/></button>
+     </div>}
+     {status && <div className="stage-status">{status.startsWith('Loading') ? <Clapperboard size={22}/> : <AlertCircle size={22}/>}<span>{status}</span>{!status.startsWith('Loading') && <button type="button" className="quiet" onClick={() => setRestart(value => value + 1)}>Retry preview</button>}</div>}
   </div>;
 }
