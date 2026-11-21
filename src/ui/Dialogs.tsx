@@ -9,7 +9,6 @@ import { evaluate, projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
-import { uploadR2Media } from '../services/media.ts';
 import { RecordingWaveform } from './RecordingWaveform.tsx';
 
 import { browserExporter, exportCodec } from '../services/export.ts';
@@ -126,7 +125,10 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
     const analysis=isDialogue?await analyzeLocalLipSync(asset.blob):undefined;
     if(!alive.current)return;
     const id=uid();
-    if(account) await uploadR2Media(account,'audio',asset.blob,id);
+    // Always preserve the creator's recording immediately. The project's
+    // autosave uploads this asset to private R2 before its Firestore commit.
+    // If R2 is unavailable, the clip still plays on this device and the
+    // studio's existing cloud-sync error state stays visible.
     await putAudio(id,asset.blob);if(!alive.current)return;
     const common={id:uid(),start,length:Math.min(asset.length,scene.duration-start),asset:'asset:'+id,offset:0,volume:1,muted:false};
     if(isDialogue&&analysis)add({...common,track:'dialogue',actor,text:'',visemes:analysis.cues,lipSync:{source:'dsp',engine:analysis.engine,cacheKey:analysis.cacheKey,analyzedDuration:analysis.duration}});
