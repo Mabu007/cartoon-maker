@@ -19,6 +19,7 @@ import { backupMovie, restoreMovie } from './services/projectExchange.ts';
 import { PrecisionLipSyncEditor } from './ui/PrecisionLipSyncEditor.tsx';
 import { analyzeLocalLipSync } from './services/localLipSync.ts';
 import { prepareArtwork } from './services/artwork.ts';
+import { imageToR2, setMediaUser } from './services/media.ts';
 import { changeClipTiming, copyClip, currentScene, initial, removeEntity, useStudio, type Selection } from './studio.ts';
 import { AssetLibrary } from './ui/AssetLibrary.tsx';
 import { CharacterFactory } from './ui/CharacterFactory.tsx';
@@ -184,6 +185,7 @@ export default function App() {
       tell(errorMessage(error), true);
       return;
     }
+    setMediaUser(account);
     setRemoteAudio(account ? id => cloudAudio(account, id) : undefined);
     const opened = useStudio.getState();
     if (account) void cloudProjects(account).then(result => {
@@ -415,7 +417,8 @@ export default function App() {
     try {
       const imported = await prepareArtwork(file, 'world');
       pause();
-      commitScene(current => ({ ...current, backgroundImage: imported.data }));
+      const artwork = account ? await imageToR2(account, imported.data) : imported.data;
+      commitScene(current => ({ ...current, backgroundImage: artwork }));
       setMobilePanel('stage');
       tell('World image added. Your cast and props are still in place.');
     } catch (error) { showError(error); }
@@ -427,7 +430,8 @@ export default function App() {
       const sizing = Math.min(1, 165 / maxDimension);
       const prop = makeProp('image', 480, 435, {
         name: file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Picture prop',
-        imageData: imported.data, imageWidth: Math.max(10, Math.round(imported.width * sizing)),
+        imageData: account ? await imageToR2(account, imported.data) : imported.data,
+        imageWidth: Math.max(10, Math.round(imported.width * sizing)),
         imageHeight: Math.max(10, Math.round(imported.height * sizing)), interaction: 'none'
       });
       pause();
