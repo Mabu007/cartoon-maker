@@ -15,8 +15,9 @@ const id = z.string().min(1).max(100);
 const color = z.string().regex(/^#[\da-f]{6}$/i);
 // Portable WebP thumbnails are embedded in project JSON. A strict budget keeps
 // the project within typical browser storage and Firestore document limits.
-const imageData = z.string().regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/).max(320_000);
-const propImageData = z.string().regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/).max(105_000);
+const r2Image = z.string().regex(/^r2:image:[a-f0-9-]{12,64}$/i);
+const imageData = z.union([z.string().regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/).max(320_000),r2Image]);
+const propImageData = z.union([z.string().regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/).max(105_000),r2Image]);
 const num = (min: number, max: number) => z.number().finite().min(min).max(max);
 const position = { x: num(-2000, 3000), y: num(-2000, 3000), scale: num(.2, 4), rotation: num(-360, 360), depth: num(-1000, 1000) };
 export const CharacterView = z.enum(views);
