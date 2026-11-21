@@ -438,10 +438,11 @@ export default function App() {
     try {
       const imported = await prepareArtwork(file, 'world');
       pause();
-      const artwork = account ? await imageToR2(account, imported.data) : imported.data;
+      let artwork=imported.data, cloudPending=false;
+      if(account){try{artwork=await imageToR2(account,imported.data);}catch{cloudPending=true;}}
       commitScene(current => ({ ...current, backgroundImage: artwork }));
       setMobilePanel('stage');
-      tell('World image added. Your cast and props are still in place.');
+      tell(cloudPending?'World added locally. R2 upload will be retried on cloud save; check your bucket CORS if sync fails.':'World image added. Your cast and props are still in place.',cloudPending);
     } catch (error) { showError(error); }
   }
   async function uploadProp(file: File) {
@@ -449,9 +450,11 @@ export default function App() {
       const imported = await prepareArtwork(file, 'prop');
       const maxDimension = Math.max(imported.width, imported.height);
       const sizing = Math.min(1, 165 / maxDimension);
+      let artwork=imported.data,cloudPending=false;
+      if(account){try{artwork=await imageToR2(account,imported.data);}catch{cloudPending=true;}}
       const prop = makeProp('image', 480, 435, {
         name: file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Picture prop',
-        imageData: account ? await imageToR2(account, imported.data) : imported.data,
+        imageData: artwork,
         imageWidth: Math.max(10, Math.round(imported.width * sizing)),
         imageHeight: Math.max(10, Math.round(imported.height * sizing)), interaction: 'none'
       });
@@ -459,7 +462,7 @@ export default function App() {
       commitScene(current => ({ ...current, objects: [...current.objects, prop] }));
       select({ kind: 'object', id: prop.id });
       setMobilePanel('inspector');
-      tell('Picture prop added. Set its interaction type in the inspector.');
+      tell(cloudPending?'Picture added locally. R2 upload pending; check your bucket CORS if cloud sync fails.':'Picture prop added. Set its interaction type in the inspector.',cloudPending);
     } catch (error) { showError(error); }
   }
   function storeWorlds(next:WorldPreset[]){
