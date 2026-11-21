@@ -239,3 +239,13 @@
 .recording-visualizer .recording-level::-webkit-progress-bar {background:#282334;border-radius:99px;}
 .recording-visualizer .recording-level::-webkit-progress-value {background:#44bea4;border-radius:99px;}
 .recording-visualizer .recording-level::-moz-progress-bar {background:#44bea4;}
+
+
+/* Stable rows for each actor's timed visibility cues. */
+.mode-direct .professional-timeline .actor-lane-name {
+  position:absolute;left:8px;z-index:0;max-width:160px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--studio-secondary);font-size:10px;line-height:18px;
+  opacity:.65;pointer-events:none;
+}
+.mode-direct .professional-timeline .clip-actors {z-index:1;border-radius:9px;}
