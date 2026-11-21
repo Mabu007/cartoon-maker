@@ -37,7 +37,7 @@ async function signedUrl(user:Account,action:'upload'|'read',kind:MediaKind,id:s
   if(!result.ok||!data?.url)throw Error(data?.error||'Could not access cloud media. Check your sign-in and R2 setup.');
   return data.url;
 }
-export async function uploadR2Media(user:Account,kind:MediaKind,blob:Blob,id=uid()) {
+export async function uploadR2Media(user:Account,kind:MediaKind,blob:Blob,id:string=uid()) {
   if(!blob.size || blob.size>limits[kind])throw Error(`File exceeds the ${limits[kind]/1048576} MB ${kind} limit.`);
   if(!mime[kind].has(blob.type))throw Error('Unsupported media type: '+(blob.type||'unknown'));
   const url=await signedUrl(user,'upload',kind,id,blob);
