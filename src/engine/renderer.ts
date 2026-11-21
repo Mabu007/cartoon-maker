@@ -249,13 +249,14 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       const projectedEyes=actor.gazePoint?eyeWorldPoint({...actor,...point,flip:directionFlip},character):undefined;
       const targetFocus=projectedEyes&&actor.gazePoint
         ? aimEyes(projectedEyes,actor.gazePoint,directionFlip,actor.rotation+rig(character,actor.pose,1).angle*(directionFlip?-1:1),actor.scale):actor.focus;
-      drawActor(entity.art.clear(),entity.face!,entity.facialArt!.clear(),character,view,
+      drawActor(entity.art.clear(),entity.face!,character,view,
         options.edit ? {} : actor.pose, options.edit ? source.expression : actor.expression,
         options.amplitude?.(actor.id, time) ?? 0, options.edit ? undefined : actor.held,
         time, actor.action, actor.id, actor.speaking || Boolean(options.characterPreview&&options.previewViseme),
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
-        options.characterPreview ? options.previewFocus : targetFocus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,costumeTexture,cameraGaze);
+        options.characterPreview ? options.previewFocus : targetFocus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
+        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear()});
       entity.face!.y -= lift;
       if (actor.held?.imageData && !options.edit) {
         const url = actor.held.imageData;

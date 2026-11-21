@@ -1,4 +1,4 @@
-import type { Container, Graphics } from 'pixi.js';
+import { Graphics, type Container } from 'pixi.js';
 import { armIK, gaitLeg, rig, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
 import { drawIllustratedHair, drawIllustratedHand, shade, type HandPose } from './illustration.ts';
@@ -27,10 +27,13 @@ export function heldGripPoint(character: Character, view: View, pose: JointPose)
   const [, hand]=armIK(r.right.shoulder,{x:r.head.x+(art.rear?-26:45),y:r.head.y+43},28*character.arms,28*character.arms,1);
   return {x:hand.x+7,y:hand.y+9};
 }
-export function drawActor(g:Graphics,face:Container,facialArt:Graphics,c:Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
+export function drawActor(g:Graphics,face:Container,c:Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
-  actionTime = time, gaitWeight=1, listening=false, turnScale=1, costume?:CostumeTexture, lookAtCamera=false) {
+  actionTime = time, gaitWeight=1, listening=false, turnScale=1,
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics}) {
+  const costume=appearance?.texture;
+  const lookAtCamera=appearance?.camera??false;
   const art = viewArt[view];
   const r = rig(c, pose, art.width);
   const limbWidth = 10 * c.thickness;
@@ -121,7 +124,8 @@ export function drawActor(g:Graphics,face:Container,facialArt:Graphics,c:Charact
   if (action === 'blink' && actionTime < .22) mood.blink = Math.max(mood.blink, 1 - Math.abs(actionTime - .11) / .11);
   const headView = lookAtCamera && (art.profile || art.rear)
     ? view === 'back' ? 'back' : 'three-quarter' : view;
-  drawFace(face,facialArt,c,headView,mood,lookAtCamera);
+  const facialArt=appearance?.art??(face instanceof Graphics?face:undefined);
+  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera);
 }
 function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean) {
   const art=viewArt[view], {rear,profile}=art;
