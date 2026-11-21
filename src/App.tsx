@@ -1,31 +1,28 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Cloud, Download, Expand, FolderOpen, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Sparkles, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
-import { approveScript, compileMovie, missingRentMovie, reviseScript, startProduction, fromOutline, makeStoryScene } from './engine/production.ts';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Cloud, Download, FolderOpen, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { missingRentMovie } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
-import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
+import { locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
 import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
-import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Production, type Project, type Prop, type Scene, type ScriptSceneData, type Track } from './engine/schema.ts';
+import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import type { Format } from './engine/renderer.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
-import { audioLength, putAudio, getOrFetchAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
-import { analyzeLipSync, type Recognizer } from './services/lipSync.ts';
-import { duplicateProject, duplicateScene, listLocal, mergeLocal, removeLocal, saveLocal,
-  updateProjectOrganization, renameSavedProject, lastEditorSession, editorSessionFor, rememberEditorSession,
-  type SavedProject, type ProjectCollection } from './services/projects.ts';
+import { audioLength, getOrFetchAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
+import { type Recognizer } from './services/lipSync.ts';
+import { duplicateProject, listLocal, mergeLocal, removeLocal, saveLocal, updateProjectOrganization, renameSavedProject, lastEditorSession, editorSessionFor, rememberEditorSession, type SavedProject, type ProjectCollection } from './services/projects.ts';
 import { characterUsage, removeCharacterFromProject, propUsage } from './engine/assetSafety.ts';
 import { addMovieScene, duplicateMovieScene, renameMovieScene, reorderMovieScene, removeMovieScene } from './engine/sceneWorkflow.ts';
-import { exampleDirector, hostedDirector } from './services/director.ts';
-import { speechProvider, synthesizeCached } from './services/speech.ts';
-import { replaceDialogueAsset, restoreDialogueAsset } from './engine/dialogueAudio.ts';
-import { renderSpeech, type AiAccess } from './services/filmmaker.ts';
+
+
 import { backupMovie, restoreMovie } from './services/projectExchange.ts';
-import { DirectorPanel } from './ui/DirectorPanel.tsx';
+import { PrecisionLipSyncEditor } from './ui/PrecisionLipSyncEditor.tsx';
+import { analyzeLocalLipSync } from './services/localLipSync.ts';
 import { prepareArtwork } from './services/artwork.ts';
 import { changeClipTiming, copyClip, currentScene, initial, removeEntity, useStudio, type Selection } from './studio.ts';
 import { AssetLibrary } from './ui/AssetLibrary.tsx';
 import { CharacterFactory } from './ui/CharacterFactory.tsx';
-import { AccountDialog, AddClipDialog, AudioDialog, DirectorDialog, ExportDialog, HelpDialog, ProjectsDialog, ScenesDialog, type AudioRequest, type ClipRequest } from './ui/Dialogs.tsx';
+import { AccountDialog, AddClipDialog, AudioDialog, ExportDialog, HelpDialog, ProjectsDialog, ScenesDialog, type AudioRequest, type ClipRequest } from './ui/Dialogs.tsx';
 import { ObjectDependenciesDialog } from './ui/ObjectDependenciesDialog.tsx';
 import { Inspector } from './ui/Inspector.tsx';
 import { Stage, type PreviewTime } from './ui/Stage.tsx';
@@ -37,8 +34,6 @@ import { insertCameraShot, sceneToCode, validateSceneReplacement } from './engin
 import { movieToCode, sceneBuildingContext, validateMovieReplacement } from './engine/movieTimeline.ts';
 import { deleteMovementKeyframe, deleteTimelineClips, duplicateTimelineClips, pasteTimelineClips, resizeSceneTimeline, selectableClips, splitTimelineClips } from './engine/timelineEditing.ts';
 
-const StoryStudio = lazy(() => import('./ui/StoryStudio.tsx').then(module => ({ default: module.StoryStudio })));
-const ScreenplayStudio = lazy(() => import('./ui/ScreenplayStudio.tsx').then(module => ({ default: module.ScreenplayStudio })));
 
 function PanelResize({ side, value, change }: { side: 'left' | 'right'; value: number; change: (width: number) => void }) {
   const drag = useRef<{ x: number; width: number } | null>(null);
@@ -64,7 +59,7 @@ function PanelResize({ side, value, change }: { side: 'left' | 'right'; value: n
 }
 
 const studioName = import.meta.env.VITE_STUDIO_NAME?.trim() || 'Toonroom';
-type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | 'code' | null;
+type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | 'code' | 'lipsync' | null;
 type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[]; backgroundImage?: string };
 const worldKey = (scope: string) => `toonroom.worlds.v1.${scope}`;
 function worldPresets(scope: string): WorldPreset[] {
@@ -83,25 +78,17 @@ export default function App() {
   const project = useStudio(state => state.project), scene = useStudio(currentScene), selection = useStudio(state => state.selection), library = useStudio(state => state.library);
   const selectedClipIds = useStudio(state => state.clipIds), selectedKeyframe = useStudio(state => state.selectedKeyframe);
   const hasUndo = useStudio(state => state.past.length > 0), hasRedo = useStudio(state => state.future.length > 0);
-  const [workspace, setWorkspace] = useState<'create' | 'write' | 'direct'>('direct');
+  const workspace='direct';
   const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(() => localStorage.getItem('toonroom.started') ? 'projects' : 'landing');
-  const [seedIdea, setSeedIdea] = useState('');
-  const [directorOpen, setDirectorOpen] = useState(false);
-  // Proposals are temporary stage views; only Apply edits the canonical store.
-  const [directorPreview,setDirectorPreview] = useState<Scene|undefined>();
+  const [placingDestination,setPlacingDestination]=useState(false);
   const [assetWidth, setAssetWidth] = useState(263), [inspectorWidth, setInspectorWidth] = useState(254);
-  const [scriptTarget, setScriptTarget] = useState<{ sceneId?: string; lineId?: string; autoDraft?: boolean }>({});
   const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'light' ? 'light' : 'dark');
-  const [compiling, setCompiling] = useState(false);
-  const compileInFlight = useRef(false);
   const importFile = useRef<HTMLInputElement>(null);
   const session = useStudio(state => state.session);
   const sceneTarget = { session, sceneId: scene.id };
   const dirty = useStudio(state => state.dirty);
   const sceneIndex = project.scenes.findIndex(item => item.id === scene.id);
   const [dialog, setDialog] = useState<Dialog>(null), [account, setAccount] = useState<Account | null>(null), [items, setItems] = useState<SavedProject[]>([]);
-  const [personalModel, setPersonalModel] = useState<AiAccess['personal']>(null);
-  const ai = { account, personal: personalModel };
   const scope = account?.uid ?? 'guest';
   const [worlds, setWorlds] = useState<WorldPreset[]>([]);
   const [saveStatus, setSaveStatus] = useState('Saved on device'), [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
@@ -109,18 +96,19 @@ export default function App() {
   const [requestedAudio, setRequestedAudio] = useState<AudioRequest>({ track: 'dialogue', start: 0 });
   const [confirm, setConfirm] = useState<{ title: string; text: string; run: () => void }>();
   const [dependentObjectId, setDependentObjectId] = useState<string | null>(null);
-  const [format, setFormat] = useState<Format>('16:9'), [arrange, setArrange] = useState(false), [subtitles, setSubtitles] = useState(true), [quality, setQuality] = useState(true);
+  const [format, setFormat] = useState<Format>('16:9'), [arrange, setArrange] = useState(true), [subtitles, setSubtitles] = useState(false), [quality, setQuality] = useState(true);
+  const [playbackRange,setPlaybackRange]=useState<{start:number;end:number}|undefined>();
   const [snap, setSnap] = useState(true), [compact, setCompact] = useState(false), [focus, setFocus] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'stage' | 'library' | 'inspector'>('stage');
   const [playing, setPlaying] = useState(false), [preparing, setPreparing] = useState(false), [loop, setLoop] = useState(false), [muted, setMuted] = useState(false), [shot, setShot] = useState('wide');
   const mixer = useRef<Mixer | null>(null), time = useRef<PreviewTime>({ scene, local: 0 });
   const range = useRef<HTMLInputElement>(null), counter = useRef<HTMLSpanElement>(null), frame = useRef(0), animationToken = useRef(0);
-  const livePlaying = useRef(false), livePreparing = useRef(false), settings = useRef({ loop, muted }), originalScope = useRef(scope);
+  const livePlaying = useRef(false), livePreparing = useRef(false), settings = useRef({ loop, muted, playbackRange }), originalScope = useRef(scope);
   const cloudDeletes = useRef(new Set<string>());
   const cloudQueue = useRef<Promise<unknown>>(Promise.resolve());
   const timelineClipboard = useRef<{ projectId: string; sceneId: string; clips: Clip[] } | null>(null);
   const saveToken = useRef(0);
-  settings.current = { loop, muted };
+  settings.current = { loop, muted, playbackRange };
   const actorNames = Object.fromEntries(scene.actors.map(actor => [actor.id, project.characters.find(character => character.id === actor.characterId)?.name ?? 'Actor']));
   const tell = useCallback((message: string, error = false) => setNotice({ message, error }), []);
   const toggleTheme = () => setTheme(current => {
@@ -169,10 +157,10 @@ export default function App() {
     cancelAnimationFrame(frame.current);
     mixer.current?.stop();
     livePlaying.current = false; livePreparing.current = false;
-    setPlaying(false); setPreparing(false);
+    setPlaying(false); setPreparing(false); setArrange(true);
   }
   function loadProject(next: Project, edited = false) {
-    pause(); setArrange(false); setDirectorPreview(undefined); close();
+    pause();setPlaybackRange(undefined);setPlacingDestination(false); setArrange(true);  close();
     useStudio.getState().open(next, edited);
     updateCursor(currentScene(useStudio.getState()), 0, false);
     saveToken.current++;
@@ -265,16 +253,16 @@ export default function App() {
     if (livePlaying.current || livePreparing.current) { pause(); return; }
     const token = ++animationToken.current;
     livePreparing.current = true; setPreparing(true); setArrange(false);
-    const state = useStudio.getState(), current = directorPreview ?? currentScene(state);
-    const at = time.current.local >= current.duration - .01 ? 0 : time.current.local;
+    const state = useStudio.getState(), current = currentScene(state);
+    const playback=settings.current.playbackRange;
+    const at = playback ? clamp(time.current.local>=playback.end-.01?playback.start:time.current.local,playback.start,playback.end) : time.current.local >= current.duration - .01 ? 0 : time.current.local;
     try {
       const audio = mixer.current ??= createAudioMixer();
       await audio.context.resume();
       audio.monitor();
       audio.master.gain.value = settings.current.muted ? 0 : 1;
       const startIndex = state.project.scenes.findIndex(item => item.id === current.id);
-      const sequence = directorPreview ? [current] :
-        settings.current.loop ? [current] : state.project.scenes.slice(startIndex);
+      const sequence = (settings.current.loop || playback) ? [current] : state.project.scenes.slice(startIndex);
       await audio.prepare(sequence);
       if (token !== animationToken.current) return;
       const startTime = audio.context.currentTime + .03;
@@ -282,13 +270,13 @@ export default function App() {
       livePlaying.current = true; setPlaying(true);
       livePreparing.current = false; setPreparing(false);
       let origin = startTime - at, earliest = at, lastFrame = -1;
-      const duration = projectDuration(sequence);
+      const duration = playback?.end ?? projectDuration(sequence);
       const tick = () => {
         if (token !== animationToken.current) return;
         let elapsed = Math.max(earliest, audio.context.currentTime - origin);
         if (elapsed >= duration) {
-          if (settings.current.loop && sequence.length === 1) { origin = audio.context.currentTime; earliest = 0; elapsed = 0; audio.schedule(sequence, 0, origin); }
-          else { const last = sequence.at(-1)!; updateCursor(last, last.duration, true); pause(); return; }
+          if (settings.current.loop && sequence.length === 1) { const start=playback?.start??0;origin = audio.context.currentTime-start; earliest = start; elapsed = start; audio.schedule(sequence, start, audio.context.currentTime); }
+          else { const last = sequence.at(-1)!; updateCursor(last, playback?.end??last.duration, true); pause(); return; }
         }
         const next = locate(sequence, elapsed);
         if (time.current.scene.id !== next.scene.id) {
@@ -303,10 +291,8 @@ export default function App() {
     } catch (error) { if (token === animationToken.current) { pause(); showError(error); } }
   }
   function seek(value: number) {
-    pause();setArrange(false);
-    // The transport must seek within the staged Director proposal, not the
-    // unchanged canonical scene while previewing a new duration or shot.
-    const current=directorPreview??currentScene(useStudio.getState());
+    pause();setArrange(true);
+    const current=currentScene(useStudio.getState());
     updateCursor(current,clamp(value,0,current.duration),true);
   }
   function switchScene(value: Scene) {
@@ -314,7 +300,7 @@ export default function App() {
     if (state.session !== session) return;
     const target = state.project.scenes.find(item => item.id === value.id);
     if (!target) return;
-    pause(); updateCursor(target, 0, true); state.setScene(target.id); close();
+    pause();setPlaybackRange(undefined); updateCursor(target, 0, true); state.setScene(target.id); close();
   }
   function openProject(value: Project, isNew = false) {
     if (useStudio.getState().dirty && !persist()) return false;
@@ -355,18 +341,6 @@ export default function App() {
   function patchObject(value: Prop) { editScene(current => repairOrphanedObjectActions({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
   function patchClip(value: Clip, original?: Clip) {
     if (scene.trackSettings?.[value.track]?.locked) { tell('Unlock the track before editing this clip.',true); return; }
-    if (value.track === 'dialogue') {
-      const before = scene.clips.find(clip => clip.id === value.id);
-      const script = project.production?.screenplay.scenes.find(item => item.id === scene.id);
-      const from = project.production?.graph.find(item => item.sceneId === scene.id)?.events[value.id]?.line;
-      if (before?.track === 'dialogue' && before.text !== value.text && script && from) {
-        if (value.text.length > 400 || !value.text.trim()) { tell('Enter a spoken line between 1 and 400 characters.', true); return; }
-        if (project.production?.graph.find(item => item.sceneId === scene.id)?.locked.includes(value.id)) { tell('Unlock the dialogue clip before changing its line.', true); return; }
-        const next = { ...script, elements: script.elements.map(line => line.id === from ? { ...line, text: value.text } : line) };
-        void commitDirection(next, script);
-        return;
-      }
-    }
     let updated: Clip = value;
     // Moving or repositioning a keyed clip in the visual inspector should not
     // leave invisible keyframes overriding the coordinates the user just set.
@@ -404,7 +378,7 @@ export default function App() {
       const clip = value.track === 'camera' ? value : changeClipTiming(value, value.start, value.length, current.duration);
       return { ...current, clips: clip.track === 'camera' ? insertCameraShot(current.clips, clip, [...current.actors, ...current.objects].map(item => item.id)) : [...current.clips, clip] };
     });
-    setArrange(false); select({ kind: 'clip', id: value.id }); close();
+    setArrange(true); select({ kind: 'clip', id: value.id }); close();
   }
   function showClip(track?: Track, action?: Action) {
     pause();
@@ -705,39 +679,6 @@ export default function App() {
       } : {})
     }));
   }
-  async function regenerateVoice(clip: Extract<Clip, { track: 'dialogue' }>, text: string, voice: string, force = false): Promise<string> {
-    if (!text.trim() || text.length > 400) throw new Error('Enter between 1 and 400 characters.');
-    const origin = useStudio.getState();
-    const initialScene = currentScene(origin);
-    const initial = initialScene.clips.find(value=>value.id===clip.id);
-    if (initial?.track !== 'dialogue' || JSON.stringify(initial)!==JSON.stringify(clip))
-      throw new Error('The dialogue changed. Reopen the clip before generating voice.');
-    const actor = initialScene.actors.find(value=>value.id===clip.actor);
-    const character = origin.project.characters.find(value=>value.id===actor?.characterId);
-    const output = await synthesizeCached(speechProvider(account),text.trim(),voice,character?.hostedVoiceId,force);
-    const seconds = await audioLength(output);
-    // Guard before lip sync and before persisting new bytes; original audio
-    // remains untouched when synthesis, timing or alignment fails.
-    const { validateDialogueReplacement } = await import('./engine/dialogueAudio.ts');
-    validateDialogueReplacement(initialScene,clip,seconds);
-    const analysis = await analyzeLipSync(output,text.trim(),seconds,{token:await account?.getIdToken().catch(()=>undefined)});
-    const audioId = uid();
-    await putAudio(audioId,output);
-    const state = useStudio.getState();
-    if (state.session!==origin.session || state.sceneId!==origin.sceneId || state.project.id!==origin.project.id)
-      throw new Error('The movie or scene changed during generation. Original dialogue is unchanged.');
-    editScene(current=>{
-      const before=current.clips.find(value=>value.id===clip.id);
-      if (before?.track!=='dialogue' || JSON.stringify(before)!==JSON.stringify(clip))
-        throw new Error('The dialogue changed while speech was being generated. Original audio remains unchanged.');
-      return replaceDialogueAsset(current,clip.id,{text:text.trim(),asset:`asset:${audioId}`,
-        length:seconds,voicePreset:voice as 'warm'|'bright'|'deep',visemes:analysis.cues,
-        lipSync:{source:analysis.source,engine:analysis.engine,analyzedDuration:analysis.analyzedDuration,
-          ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})}});
-    });
-    const source=output.type==='audio/wav'?'Local voice engine':'Hosted speech or cached voice';
-    return `${source}: this line was updated. Previous audio remains in version history. ${analysis.source==='rhubarb'?'Audio-aligned':'Estimated'} lip sync is active.`;
-  }
   async function alignVoiceClip(clip:Extract<Clip,{track:'dialogue'}>,recognizer:Recognizer):Promise<string> {
     const state=useStudio.getState(),scene=currentScene(state);
     if(JSON.stringify(scene.clips.find(c=>c.id===clip.id))!==JSON.stringify(clip))
@@ -750,9 +691,7 @@ export default function App() {
       }):undefined;
     if(!blob)throw new Error('Recording is missing. Restore a backup or reconnect cloud storage.');
     const duration=await audioLength(blob);
-    const analysis=await analyzeLipSync(blob,clip.text,duration,{
-      recognizer,token:await account?.getIdToken().catch(()=>undefined)
-    });
+    const analysis=await analyzeLocalLipSync(blob);
     const live=useStudio.getState();
     if(live.session!==state.session||live.sceneId!==state.sceneId||live.project.id!==state.project.id)
       throw new Error('Project changed while analyzing. Original cues remain untouched.');
@@ -766,25 +705,7 @@ export default function App() {
           ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})}
       }:c)};
     });
-    return analysis.source==='rhubarb'
-      ? 'Real Rhubarb mouth cues cached. Edits to clip position, trim and offset reuse them.'
-      : 'Estimated lip-sync — not Rhubarb alignment. '+(analysis.reason??'Analyzer unavailable.');
-  }
-  async function restoreVoiceVersion(clip: Extract<Clip, {track:'dialogue'}>, index:number):Promise<string> {
-    const version=clip.versions?.[index];
-    if(!version)throw new Error('This dialogue version is not available.');
-    if(version.asset.startsWith('asset:')) {
-      const {getOrFetchAudio}=await import('./services/audio.ts');
-      if(!await getOrFetchAudio(version.asset.slice(6)))
-        throw new Error('The archived audio is missing. Restore the movie backup or reconnect cloud storage.');
-    }
-    editScene(current=>{
-      const before=current.clips.find(value=>value.id===clip.id);
-      if(before?.track!=='dialogue'||JSON.stringify(before)!==JSON.stringify(clip))
-        throw new Error('The dialogue changed while restoring. Reopen it and try again.');
-      return restoreDialogueAsset(current,clip.id,index);
-    });
-    return 'Previous voice version restored. Undo can return to the current version.';
+    return 'Automatic lip sync updated on this device. Your precision corrections are preserved.';
   }
   function addSound(name: typeof soundNames[number]) { const start = clamp(time.current.local, 0, scene.duration - .1); run(() => addClip({ id: uid(), track: 'audio', name: label(name), asset: `builtin:${name}`, length: Math.min(.8, scene.duration - start), start, muted: false, volume: .8, offset: 0 })); }
   async function deleteSavedProject(item: Project) {
@@ -807,52 +728,15 @@ export default function App() {
   function deleteProject(item: Project) {
     ask(`Delete “${item.name}”?`, 'This permanently removes the saved project.', () => void deleteSavedProject(item));
   }
-  function updateProduction(change: (current: Production) => Production) {
-    edit(current => {
-      const previous=current.production??startProduction(current);
-      const production=change(previous);
-      // The title users edit in Create is the same movie title they should
-      // later find in Projects. Keep both views in sync without renaming when
-      // unrelated story fields or screenplay lines change.
-      const title=production.bible.profile.title.trim();
-      const changed=title&&title!==previous.bible.profile.title;
-      return { ...current,production,...(changed?{name:title}:{}) };
-    });
-  }
-  function switchWorkspace(next: typeof workspace) {
-    pause(); setFocus(false); setArrange(false); setDirectorPreview(undefined);
-    if (next !== 'direct' && !useStudio.getState().project.production) updateProduction(value => value);
-    setWorkspace(next);
-  }
-  function openScript(sceneId?: string, lineId?: string, autoDraft = false) {
-    setScriptTarget({ sceneId, lineId, autoDraft }); switchWorkspace('write');
-  }
-  function newMovie() {
-    setSeedIdea('');
-    const next = makeProject();
-    if (!openProject({ ...next, production: startProduction(next) }, true)) return;
-    setWorkspace('create');
-  }
+  function newMovie() { startManualMovie(); }
   function startManualMovie() {
-    setSeedIdea('');
-    const next=makeProject();
-    const first=next.scenes[0],initialCast=next.characters.slice(0,2).map(c=>c.id);
-    const outline={...makeStoryScene(first.name,initialCast),id:first.id,
-      environment:first.environment,location:first.environment};
-    const production=startProduction(next);
-    production.bible.scenes=[outline];
-    production.screenplay.scenes=[fromOutline(outline)];
-    if(!openProject({...next,production},true))return;
-    setWorkspace('write');setScriptTarget({sceneId:first.id});
-  }
-  function startAIMovie(prompt: string) {
     const next = makeProject();
-    const production = startProduction(next);
-    production.bible.profile.synopsis = prompt;
-    production.bible.profile.logline = prompt.slice(0, 500);
-    setSeedIdea(prompt);
-    if (!openProject({ ...next, production }, true)) return;
-    setWorkspace('create');
+    next.name = 'Untitled cartoon';
+    next.scenes[0] = { ...next.scenes[0], name: 'Scene 1', duration: 30, actors: [], clips: [], objects: [] };
+    if (!openProject(next, true)) return;
+    localStorage.setItem('toonroom.started', '1');
+     setArrange(true); setMobilePanel('stage');
+    useStudio.getState().setLibrary('Worlds');
   }
   function deleteHomeProject(item: Project) {
     // The dedicated Projects UI displays the destructive confirmation.
@@ -890,11 +774,9 @@ export default function App() {
   }
   function openLibraryProject(value:Project){
     if(!openProject(value))return;
-    setSeedIdea('');setScriptTarget({});
     const previous=editorSessionFor(scope,value.id)??(
       lastEditorSession(scope)?.projectId===value.id?lastEditorSession(scope):undefined);
-    const originalWorkspace=value.production&&value.production.graph.length===0?'write':'direct';
-    setWorkspace(previous?.projectId===value.id&&value.production?previous.workspace:originalWorkspace);
+
     if(previous?.projectId===value.id){
       const target=value.scenes.find(item=>item.id===previous.sceneId);
       if(target){
@@ -905,58 +787,14 @@ export default function App() {
   }
   function openRentExample() {
     if (!openProject(missingRentMovie(), true)) return;
-    setWorkspace('create'); setScriptTarget({});
-  }
-  async function compile(next: Project, original: Project, target?: string, playAfter = false) {
-    if (compileInFlight.current) return false;
-    compileInFlight.current = true;
-    pause(); setCompiling(true);
-    try {
-      const output = await compileMovie(next, renderSpeech(speechProvider(account),account?()=>account.getIdToken():undefined));
-      if (useStudio.getState().project !== original) throw new Error('The project changed during compilation. Generate it again to use your latest edits.');
-      useStudio.getState().edit(() => output);
-      const chosen = output.scenes.find(item => item.id === target) ?? output.scenes[0];
-      setWorkspace('direct'); setArrange(false); setMobilePanel('stage');
-      if (!target) setDirectorOpen(false);
-      const position = target && time.current.scene.id === chosen.id ? Math.min(time.current.local, chosen.duration - .01) : 0;
-      useStudio.getState().setScene(chosen.id);
-      updateCursor(chosen, position, false);
-      const notes = output.production?.graph.flatMap(item => item.diagnostics) ?? [];
-      tell(notes.length ? `Timeline ready with ${notes.length} production notes. Open Director to review.` : 'Timeline ready.');
-      if (playAfter) window.requestAnimationFrame(() => void play());
-      return true;
-    } catch (error) { showError(error); return false; }
-    finally { compileInFlight.current = false; setCompiling(false); }
-  }
-  async function commitDirection(next: ScriptSceneData, expected: ScriptSceneData, note?: string, request?: string) {
-    const state=useStudio.getState();
-    if(state.session!==session) { tell('Project changed. Review the screenplay edit again.',true);return false; }
-    const current=state.project,production=current.production;
-    if(!production){tell('No screenplay is attached to this project.',true);return false;}
-    const base=production.screenplay.scenes.find(item=>item.id===next.id);
-    if(JSON.stringify(base)!==JSON.stringify(expected)){
-      tell('The screenplay changed. Reopen the line and try again.',true);return false;
-    }
-    // Script changes are creative context, not a gate to directing. Do not
-    // implicitly recompile: that could overwrite manually directed clips.
-    const revised=reviseScript(production,production.screenplay.scenes.map(item=>item.id===next.id?next:item));
-    if(note&&request)revised.conversation=[...revised.conversation,
-      {role:'user' as const,text:request},{role:'assistant' as const,text:note}].slice(-24);
-    state.edit(value=>({...value,production:revised}));
-    tell('Screenplay revised. Existing timeline edits remain intact. Regenerate voice or compile explicitly when ready.');
-    return true;
-  }
-  function toggleClipLock(id: string) {
-    updateProduction(value => ({ ...value, graph: value.graph.map(record =>
-      record.sceneId !== scene.id ? record : { ...record, locked: record.locked.includes(id) ? record.locked.filter(item => item !== id) : [...record.locked, id] }
-    ) }));
+
   }
   async function exchange(file: File) {
     try {
       const value = await restoreMovie(file);
       if (useStudio.getState().session !== session) throw new Error('The project changed while the backup was loading. Import it again.');
       if (!openProject(value, true)) return;
-      setWorkspace(value.production ? 'write' : 'direct'); setScriptTarget({}); close(); tell('Project restored as a new copy.');
+        close(); tell('Project restored as a new copy.');
     } catch (error) { showError(error); }
   }
   function reorderDirectScene(id:string,step:number){
@@ -991,7 +829,7 @@ export default function App() {
   function showDialog(value: Dialog) { pause(); setDialog(value); }
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
-      if (dialog) return;
+      if (dialog || home!=='studio') return;
       const target = event.target;
       const el = target instanceof HTMLElement ? target : null;
       // Never steal Backspace, clipboard, Space or shortcuts from text editors.
@@ -1009,6 +847,7 @@ export default function App() {
         return;
       }
       if (workspace !== 'direct') return;
+      if (['ArrowLeft','ArrowRight'].includes(event.key) && !command && !event.altKey && !(arrange && state.selection?.kind !== 'clip' && state.selection)) { event.preventDefault(); seek(time.current.local + (event.key==='ArrowRight'?1:-1) / MOVIE_FRAME_RATE); return; }
       if (event.code === 'Space' && !command && !event.altKey) { event.preventDefault(); void play(); return; }
       if (command && key === 'a' && (inTimeline || hasTimelineSelection)) { event.preventDefault(); state.selectClips(currentScene(state).clips.map(clip=>clip.id)); return; }
       if (command && key === 'c' && hasTimelineSelection) { event.preventDefault(); copyTimelineSelection(); return; }
@@ -1039,40 +878,30 @@ export default function App() {
   if (dialog === 'character') content = <CharacterFactory source={factory} save={saveCharacter} close={close} remove={deleteCharacter}/>;
   if (dialog === 'clip') content = <AddClipDialog scene={scene} actors={actorNames} time={time.current.local} request={requestedClip} close={close} add={clip => run(() => addClip(clip))} audio={showAudio}/>;
   if (dialog === 'code') content = <TimelineCodeDialog key={session + scene.id} project={project} scene={scene} close={close} apply={replaceScene} applyMovie={replaceMovie}/>;
-  if (dialog === 'audio') content = <AudioDialog key={session + scene.id} scene={scene} actors={actorNames} characters={project.characters} request={requestedAudio} account={account} add={addClip} close={close}/>;
+  if (dialog === 'audio') content = <AudioDialog key={session + scene.id} scene={scene} actors={actorNames} characters={project.characters} request={requestedAudio} account={account} add={clip => {
+    const prior = scene.clips.find(c=>c.id===requestedAudio.replaceId);
+    if(prior?.track==='dialogue' && clip.track==='dialogue') {
+      const version={asset:prior.asset,text:prior.text,length:prior.length,offset:prior.offset,visemes:prior.visemes,manualVisemes:prior.manualVisemes,lipSync:prior.lipSync};
+      patchClip({...clip,id:prior.id,versions:[version,...(prior.versions??[])].slice(0,5)});close();
+    } else addClip(clip);
+  }} close={close}/>;
+  if (dialog === 'lipsync') {
+    const clip = scene.clips.find(item => item.id === selection?.id);
+    const actor = clip?.track === 'dialogue' && scene.actors.find(item => item.id === clip.actor);
+    const character = actor && project.characters.find(item => item.id === actor.characterId);
+    if (clip?.track === 'dialogue' && character) content = <PrecisionLipSyncEditor key={clip.id} clip={clip} character={character} change={patchClip} close={close} regenerate={() => alignVoiceClip(clip,'phonetic')} undo={() => useStudio.getState().undo()} redo={() => useStudio.getState().redo()} canUndo={hasUndo} canRedo={hasRedo}/>;
+  }
   if (dialog === 'export') content = <ExportDialog project={project} initialFormat={format} initialSubtitles={subtitles} close={close}/>;
-  if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value => { if (openProject(value)) { setWorkspace(value.production && !value.production.graph.length ? 'write' : 'direct'); setScriptTarget({}); } }} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
+  if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value => { if (openProject(value)) {   } }} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
   if (dialog === 'scenes') content = <ScenesDialog scenes={project.scenes} active={scene.id}
     close={close} open={switchScene} rename={renameDirectScene} savePreset={saveWorld}
     add={createDirectScene} copy={duplicateDirectScene}
     reorder={reorderDirectScene} drop={dropDirectScene}/>;
-  if (dialog === 'ai') content = <Modal title="AI settings" description="Connect an OpenRouter key for brainstorming, screenwriting and directing. Your key stays in this tab and requests go directly to OpenRouter." close={close}>
-    <form onSubmit={event => {
-      event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      const key = String(data.get('key') ?? '').trim() || personalModel?.key;
-      if (!key) { tell('Enter an OpenRouter API key.', true); return; }
-      setPersonalModel({ key, model: String(data.get('model') ?? '').trim() || 'openrouter/free' });
-      close();
-    }}>
-      <div className="dialog-fields">
-        <label className="field">OpenRouter API key<input name="key" type="password" autoComplete="off" spellCheck={false} maxLength={250} placeholder={personalModel ? 'Session key connected' : 'sk-or-…'}/></label>
-        <label className="field">Model<input name="model" defaultValue={personalModel?.model ?? 'openrouter/free'} maxLength={150}/></label>
-      </div>
-      <footer className="modal-footer">{personalModel && <button type="button" className="quiet" onClick={() => { setPersonalModel(null); close(); }}>Disconnect</button>}
-        <span className="spacer"/><button className="primary" type="submit">Use for this session</button></footer>
-    </form>
-  </Modal>;
   if (dialog === 'account') content = <AccountDialog available={cloudEnabled} account={account} login={login} logout={async () => {
     if (useStudio.getState().dirty && !persist()) throw new Error('Save your current project before signing out.');
     await logout();
   }} close={close}/>;
-  if (dialog === 'help') content = <HelpDialog close={close} demo={() => openProject(exampleDirector.example(), true)}/>;
-  if (dialog === 'director') content = <DirectorDialog close={close} example={() => openProject(exampleDirector.example(), true)} generate={account && import.meta.env.VITE_HOSTED_DIRECTOR === 'true' ? async story => {
-    const next = await hostedDirector(account, speechProvider(account)).generate!(story);
-    if (useStudio.getState().session !== session) throw new Error('The project changed while directing this story.');
-    if (!openProject(next, true)) throw new Error('Save the active project before opening the generated story.');
-  } : undefined}/>;
+  if (dialog === 'help') content = <HelpDialog close={close} demo={() => { openProject(makeProject(true), true);  }}/>;
   if (dialog === 'dependencies' && dependentObjectId) content = <ObjectDependenciesDialog scene={scene} objectId={dependentObjectId} actorNames={actorNames} close={close} confirm={confirmObjectDeletion}/>;
   if (dialog === 'confirm' && confirm) content = <Modal title={confirm.title} description={confirm.text} close={close}><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="danger" onClick={() => { close(); confirm.run(); }}>Confirm</button></footer></Modal>;
 
@@ -1084,7 +913,7 @@ export default function App() {
     <Welcome screen={home} items={items} lastSession={lastEditorSession(scope)}
       openProjects={()=>{localStorage.setItem('toonroom.started','1');setHome('projects');}}
       openLanding={()=>setHome('landing')} openProject={openLibraryProject}
-      createManual={startManualMovie} createAI={startAIMovie}
+      createManual={startManualMovie}
       duplicate={duplicateHomeProject} rename={renameHomeProject}
       backup={value=>void backupMovie(value).catch(showError)} restore={()=>importFile.current?.click()}
       organize={organizeHomeProject} remove={deleteHomeProject} openExample={openRentExample}
@@ -1095,37 +924,10 @@ export default function App() {
   return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''}`}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
-      <div className="project-controls"><button className="quiet project-button" onClick={() => { pause(); if (useStudio.getState().dirty && !persist()) return; close(); setHome('projects'); }}><FolderOpen size={17}/><span>Projects</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label><span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
-      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
+      <div className="project-controls"><button className="quiet project-button" onClick={() => { pause(); if (useStudio.getState().dirty && !persist()) return; close(); setHome('projects'); }}><FolderOpen size={17}/><span>Projects</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label>{saveStatus==='Save failed'&&<button className="quiet" onClick={()=>void backupMovie(project).catch(showError)}>Download recovery backup</button>}<span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
+      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title={playing?'Pause preview':'Play preview'} onClick={() => void play()}>{playing?<Pause size={17}/>:<Play size={17}/>}</IconButton><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
     </header>
-    <nav className="filmmaking-nav" aria-label="Filmmaking workspaces">
-      <button className={workspace === 'create' ? 'active' : ''} aria-current={workspace === 'create' ? 'page' : undefined} onClick={() => switchWorkspace('create')}>Create</button>
-      <button className={workspace === 'write' ? 'active' : ''} aria-current={workspace === 'write' ? 'page' : undefined} onClick={() => openScript(scene.id)}>Write</button>
-      <button className={workspace === 'direct' ? 'active' : ''} aria-current={workspace === 'direct' ? 'page' : undefined} onClick={() => switchWorkspace('direct')}>Direct</button>
-      <span className="spacer"/>
-      <button onClick={() => showDialog('ai')}><Sparkles size={15}/>AI settings</button>
-      {workspace === 'direct' && <button className={directorOpen ? 'active' : ''} aria-pressed={directorOpen} onClick={() => { setMobilePanel('inspector'); setDirectorOpen(value => !value); }}><Sparkles size={15}/>Director</button>}
-    </nav>
-    <Suspense fallback={<main className="film-empty" role="status">Opening workspace…</main>}>
-    {workspace === 'create' && project.production && <StoryStudio key={project.id} project={project} production={project.production} update={updateProduction}
-      ai={ai} write={draft => openScript(undefined, undefined, draft)} initialIdea={seedIdea} loadExample={openRentExample}/>}
-    {workspace === 'write' && project.production && <ScreenplayStudio key={project.id + (scriptTarget.sceneId ?? '') + (scriptTarget.lineId ?? '')}
-      project={project} production={project.production} update={updateProduction} ai={ai} busy={compiling}
-      initialScene={scriptTarget.sceneId} initialLine={scriptTarget.lineId} autoDraft={scriptTarget.autoDraft}
-      approve={()=>updateProduction(approveScript)}
-      direct={()=>{switchWorkspace('direct');setMobilePanel('stage');}}
-      generate={()=>{
-        const current=useStudio.getState().project;
-        if(!current.production||!current.production.screenplay.scenes.length){
-          tell('Write at least one screenplay scene before animating.',true);return;
-        }
-        // Explicit Compile action creates the approved snapshot at the moment
-        // requested. It is not a prerequisite to manual directing.
-        const ready={...current,production:approveScript(current.production)};
-        void compile(ready,current);
-      }}/> }
-    </Suspense>
-    {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button></nav>
+    {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button><IconButton title="Undo" disabled={!hasUndo} onClick={() => run(() => useStudio.getState().undo())}><Undo2 size={17}/></IconButton><IconButton title="Redo" disabled={!hasRedo} onClick={() => run(() => useStudio.getState().redo())}><Redo2 size={17}/></IconButton></nav>
     <main className={`workspace mobile-${mobilePanel}`} style={{ '--asset-width': `${assetWidth}px`, '--inspector-width': `${inspectorWidth}px` } as CSSProperties}>
       <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary}
           project={project} characters={project.characters} scene={scene}
@@ -1138,10 +940,14 @@ export default function App() {
           clearWorldImage={clearWorldImage} addProp={addObject} uploadProp={uploadProp}
           inspectProp={inspectAssetObject} duplicateProp={duplicateAssetObject} deleteProp={deleteAssetObject}
           addAction={action=>showClip(action==='walk'||action==='run'?'movement':'body',action)}
-          addSound={addSound} dialogue={()=>showAudio('dialogue')}
+          holdObject={() => showClip('props')} addSound={addSound} dialogue={()=>showAudio('dialogue')}
           audio={()=>showAudio('audio')} music={()=>showAudio('music')}
           inspectAudio={inspectAssetAudio} duplicateAudio={duplicateAssetAudio} deleteAudio={deleteAssetAudio}/></div>
-      <section className="stage-panel" aria-label="Studio stage">
+      <section className="stage-panel" aria-label="Studio stage" onDragOver={event=>{if(event.dataTransfer.types.some(type=>type.startsWith('application/x-toonroom-')))event.preventDefault();}} onDrop={event=>{
+        event.preventDefault();const character=project.characters.find(c=>c.id===event.dataTransfer.getData('application/x-toonroom-character'));
+        if(character){addActor(character);return;}
+        const kind=event.dataTransfer.getData('application/x-toonroom-prop');if(kind&&['chair','table','desk','sofa','door','window','cup','lamp','book','plant','microphone','phone','television','counter','streetlight'].includes(kind))addObject(kind as Prop['kind']);
+      }}>
         <header className="stage-heading"><div className="stage-scene-heading">
           <span className="stage-kicker"><i/> SCENE PREVIEW</span>
           <div className="stage-scene-switcher">
@@ -1157,35 +963,21 @@ export default function App() {
             </div>
           </div>
         </div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
-        <div className={directorPreview?'viewer director-preview-active':'viewer'}>
-          {directorPreview&&<div className="director-preview-label" role="status">AI PROPOSAL PREVIEW · NOT APPLIED</div>}
-          <Stage key={session} project={project} scene={directorPreview??scene} time={time}
-          playing={playing} edit={arrange&&!directorPreview} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
+        <div className="viewer">
+
+          <Stage key={session} project={project} scene={scene} time={time}
+          playing={playing} onDestination={placingDestination ? coords => {
+            const clip=scene.clips.find(c=>c.id===selection?.id);if(clip?.track==='movement'){patchClip({...clip,toX:coords.x,toY:coords.y});setPlacingDestination(false);}
+          }:undefined} edit={true} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
           const actor = scene.actors.find(item => item.id === id), object = scene.objects.find(item => item.id === id);
           if (actor) {
             const dx = coords.x - actor.x, dy = coords.y - actor.y;
             editScene(current => ({ ...current, actors: current.actors.map(item => item.id === id ? { ...item, ...coords } : item), clips: current.clips.map(clip => clip.track === 'movement' && clip.actor === id ? { ...clip, fromX: clamp(clip.fromX + dx, -2000, 3000), toX: clamp(clip.toX + dx, -2000, 3000), fromY: clamp(clip.fromY + dy, -2000, 3000), toY: clamp(clip.toY + dy, -2000, 3000) } : clip) }));
           } else if (object) patchObject({ ...object, ...coords });
         }}/></div>
-        <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock((directorPreview??scene).duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={(directorPreview??scene).duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
+        <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock((scene).duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={(scene).duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><details className="playback-range-controls"><summary title="Play a selected time range">Range</summary><div><label>From<input aria-label="Playback range start" type="number" step=".1" min={0} max={scene.duration-.1} value={playbackRange?.start??0} onChange={e=>{pause();setPlaybackRange({start:clamp(Number(e.target.value),0,(playbackRange?.end??scene.duration)-.1),end:playbackRange?.end??scene.duration});}}/></label><label>To<input aria-label="Playback range end" type="number" step=".1" min={(playbackRange?.start??0)+.1} max={scene.duration} value={playbackRange?.end??scene.duration} onChange={e=>{pause();setPlaybackRange({start:playbackRange?.start??0,end:clamp(Number(e.target.value),(playbackRange?.start??0)+.1,scene.duration)});}}/></label><button className="quiet" onClick={()=>{pause();setPlaybackRange(undefined);}}>Whole film</button></div></details><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
       </section>
-      {directorOpen ? <DirectorPanel key={session + scene.id} project={project} scene={scene} selection={selection} getTime={() => time.current.local}
-        ai={ai} busy={compiling} openCode={() => showDialog('code')}
-        canUndo={hasUndo} undo={()=>run(()=>useStudio.getState().undo())}
-        preview={next=>{
-          if(next || directorPreview)pause();
-          if(next)setArrange(false);
-          if(!next && directorPreview){
-            const current=currentScene(useStudio.getState());
-            updateCursor(current,Math.min(time.current.local,current.duration),true);
-          }
-          setDirectorPreview(next);
-        }}
-        apply={(next, original, generatedAssets) => {
-          replaceScene(next, original, generatedAssets);
-          setDirectorPreview(undefined);
-          tell('AI direction applied to the canonical timeline. Undo is available.');
-        }}/> : <Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} regenerateVoice={regenerateVoice} restoreVoiceVersion={restoreVoiceVersion} alignVoiceClip={alignVoiceClip}/>}
+      {<Inspector scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} setDestination={() => {pause();setPlacingDestination(true);tell('Click the stage to set the walking destination.');}} alignVoiceClip={alignVoiceClip} precision={() => showDialog('lipsync')} rerecord={() => { const clip=scene.clips.find(c=>c.id===selection?.id); if(clip?.track==='dialogue'){pause();setRequestedAudio({track:'dialogue',actor:clip.actor,start:clip.start,replaceId:clip.id});setDialog('audio');} }}/>}
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>

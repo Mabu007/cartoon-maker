@@ -52,20 +52,20 @@ const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: 
   keyframes: z.array(z.strictObject({ time: num(0, 1), x: position.x, y: position.y })).min(2).max(32).optional() });
 const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional() });
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });
-const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release']) });
+const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']) });
 const FaceClip = z.strictObject({ ...time, track: z.literal('face'), actor: id, expression: z.enum(expressions) });
 export const audioAsset = z.string().regex(/^(?:builtin:[a-z0-9-]+|asset:[a-zA-Z0-9-]+)$/);
 const sound = { asset: audioAsset, volume: num(0, 2), muted: z.boolean(), offset: num(0, 180).default(0),
   fadeIn: num(0, 180).optional(), fadeOut: num(0, 180).optional(), loop: z.boolean().optional() };
 const mouthCues = z.array(z.strictObject({ start: num(0, 180), end: num(0, 180), shape: z.enum(['rest', 'closed', 'bite', 'wide', 'open', 'round', 'pucker', 'tongue']), strength: num(0, 1).optional() })).max(3000);
 export const LipSyncMetadata = z.strictObject({
-  source: z.enum(['rhubarb', 'estimated']), engine: z.string().min(1).max(72),
+  source: z.enum(['rhubarb', 'estimated', 'dsp']), engine: z.string().min(1).max(72),
   cacheKey: z.string().regex(/^[a-f0-9]{64}$/).optional(), analyzedDuration: num(.1,180)
 });
 export const DialogueVersion = z.strictObject({ asset: audioAsset, text: z.string().max(1000),
-  length: num(.1,180), offset: num(0,180), voicePreset: VoicePreset.optional(), visemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
+  length: num(.1,180), offset: num(0,180), voicePreset: VoicePreset.optional(), visemes: mouthCues.optional(), manualVisemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
 export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal('dialogue'), actor: id, text: z.string().max(1000),
-  voicePreset: VoicePreset.optional(), versions: z.array(DialogueVersion).max(5).optional(), visemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
+  voicePreset: VoicePreset.optional(), versions: z.array(DialogueVersion).max(5).optional(), visemes: mouthCues.optional(), manualVisemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
 const AudioClip = z.strictObject({ ...time, ...sound, track: z.literal('audio'), name: z.string().min(1).max(80) });
 const MusicClip = z.strictObject({ ...time, ...sound, track: z.literal('music'), name: z.string().min(1).max(80) });
 export const CameraShot = z.strictObject({ ...time, track: z.literal('camera'), shot: z.enum(shots), focus: id.optional(), transition: z.enum(['cut', 'glide']) });
@@ -76,7 +76,7 @@ export const TimelineMarker = z.strictObject({ id, name: z.string().trim().min(1
 export const TimelineTrackSettings = z.strictObject({ muted: z.boolean().optional(), solo: z.boolean().optional(), locked: z.boolean().optional(), collapsed: z.boolean().optional() });
 export const SceneDefinition = z.strictObject({ id, name: z.string().trim().min(1).max(70), environment: z.enum(environments),
   markers: z.array(TimelineMarker).max(60).optional(), trackSettings: z.partialRecord(TimelineTrack, TimelineTrackSettings).optional(),
-  backgroundImage: imageData.optional(), duration: num(1, 180),
+  backgroundImage: imageData.optional(), backgroundTransform: z.strictObject({x:num(-2000,3000),y:num(-2000,3000),scale:num(.2,4)}).optional(), duration: num(1, 180),
   actors: z.array(Actor).max(24), objects: z.array(SceneObject).max(100), clips: z.array(TimelineClip).max(600) });
 
 function verifyIds(items: { id: string }[], ctx: z.RefinementCtx, path: (string | number)[]) {
@@ -181,6 +181,10 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
         const keys = clip.keyframes;
         if (keys[0].time !== 0 || keys[keys.length - 1].time !== 1 || keys.some((key, i) => i > 0 && key.time <= keys[i - 1].time))
           ctx.addIssue({ code: 'custom', path: [...clipPath, 'keyframes'], message: 'Movement keyframes must begin at 0, end at 1 and have strictly increasing times' });
+      }
+      if(clip.track==='dialogue') for(const cues of [clip.visemes,clip.manualVisemes,...(clip.versions??[]).flatMap(version=>[version.visemes,version.manualVisemes])]) {
+        if(cues?.some((cue,index)=>cue.end<=cue.start || index>0&&cue.start<cues[index-1].end-.00001))
+          ctx.addIssue({code:'custom',path:clipPath,message:'Mouth cues must have positive duration and be ordered without overlaps'});
       }
       if ('actor' in clip && !actors.has(clip.actor)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing actor' });
       if (!targetValid) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing target' });

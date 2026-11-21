@@ -10,7 +10,7 @@ export type Format = '16:9' | '9:16' | '1:1';
 const sizes: Record<Format, [number, number]> = { '16:9': [960, 540], '9:16': [303.75, 540], '1:1': [540, 540] };
 export const dimensions = (format: Format, scale = 1): [number, number] => sizes[format].map(n => Math.round(n * scale)) as [number, number];
 
-type Entity = { group: Container; art: Graphics; face?: Graphics; shadow?: Graphics; color?: string; kind?: string;
+type Entity = { group: Container; art: Graphics; face?: Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
   sprite?: Sprite; heldSprite?: Sprite; imageData?: string };
 export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: number; y: number };
   previewViseme?: import('./visemes.ts').Viseme; selected?: string; staged?: Record<string, { x: number; y: number }>;
@@ -120,20 +120,22 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       const ready = textures.get(image);
       if (ready) {
         // Preloaded exports must include the artwork on their very first frame.
-        backdrop.texture = ready; backdrop.width = WIDTH; backdrop.height = HEIGHT;
+        backdrop.texture = ready; backdrop.width = WIDTH * (scene.backgroundTransform?.scale??1); backdrop.height = HEIGHT * (scene.backgroundTransform?.scale??1);
         backdrop.visible = true;
       } else {
         backdrop.visible = false;
         void loadImage(image).then(texture => {
           if (destroyed || requestedBackdrop !== image) return;
-          backdrop.texture = texture; backdrop.width = WIDTH; backdrop.height = HEIGHT;
+          backdrop.texture = texture; backdrop.width = WIDTH * (scene.backgroundTransform?.scale??1); backdrop.height = HEIGHT * (scene.backgroundTransform?.scale??1);
           backdrop.visible = true; app.render();
         }).catch(error => console.warn('Could not render background image:', error));
       }
     } else if (textures.has(image) && !backdrop.visible) {
       backdrop.texture = textures.get(image)!;
-      backdrop.width = WIDTH; backdrop.height = HEIGHT; backdrop.visible = true;
+      backdrop.width = WIDTH * (scene.backgroundTransform?.scale??1); backdrop.height = HEIGHT * (scene.backgroundTransform?.scale??1); backdrop.visible = true;
     }
+    backdrop.x=scene.backgroundTransform?.x??0;backdrop.y=scene.backgroundTransform?.y??0;
+    if(image){backdrop.width=WIDTH*(scene.backgroundTransform?.scale??1);backdrop.height=HEIGHT*(scene.backgroundTransform?.scale??1);}
     currentCamera = camera;
     // Preview, export and stage picking share one exact camera projection.
     const transform = cameraViewport(camera, { width, height }, format);
@@ -156,8 +158,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.scale.set(prop.scale);
       entity.group.angle = prop.rotation;
       entity.group.zIndex = renderDepth(prop.depth, point.y);
-      if (entity.kind !== prop.kind || entity.color !== prop.color || entity.imageData !== prop.imageData) {
-        drawProp(entity.art.clear(), prop);
+      if (entity.kind !== prop.kind || entity.color !== prop.color || entity.imageData !== prop.imageData || entity.doorOpen !== ('doorOpen' in prop ? prop.doorOpen : undefined)) {
+        const opening='doorOpen' in prop ? Number(prop.doorOpen) : undefined;
+        drawProp(entity.art.clear(), prop, opening);entity.doorOpen=opening;
         entity.kind = prop.kind; entity.color = prop.color; entity.imageData = prop.imageData;
         if (entity.sprite) entity.sprite.visible = false;
       }

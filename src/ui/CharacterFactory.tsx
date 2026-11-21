@@ -102,27 +102,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           render={value=>value==='auto'?'Automatic · speech/audio':value.toUpperCase()}/>
       </label>
     </div><div className="factory-edit"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
-      <div className="factory-voice-config" aria-label="Persistent character voice configuration">
-        <strong>Character voice · used in every scene</strong>
-        <label className="field">Voice preset
-          <select aria-label="Character voice preset" value={draft.voicePreset ?? 'warm'}
-            onChange={e => update('voicePreset',e.target.value as 'warm'|'bright'|'deep')}>
-            <option value="warm">Warm</option><option value="bright">Bright</option><option value="deep">Deep</option>
-          </select>
-        </label>
-        <label className="field">Hosted voice ID (optional)
-          <input aria-label="Custom hosted voice ID" maxLength={120} spellCheck={false}
-            placeholder="Your provider reference voice ID" value={draft.hostedVoiceId??''}
-            onChange={event => {
-              const hostedVoiceId=event.target.value.trim();
-              setDraft(current => {
-                const { hostedVoiceId: _old, ...rest }=current;
-                return hostedVoiceId?{...rest,hostedVoiceId}:rest;
-              });
-            }}/>
-        </label>
-        <p className="small-text">Leave the hosted ID empty to use the configured voice preset. Local speech is always available.</p>
-      </div>
+
       <div className="factory-section-heading"><span>Start with a character</span><button type="button" className="surprise-button" onClick={() => {
         const item = characters[Math.floor(Math.random() * characters.length)];
         setDraft(current => ({ ...item, id: current.id, name: current.name }));

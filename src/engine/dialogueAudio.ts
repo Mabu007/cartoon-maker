@@ -27,6 +27,7 @@ export function dialogueVersion(clip: Dialogue): Version {
   return { asset:clip.asset,text:clip.text,length:clip.length,offset:clip.offset,
     ...(clip.voicePreset?{voicePreset:clip.voicePreset}:{}),
     ...(clip.visemes?{visemes:clip.visemes}:{}),
+    ...(clip.manualVisemes?{manualVisemes:clip.manualVisemes}:{}),
     ...(clip.lipSync?{lipSync:clip.lipSync}:{}) };
 }
 export function replaceDialogueAsset(scene:Scene, id:string, value:{
@@ -39,7 +40,7 @@ export function replaceDialogueAsset(scene:Scene, id:string, value:{
   const history=[...(clip.versions??[]),dialogueVersion(clip)].slice(-5);
   return {...scene,duration:Math.max(scene.duration,end),clips:scene.clips.map(item=>item.id===id
     ? {...clip,text:value.text.trim(),asset:value.asset,length:round(value.length),offset:0,
-      voicePreset:value.voicePreset,visemes:value.visemes,lipSync:value.lipSync,versions:history} : item)};
+      manualVisemes:undefined,voicePreset:value.voicePreset,visemes:value.visemes,lipSync:value.lipSync,versions:history} : item)};
 }
 export function restoreDialogueAsset(scene:Scene,id:string,index:number):Scene {
   const clip=getClip(scene,id), history=clip.versions??[];
@@ -49,5 +50,5 @@ export function restoreDialogueAsset(scene:Scene,id:string,index:number):Scene {
   const next=history.filter((_,i)=>i!==index).concat(dialogueVersion(clip)).slice(-5);
   return {...scene,duration:Math.max(scene.duration,end),clips:scene.clips.map(value=>value.id===id
     ? {...clip,asset:item.asset,text:item.text,length:item.length,offset:item.offset,
-      voicePreset:item.voicePreset,visemes:item.visemes,lipSync:item.lipSync,versions:next} : value)};
+      voicePreset:item.voicePreset,visemes:item.visemes,manualVisemes:item.manualVisemes,lipSync:item.lipSync,versions:next} : value)};
 }

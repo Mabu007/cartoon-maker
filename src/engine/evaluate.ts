@@ -1,6 +1,7 @@
 import { animations, blend, clamp, ease, mix, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
 import { anchorFor } from './interactions.ts';
 import { audibleAudioTrack } from './audioMix.ts';
+import { effectiveCues } from './dspLipSync.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
@@ -130,7 +131,7 @@ export function evaluate(scene: Scene, time: number) {
     // timestamp in export. A dialogue offset shifts source *audio* time only.
     const audioTime = spoken ? t - spoken.start + spoken.offset : -1;
     const viseme = spoken?.visemes?.length
-      ? sampleTimedViseme(spoken.visemes,audioTime)
+      ? sampleTimedViseme(spoken.manualVisemes?.length ? effectiveCues(spoken.visemes, spoken.manualVisemes) : spoken.visemes,audioTime)
       : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
     if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? objectsById.get(propCue.target) : undefined;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
@@ -215,6 +216,7 @@ export function evaluate(scene: Scene, time: number) {
   const fade = transition ? clamp((t - transition.start) / transition.length) : 0;
   const objects = scene.objects.map(object => {
     const cue = latest(timelineClips.filter(clip => clip.track === 'props' && clip.target === object.id && clip.start <= t));
+    if(cue?.track==='props' && (cue.interaction==='open'||cue.interaction==='close')) {const progress=ease(clamp((t-cue.start)/Math.min(.7,cue.length)));return {...object,doorOpen:cue.interaction==='open'?progress:1-progress};}
     if (cue?.track !== 'props' || cue.interaction !== 'release') return object;
     const owner = scene.actors.find(actor => actor.id === cue.actor);
     const move = latest(timelineClips.filter(clip => clip.track === 'movement' && clip.actor === cue.actor && clip.start <= cue.start));

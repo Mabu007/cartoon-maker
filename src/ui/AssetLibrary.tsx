@@ -18,7 +18,7 @@ function audioName(clip:AudioClip,characters:Record<string,string>){
 export function AssetLibrary({ active, change, project, characters, scene, newCharacter, editCharacter,
   duplicateCharacter,removeCharacter,addActor,setWorld,uploadWorld,savedWorlds,applySavedWorld,
   saveCurrentWorld,renameSavedWorld,duplicateSavedWorld,deleteSavedWorld,clearWorldImage,
-  addProp,uploadProp,inspectProp,duplicateProp,deleteProp,addAction,addSound,dialogue,audio,music,
+  addProp,uploadProp,inspectProp,duplicateProp,deleteProp,addAction,holdObject,addSound,dialogue,audio,music,
   inspectAudio,duplicateAudio,deleteAudio
 }:{
   active:Library;change:(panel:Library)=>void;project:Project;characters:Character[];scene:Scene;
@@ -32,7 +32,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
   clearWorldImage:()=>void;
   addProp:(kind:Prop['kind'])=>void;uploadProp:(file:File)=>void;
   inspectProp:(id:string)=>void;duplicateProp:(id:string)=>void;deleteProp:(id:string)=>void;
-  addAction:(action:Action)=>void;addSound:(sound:typeof soundNames[number])=>void;
+  addAction:(action:Action)=>void;holdObject?:()=>void;addSound:(sound:typeof soundNames[number])=>void;
   dialogue:()=>void;audio:()=>void;music:()=>void;
   inspectAudio:(id:string)=>void;duplicateAudio:(id:string)=>void;deleteAudio:(id:string)=>void;
 }){
@@ -60,7 +60,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
         const Icon=tabs[tab];
         return <button key={tab} className={active===tab?'active':''} aria-pressed={active===tab}
           onClick={()=>{setFilter('');change(tab);}}>
-          <Icon size={19}/><span>{tab}</span></button>;
+          <Icon size={19}/><span>{tab==='Cast'?'Characters':tab==='Props'?'Objects':tab}</span></button>;
       })}
     </nav>
     <div className="asset-content">
@@ -81,7 +81,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
         {active==='Cast'&&<>
           {characters.filter(item=>match(item.name)).map(character=>{
             const usage=characterUsage(project,character.id),current=scene.actors.filter(a=>a.characterId===character.id).length;
-            return <article className="asset-manage-row" key={character.id}>
+            return <article className="asset-manage-row" key={character.id} draggable onDragStart={e=>{e.dataTransfer.setData('application/x-toonroom-character',character.id);e.dataTransfer.effectAllowed='copy';}}>
               <button className="asset-resource-main character-main" onClick={()=>editCharacter(character)}
                 aria-label={`Edit ${character.name}`}>
                 <Avatar character={character}/>
@@ -160,7 +160,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
           <div className="small-label">Add from collection</div>
           <div className="asset-grid">{props.filter(kind=>kind!=='image'&&match(kind)).map(kind=>{
             const Icon=propIcon[kind];
-            return <button className="prop-card" key={kind} onClick={()=>addProp(kind)}>
+            return <button className="prop-card" key={kind} draggable onDragStart={event=>{event.dataTransfer.setData('application/x-toonroom-prop',kind);event.dataTransfer.effectAllowed='copy';}} onClick={()=>addProp(kind)}>
               <Icon size={23}/><span>{label(kind)}</span></button>;
           })}</div>
           <div className="asset-heading asset-section-heading"><div><h3>Props in this scene</h3>
@@ -183,6 +183,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
           })}
           {!scene.objects.length&&<p className="empty-small">No props yet. Add one above to dress the scene.</p>}
         </>}
+        {active==='Actions'&&<button className="asset-row" onClick={holdObject}><Boxes size={16}/><span>Hold object</span><Plus size={14}/></button>}
         {active==='Actions'&&actions.filter(match).map(action=>
           <button className="asset-row" key={action} draggable
             title="Click to configure, or drag to Actions / Movement"
@@ -200,7 +201,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
               event.dataTransfer.effectAllowed='copy';}}
             onClick={()=>addSound(sound)}><Sparkles size={15}/><span>{label(sound)}</span><Plus size={14}/></button>)}
           <div className="asset-heading asset-section-heading"><div>
-            <h3>Recorded & imported clips</h3><p>Choose a clip to edit audio, regenerate voice or change timing</p></div></div>
+            <h3>Recorded & imported clips</h3><p>Choose a clip to edit audio, lip sync or timing</p></div></div>
           {audioClips.filter(clip=>match(audioName(clip,names))||match(clip.track)).map(clip=>
             <article className="asset-manage-row" key={clip.id}>
               <button className="asset-resource-main" onClick={()=>inspectAudio(clip.id)}
