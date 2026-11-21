@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles, Pencil, Check, X } from 'lucide-react';
 import { animations, clamp, gaitSpeeds } from '../engine/animation.ts';
 import { soundNames } from '../engine/presets.ts';
-import { anchorFor, compatibleObjects, nearestObject } from '../engine/interactions.ts';
+import { anchorFor, compatibleObjects } from '../engine/interactions.ts';
 import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track, type Character } from '../engine/schema.ts';
 import { type Format } from '../engine/renderer.ts';
 import { evaluate, projectDuration } from '../engine/evaluate.ts';
