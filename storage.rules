@@ -1,13 +1,11 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // Compatibility reads for voice recordings created before R2 migration.
+    // New audio, images and video must be uploaded to the private R2 bucket.
     match /users/{uid}/audio/{id} {
-      function ownsAsset() {
-        return request.auth != null && request.auth.uid == uid;
-      }
-      allow read, delete: if ownsAsset();
-      allow create, update: if ownsAsset() && request.resource.size < 20 * 1024 * 1024
-        && request.resource.contentType.matches('audio/.*');
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
     }
   }
 }
