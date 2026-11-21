@@ -37,7 +37,7 @@ export const CharacterDefinition = z.strictObject({
 });
 export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.string().min(1).max(60), color, ...position,
   imageData: propImageData.optional(), imageWidth: num(10, 800).optional(), imageHeight: num(10, 800).optional(),
-  interaction: z.enum(['none','sit','hold']).optional()
+  interaction: z.enum(['none','sit','hold']).optional(), flip: z.boolean().optional()
 });
 export const Actor = z.strictObject({ id, characterId: id, ...position, view: CharacterView, flip: z.boolean(), expression: z.enum(expressions), gazeTarget: id.optional() });
 export const InteractionAnchor = z.strictObject({ x: num(-1000, 1000), y: num(-1000, 1000), action: z.enum(['sit', 'hold', 'open']), facing: CharacterView.optional() });
