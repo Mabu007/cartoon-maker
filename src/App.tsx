@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Cloud, Download, FolderOpen, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Cloud, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { missingRentMovie } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
@@ -81,8 +81,8 @@ export default function App() {
   const workspace='direct';
   const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(() => localStorage.getItem('toonroom.started') ? 'projects' : 'landing');
   const [placingDestination,setPlacingDestination]=useState(false);
-  const [assetWidth, setAssetWidth] = useState(263), [inspectorWidth, setInspectorWidth] = useState(254);
-  const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'light' ? 'light' : 'dark');
+  const [assetWidth, setAssetWidth] = useState(326), [inspectorWidth, setInspectorWidth] = useState(288);
+  const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'dark' ? 'dark' : 'light');
   const importFile = useRef<HTMLInputElement>(null);
   const session = useStudio(state => state.session);
   const sceneTarget = { session, sceneId: scene.id };
@@ -858,7 +858,7 @@ export default function App() {
         event.preventDefault(); removeSelection(); return;
       }
       if (!command && !event.altKey && key === 's' && hasTimelineSelection) { event.preventDefault(); splitTimelineSelection(); return; }
-      if (inTimeline && (key === '+' || key === '=' || key === '-' || key === '_')) {
+      if (!command && !event.altKey && (key === '+' || key === '=' || key === '-' || key === '_')) {
         event.preventDefault(); window.dispatchEvent(new CustomEvent('toonroom-zoom', {detail:key==='+'||key==='='?'in':'out'})); return;
       }
       if (event.key === 'Escape') { state.select(null); setFocus(false); return; }
