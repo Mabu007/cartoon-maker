@@ -1,3 +1,4 @@
+import { MediaImage } from './MediaImage.tsx';
 import { ArrowUpRight, AudioLines, Boxes, Clapperboard, Image, Mic, Music2, Plus, Search,
   Sparkles, UserRound, Copy, Trash2, Pencil, Save, X, Check, Settings2, Play, FileAudio } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -106,7 +107,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
             aria-label="Upload world image"
             onChange={event=>{const file=event.target.files?.[0];if(file)uploadWorld(file);event.target.value='';}}/>
           {scene.backgroundImage&&<div className="image-world-card">
-            <img src={scene.backgroundImage} alt="Current custom world"/>
+            <MediaImage source={scene.backgroundImage} alt="Current custom world"/>
             <span>Custom image · This scene only</span>
             <button className="quiet" onClick={clearWorldImage}><X size={14}/> Remove image</button>
           </div>}
@@ -134,7 +135,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
                 {!!renameError&&<small role="alert">{renameError}</small>}
               </form>:<>
                 <button className="asset-resource-main" onClick={()=>applySavedWorld(world)}>
-                  {world.backgroundImage?<img className="asset-image-preview" src={world.backgroundImage} alt=""/>:
+                  {world.backgroundImage?<MediaImage className="asset-image-preview" source={world.backgroundImage} alt=""/>:
                     <span className="world-thumb" style={{
                       '--wall':scenePalettes[world.environment][0],
                       '--floor':scenePalettes[world.environment][2],
@@ -169,7 +170,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
             const usage=propUsage(scene,prop.id);
             return <article className="asset-manage-row" key={prop.id}>
               <button className="asset-resource-main" onClick={()=>inspectProp(prop.id)}>
-                {prop.imageData?<img className="asset-image-preview" src={prop.imageData} alt=""/>:
+                {prop.imageData?<MediaImage className="asset-image-preview" source={prop.imageData} alt=""/>:
                   <span className="asset-object-preview" style={{'--object-color':prop.color} as React.CSSProperties}>
                     <Boxes size={18}/></span>}
                 <span><strong>{prop.name}</strong><small>{label(prop.kind)} · {usage.total?usage.total+' cue reference(s)':'Ready to arrange'}</small></span>
