@@ -79,10 +79,10 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
           <label className="field">Interaction<Select aria="Timeline prop interaction" value={clip.interaction} options={scene.objects.find(item=>item.id===clip.target)?.kind==='door'?['open','close']:['equip', 'release']} onChange={interaction => patchClip({ ...clip, interaction })}/></label>
         </>}
         {clip.track === 'body' && <><label className="field">Action<Select aria="Clip action" value={clip.action} onChange={action => patchClip({ ...clip, action })} options={actions}/></label><label className="field">Layer<Select aria="Action layer" value={clip.action === 'sit' ? 'body' : clip.layer} onChange={layer => patchClip({ ...clip, layer })} options={clip.action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label>
-          {clip.action === 'sit' && !compatibleObjects(scene, 'sit').length && <p className="form-error">Add a chair or sofa before using the Sit action.</p>}
+          {clip.action==='sit'&&<p className="small-text">Sit in place. Selecting a seat is optional and never moves your actor automatically.</p>}
           <label className="field">{clip.action === 'sit' ? 'Seat' : 'Interact with'}<Select aria="Interaction target" value={clip.target ?? ''} onChange={value => { const { target: _, ...rest } = clip; patchClip(value ? { ...rest, target: value } : rest); }}
-          options={clip.action === 'sit' ? compatibleObjects(scene, clip.action).map(item => item.id) : ['', ...compatibleObjects(scene, clip.action).map(item => item.id)]}
-          render={id => scene.objects.find(item => item.id === id)?.name ?? 'Empty hands'}/></label></>}
+          options={['', ...compatibleObjects(scene, clip.action).map(item => item.id)]}
+          render={id => id==='' ? clip.action==='sit'?'Sit here (no chair)':'No object' : scene.objects.find(item => item.id === id)?.name ?? 'No object'}/></label></>}
         {clip.track === 'face' && <label className="field">Expression<Select aria="Clip expression" value={clip.expression} onChange={expression => patchClip({ ...clip, expression })} options={expressions}/></label>}
         {(clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music') && <><NumberField text="Volume" value={clip.volume} min={0} max={2} step={.05} onChange={volume => patchClip({ ...clip, volume })}/>
         <NumberField text="Audio offset" value={clip.offset} min={0} max={180} step={.01} onChange={offset => patchClip({ ...clip, offset })}/>
