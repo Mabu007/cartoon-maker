@@ -205,11 +205,19 @@ export function Timeline({
     const source=byTrack[track];
     const endings:number[]=[];
     const rows=collapsed?[]:source.map(clip=>{
+      // Actor presence is one row per on-screen character. Unlike automatic
+      // interval packing, rows do not jump when the user trims visibility cues.
+      if(track==='actors' && 'actor' in clip){
+        const row=Math.max(0,scene.actors.findIndex(actor=>actor.id===clip.actor));
+        endings[row]=Math.max(endings[row]??0,clip.start+clip.length);
+        return {clip,row};
+      }
       let row=endings.findIndex(end=>end<=clip.start+0.0001);
       if(row<0)row=endings.length;
       endings[row]=clip.start+clip.length;return {clip,row};
     });
-    return <div className={`timeline-row ${collapsed?'track-collapsed':''} ${locked?'track-locked':''} ${settings?.muted?'track-muted':''}`} data-timeline-track={track} key={track} style={{minHeight:collapsed?30:Math.max(37,endings.length*27+8)}}>
+    const rowCount=track==='actors'?Math.max(scene.actors.length,endings.length):endings.length;
+    return <div className={`timeline-row ${collapsed?'track-collapsed':''} ${locked?'track-locked':''} ${settings?.muted?'track-muted':''}`} data-timeline-track={track} key={track} style={{minHeight:collapsed?30:Math.max(37,rowCount*27+8)}}>
       <div className="track-name">
         <button type="button" title={collapsed?'Expand track':'Collapse track'} aria-label={(collapsed?'Expand ':'Collapse ')+trackNames[track]} onClick={()=>toggle(track,'collapsed')}>{collapsed?<ChevronRight size={13}/>:<ChevronDown size={13}/>}</button>
         <span className={`track-icon track-${track}`}><Icon size={14}/></span>
@@ -225,6 +233,9 @@ export function Timeline({
         onDragOver={event=>{if(!locked){event.preventDefault();event.dataTransfer.dropEffect='copy';setDropTrack(track);}}}
         onDragLeave={()=>setDropTrack(null)}
         onDrop={event=>insertDropped(event,track)}>
+        {track==='actors'&&!collapsed&&scene.actors.map((actor,index)=>
+          <span key={actor.id} className="actor-lane-name" style={{top:8+index*27}}
+            title={names[actor.id]??'Character'}>{names[actor.id]??'Character'}</span>)}
         {rows.map(({clip,row})=>{
           const selected=chosen.has(clip.id);
           const tiny=clip.length*pixelsPerSecond<26;
