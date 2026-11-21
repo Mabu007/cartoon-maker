@@ -930,7 +930,7 @@ export default function App() {
   if (dialog === 'dependencies' && dependentObjectId) content = <ObjectDependenciesDialog scene={scene} objectId={dependentObjectId} actorNames={actorNames} close={close} confirm={confirmObjectDeletion}/>;
   if (dialog === 'confirm' && confirm) content = <Modal title={confirm.title} description={confirm.text} close={close}><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="danger" onClick={() => { close(); confirm.run(); }}>Confirm</button></footer></Modal>;
 
-  const backupInput = <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import Toonroom backup" onChange={event => {
+  const backupInput = <input type="file" ref={importFile} accept=".json,application/json" hidden aria-label="Import SIRVIBE project backup" onChange={event => {
       const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void exchange(file);
     }}/>;
   const noticeToast = notice && <div className={`toast ${notice.error ? 'toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{!notice.error && <Check size={16}/>}<span>{notice.message}</span><IconButton title="Dismiss notice" onClick={() => setNotice(null)}><X size={14}/></IconButton></div>;
