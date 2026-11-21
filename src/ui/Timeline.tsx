@@ -3,7 +3,6 @@ import { ChevronDown, ChevronUp, ClipboardCopy, Code2, Copy, Keyboard, Plus, Tra
 import { AudioWaveform } from './AudioWaveform.tsx';
 import { clamp } from '../engine/animation.ts';
 import { tracks, trackNames, uid, type Clip, type Scene, type Track } from '../engine/schema.ts';
-import { compatibleObjects } from '../engine/interactions.ts';
 import { selectClipRange, snapGuides, snapTime, snapMoveDelta, moveTimelineClips, trimTimelineClip, resizeSceneTimeline, trackIsLocked } from '../engine/timelineEditing.ts';
 import { type Selection } from '../studio.ts';
 import { clipLabel, IconButton, trackIcon } from './shared.tsx';
