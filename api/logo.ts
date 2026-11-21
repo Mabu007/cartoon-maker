@@ -9,14 +9,21 @@ export default {
       const signed = presignMedia(configuredR2(),'toonroom/logo.png','GET');
       const upstream=await fetch(signed,{method:'GET',signal:AbortSignal.timeout(10000)});
       if(!upstream.ok)return new Response(null,{status:404});
-      const type=upstream.headers.get('content-type')?.split(';')[0].toLowerCase()??'';
-      if(!['image/png','image/webp','image/jpeg'].includes(type))
-        return new Response(null,{status:415});
       const max=4*1024*1024;
       const length=Number(upstream.headers.get('content-length')||'0');
       if(length>max)return new Response(null,{status:413});
       const file=await upstream.arrayBuffer();
       if(!file.byteLength||file.byteLength>max)return new Response(null,{status:413});
+      const bytes=new Uint8Array(file);
+      // R2 objects can be uploaded with generic application/octet-stream
+      // metadata. Detect actual supported image bytes so the official PNG
+      // displays correctly regardless of its stored Content-Type.
+      const png=bytes.length>=8&&[137,80,78,71,13,10,26,10].every((value,i)=>bytes[i]===value);
+      const jpeg=bytes.length>=3&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255;
+      const webp=bytes.length>=12&&String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&
+        String.fromCharCode(...bytes.slice(8,12))==='WEBP';
+      const type=png?'image/png':jpeg?'image/jpeg':webp?'image/webp':null;
+      if(!type)return new Response(null,{status:415});
       return new Response(request.method==='HEAD'?null:file,{headers:{
         'Content-Type':type,'Cache-Control':'public, max-age=180, s-maxage=180',
         'X-Content-Type-Options':'nosniff'
