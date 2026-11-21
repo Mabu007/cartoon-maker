@@ -179,8 +179,7 @@ export function Timeline({
         apply({...scene,clips:[...scene.clips,next]},[next.id]);return;
       }
       if(track==='body'){
-        const target=action==='sit'?compatibleObjects(scene,'sit')[0]?.id:undefined;
-        if(action==='sit'&&!target)return;
+        const target: string|undefined=undefined;
         const next:Clip={id:uid(),track:'body',actor:actor.id,start,length,action:action as Extract<Clip,{track:'body'}>['action'],layer:(['idle','sit','stand','walk','run','jump','turn'].includes(action)?'body':'gesture'),...(target?{target}: {})};
         apply({...scene,clips:[...scene.clips,next]},[next.id]);return;
       }
