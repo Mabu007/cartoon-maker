@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Cloud, Download, FolderOpen, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Cloud, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { missingRentMovie } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
@@ -32,7 +32,7 @@ import { TimelineCodeDialog } from './ui/TimelineCodeDialog.tsx';
 import { Welcome } from './ui/Welcome.tsx';
 import { insertCameraShot, sceneToCode, validateSceneReplacement } from './engine/timelineCode.ts';
 import { movieToCode, sceneBuildingContext, validateMovieReplacement } from './engine/movieTimeline.ts';
-import { deleteMovementKeyframe, deleteTimelineClips, duplicateTimelineClips, pasteTimelineClips, resizeSceneTimeline, selectableClips, splitTimelineClips } from './engine/timelineEditing.ts';
+import { deleteMovementKeyframe, deleteTimelineClips, duplicateTimelineClips, pasteTimelineClips, resizeSceneTimeline, selectableClips, splitTimelineClips, translateSceneActor } from './engine/timelineEditing.ts';
 
 
 function PanelResize({ side, value, change }: { side: 'left' | 'right'; value: number; change: (width: number) => void }) {
@@ -81,8 +81,8 @@ export default function App() {
   const workspace='direct';
   const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(() => localStorage.getItem('toonroom.started') ? 'projects' : 'landing');
   const [placingDestination,setPlacingDestination]=useState(false);
-  const [assetWidth, setAssetWidth] = useState(263), [inspectorWidth, setInspectorWidth] = useState(254);
-  const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'light' ? 'light' : 'dark');
+  const [assetWidth, setAssetWidth] = useState(326), [inspectorWidth, setInspectorWidth] = useState(288);
+  const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'dark' ? 'dark' : 'light');
   const importFile = useRef<HTMLInputElement>(null);
   const session = useStudio(state => state.session);
   const sceneTarget = { session, sceneId: scene.id };
@@ -858,7 +858,7 @@ export default function App() {
         event.preventDefault(); removeSelection(); return;
       }
       if (!command && !event.altKey && key === 's' && hasTimelineSelection) { event.preventDefault(); splitTimelineSelection(); return; }
-      if (inTimeline && (key === '+' || key === '=' || key === '-' || key === '_')) {
+      if (!command && !event.altKey && (key === '+' || key === '=' || key === '-' || key === '_')) {
         event.preventDefault(); window.dispatchEvent(new CustomEvent('toonroom-zoom', {detail:key==='+'||key==='='?'in':'out'})); return;
       }
       if (event.key === 'Escape') { state.select(null); setFocus(false); return; }
@@ -924,7 +924,7 @@ export default function App() {
   return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''}`}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
-      <div className="project-controls"><button className="quiet project-button" onClick={() => { pause(); if (useStudio.getState().dirty && !persist()) return; close(); setHome('projects'); }}><FolderOpen size={17}/><span>Projects</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label>{saveStatus==='Save failed'&&<button className="quiet" onClick={()=>void backupMovie(project).catch(showError)}>Download recovery backup</button>}<span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
+      <div className="project-controls"><button className="quiet project-button" onClick={() => { pause(); if (useStudio.getState().dirty && !persist()) return; close(); setHome('projects'); }}><House size={17}/><span>Home</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label>{saveStatus==='Save failed'&&<button className="quiet" onClick={()=>void backupMovie(project).catch(showError)}>Download recovery backup</button>}<span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
       <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title={playing?'Pause preview':'Play preview'} onClick={() => void play()}>{playing?<Pause size={17}/>:<Play size={17}/>}</IconButton><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
     </header>
     {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button><IconButton title="Undo" disabled={!hasUndo} onClick={() => run(() => useStudio.getState().undo())}><Undo2 size={17}/></IconButton><IconButton title="Redo" disabled={!hasRedo} onClick={() => run(() => useStudio.getState().redo())}><Redo2 size={17}/></IconButton></nav>
@@ -968,11 +968,12 @@ export default function App() {
           <Stage key={session} project={project} scene={scene} time={time}
           playing={playing} onDestination={placingDestination ? coords => {
             const clip=scene.clips.find(c=>c.id===selection?.id);if(clip?.track==='movement'){patchClip({...clip,toX:coords.x,toY:coords.y});setPlacingDestination(false);}
-          }:undefined} edit={true} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot} move={(id, coords) => {
+          }:undefined} edit={true} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot}
+         flipEntity={id=>{const actor=scene.actors.find(item=>item.id===id);if(actor)patchActor({...actor,flip:!actor.flip});else{const object=scene.objects.find(item=>item.id===id);if(object)patchObject({...object,flip:!object.flip});}}}
+         duplicateEntity={()=>duplicateSelection()} removeEntity={()=>removeSelection()} move={(id, coords) => {
           const actor = scene.actors.find(item => item.id === id), object = scene.objects.find(item => item.id === id);
           if (actor) {
-            const dx = coords.x - actor.x, dy = coords.y - actor.y;
-            editScene(current => ({ ...current, actors: current.actors.map(item => item.id === id ? { ...item, ...coords } : item), clips: current.clips.map(clip => clip.track === 'movement' && clip.actor === id ? { ...clip, fromX: clamp(clip.fromX + dx, -2000, 3000), toX: clamp(clip.toX + dx, -2000, 3000), fromY: clamp(clip.fromY + dy, -2000, 3000), toY: clamp(clip.toY + dy, -2000, 3000) } : clip) }));
+            editScene(current => translateSceneActor(current,id,coords));
           } else if (object) patchObject({ ...object, ...coords });
         }}/></div>
         <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock((scene).duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={(scene).duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><details className="playback-range-controls"><summary title="Play a selected time range">Range</summary><div><label>From<input aria-label="Playback range start" type="number" step=".1" min={0} max={scene.duration-.1} value={playbackRange?.start??0} onChange={e=>{pause();setPlaybackRange({start:clamp(Number(e.target.value),0,(playbackRange?.end??scene.duration)-.1),end:playbackRange?.end??scene.duration});}}/></label><label>To<input aria-label="Playback range end" type="number" step=".1" min={(playbackRange?.start??0)+.1} max={scene.duration} value={playbackRange?.end??scene.duration} onChange={e=>{pause();setPlaybackRange({start:playbackRange?.start??0,end:clamp(Number(e.target.value),(playbackRange?.start??0)+.1,scene.duration)});}}/></label><button className="quiet" onClick={()=>{pause();setPlaybackRange(undefined);}}>Whole film</button></div></details><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>

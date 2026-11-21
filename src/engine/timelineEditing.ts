@@ -205,3 +205,26 @@ export function duplicateTimelineClips(scene: Scene, ids: string[]): {scene:Scen
   const copies = duplicateClips(selectableClips(scene, ids), scene.clips, scene.duration);
   return { scene: { ...scene, clips: [...scene.clips, ...copies] }, ids: copies.map(clip => clip.id) };
 }
+
+/**
+ * Reposition an actor as a scene-space translation without destroying any
+ * hand-authored movement keyframes. Used by canvas dragging; translating the
+ * anchor alone would otherwise make the animated actor snap back at playback.
+ */
+export function translateSceneActor(scene: Scene, id: string, point: {x:number;y:number}): Scene {
+  const actor=scene.actors.find(item=>item.id===id);
+  if(!actor)return scene;
+  const dx=point.x-actor.x,dy=point.y-actor.y;
+  if(dx===0&&dy===0)return scene;
+  const bound=(value:number)=>Math.max(-2000,Math.min(3000,value));
+  return {
+    ...scene,
+    actors:scene.actors.map(item=>item.id===id?{...item,x:bound(point.x),y:bound(point.y)}:item),
+    clips:scene.clips.map(clip=>clip.track==='movement'&&clip.actor===id?{
+      ...clip,
+      fromX:bound(clip.fromX+dx),fromY:bound(clip.fromY+dy),
+      toX:bound(clip.toX+dx),toY:bound(clip.toY+dy),
+      ...(clip.keyframes?{keyframes:clip.keyframes.map(key=>({...key,x:bound(key.x+dx),y:bound(key.y+dy)}))}:{})
+    }:clip)
+  };
+}

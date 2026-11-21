@@ -192,8 +192,16 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
             onClick={()=>addAction(action)}><Clapperboard size={16}/><span>{label(action)}</span><Plus size={14}/></button>)}
         {active==='Audio'&&<>
           <button className="asset-row" onClick={dialogue}><Mic size={16}/><span>Add or record dialogue</span><Plus size={14}/></button>
-          <button className="asset-row" onClick={audio}><AudioLines size={16}/><span>Import a sound effect</span><Plus size={14}/></button>
-          <button className="asset-row" onClick={music}><Music2 size={16}/><span>Import background music</span><Plus size={14}/></button>
+          <div className="asset-media-actions">
+            <button className="asset-media-tile" type="button" onClick={audio} title="Import an MP3, WAV, M4A or WebM sound effect">
+              <span className="asset-media-icon"><AudioLines size={21}/></span><strong>Sound effect</strong>
+              <small>Upload audio</small><Plus size={15} className="asset-media-plus"/>
+            </button>
+            <button className="asset-media-tile" type="button" onClick={music} title="Upload an MP3, WAV, M4A or WebM soundtrack">
+              <span className="asset-media-icon music"><Music2 size={21}/></span><strong>Music</strong>
+              <small>Upload a soundtrack</small><Plus size={15} className="asset-media-plus"/>
+            </button>
+          </div>
           <div className="small-label">Built-in sound effects</div>
           {soundNames.filter(match).map(sound=><button className="asset-row" key={sound} draggable
             title="Click to add, or drag to the SFX / Music track"

@@ -275,9 +275,9 @@ export function Timeline({
         <IconButton title="Shortcut help" onClick={()=>setShortcuts(v=>!v)}><Keyboard size={16}/></IconButton>
         <span className="divider"/>
         <IconButton title={snap?'Disable snapping':'Enable snapping'} active={snap} onClick={()=>setSnap(v=>!v)}><Magnet size={16}/></IconButton>
-        <IconButton title="Zoom out around playhead" onClick={()=>setZoomAround(zoom/1.4)} disabled={zoom<=1}><ZoomOut size={16}/></IconButton>
+        <IconButton title="Zoom out timeline (−)" onClick={()=>setZoomAround(zoom/1.4)} disabled={zoom<=1}><ZoomOut size={16}/></IconButton>
         <span className="zoom-label">{Math.round(zoom*100)}%</span>
-        <IconButton title="Zoom in around playhead" onClick={()=>setZoomAround(zoom*1.4)} disabled={zoom>=9}><ZoomIn size={16}/></IconButton>
+        <IconButton title="Zoom in timeline (+)" onClick={()=>setZoomAround(zoom*1.4)} disabled={zoom>=9}><ZoomIn size={16}/></IconButton>
         <IconButton title="Fit entire scene to timeline width" onClick={()=>{setZoom(1);if(viewportRef.current)viewportRef.current.scrollLeft=0;}}><Maximize2 size={15}/></IconButton>
       </div>
     </header>

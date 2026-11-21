@@ -1,0 +1,212 @@
+
+/* Toonroom Studio: soft, Canva-inspired video workspace.
+   All selectors are scoped to the Direct editor to preserve projects, dialogs
+   and the existing deterministic timeline and renderer. */
+.studio-shell.mode-direct {
+  --canvas-border: #d9dbe5;
+  --studio-workspace: #f3f4f8;
+  --studio-panel: #fff;
+  --studio-rail: #fbfaff;
+  --studio-subtle: #f5f3fa;
+  --studio-outline: #e9e5f0;
+  --studio-strong: #29223d;
+  --studio-secondary: #746c83;
+  --studio-hover: #f0eafa;
+  --studio-timeline: #f7f7fb;
+  --studio-timeline-line: #e9e6f0;
+  --studio-accent: #7a3de1;
+}
+.studio-shell.mode-direct[data-theme="dark"] {
+  --canvas-border: #353040;
+  --studio-workspace: #211f2b;
+  --studio-panel: #252132;
+  --studio-rail: #201b2d;
+  --studio-subtle: #302b3f;
+  --studio-outline: #413950;
+  --studio-strong: #f3ecff;
+  --studio-secondary: #b9afca;
+  --studio-hover: #3f3355;
+  --studio-timeline: #262331;
+  --studio-timeline-line: #3a3547;
+  --studio-accent: #c09bff;
+}
+.studio-shell.filmmaking-shell.mode-direct .topbar {
+  background: linear-gradient(105deg,#00b5bc 0%,#1197d4 28%,#4472e9 55%,#8640ed 77%,#a600e4 100%);
+  border-bottom: 0;
+  color: #fff;
+  box-shadow: 0 2px 16px #262c5718;
+  gap: 13px;
+}
+.mode-direct .topbar .brand { min-width: 0; gap: 7px; }
+.mode-direct .topbar .brand-mark {
+  transform: none; width: 29px; height: 29px;
+  color: #fff; background: #ffffff28; border: 1px solid #ffffff42;
+  border-radius: 9px;
+}
+.mode-direct .topbar .brand-mark svg { transform: none; }
+.mode-direct .topbar .brand strong { color:#fff; font-size:19px; letter-spacing:-.8px; }
+.mode-direct .topbar .brand strong span { color:#fff; }
+.mode-direct .topbar .brand-edition { color:#ffffffe6; border-color:#ffffff32; font-size:8px; letter-spacing:.7px; }
+.mode-direct .topbar .divider { background:#ffffff45; }
+.mode-direct .topbar .project-button,
+.mode-direct .topbar .icon-button,
+.mode-direct .topbar .history .icon-button,
+.mode-direct .topbar .save-state,
+.mode-direct .topbar .save-state svg { color:#fff !important; }
+.mode-direct .topbar .project-button { background:transparent; border:0; border-radius:10px; }
+.mode-direct .topbar .project-button:hover,
+.mode-direct .topbar .icon-button:hover:not(:disabled) { background:#ffffff30; color:#fff; }
+.mode-direct .topbar .icon-button:disabled { color:#ffffff92 !important; opacity:.55; }
+.mode-direct .topbar .project-name { max-width:260px; color:#fff; }
+.mode-direct .topbar .project-name input { color:#fff !important; background:transparent !important; border-color:transparent !important; text-align:center; }
+.mode-direct .topbar .project-name input:hover,
+.mode-direct .topbar .project-name input:focus { color:#fff !important; background:#ffffff22 !important; border-color:#ffffff50 !important; }
+.mode-direct .topbar .project-name svg { color:#ffffffbb; }
+.mode-direct .topbar .save-state { opacity:.85; }
+.mode-direct .topbar .export-button {
+  background:#fff; border-color:#ffffffbb; color:#6928b3;
+  border-radius:11px; box-shadow:0 3px 8px #24194c1c;
+}
+.mode-direct .topbar .export-button:hover { background:#f4eefe; }
+.mode-direct .topbar .account-button {
+  border:1px solid #ffffff75; color:#fff !important;
+  background:#ffffff27; border-radius:50%;
+}
+.mode-direct .topbar .account-button:hover { background:#ffffff38; }
+
+/* Seamless asset navigation: slim rail, soft search, thumbnail cards. */
+.mode-direct .library-shell, .mode-direct .asset-panel, .mode-direct .asset-content {
+  background:var(--studio-panel); color:var(--studio-strong);
+}
+.mode-direct .library-shell { border-right:1px solid var(--studio-outline); }
+.mode-direct .asset-rail { background:var(--studio-rail); border-right:1px solid var(--studio-outline); padding:13px 4px; gap:7px; }
+.mode-direct .asset-rail button { border:0; border-radius:14px; min-height:55px; color:var(--studio-secondary); transition:background .15s,color .15s,transform .15s; }
+.mode-direct .asset-rail button:hover { color:var(--studio-accent); background:var(--studio-hover); transform:translateY(-1px); }
+.mode-direct .asset-rail button.active { color:var(--studio-accent); background:var(--studio-hover); box-shadow:inset 0 0 0 1px #9860e229; }
+.mode-direct .asset-heading { margin-bottom:14px; }
+.mode-direct .asset-heading h2 { color:var(--studio-strong); font-size:17px; font-weight:750; }
+.mode-direct .asset-heading p { color:var(--studio-secondary); max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.mode-direct .search-field { border:1px solid var(--studio-outline); border-radius:15px; height:45px; background:var(--studio-subtle); color:var(--studio-secondary); padding:0 13px; }
+.mode-direct .search-field:focus-within { border-color:#8e55e8; box-shadow:0 0 0 3px #894fe51c; }
+.mode-direct .search-field input { color:var(--studio-strong); background:transparent !important; border:0 !important; }
+.mode-direct .search-field input::placeholder { color:var(--studio-secondary); }
+.mode-direct .asset-list { gap:10px; }
+.mode-direct .asset-resource-main { color:var(--studio-strong); }
+.mode-direct .asset-list :is(.asset-manage-row,.character-card,.world-card,.prop-card,.asset-row,.image-world-card) {
+  border-radius:15px; border:1px solid var(--studio-outline);
+  background:var(--studio-subtle); color:var(--studio-strong);
+  transition:border-color .15s,background .15s,box-shadow .15s,transform .15s;
+}
+.mode-direct .asset-list :is(.asset-manage-row,.character-card,.world-card,.prop-card,.asset-row,.image-world-card):hover {
+  border-color:#a888df; background:var(--studio-hover);
+  box-shadow:0 4px 12px #3b27590b;
+}
+.mode-direct .asset-list :is(.world-card,.prop-card,.asset-row) { min-height:43px; padding:10px 12px; }
+.mode-direct .asset-list :is(.world-card,.prop-card) { overflow:hidden; }
+.mode-direct .asset-create { border-radius:13px; min-height:41px; font-weight:700; }
+.mode-direct .asset-resource-actions .icon-button { border-radius:10px; }
+.mode-direct .small-label { color:var(--studio-secondary); }
+.mode-direct .asset-audio-icon { border-radius:11px; }
+.mode-direct .asset-content .asset-section-heading { margin-top:12px; }
+
+/* Work surface: keep the movie dominant, editing controls quiet. */
+.mode-direct .stage-panel { background:var(--studio-workspace); padding:12px 18px 10px; }
+.mode-direct .stage-kicker { color:var(--studio-secondary); }
+.mode-direct .stage-kicker i { background:#7f4ae8; }
+.mode-direct .scene-title { color:var(--studio-strong); font-size:17px; }
+.mode-direct .stage-options .quiet,.mode-direct .stage-options select { border-radius:10px; }
+.mode-direct .viewer { background:transparent; border:0; border-radius:13px; }
+.mode-direct .stage-format { border-radius:5px; box-shadow:0 7px 26px #29213822,0 0 0 1px var(--canvas-border); }
+.mode-direct .canvas-mount.place-mode { cursor:default; }
+.mode-direct .canvas-mount.place-mode[data-hover-entity="true"] { cursor:grab; }
+.mode-direct .canvas-mount.place-mode[data-hover-entity="true"]:active { cursor:grabbing; }
+.mode-direct .stage-context-toolbar {
+  position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:10;
+  display:flex; align-items:center; max-width:94%; gap:5px; padding:5px 6px;
+  background:#fffffff2; color:#352843; border:1px solid #ffffffaa;
+  border-radius:13px; box-shadow:0 7px 25px #221b3750;
+  backdrop-filter:blur(16px);
+}
+.mode-direct .stage-context-selection { display:flex; align-items:center; min-width:0; gap:6px; padding:0 8px; white-space:nowrap; }
+.mode-direct .stage-context-selection strong { font-size:12px; font-weight:750; overflow:hidden; text-overflow:ellipsis; max-width:135px; }
+.mode-direct .stage-context-selection small { font-size:10px; color:#776886; }
+.mode-direct .stage-context-toolbar button { display:flex; align-items:center; justify-content:center; gap:6px; min-width:30px; min-height:30px; padding:0 8px; background:transparent; border:0; color:#563c75; border-radius:9px; font-size:12px; font-weight:700; }
+.mode-direct .stage-context-toolbar button:hover { background:#ede5fa; color:#6e31cf; }
+.mode-direct .stage-context-toolbar button:focus-visible { outline:2px solid #8a50e8; outline-offset:1px; }
+.mode-direct .transport { background:var(--studio-workspace); color:var(--studio-strong); border:0; }
+.mode-direct .transport .timecode, .mode-direct .transport .shot-pill { color:var(--studio-secondary); }
+
+/* Inspector works as one tidy, scrollable editing surface. */
+.mode-direct .inspector { background:var(--studio-panel); border-left:1px solid var(--studio-outline); color:var(--studio-strong); }
+.mode-direct .inspector-top { border-color:var(--studio-outline); color:var(--studio-accent); }
+.mode-direct .inspector-top h2 { font-size:16px; color:var(--studio-strong); }
+.mode-direct .inspector-scroll { padding:12px; scrollbar-width:thin; }
+.mode-direct .inspector-card { border-radius:15px; background:var(--studio-subtle); border-color:var(--studio-outline); padding:10px; }
+.mode-direct .inspector-card strong { color:var(--studio-strong); }
+.mode-direct .inspector-card small { color:var(--studio-secondary); }
+.mode-direct .inspector-emblem { border-radius:12px; background:var(--studio-hover); color:var(--studio-accent); }
+.mode-direct .inspector details { border:1px solid var(--studio-outline); padding:7px 10px 12px; border-radius:13px; background:var(--studio-subtle); margin-bottom:10px; }
+.mode-direct .inspector summary { cursor:pointer; color:var(--studio-strong); min-height:31px; }
+.mode-direct .inspector .field, .mode-direct .inspector .small-text { color:var(--studio-secondary); }
+.mode-direct .inspector .field input, .mode-direct .inspector .field select { border-radius:9px; }
+.mode-direct .inspector .inspector-actions { gap:9px; }
+.mode-direct .facing-controls { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:11px 0 8px; }
+.mode-direct .facing-controls button,.mode-direct .flip-prop-button { display:flex; align-items:center; justify-content:center; gap:6px; padding:9px 7px; background:var(--studio-panel); color:var(--studio-strong); border:1px solid var(--studio-outline); border-radius:10px; font-size:11px; font-weight:700; min-height:36px; }
+.mode-direct .facing-controls button:hover,.mode-direct .flip-prop-button:hover { border-color:#9d75e6; background:var(--studio-hover); }
+.mode-direct .facing-controls button.active { background:var(--studio-hover); color:var(--studio-accent); border-color:#a37be8; }
+.mode-direct .facing-controls button:last-child { grid-column:1/-1; }
+.mode-direct .flip-prop-button { width:100%; margin:8px 0 12px; }
+.mode-direct .flip-prop-button[aria-pressed="true"] { color:var(--studio-accent); border-color:#a37be8; }
+
+/* A continuous, translucent editing timeline. Never change clip positioning. */
+.mode-direct .professional-timeline { color:var(--studio-strong); background:var(--studio-timeline); border-top:1px solid var(--studio-outline); }
+.mode-direct .professional-timeline > header { background:var(--studio-timeline); border-color:var(--studio-outline); }
+.mode-direct .professional-timeline .timeline-title h2 { color:var(--studio-strong); }
+.mode-direct .professional-timeline .timeline-duration,.mode-direct .professional-timeline .zoom-label { color:var(--studio-secondary); border-color:var(--studio-outline); }
+.mode-direct .professional-timeline .timeline-tools .icon-button { border-radius:9px; color:var(--studio-secondary); }
+.mode-direct .professional-timeline .timeline-tools .icon-button:hover { background:var(--studio-hover); color:var(--studio-accent); }
+.mode-direct .professional-timeline .timeline-tools .icon-button.active { color:var(--studio-accent); background:var(--studio-hover); }
+.mode-direct .professional-timeline :is(.timeline-scroll,.timeline-sheet,.ruler,.ruler-label,.track-name,.ruler-points,.lane) { background:transparent; }
+.mode-direct .professional-timeline .ruler { border-color:var(--studio-timeline-line); }
+.mode-direct .professional-timeline .ruler-label,.mode-direct .professional-timeline .track-name { border-color:var(--studio-timeline-line); color:var(--studio-secondary); }
+.mode-direct .professional-timeline .ruler-points span { color:var(--studio-secondary); }
+.mode-direct .professional-timeline .timeline-row { border-color:var(--studio-timeline-line); }
+.mode-direct .professional-timeline .timeline-row:nth-of-type(2n) .lane { background:transparent; }
+.mode-direct .professional-timeline .clip { border-radius:10px; box-shadow:0 1px 3px #10102011; }
+.mode-direct .professional-timeline .clip.clip-selected { outline:2px solid #8a4bf4; outline-offset:1px; filter:brightness(1.08); }
+.mode-direct .professional-timeline .track-name button { color:var(--studio-secondary); border-radius:7px; }
+.mode-direct .professional-timeline .track-name button:hover { background:var(--studio-hover); color:var(--studio-accent); }
+.mode-direct .professional-timeline .timeline-empty-track { color:var(--studio-secondary); }
+.mode-direct .professional-timeline .timeline-duration-field { color:var(--studio-secondary); }
+
+/* Gentle motion, clear focus and mobile layout that does not crowd the stage. */
+.mode-direct button:focus-visible,.mode-direct input:focus-visible { outline:2px solid #8d55ed; outline-offset:2px; }
+@media (max-width:1100px) {
+  .mode-direct .topbar .brand-edition,.mode-direct .topbar .save-state { display:none; }
+  .mode-direct .stage-context-selection small { display:none; }
+}
+@media (max-width:790px) {
+  .studio-shell.filmmaking-shell.mode-direct .topbar { gap:6px; padding:6px 10px; }
+  .mode-direct .topbar .brand strong { font-size:17px; }
+  .mode-direct .topbar .project-name { max-width:130px; }
+  .mode-direct .asset-rail button { min-height:49px; }
+  .mode-direct .stage-panel { padding:8px; }
+  .mode-direct .stage-context-toolbar { top:6px; max-width:98%; padding:3px; }
+  .mode-direct .stage-context-toolbar button { min-width:28px; min-height:29px; padding:0 5px; }
+  .mode-direct .stage-context-selection { padding:0 4px; }
+  .mode-direct .stage-context-selection strong { max-width:72px; }
+  .mode-direct .stage-context-toolbar button span { display:none; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .mode-direct .asset-rail button, .mode-direct .asset-list :is(.world-card,.prop-card,.asset-row,.asset-manage-row) { transition:none; transform:none; }
+}
+
+/* Media import actions, searchable alongside the existing sound library. */
+.mode-direct .asset-media-actions { display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:3px 0 12px; }
+.mode-direct .asset-media-tile { position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0;min-height:123px;padding:13px 11px;background:var(--studio-subtle);border:1px solid var(--studio-outline);border-radius:15px;color:var(--studio-strong);text-align:left; }
+.mode-direct .asset-media-tile:hover { background:var(--studio-hover);border-color:#a888df;box-shadow:0 5px 18px #4c278211; }
+.mode-direct .asset-media-icon { width:36px;height:36px;display:grid;place-items:center;border-radius:12px;background:#def3f8;color:#148ca5; }
+.mode-direct .asset-media-icon.music { background:#f0e2ff;color:#873bd4; }
+.mode-direct .asset-media-tile strong { font-size:12px;font-weight:750; }
+.mode-direct .asset-media-tile small { color:var(--studio-secondary);font-size:10px; }
+.mode-direct .asset-media-plus { position:absolute;right:10px;top:10px;color:var(--studio-secondary); }

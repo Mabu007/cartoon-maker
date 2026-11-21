@@ -6,7 +6,7 @@ import { cameraConflicts, insertCameraShot, normalizeCameraTimeline, type Camera
 import { cameraViewport, screenToWorld, worldToScreen, worldToEntity, entityToWorld, pointHitsEntity, worldEntityBounds, renderDepth, type WorldEntityRect } from '../src/engine/cameraTransform.ts';
 import { evaluate, locate, projectDuration, MOVIE_FRAME_RATE } from '../src/engine/evaluate.ts';
 import { heldGripPoint } from '../src/engine/actorArt.ts';
-import { resizeSceneTimeline, trimTimelineClip, moveTimelineClips } from '../src/engine/timelineEditing.ts';
+import { resizeSceneTimeline, trimTimelineClip, moveTimelineClips, translateSceneActor } from '../src/engine/timelineEditing.ts';
 import { useStudio } from '../src/studio.ts';
 
 const movie=makeProject(true);
@@ -142,4 +142,48 @@ test('duration changes drive whole-movie frame selection identically for preview
     assert.deepEqual(preview.camera,exportedFrame.camera);
     assert.equal(preview.shot,exportedFrame.shot);
   }
+});
+
+test('optional prop flipping preserves old projects and round-trips through the canonical movie schema',()=>{
+  const prop=original.objects[0];
+  assert(prop,'a fixture object is needed');
+  const mirrored={...prop,flip:true};
+  const next={...movie,scenes:[{...original,objects:[mirrored,...original.objects.slice(1)]}]};
+  const saved=ProjectDocument.parse(next);
+  assert.equal(saved.scenes[0].objects[0].flip,true);
+  const reloaded=ProjectDocument.parse(JSON.parse(JSON.stringify(saved)));
+  assert.equal(reloaded.scenes[0].objects[0].flip,true);
+  const legacy={...movie,scenes:[{...original,objects:[prop,...original.objects.slice(1)]}]};
+  assert.equal(ProjectDocument.parse(legacy).scenes[0].objects[0].flip,undefined);
+  const source:WorldEntityRect={x:mirrored.x,y:mirrored.y,scaleX:-mirrored.scale,scaleY:mirrored.scale,angle:mirrored.rotation,left:-25,right:25,top:-60,bottom:5};
+  const local={x:13,y:-20};
+  const roundTrip=worldToEntity(entityToWorld(local,source),source);
+  assert(Math.abs(roundTrip.x-local.x)<.00001);
+  assert(Math.abs(roundTrip.y-local.y)<.00001);
+});
+
+test('canvas dragging translates all movement keys while preserving authored timing and other characters',()=>{
+  const actor=original.actors[0],other=original.actors[1];
+  const move:Extract<Clip,{track:'movement'}>={
+    id:'translate-keyed',track:'movement',actor:actor.id,start:1,length:5,
+    fromX:actor.x,fromY:actor.y,toX:actor.x+140,toY:actor.y-25,
+    keyframes:[
+      {time:0,x:actor.x,y:actor.y},
+      {time:.35,x:actor.x+55,y:actor.y-65},
+      {time:1,x:actor.x+140,y:actor.y-25}
+    ]
+  };
+  const scene:Scene={...original,clips:[move]};
+  const dx=45,dy=-16;
+  const updated=translateSceneActor(scene,actor.id,{x:actor.x+dx,y:actor.y+dy});
+  assert.equal(updated.actors[0].x,actor.x+dx);
+  assert.deepEqual(updated.actors[1],other);
+  const shifted=updated.clips[0];
+  assert.equal(shifted.track,'movement');
+  if(shifted.track!=='movement')throw Error('Expected moved clip');
+  assert.equal(shifted.fromX,move.fromX+dx);
+  assert.equal(shifted.toY,move.toY+dy);
+  assert.deepEqual(shifted.keyframes,move.keyframes!.map(k=>({...k,x:k.x+dx,y:k.y+dy})));
+  assert.deepEqual(shifted.keyframes?.map(k=>k.time),move.keyframes!.map(k=>k.time));
+  assert.equal(translateSceneActor(scene,'non-existent',{x:1,y:1}),scene);
 });
