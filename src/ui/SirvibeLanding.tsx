@@ -88,9 +88,9 @@ export function SirvibeLanding({account,available,login,enter}:{
               <div className="sv-art-stage">
                 <div className="sv-art-sun"/>
                 <div className="sv-back-wall"/><div className="sv-art-floor"/>
-                <div className="sv-character sv-character-one"><NativeCharacterPreview character={characters[0]} view="three-quarter" action="point" expression="surprised" frozenTime={.53} scale={1}/></div>
+                <div className="sv-character sv-character-one"><NativeCharacterPreview character={characters[0]} view="three-quarter" action="point" expression="surprised" flip={false} frozenTime={.53} scale={1}/></div>
                 <div className="sv-character sv-character-two"><NativeCharacterPreview character={characters[1]} view="three-quarter" action="laugh" expression="happy" flip frozenTime={.35} scale={1}/></div>
-                <div className="sv-character sv-character-three"><NativeCharacterPreview character={characters[4]} view="three-quarter" action="wave" expression="happy" frozenTime={.38} scale={1}/></div>
+                <div className="sv-character sv-character-three"><NativeCharacterPreview character={characters[4]} view="three-quarter" action="wave" expression="happy" flip={false} frozenTime={.38} scale={1}/></div>
                 <div className="sv-speech-bubble">“Wait... YOU ate my food?!”</div>
                 <div className="sv-stage-tag"><span className="sv-stage-pulse"/> YOUR CHARACTERS. YOUR RULES.</div>
               </div>
