@@ -1,15 +1,16 @@
 import { z } from 'zod';
+import { cameraConflicts, normalizeCameraTimeline } from './cameraTimeline.ts';
 
 export const WIDTH = 960;
 export const HEIGHT = 540;
 export const views = ['front', 'three-quarter', 'side', 'back-quarter', 'back'] as const;
-export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', 'sleepy', 'angry', 'surprised', 'sad', 'thinking'] as const;
+export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', 'sleepy', 'angry', 'surprised', 'sad', 'thinking', 'nervous'] as const;
 export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think', 'lean', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away'] as const;
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow', 'extreme-close-up', 'over-shoulder', 'establishing', 'reaction', 'pan', 'tilt', 'zoom', 'hold'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
 export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image'] as const;
-export const tracks = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue', 'audio', 'camera', 'transition'] as const;
-export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'Sound', camera: 'Camera', transition: 'Transitions' };
+export const tracks = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue', 'audio', 'music', 'camera', 'transition'] as const;
+export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'SFX', music: 'Music', camera: 'Camera', transition: 'Transitions' };
 const id = z.string().min(1).max(100);
 const color = z.string().regex(/^#[\da-f]{6}$/i);
 // Portable WebP thumbnails are embedded in project JSON. A strict budget keeps
@@ -19,13 +20,20 @@ const propImageData = z.string().regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+=
 const num = (min: number, max: number) => z.number().finite().min(min).max(max);
 const position = { x: num(-2000, 3000), y: num(-2000, 3000), scale: num(.2, 4), rotation: num(-360, 360), depth: num(-1000, 1000) };
 export const CharacterView = z.enum(views);
+export const VoicePreset = z.enum(['warm','bright','deep']);
+export const HostedVoiceId = z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9_.:-]+$/);
 export const CharacterDefinition = z.strictObject({
   id, name: z.string().trim().min(1).max(60), skin: color, shirt: color, pants: color, hairColor: color, shoes: color,
   height: num(.75, 1.3), head: num(.75, 1.35), torso: num(.75, 1.3), arms: num(.75, 1.3), legs: num(.75, 1.3), thickness: num(.65, 1.45), eyeSpacing: num(.65, 1.4),
   shape: z.enum(['round', 'oval', 'square']), eyes: z.enum(['round', 'relaxed', 'wide']), brows: z.enum(['arched', 'straight', 'bold']),
   nose: z.enum(['button', 'long', 'flat']), mouth: z.enum(['smile', 'line', 'full']), ears: z.enum(['round', 'small', 'wide']),
   hair: z.enum(['fade', 'puff', 'locs', 'buzz', 'bald', 'afro', 'braids', 'curls']), beard: z.enum(['none', 'goatee', 'full']), hat: z.enum(['none', 'cap', 'beanie']),
-  glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(['tee', 'hoodie', 'jacket', 'sweater', 'uniform']), accessory: z.enum(['none', 'chain', 'scarf']), goldTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional()
+  glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(['tee', 'hoodie', 'jacket', 'sweater', 'uniform']), accessory: z.enum(['none', 'chain', 'scarf']), goldTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional(),
+  voicePreset: VoicePreset.optional(), hostedVoiceId: HostedVoiceId.optional(),
+  mouthRig: z.strictObject({ width: num(.65,1.5), jawScale: num(.6,1.5),
+    roundness: num(0,1), asymmetry: num(-1,1) }).optional(),
+  missingTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional(),
+  toothColors: z.array(color).length(6).optional()
 });
 export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.string().min(1).max(60), color, ...position,
   imageData: propImageData.optional(), imageWidth: num(10, 800).optional(), imageHeight: num(10, 800).optional(),
@@ -39,20 +47,35 @@ export const SkeletonDefinition = z.record(Joint, Joint.nullable());
 export const AnimationClip = z.strictObject({ id: z.enum(actions), duration: num(.1, 60), loop: z.boolean(), keys: z.array(z.strictObject({ time: num(0, 1), pose: z.partialRecord(Joint, z.number().finite()), lift: z.number().finite().optional() })).min(2), expression: z.enum(expressions).optional(), views: z.array(CharacterView).optional() });
 const time = { id, start: num(0, 180), length: num(.1, 180) };
 const ActorClip = z.strictObject({ ...time, track: z.literal('actors'), actor: id, visible: z.boolean().optional() });
-const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: id, fromX: position.x, fromY: position.y, toX: position.x, toY: position.y, gait: z.enum(['walk', 'run']).optional() });
+const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: id, fromX: position.x, fromY: position.y, toX: position.x, toY: position.y, gait: z.enum(['walk', 'run']).optional(),
+  /** Optional normalized spatial keys. When present they drive the evaluated path. */
+  keyframes: z.array(z.strictObject({ time: num(0, 1), x: position.x, y: position.y })).min(2).max(32).optional() });
 const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional() });
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });
 const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release']) });
 const FaceClip = z.strictObject({ ...time, track: z.literal('face'), actor: id, expression: z.enum(expressions) });
 export const audioAsset = z.string().regex(/^(?:builtin:[a-z0-9-]+|asset:[a-zA-Z0-9-]+)$/);
-const sound = { asset: audioAsset, volume: num(0, 2), muted: z.boolean(), offset: num(0, 180).default(0) };
-export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal('dialogue'), actor: id, text: z.string().max(1000) });
+const sound = { asset: audioAsset, volume: num(0, 2), muted: z.boolean(), offset: num(0, 180).default(0),
+  fadeIn: num(0, 180).optional(), fadeOut: num(0, 180).optional(), loop: z.boolean().optional() };
+const mouthCues = z.array(z.strictObject({ start: num(0, 180), end: num(0, 180), shape: z.enum(['rest', 'closed', 'bite', 'wide', 'open', 'round', 'pucker', 'tongue']), strength: num(0, 1).optional() })).max(3000);
+export const LipSyncMetadata = z.strictObject({
+  source: z.enum(['rhubarb', 'estimated']), engine: z.string().min(1).max(72),
+  cacheKey: z.string().regex(/^[a-f0-9]{64}$/).optional(), analyzedDuration: num(.1,180)
+});
+export const DialogueVersion = z.strictObject({ asset: audioAsset, text: z.string().max(1000),
+  length: num(.1,180), offset: num(0,180), voicePreset: VoicePreset.optional(), visemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
+export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal('dialogue'), actor: id, text: z.string().max(1000),
+  voicePreset: VoicePreset.optional(), versions: z.array(DialogueVersion).max(5).optional(), visemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
 const AudioClip = z.strictObject({ ...time, ...sound, track: z.literal('audio'), name: z.string().min(1).max(80) });
+const MusicClip = z.strictObject({ ...time, ...sound, track: z.literal('music'), name: z.string().min(1).max(80) });
 export const CameraShot = z.strictObject({ ...time, track: z.literal('camera'), shot: z.enum(shots), focus: id.optional(), transition: z.enum(['cut', 'glide']) });
 const Transition = z.strictObject({ ...time, track: z.literal('transition'), effect: z.enum(['fade-in', 'fade-out', 'dissolve']) });
-export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, CameraShot, Transition]);
+export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, MusicClip, CameraShot, Transition]);
 export const TimelineTrack = z.enum(tracks);
+export const TimelineMarker = z.strictObject({ id, name: z.string().trim().min(1).max(60), time: num(0, 180) });
+export const TimelineTrackSettings = z.strictObject({ muted: z.boolean().optional(), solo: z.boolean().optional(), locked: z.boolean().optional(), collapsed: z.boolean().optional() });
 export const SceneDefinition = z.strictObject({ id, name: z.string().trim().min(1).max(70), environment: z.enum(environments),
+  markers: z.array(TimelineMarker).max(60).optional(), trackSettings: z.partialRecord(TimelineTrack, TimelineTrackSettings).optional(),
   backgroundImage: imageData.optional(), duration: num(1, 180),
   actors: z.array(Actor).max(24), objects: z.array(SceneObject).max(100), clips: z.array(TimelineClip).max(600) });
 
@@ -84,6 +107,7 @@ export const StoryBibleSchema = z.strictObject({
   worlds: z.array(storyWorld).max(30), scenes: z.array(storyScene).max(30)
 });
 const cueTime = { id: id.optional(), seconds: num(.1, 60).default(1), delay: num(0, 60).default(0), parallel: z.boolean().default(false) };
+export const builtinVoiceNames = ['zee-spicy', 'sbu-food', 'zee-safe', 'sbu-lunch', 'sbu-receipt'] as const;
 export const soundNames = ['ding', 'pop', 'sting', 'whoosh', 'rimshot'] as const;
 export const Direction = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('move'), ...cueTime, actor: id, x: position.x, y: position.y.optional(), gait: z.enum(['walk', 'run']) }),
@@ -138,7 +162,11 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
   if (embeddedImageBytes > 780_000) ctx.addIssue({ code: 'custom', path: ['scenes'], message: 'Image budget exceeded. Use smaller or fewer images in this project.' });
   project.scenes.forEach((scene, index) => {
     const path = ['scenes', index];
-    verifyIds([...scene.actors, ...scene.objects, ...scene.clips], ctx, path);
+    for (const message of cameraConflicts(scene.clips))
+      ctx.addIssue({ code: 'custom', path: [...path, 'clips'], message });
+    verifyIds([...scene.actors, ...scene.objects, ...scene.clips, ...(scene.markers ?? [])], ctx, path);
+    for (const [markerIndex, marker] of (scene.markers ?? []).entries())
+      if (marker.time > scene.duration) ctx.addIssue({ code: 'custom', path: [...path, 'markers', markerIndex, 'time'], message: 'Marker exceeds scene duration' });
     const actors = new Set(scene.actors.map(actor => actor.id));
     const objects = new Set(scene.objects.map(object => object.id));
     if (scene.actors.some(actor => !characters.has(actor.characterId))) ctx.addIssue({ code: 'custom', path, message: 'Actor refers to a missing character' });
@@ -147,9 +175,16 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
     for (const clip of scene.clips) {
       const targetValid = !('target' in clip) || !clip.target ||
         (clip.track === 'gaze' ? clip.target === 'camera' || actors.has(clip.target) || objects.has(clip.target) : objects.has(clip.target));
-      if (clip.start + clip.length > scene.duration + .0001 || ('actor' in clip && !actors.has(clip.actor)) || !targetValid || ('focus' in clip && clip.focus && !actors.has(clip.focus))) {
-        ctx.addIssue({ code: 'custom', path: [...path, 'clips', clip.id], message: 'Clip is outside the scene or has a missing target' });
+      const clipPath = [...path, 'clips', clip.id];
+      if (clip.start + clip.length > scene.duration + .0001) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip is outside the scene' });
+      if (clip.track === 'movement' && clip.keyframes) {
+        const keys = clip.keyframes;
+        if (keys[0].time !== 0 || keys[keys.length - 1].time !== 1 || keys.some((key, i) => i > 0 && key.time <= keys[i - 1].time))
+          ctx.addIssue({ code: 'custom', path: [...clipPath, 'keyframes'], message: 'Movement keyframes must begin at 0, end at 1 and have strictly increasing times' });
       }
+      if ('actor' in clip && !actors.has(clip.actor)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing actor' });
+      if (!targetValid) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing target' });
+      if ('focus' in clip && clip.focus && !actors.has(clip.focus)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Camera shot has unknown focus' });
     }
   });
 });
@@ -168,7 +203,25 @@ export type Expression = typeof expressions[number];
 export type JointName = typeof joints[number];
 export type JointPose = Partial<Record<JointName, number>>;
 export type Animation = z.infer<typeof AnimationClip>;
-export type SoundClip = Extract<Clip, { track: 'audio' | 'dialogue' }>;
+export type SoundClip = Extract<Clip, { track: 'audio' | 'music' | 'dialogue' }>;
 export const uid = () => crypto.randomUUID();
 export const label = (value: string) => ({ 'close-up': 'Close-up', 'two-shot': 'Two-shot', 'three-quarter': 'Front three-quarter', 'back-quarter': 'Back three-quarter', stand: 'Stand up', shake: 'Shake head', talk: 'Talking idle', listen: 'Listening', think: 'Thinking', angry: 'Angry', surprise: 'Surprised' })[value] ?? value.replaceAll('-', ' ').replace(/^./, first => first.toUpperCase());
 export const shotLabel = (shot: string) => shot === 'close-up' || shot === 'two-shot' ? label(shot) : `${label(shot)} shot`;
+
+/** Accept historical unversioned/v0 project data without modifying the stored original. */
+export function parseStoredProject(raw: unknown): Project {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+    return ProjectDocument.parse(raw);
+  const document = raw as Record<string, unknown>;
+  const versioned = document.version === undefined || document.version === 0
+    ? { ...document, version: 1 } : document;
+  // Migration applies only on persistent file/device/cloud reads; normal
+  // edits and pasted JSON use strict ProjectDocument validation.
+  const scenes = Array.isArray(versioned.scenes) ? versioned.scenes.map(value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const scene = value as Scene;
+    if (!Array.isArray(scene.clips)) return value;
+    return normalizeCameraTimeline(scene);
+  }) : versioned.scenes;
+  return ProjectDocument.parse({ ...versioned, scenes });
+}

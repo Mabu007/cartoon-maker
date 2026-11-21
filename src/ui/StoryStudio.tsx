@@ -14,11 +14,11 @@ const sceneFields = ['title', 'location', 'summary', 'purpose', 'act', 'sequence
 const sceneLabels = { title: 'Scene title', location: 'Location', summary: 'Summary', purpose: 'Narrative purpose', act: 'Act', sequence: 'Sequence', continuity: 'Continuity', requirements: 'Production requirements' };
 const approved = (status: string) => status === 'approved' || status === 'locked';
 
-export function StoryStudio({ project, production, update, ai, write, loadExample }: {
-  project: Project; production: Production; update: Update; ai: AiAccess; write: (draft: boolean) => void; loadExample: () => void;
+export function StoryStudio({ project, production, update, ai, write, loadExample, initialIdea = '' }: {
+  project: Project; production: Production; update: Update; ai: AiAccess; write: (draft: boolean) => void; loadExample: () => void; initialIdea?: string;
 }) {
   const { bible } = production;
-  const [prompt, setPrompt] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [prompt, setPrompt] = useState(initialIdea), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [proposal, setProposal] = useState<Production['bible']>();
   const [dragId, setDragId] = useState('');
   const [person, setPerson] = useState('');
@@ -59,17 +59,27 @@ export function StoryStudio({ project, production, update, ai, write, loadExampl
     finally { setBusy(false); }
   }
   function openScreenplay() {
-    if (!production.screenplay.scenes.length) {
-      const outline = bible.scenes.filter(scene => approved(scene.status));
-      if (!outline.length) { setError('Approve at least one scene to start writing from the outline.'); return; }
-      update(current => reviseScript(current, outline.map(fromOutline)));
+    if(!production.screenplay.scenes.length){
+      // Beginners can always write. Outline approval remains an optional
+      // creative review state rather than a hard gate to the screenplay.
+      const outline=bible.scenes.length?bible.scenes:[
+        {...makeStoryScene('Scene 01',project.characters.slice(0,2).map(c=>c.id)),
+          id:project.scenes[0].id,environment:project.scenes[0].environment,
+          location:project.scenes[0].environment}
+      ];
+      update(current=>({
+        ...reviseScript(current,outline.slice(0,30).map(fromOutline)),
+        bible:{...current.bible,scenes:current.bible.scenes.length?current.bible.scenes:outline}
+      }));
     }
-    write(!production.screenplay.scenes.length);
+    write(!production.screenplay.scenes.length&&canUseAI(ai));
   }
   return <main className="film-workspace story-workspace">
     <section className="film-main">
-      <header className="film-heading"><div><h1>Story Bible</h1><p>Develop the story, cast and locations for your film.</p></div><button className="primary" onClick={openScreenplay}><BookOpen size={16}/>Write screenplay</button></header>
-      <details className="film-section" open><summary>Film brief</summary>
+      <header className="film-heading"><div><span className="film-step-label">STEP 1 · CREATE</span>
+      <h1>Develop your movie</h1><p>Start with your idea. Discover the characters, locations and tone. Change anything as you go.</p></div>
+      <button className="primary" onClick={openScreenplay}><BookOpen size={16}/>Continue to Write</button></header>
+      <details className="film-section" open><summary>Movie concept</summary>
         <div className="film-fields">
           {textFields.map(field => <label key={field} className={['synopsis', 'logline'].includes(field) ? 'film-field-wide' : ''}>{fieldNames[field]}
             {field === 'synopsis' ? <textarea disabled={bible.status === 'locked'} key={bible.profile[field]} defaultValue={bible.profile[field]} maxLength={4000}

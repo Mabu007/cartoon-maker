@@ -1,3 +1,4 @@
+import { normalizeCameraTimeline, cameraConflicts } from './cameraTimeline.ts';
 import { gaitSpeeds } from './animation.ts';
 import { evaluate } from './evaluate.ts';
 import { anchorFor } from './interactions.ts';
@@ -7,7 +8,8 @@ import { ProjectDocument, TimelineClip, uid, type ActorData, type Clip, type Dir
 type GraphScene = Production['graph'][number];
 type Dialogue = Extract<Clip, { track: 'dialogue' }>;
 type Voice = Production['bible']['characters'][number]['voice'];
-type Speech = (text: string, voice: Voice) => Promise<{ asset: Dialogue['asset']; seconds: number }>;
+type Speech = (text: string, voice: Voice) => Promise<{ asset: Dialogue['asset']; seconds: number;
+  visemes?: Dialogue['visemes']; lipSync?: Dialogue['lipSync'] }>;
 type Continuity = {
   actors: Record<string, Pick<ActorData, 'x' | 'y' | 'view' | 'flip'> & { held?: string; visible: boolean }>;
   objects: Record<string, { x: number; y: number }>;
@@ -70,7 +72,15 @@ export function fingerprint(value: unknown) {
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
 const eventId = (lineId: string, slot: string | number) => `cue-${fingerprint(lineId)}-${slot}`;
-const keyOf = (clip: Clip) => JSON.stringify(TimelineClip.parse(clip));
+function keyOf(clip: Clip) {
+  // The graph identifies authored timing and the recording. Derived cues and
+  // voice history already live on the canonical clip and can be much larger.
+  if (clip.track === 'dialogue') {
+    const {visemes, lipSync, versions, ...source} = clip;
+    return JSON.stringify(TimelineClip.parse(source));
+  }
+  return JSON.stringify(TimelineClip.parse(clip));
+}
 const overlaps = (a: Clip, b: Clip) => a.start < b.start + b.length - .001 && b.start < a.start + a.length - .001;
 const lane = (clip: Clip) => [clip.track, 'actor' in clip ? clip.actor : '', clip.track === 'body' ? clip.layer : ''].join(':');
 const exclusive = new Set<Clip['track']>(['movement', 'body', 'face', 'gaze', 'dialogue', 'camera', 'transition']);
@@ -144,10 +154,18 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
     let result = clip;
     if (overridden) {
       if (keyOf(clip) !== oldSource.signature && (clip.track !== 'dialogue' || locks.has(clip.id))) issue(line, 'A manual timeline edit overrides the new timing or direction.');
-      // A technical timing/volume edit should survive a new dialogue recording.
-      result = clip.track === 'dialogue' && oldClip.track === 'dialogue' && !locks.has(clip.id)
-        ? { ...oldClip, text: clip.text, asset: clip.asset, offset: oldClip.asset === clip.asset ? oldClip.offset : 0, length: oldClip.length === (JSON.parse(oldSource.signature) as Dialogue).length ? clip.length : oldClip.length }
-        : oldClip;
+      result = oldClip;
+      if (clip.track === 'dialogue' && oldClip.track === 'dialogue' && !locks.has(clip.id)) {
+        const original = JSON.parse(oldSource.signature) as Dialogue;
+        const sameRecording = clip.asset === oldClip.asset && clip.text === original.text;
+        const { visemes, lipSync, ...previous } = oldClip;
+        const cues = sameRecording ? visemes : clip.visemes;
+        const alignment = sameRecording ? lipSync : clip.lipSync;
+        result = { ...previous, text: sameRecording ? oldClip.text : clip.text, asset: clip.asset,
+          offset: sameRecording ? oldClip.offset : 0,
+          length: oldClip.length === original.length ? clip.length : oldClip.length,
+          ...(cues ? {visemes: cues} : {}), ...(alignment ? {lipSync: alignment} : {}) };
+      }
     }
     if (exclusive.has(result.track) && [...generated, ...manual].some(prev => lane(prev) === lane(result) && overlaps(prev, result))) {
       issue(line, `Overlapping ${result.track} cues. Adjust the delay or clip timing.`);
@@ -244,7 +262,8 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
     if (line.type === 'dialogue' && line.text.trim()) {
       const actor = actorById(line.characterId ?? speaker ?? '');
       if (!actor) { issue(line, 'Dialogue needs a speaker from the scene cast.'); continue; }
-      const voice = project.production!.bible.characters.find(character => character.characterId === actor.characterId)?.voice
+      const voice = project.characters.find(character => character.id === actor.characterId)?.voicePreset
+        ?? project.production!.bible.characters.find(character => character.characterId === actor.characterId)?.voice
         ?? (actor.characterId === 'zee' ? 'bright' : 'deep');
       const id = eventId(line.id, 'voice');
       const prior = existingClips.get(id);
@@ -253,14 +272,19 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
       const unchanged = prior?.track === 'dialogue' && priorSource?.text === line.text && priorSource.actor === actor.id
         && record?.events[id]?.voice === voice;
       let sound: Awaited<ReturnType<Speech>>;
-      if (unchanged) sound = { asset: prior.asset, seconds: priorSource.length };
+      if (unchanged && prior?.track==='dialogue' && priorSource)
+        sound = {asset:prior.asset,seconds:priorSource.length,
+          ...(prior.visemes?{visemes:prior.visemes}:{}),
+          ...(prior.lipSync?{lipSync:prior.lipSync}:{})};
       else {
         try { sound = await speak(line.text, voice); }
         catch (error) { throw new Error(`Voice generation failed for “${line.text.slice(0, 48)}”. ${error instanceof Error ? error.message : ''}`); }
       }
       // Voice is part of the source signature, without adding engine-only metadata to the clip.
       const clip: Dialogue = { id, start: round(end), length: Math.max(.1, round(sound.seconds)), track: 'dialogue',
-        actor: actor.id, text: line.text, asset: sound.asset, offset: 0, volume: 1, muted: false };
+        actor: actor.id, text: line.text, asset: sound.asset, offset: 0, volume: 1, muted: false, voicePreset:voice,
+        ...(sound.visemes?{visemes:sound.visemes}:{}),
+        ...(sound.lipSync?{lipSync:sound.lipSync}:{}) };
       const applied = schedule(clip, line);
       if (applied) {
         end = Math.max(end, applied.start + applied.length + .18);
@@ -282,11 +306,18 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
   const validClips = [...manual, ...generated].filter(clip => {
     const target = 'target' in clip && clip.target;
     const valid = (!('actor' in clip) || scene.actors.some(actor => actor.id === clip.actor))
+      && (clip.track !== 'camera' || !clip.focus || scene.actors.some(actor => actor.id === clip.focus))
       && (!target || Boolean(objectById(target)) || clip.track === 'gaze' && (target === 'camera' || Boolean(actorById(target))));
     if (!valid) diagnostics.push('A timeline cue refers to a removed asset and was excluded from playback.');
     return valid;
   });
   scene.clips = validClips;
+  if (cameraConflicts(scene.clips).length) {
+    // Legacy/manual camera overrides must never produce two simultaneous images.
+    // Later authored cues take precedence, retaining uncovered earlier footage.
+    scene.clips = normalizeCameraTimeline(scene).clips;
+    diagnostics.push('Overlapping camera overrides were consolidated into a single camera track.');
+  }
   if (!scene.clips.some(clip => clip.track === 'camera') && scene.clips.length < 600) {
     const line = source.elements[0];
     const id = eventId(line.id, 'wide');
@@ -294,7 +325,7 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
     const camera = generated.find(clip => clip.id === id);
     if (camera) scene.clips.push(camera);
   }
-  scene.duration = Math.min(180, Math.max(1, cursor, ...scene.clips.map(clip => round(clip.start + clip.length))));
+  scene.duration = Math.min(180, Math.max(1, cursor, ...scene.clips.map(clip => clip.start + clip.length)));
   return { scene, diagnostics: diagnostics.slice(0, 150), events: sources, locked: [...locks], signature, entry, sceneId: source.id, exit: JSON.stringify(exitOf(scene)) };
 }
 
@@ -312,7 +343,7 @@ export async function compileMovie(project: Project, speak: Speech): Promise<Pro
     const continuity = source.continues && previous?.environment === source.environment ? exitOf(previous) : { actors: {}, objects: {} };
     const entry = fingerprint(continuity);
     const set = source.setsFrom ? project.scenes.find(scene => scene.id === source.setsFrom) : undefined;
-    const signature = fingerprint([source, actors.filter(([id]) => source.cast.includes(id)), project.characters.filter(character => source.cast.includes(character.id)).map(character => character.id),
+    const signature = fingerprint([source, actors.filter(([id]) => source.cast.includes(id)), project.characters.filter(character => source.cast.includes(character.id)).map(character => [character.id, character.voicePreset]),
       set ? [set.objects, set.backgroundImage] : null]);
     const record = production.graph.find(scene => scene.sceneId === source.id);
     if (existing && record?.signature === signature && record.entry === entry) {

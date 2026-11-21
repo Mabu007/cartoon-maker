@@ -3,11 +3,11 @@ import { AlertCircle, Clapperboard } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
 import { type Project, type Scene } from '../engine/schema.ts';
 import { clamp } from '../engine/animation.ts';
-import type { Mixer } from '../services/audio.ts';
+import { prepareDialoguePreview, type Mixer } from '../services/audio.ts';
 import type { Selection } from '../studio.ts';
 
 type Position = { x: number; y: number };
-type Drag = { id: string; kind: 'actor' | 'object'; origin: Position; pointer: Position; current: Position; moved: boolean };
+type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
 export type PreviewTime = { scene: Scene; local: number };
 export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
@@ -15,12 +15,24 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), repaint = useRef<() => void>(() => {});
+  const dialogue = useRef<{ scene: Scene; amplitude: Awaited<ReturnType<typeof prepareDialoguePreview>> } | null>(null);
+  useEffect(() => {
+    let active = true;
+    void prepareDialoguePreview(scene).then(amplitude => {
+      if (!active) return;
+      dialogue.current = { scene, amplitude };
+      if (!props.current.playing) repaint.current();
+    });
+    return () => { active = false; };
+  }, [scene]);
   const [status, setStatus] = useState('Loading preview…');
   const [restart, setRestart] = useState(0);
   const props = useRef({ project, scene, time, playing, edit, selection, subtitles, mixer, onFrame });
   props.current = { project, scene, time, playing, edit, selection, subtitles, mixer, onFrame };
   useEffect(() => {
-    let alive = true, handle = 0, lastShot = '', failed = false;
+    let alive = true, lastShot = '', failed = false;
+    let timeListener: (() => void) | undefined;
+    let visibilityListener: (() => void) | undefined;
     let activeRenderer: Renderer | null = null;
     let contextLost: ((event: Event) => void) | undefined;
     const fail = (error: unknown) => {
@@ -51,29 +63,33 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         const scene = p.playing ? live : p.scene;
         const frame = renderer.draw(scene, p.project.characters, local, {
           selected: p.selection?.kind !== 'clip' && !p.playing ? p.selection?.id : undefined,
-          ...(drag.current?.moved ? { staged: { [drag.current.id]: drag.current.current } } : {}),
-          edit: p.edit && !p.playing, subtitles: p.subtitles, amplitude: (id, t) => p.mixer.current?.amplitude(scene, id, t) ?? 0
+          ...(drag.current?.moved && drag.current.sceneId === scene.id ? { staged: { [drag.current.id]: drag.current.current } } : {}),
+          edit: p.edit && !p.playing, subtitles: p.subtitles,
+          amplitude: (id, t) => !p.playing && dialogue.current?.scene === scene
+            ? dialogue.current.amplitude(id, t)
+            : p.mixer.current?.amplitude(scene, id, t) ?? 0
         });
         if (frame.shot !== lastShot) { lastShot = frame.shot; p.onFrame?.(frame.shot); }
         } catch (error) { fail(error); }
       };
       repaint.current = draw;
       draw();
-      let previewTime = -1;
-      const tick = () => {
-        if (!alive || failed) return;
-        const p = props.current;
-        if (p.playing && !document.hidden && Math.floor(p.time.current.local * 30) !== previewTime) {
-          previewTime = Math.floor(p.time.current.local * 30);
-          draw();
-        }
-        handle = requestAnimationFrame(tick);
+      // The transport emits exact playback clock changes already. Drawing on
+      // those events prevents a second always-running RAF loop when paused,
+      // and keeps camera/visemes aligned to the actual audio clock.
+      timeListener=()=>{
+        if(props.current.playing&&!document.hidden)draw();
       };
-      handle = requestAnimationFrame(tick);
+      visibilityListener=()=>{
+        if(!document.hidden)draw();
+      };
+      window.addEventListener('toonroom-time',timeListener);
+      document.addEventListener('visibilitychange',visibilityListener);
     }).catch(fail);
     return () => {
       alive = false;
-      cancelAnimationFrame(handle);
+      if(timeListener)window.removeEventListener('toonroom-time',timeListener);
+      if(visibilityListener)document.removeEventListener('visibilitychange',visibilityListener);
       repaint.current = () => {};
       if (engine.current === activeRenderer) engine.current = null;
       if (activeRenderer) {
@@ -103,18 +119,20 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         const kind = actor ? 'actor' : 'object';
         selected({ kind, id: entity.id });
         if (!edit) return;
-        drag.current = { id: entity.id, kind, origin: entity, pointer: hit, current: entity, moved: false };
+        drag.current = { sceneId: scene.id, id: entity.id, origin: entity, pointer: hit, current: entity, moved: false };
         event.currentTarget.setPointerCapture(event.pointerId);
       }} onPointerMove={event => {
         const item = drag.current, hit = item && pointer(event);
-        if (!item || !hit) return;
+        if (!item || !hit || item.sceneId !== scene.id) return;
         const dx = hit.x - item.pointer.x, dy = hit.y - item.pointer.y;
         if (Math.hypot(dx, dy) < 3 && !item.moved) return;
         const grid = snap ? 10 : 1;
         item.moved = true;
-        item.current = { x: clamp(Math.round((item.origin.x + dx) / grid) * grid, -100, 1060), y: clamp(Math.round((item.origin.y + dy) / grid) * grid, 30, 570) };
+        item.current = { x: clamp(Math.round((item.origin.x + dx) / grid) * grid, -2000, 3000), y: clamp(Math.round((item.origin.y + dy) / grid) * grid, -2000, 3000) };
         repaint.current();
-      }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved) move(item.id, item.current); repaint.current(); }} onPointerCancel={() => { drag.current = null; repaint.current(); }} />
+      }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved && item.sceneId === scene.id) move(item.id, item.current); repaint.current(); }}
+      onPointerCancel={() => { drag.current = null; repaint.current(); }}
+      onLostPointerCapture={() => { drag.current = null; repaint.current(); }} />
     {status && <div className="stage-status">{status.startsWith('Loading') ? <Clapperboard size={22}/> : <AlertCircle size={22}/>}<span>{status}</span>{!status.startsWith('Loading') && <button type="button" className="quiet" onClick={() => setRestart(value => value + 1)}>Retry preview</button>}</div>}
   </div>;
 }

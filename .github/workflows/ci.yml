@@ -1,0 +1,39 @@
+name: Toonroom CI
+on:
+  push:
+    branches: [main, feat/toonroom-production-overhaul]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee install.log
+      - name: Build, typecheck and test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: toonroom-ci-logs
+          path: |
+            install.log
+            build.log
+          if-no-files-found: warn
+          retention-days: 3

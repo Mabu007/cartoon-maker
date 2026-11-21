@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from 'react';
 import { animations, gaitLeg, sample, viewForward } from '../engine/animation.ts';
-import { sampleViseme } from '../engine/visemes.ts';
+import { sampleViseme, type Viseme } from '../engine/visemes.ts';
 import { facialPerformance } from '../engine/facialAnimation.ts';
+import { SvgMouthRig } from './SvgMouthRig.tsx';
 import type { Action, Character, Expression, View } from '../engine/schema.ts';
 
 /**
@@ -9,8 +10,8 @@ import type { Action, Character, Expression, View } from '../engine/schema.ts';
  * accelerated stage can't initialize or loses its graphics context, character
  * creation stays available using this lightweight, parametric preview.
  */
-export function NativeCharacterPreview({ character: c, view, action, expression, flip, scale, focus }: {
-  character: Character; view: View; action: Action; expression: Expression; flip: boolean; scale: number; focus?: { x: number; y: number };
+export function NativeCharacterPreview({ character: c, view, action, expression, flip, scale, focus, mouthTest }: {
+  character: Character; view: View; action: Action; expression: Expression; flip: boolean; scale: number; focus?: { x: number; y: number }; mouthTest?: Viseme;
 }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -24,8 +25,9 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     return () => cancelAnimationFrame(frame);
   }, []);
   const mouthMask = 'toon-mouth-' + useId().replace(/:/g, '');
-  const speech = action === 'talk'
-    ? sampleViseme('Hello there! Let us create a cartoon. Watch my mouth moving!', 8, elapsed % 8) : undefined;
+  const speech = mouthTest ? {shape:mouthTest,weight:mouthTest==='rest'?0:1} :
+    action === 'talk'
+      ? sampleViseme('Hello there! Let us create a cartoon. Watch my mouth moving!', 8, elapsed % 8) : undefined;
   const mood = facialPerformance(elapsed, c.id, action, expression, 0, speech, focus);
   const emotion = mood.expression;
   const rear = view === 'back' || view === 'back-quarter';
@@ -56,14 +58,6 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
     return { side, foot, shoe, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
-  const mouthOpen = !speech || (speech.shape !== 'closed' && speech.shape !== 'rest')
-    ? emotion === 'surprised' || emotion === 'excited' || emotion === 'happy' || mood.mouthOpen > .16
-    : false;
-  const mouthRadiusX = speech?.shape === 'pucker' ? 5 : speech?.shape === 'wide' ? 15 :
-    speech?.shape === 'round' ? 8 : emotion === 'excited' ? 15 : 11;
-  const mouthRadiusY = speech?.shape === 'pucker' ? 5.5 : speech?.shape === 'bite' ? 4 :
-    speech?.shape === 'round' ? 3 + mood.mouthOpen * 10 :
-    emotion === 'surprised' ? 10 : 3 + Math.max(mood.mouthOpen, emotion === 'happy' ? .6 : .1) * 8;
   const eyeH = (emotion === 'surprised' || emotion === 'excited' ? 11 : emotion === 'sleepy' ? 3 : emotion === 'angry' || emotion === 'smug' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
   const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
   const silhouette = c.shape === 'square'
@@ -71,7 +65,6 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     : 'M 0 ' + (headY - headH) + ' C ' + (-headW * 1.3) + ' ' + (headY - headH) + ' ' + (-headW * 1.3) + ' ' + (headY + headH * .75) + ' 0 ' + (headY + headH) + ' C ' + (headW * 1.3) + ' ' + (headY + headH * 1.15) + ' ' + (headW * 1.3) + ' ' + (headY - headH) + ' 0 ' + (headY - headH) + ' Z';
   const mainHair = 'M ' + (-headW) + ' ' + (headY - 5) + ' C ' + (-headW - 13) + ' ' + (headY - headH - 9) + ' ' + (-headW / 2) + ' ' + (headY - headH - 13) + ' 2 ' + (headY - headH - 8) + ' C ' + headW + ' ' + (headY - headH - 14) + ' ' + (headW + 6) + ' ' + (headY - headH + 7) + ' ' + headW + ' ' + (headY - 6) + (rear ? ' Q 0 ' + (headY + headH) + ' ' + (-headW) + ' ' + (headY - 5) : ' Q 12 ' + (headY - 22) + ' -3 ' + (headY - 19) + ' Q ' + (-headW + 8) + ' ' + (headY - 10) + ' ' + (-headW) + ' ' + (headY - 5)) + ' Z';
   return <svg className="native-character-svg" viewBox="0 0 540 540" role="img" aria-label={'Character preview: ' + c.name + ', ' + view + ' view'}>
-    <defs><clipPath id={mouthMask}><ellipse cx={noseX} cy={headY+27} rx={mouthRadiusX} ry={mouthRadiusY}/></clipPath></defs>
     <rect width="540" height="540" fill="#665777"/>
     {Array.from({ length: 6 }, (_, i) => <rect key={i} x={16 + i * 91} y="24" width="65" height="404" rx="31" fill={i % 2 ? '#7c6a90' : '#705f83'}/>)}
     <path d="M 0 443 H 540 V 540 H 0 Z" fill="#4b3c56"/>
@@ -140,25 +133,8 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
             {!profile && <path d={'M ' + (noseX+1) + ' ' + (headY+17) + ' q 7 -5 15 -1 q -4 7 -13 4 Z'}/>}
             {c.beard === 'goatee' ? <path d={'M ' + (noseX-8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+53) + ' ' + (noseX+8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+43) + ' ' + (noseX-8) + ' ' + (headY+33) + ' Z'}/> : <path d={'M ' + (-headW+4) + ' ' + (headY+13) + ' Q ' + (-headW+2) + ' ' + (headY+37) + ' 0 ' + (headY+54) + ' Q ' + (headW-2) + ' ' + (headY+37) + ' ' + (headW-4) + ' ' + (headY+13) + ' L ' + (headW-11) + ' ' + (headY+27) + ' Q 0 ' + (headY+50) + ' ' + (-headW+11) + ' ' + (headY+27) + ' Z'}/>}
           </g>}
-          {mouthOpen ? <>
-            <ellipse cx={noseX} cy={headY+27} rx={mouthRadiusX} ry={mouthRadiusY} fill="#302033" stroke="#28223a" strokeWidth="1.7"/>
-            <g clipPath={'url(#' + mouthMask + ')'}>
-              {Array.from({length:6},(_,i) => {
-                const step=mouthRadiusX*1.54/6;
-                return <rect key={i} x={noseX-mouthRadiusX*.77+i*step+.6} y={headY+27-mouthRadiusY+.75}
-                  width={Math.max(1, step-1.2)} height={mouthRadiusY*.95} rx=".5"
-                  fill={(c.goldTeeth ?? []).includes(i) ? '#eac05c' : '#fff4de'}
-                  stroke={(c.goldTeeth ?? []).includes(i) ? '#a77e34' : '#e2d5c7'} strokeWidth=".35"/>;
-              })}
-              {mouthRadiusY > 5 && <ellipse cx={noseX} cy={headY+27+mouthRadiusY*.65} rx={mouthRadiusX*.45} ry="2.5" fill="#bb687d"/>}
-            </g>
-            <path d={'M ' + (noseX-mouthRadiusX*.8) + ' ' + (headY+27-mouthRadiusY*.45) + ' Q ' + noseX + ' ' + (headY+27-mouthRadiusY-1) + ' ' + (noseX+mouthRadiusX*.8) + ' ' + (headY+27-mouthRadiusY*.45)} stroke="#693c4a" strokeWidth="1.4" fill="none"/>
-          </> :
-            emotion === 'thinking' ? <ellipse cx={noseX+3} cy={headY+27} rx="4" ry="3" fill="#302033"/> :
-            emotion === 'confused' ? <path d={'M ' + (noseX-10) + ' ' + (headY+25) + ' q 8 -6 20 3'} stroke="#302033" strokeWidth="2.7" fill="none"/> :
-            emotion === 'smug' ? <path d={'M ' + (noseX-10) + ' ' + (headY+27) + ' Q ' + noseX + ' ' + (headY+31) + ' ' + (noseX+10) + ' ' + (headY+23)} stroke="#302033" strokeWidth="2.7" fill="none"/> :
-            emotion === 'sleepy' ? <path d={'M ' + (noseX-8) + ' ' + (headY+26) + ' q 8 3 16 0'} stroke="#302033" strokeWidth="2.1" fill="none"/> :
-            <path d={'M ' + (noseX-10) + ' ' + (headY+26) + ' Q ' + noseX + ' ' + (headY+(emotion==='sad'||emotion==='angry'?19:26.5)) + ' ' + (noseX+10) + ' ' + (headY+26)} stroke="#2a2038" strokeWidth="2.7" fill="none" strokeLinecap="round"/>}
+          <SvgMouthRig character={c} mood={mood} view={view}
+            x={noseX} y={headY+27} clipId={mouthMask}/>
           {c.glasses && <><ellipse cx={faceShift - 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>{!profile && <ellipse cx={faceShift + 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>}</>}
           {c.earrings && <circle cx={-headW + 2} cy={headY + 18} r="5" fill="none" stroke="#f5cf6b" strokeWidth="3"/>}
         </g>}

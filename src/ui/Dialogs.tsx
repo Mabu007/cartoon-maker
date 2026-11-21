@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles } from 'lucide-react';
+import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles, Pencil, Check, X } from 'lucide-react';
 import { animations, clamp, gaitSpeeds } from '../engine/animation.ts';
 import { soundNames } from '../engine/presets.ts';
 import { anchorFor, compatibleObjects, nearestObject } from '../engine/interactions.ts';
-import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track } from '../engine/schema.ts';
+import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track, type Character } from '../engine/schema.ts';
 import { type Format } from '../engine/renderer.ts';
 import { evaluate, projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
-import { speechProvider, voices } from '../services/speech.ts';
+import { analyzeLipSync } from '../services/lipSync.ts';
+import { speechProvider, voices, synthesizeCached } from '../services/speech.ts';
 import { browserExporter, exportCodec } from '../services/export.ts';
 import type { SavedProject } from '../services/projects.ts';
 import { clipLabel, clock, formats, IconButton, Modal, Select, trackIcon } from './shared.tsx';
 
 export type ClipRequest = { track?: Track; action?: Action; actor?: string };
-export function AddClipDialog({ close, request, scene, actors, time, add, audio }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; add: (clip: Clip) => void; audio: (track: 'dialogue' | 'audio', actor: string, start: number) => void }) {
+export function AddClipDialog({ close, request, scene, actors, time, add, audio }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; add: (clip: Clip) => void; audio: (track: 'dialogue' | 'audio' | 'music', actor: string, start: number) => void }) {
   const [track, setTrack] = useState<Track>(request.track ?? 'body');
   const [actor, setActor] = useState(request.actor ?? Object.keys(actors)[0] ?? '');
   const [action, setAction] = useState<Action>(request.action ?? 'walk');
@@ -44,7 +45,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
   function submit() {
     const at = clamp(start, 0, scene.duration - .1);
     const base = { id: uid(), start: at, length: clamp(length, .1, scene.duration - at) };
-    if (track === 'dialogue') { audio(track, actor, at); return; }
+    if (track === 'dialogue' || track === 'music') { audio(track, actor, at); return; }
     if (track === 'camera') return add({ ...base, track, shot, transition, ...(actor ? { focus: actor } : {}) });
     if (track === 'transition') return add({ ...base, track, effect });
     if (track === 'audio') return add({ ...base, track, name: label(sound), asset: `builtin:${sound}`, volume: .75, muted: false, offset: 0 });
@@ -74,27 +75,31 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     {track === 'face' && <label className="field">Expression<Select aria="Expression" value={expression} onChange={setExpression} options={expressions}/></label>}
     {track === 'camera' && <div className="field-row"><label className="field">Shot<Select aria="Shot" value={shot} onChange={setShot} options={shots}/></label><label className="field">Transition<Select aria="Transition" value={transition} onChange={setTransition} options={['cut', 'glide']}/></label></div>}
     {track === 'transition' && <label className="field">Effect<Select aria="Effect" value={effect} onChange={setEffect} options={['fade-in', 'fade-out']}/></label>}
-    {track === 'audio' && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={setSound} options={soundNames}/></label>}
+    {(track === 'audio') && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={setSound} options={soundNames}/></label>}
     <div className="field-row"><label className="field">Start (seconds)<input aria-label="Clip start" type="number" value={Math.round(start * 100) / 100} min={0} max={scene.duration - .1} step="any" onChange={e => setStart(Number(e.target.value))}/></label>{track !== 'dialogue' && track !== 'movement' && <label className="field">Length (seconds)<input aria-label="Clip length" type="number" value={length} min={.1} max={180} step="any" onChange={e => setLength(Number(e.target.value))}/></label>}</div></div>
-    <footer className="modal-footer">{track === 'audio' && <button type="button" className="quiet" onClick={() => audio('audio', '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={(needsActor && !actor) || (track === 'movement' && travelLength > scene.duration - start) || (['gaze', 'props'].includes(track) && !cueTarget) || (track === 'body' && action === 'sit' && !selectedTarget)}><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
+    <footer className="modal-footer">{(track === 'audio' || track === 'music') && <button type="button" className="quiet" onClick={() => audio(track, '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={(needsActor && !actor) || (track === 'movement' && travelLength > scene.duration - start) || (['gaze', 'props'].includes(track) && !cueTarget) || (track === 'body' && action === 'sit' && !selectedTarget)}><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
   </form></Modal>;
 }
 
-export type AudioRequest = { track: 'dialogue' | 'audio'; actor?: string; start: number };
-export function AudioDialog({ request, actors, scene, account, add, close }: { request: AudioRequest; actors: Record<string, string>; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
+export type AudioRequest = { track: 'dialogue' | 'audio' | 'music'; actor?: string; start: number };
+export function AudioDialog({ request, actors, characters, scene, account, add, close }: { request: AudioRequest; actors: Record<string, string>; characters: Character[]; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
   const isDialogue = request.track === 'dialogue';
-  const [actor, setActor] = useState(request.actor || Object.keys(actors)[0] || ''), [text, setText] = useState(''), [voice, setVoice] = useState('warm');
+  const getVoice = (actorId:string) => characters.find(c=>c.id===scene.actors.find(a=>a.id===actorId)?.characterId);
+  const initialActor=request.actor || Object.keys(actors)[0] || '';
+  const [actor, setActor] = useState(initialActor), [text, setText] = useState(''),
+    [voice, setVoice] = useState<string>(getVoice(initialActor)?.voicePreset ?? 'warm');
   const [start, setStart] = useState(clamp(request.start, 0, scene.duration - .1)), [name, setName] = useState('');
   const [recording, setRecording] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [asset, setAsset] = useState<{ blob: Blob; url: string; length: number }>();
+  const [asset, setAsset] = useState<{ blob: Blob; url: string; length: number; generationText?: string }>();
+  const [lipStatus, setLipStatus] = useState('');
   const recorder = useRef<MediaRecorder | undefined>(undefined), inputStream = useRef<MediaStream | undefined>(undefined), alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; inputStream.current?.getTracks().forEach(track => track.stop()); if (recorder.current?.state === 'recording') recorder.current.stop(); }; }, []);
   useEffect(() => () => { if (asset) URL.revokeObjectURL(asset.url); }, [asset]);
-  async function load(blob: Blob, label: string) {
+  async function load(blob: Blob, label: string, generationText?:string) {
     if (blob.size >= 20 * 1024 * 1024) throw new Error('Choose an audio file smaller than 20 MB.');
     const length = await audioLength(blob);
     if (length < .1) throw new Error('The recording is too short.');
-    if (alive.current) { setAsset({ blob, url: URL.createObjectURL(blob), length }); setName(label); }
+    if (alive.current) { setAsset({ blob, url: URL.createObjectURL(blob), length, generationText }); setName(label); }
   }
   async function work(command: () => Promise<void>) {
     setBusy(true); setError('');
@@ -119,18 +124,35 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
   }
   const save = () => work(async () => {
     if (!asset) return;
+    if (isDialogue && asset.generationText && asset.generationText!==text.trim())
+      throw new Error('The dialogue text changed since speech generation. Generate the updated line before adding it.');
     const at = clamp(start, 0, scene.duration - .1);
     const id = uid(); await putAudio(id, asset.blob);
     const common = { id: uid(), start: at, length: clamp(asset.length, .1, scene.duration - at), asset: `asset:${id}`, volume: 1, muted: false, offset: 0 };
-    add(isDialogue ? { ...common, track: 'dialogue', text: text.trim(), actor } : { ...common, track: 'audio', name: name.trim().slice(0, 80) || 'Audio' });
+    if (isDialogue) {
+      const analysis = await analyzeLipSync(asset.blob, text.trim(), asset.length,{
+        token:await account?.getIdToken().catch(()=>undefined)
+      });
+      if (!alive.current) return;
+      setLipStatus(analysis.source === 'rhubarb' ? 'Rhubarb audio-derived mouth cues ready and cached.'
+        : 'Estimated lip-sync (NOT Rhubarb). '+(analysis.reason??'Analyzer unavailable.'));
+      add({ ...common, track: 'dialogue', text: text.trim(), actor, voicePreset:voice as 'warm'|'bright'|'deep', visemes: analysis.cues,
+        lipSync:{source:analysis.source,engine:analysis.engine,analyzedDuration:analysis.analyzedDuration,
+          ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})} });
+    } else {
+      if (!alive.current) return;
+      const title = name.trim().slice(0, 80);
+      if (request.track === 'music') add({ ...common, track: 'music', name: title || 'Music' });
+      else add({ ...common, track: 'audio', name: title || 'SFX' });
+    }
   });
-  return <Modal title={isDialogue ? 'Add dialogue' : 'Add audio'} description={isDialogue ? 'Generate a voice, record your own, or attach an audio file.' : 'Add a recording, sound effect, or music track.'} close={close}>
-    <div className="dialog-fields">{isDialogue && <><label className="field">Actor<Select aria="Dialogue actor" value={actor} onChange={setActor} options={Object.keys(actors)} render={id => actors[id]}/></label>{!actor && <p className="form-error">Add an actor to the scene first.</p>}<label className="field">Dialogue<textarea value={text} maxLength={400} onChange={e => setText(e.target.value)} placeholder="What does your character say?"/></label><div className="field-row"><label className="field">Voice<Select aria="Voice" value={voice} onChange={setVoice} options={voices.map(item => item.id)} render={id => voices.find(item => item.id === id)!.name}/></label><button disabled={!text.trim() || busy || recording} className="quiet generate-voice" onClick={() => work(async () => load(await speechProvider(account).synthesize(text, voice), 'Generated voice'))}><Sparkles size={16}/> Generate voice</button></div>{(!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') && <p className="small-text">Voice generation runs on this device. The first use downloads the voice engine.</p>}</>}
+  return <Modal title={isDialogue ? 'Add dialogue' : request.track === 'music' ? 'Add music' : 'Add sound effect'} description={isDialogue ? 'Generate a voice, record your own, or attach an audio file.' : request.track === 'music' ? 'Import a soundtrack or music loop.' : 'Import a sound effect or recording.'} close={close}>
+    <div className="dialog-fields">{isDialogue && <><label className="field">Actor<Select aria="Dialogue actor" value={actor} onChange={value=>{setActor(value);setVoice(getVoice(value)?.voicePreset??'warm');}} options={Object.keys(actors)} render={id => actors[id]}/></label>{!actor && <p className="form-error">Add an actor to the scene first.</p>}<label className="field">Dialogue<textarea value={text} maxLength={400} onChange={e => setText(e.target.value)} placeholder="What does your character say?"/></label><div className="field-row"><label className="field">Voice<Select aria="Voice" value={voice} onChange={setVoice} options={voices.map(item => item.id)} render={id => voices.find(item => item.id === id)!.name}/></label><button disabled={!text.trim() || busy || recording} className="quiet generate-voice" onClick={() => work(async () => load(await synthesizeCached(speechProvider(account),text,voice,getVoice(actor)?.hostedVoiceId), 'Generated voice',text.trim()))}><Sparkles size={16}/> Generate voice</button></div>{(!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') && <p className="small-text">Voice generation runs on this device. The first use downloads the voice engine.</p>}</>}
     <div className="field-row"><label className={`quiet file-button ${busy || recording ? 'disabled' : ''}`}><FileAudio size={16}/> Upload audio<input type="file" accept="audio/*,.webm" disabled={busy || recording} onChange={e => { const file = e.target.files?.[0]; if (file) void work(() => load(file, file.name.replace(/\.[^.]+$/, ''))); e.currentTarget.value = ''; }}/></label><button className={`quiet ${recording ? 'recording' : ''}`} disabled={busy} onClick={() => void record()}>{recording ? <Square size={15}/> : <Mic size={16}/>} {recording ? 'Stop recording' : 'Record voice'}</button></div>
     {asset && <><audio controls src={asset.url} aria-label="Preview audio"/>{!isDialogue && <label className="field">Name<input value={name} maxLength={80} onChange={e => setName(e.target.value)}/></label>}</>}
     <label className="field">Start (seconds)<input type="number" step=".01" min={0} max={scene.duration - .1} value={Math.round(start * 100) / 100} onChange={e => setStart(Number(e.target.value))}/></label>
     {asset && start + asset.length > scene.duration && <p className="small-text">Audio will trim at the end of this scene.</p>}
-    {busy && <p className="small-text" role="status">Preparing audio…</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>
+    {lipStatus && <p className="small-text" role="status">{lipStatus}</p>}{busy && <p className="small-text" role="status">Preparing audio / syncing mouth cues…</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>
     <footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!asset || busy || recording || (isDialogue && !actor)} onClick={() => void save()}><Plus size={16}/> Add to timeline</button></footer>
   </Modal>;
 }
@@ -169,10 +191,57 @@ export function ProjectsDialog({ items, current, close, create, open, duplicate,
     <footer className="modal-footer"><button className="quiet" onClick={backup}>Download backup</button><button className="quiet" onClick={restore}>Restore backup</button><span className="spacer"/><button className="primary" onClick={create}><Plus size={16}/> New project</button></footer>
   </Modal>;
 }
-export function ScenesDialog({ scenes, active, close, add, open, reorder, copy, drop, savePreset }: { scenes: Scene[]; active: string; close: () => void; add: () => void; open: (scene: Scene) => void; reorder: (id: string, direction: number) => void; copy: (scene: Scene) => void; drop: (scene: Scene) => void; savePreset: (scene: Scene) => void }) {
-  return <Modal title="Manage scenes" description="Arrange scenes in the order they’ll play and export." close={close}>
-    <div className="dialog-fields"><div className="project-list">{scenes.map((scene, index) => <div className="project-row" key={scene.id}><button className="project-title" onClick={() => open(scene)}><Clapperboard size={19}/><span><strong>{scene.name}</strong><small>{scene.duration}s · {scene.id === active ? 'Currently open' : scene.environment}</small></span></button><IconButton title="Move scene up" disabled={index === 0} onClick={() => reorder(scene.id, -1)}><ArrowUp size={15}/></IconButton><IconButton title="Move scene down" disabled={index === scenes.length - 1} onClick={() => reorder(scene.id, 1)}><ArrowDown size={15}/></IconButton><IconButton title="Save furnished world" onClick={() => savePreset(scene)}><Save size={15}/></IconButton><IconButton title="Duplicate scene" disabled={scenes.length >= 30} onClick={() => copy(scene)}><Copy size={15}/></IconButton><IconButton title="Delete scene" disabled={scenes.length === 1} onClick={() => drop(scene)}><Trash2 size={15}/></IconButton></div>)}</div></div>
-    <footer className="modal-footer"><span className="spacer"/><button className="primary" disabled={scenes.length >= 30} onClick={add}><Plus size={16}/> Add scene</button></footer>
+export function ScenesDialog({ scenes, active, close, add, open, rename, reorder, copy, drop, savePreset }: {
+  scenes: Scene[];active:string;close:()=>void;add:()=>void;open:(scene:Scene)=>void;
+  rename:(id:string,name:string)=>void;reorder:(id:string,direction:number)=>void;
+  copy:(scene:Scene)=>void;drop:(scene:Scene)=>void;savePreset:(scene:Scene)=>void;
+}) {
+  const [renaming,setRenaming]=useState<string>();
+  const [name,setName]=useState(''),[error,setError]=useState('');
+  const total=scenes.reduce((sum,scene)=>sum+scene.duration,0);
+  function begin(scene:Scene){setRenaming(scene.id);setName(scene.name);setError('');}
+  function commit(){
+    if(!renaming)return;
+    const title=name.trim();
+    if(!title||title.length>70){setError('Enter a scene name (1–70 characters).');return;}
+    try{rename(renaming,title);setRenaming(undefined);setError('');}
+    catch(e){setError(e instanceof Error?e.message:'Could not rename scene.');}
+  }
+  return <Modal wide title="Your movie scenes"
+    description={`${scenes.length} scenes · ${Math.round(total)} seconds of storytelling. Reorder scenes to change playback and export order.`}
+    close={close}>
+    <div className="dialog-fields"><div className="scene-manage-list">
+      {scenes.map((scene,index)=><article className={scene.id===active?'scene-manage-card is-current':'scene-manage-card'} key={scene.id}>
+        <button className="scene-manage-number" onClick={()=>open(scene)} title={`Open scene ${index+1}`}>
+          {String(index+1).padStart(2,'0')}</button>
+        <div className="scene-manage-details">
+          {renaming===scene.id?<form className="scene-manage-rename" onSubmit={event=>{event.preventDefault();commit();}}>
+            <input autoFocus value={name} maxLength={70} aria-label="Scene name"
+              onChange={event=>setName(event.target.value)}
+              onKeyDown={event=>{if(event.key==='Escape')setRenaming(undefined);}}/>
+            <button className="quiet" type="submit" aria-label="Save scene name"><Check size={15}/></button>
+            <button className="quiet" type="button" aria-label="Cancel rename" onClick={()=>setRenaming(undefined)}><X size={15}/></button>
+          </form>:<button className="scene-manage-title" onClick={()=>open(scene)}>
+            <strong>{scene.name}</strong>
+            <small>{scene.environment} · {scene.duration}s · {scene.clips.length} clips
+              {scene.id===active?' · Currently open':''}</small></button>}
+        </div>
+        <div className="scene-manage-actions">
+          <IconButton title="Rename scene" onClick={()=>begin(scene)}><Pencil size={15}/></IconButton>
+          <IconButton title="Move scene earlier" disabled={index===0} onClick={()=>reorder(scene.id,-1)}><ArrowUp size={15}/></IconButton>
+          <IconButton title="Move scene later" disabled={index===scenes.length-1} onClick={()=>reorder(scene.id,1)}><ArrowDown size={15}/></IconButton>
+          <IconButton title="Save this furnished world" onClick={()=>savePreset(scene)}><Save size={15}/></IconButton>
+          <IconButton title="Duplicate scene" disabled={scenes.length>=30} onClick={()=>copy(scene)}><Copy size={15}/></IconButton>
+          <IconButton title="Delete scene" disabled={scenes.length===1} onClick={()=>drop(scene)}><Trash2 size={15}/></IconButton>
+        </div>
+      </article>)}
+    </div>{!!error&&<p className="form-error" role="alert">{error}</p>}
+      <p className="small-text">Each scene keeps its own world, actors, camera and clips. The film plays them in this order. Undo restores a deleted or rearranged scene.</p>
+    </div>
+    <footer className="modal-footer"><span className="spacer"/>
+      <button className="quiet" onClick={close}>Close</button>
+      <button className="primary" disabled={scenes.length>=30} onClick={add}><Plus size={16}/> Add scene</button>
+    </footer>
   </Modal>;
 }
 export function AccountDialog({ available, account, login, logout, close }: { available: boolean; account: Account | null; login: (email: string, password: string, register: boolean) => Promise<void>; logout: () => Promise<void>; close: () => void }) {

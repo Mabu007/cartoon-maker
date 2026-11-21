@@ -5,6 +5,7 @@ import { fitCharacterPreview } from '../engine/previewLayout.ts';
 import { NativeCharacterPreview } from './NativeCharacterPreview.tsx';
 import { actions, expressions, label, uid, views, type Action, type Character, type Expression, type Scene, type View } from '../engine/schema.ts';
 import { characters } from '../engine/presets.ts';
+import { visemeNames, type Viseme } from '../engine/visemes.ts';
 import { Avatar, IconButton, Modal, Select } from './shared.tsx';
 
 const sliders = { height: 'Height', head: 'Head size', thickness: 'Build', torso: 'Torso length', arms: 'Arm length', legs: 'Leg length', eyeSpacing: 'Eye spacing' } as const;
@@ -21,11 +22,12 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   const [section, setSection] = useState<keyof typeof styleGroups>('Hair'), [view, setView] = useState<View>('three-quarter');
   const [action, setAction] = useState<Action>('idle'), [expression, setExpression] = useState<Expression>('neutral');
   const [look, setLook] = useState<'auto'|'camera'|'left'|'right'|'up'>('auto');
+  const [mouthTest,setMouthTest]=useState<'auto'|Viseme>('auto');
   const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.4), [fallback, setFallback] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const canvas = useRef<HTMLDivElement>(null);
-  const frame = useRef({ draft, action, expression, view, flip, scale, look });
-  frame.current = { draft, action, expression, view, flip, scale, look };
+  const frame = useRef({ draft, action, expression, view, flip, scale, look, mouthTest });
+  frame.current = { draft, action, expression, view, flip, scale, look, mouthTest };
   useEffect(() => {
     let alive = true, handle = 0;
     let dispose = () => {};
@@ -55,7 +57,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       };
       let reset = performance.now(), lastAction = '', previous = -1;
       const animate = (now: number) => {
-        const { draft, action, expression, view, flip, scale, look } = frame.current;
+        const { draft, action, expression, view, flip, scale, look, mouthTest } = frame.current;
         if (lastAction !== action) { lastAction = action; reset = now; }
         const time = ((now - reset) / 1000) % 8;
         if (!document.hidden && Math.floor(time * 24) !== previous) {
@@ -74,7 +76,8 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           const gaze = look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } :
             look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 };
           try {
-            renderer.draw(scene, [draft], time, { characterPreview: true, previewFocus: gaze });
+            renderer.draw(scene,[draft],time,{characterPreview:true,previewFocus:gaze,
+              previewViseme:mouthTest==='auto'?undefined:mouthTest});
           } catch (cause) {
             useNativePreview(cause);
             return;
@@ -88,12 +91,38 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   }, []);
   const update = <K extends keyof Character>(key: K, value: Character[K]) => setDraft(item => ({ ...item, [key]: value }));
   return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
-    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas">{fallback ? <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={fitCharacterPreview(draft, scale, action).scale} focus={look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } : look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 }}/> : <div className="factory-renderer-mount" ref={canvas}/>}</div><div className="factory-zoom"><IconButton title="Fit entire character" onClick={() => setScale(1.4)}><Maximize2 size={15}/></IconButton><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
+    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas">{fallback ? <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={fitCharacterPreview(draft, scale, action).scale} focus={look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } : look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 }} mouthTest={mouthTest==='auto'?undefined:mouthTest}/> : <div className="factory-renderer-mount" ref={canvas}/>}</div><div className="factory-zoom"><IconButton title="Fit entire character" onClick={() => setScale(1.4)}><Maximize2 size={15}/></IconButton><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
       <div className="segmented view-choice" aria-label="Character view">{views.map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{viewLabels[item]}</button>)}</div>
       <div className="field-row"><label>Preview action<Select aria="Preview action" value={action} onChange={setAction} options={actions}/></label><label>Expression<Select aria="Preview expression" value={expression} onChange={setExpression} options={expressions}/></label></div>
       <label className="field preview-eye-focus">Eye focus<Select aria="Preview eye focus" value={look} onChange={setLook} options={['auto','camera','left','right','up'] as const}
         render={value => value === 'auto' ? 'Natural · moving eyes' : value === 'camera' ? 'Eye contact · camera' : 'Look ' + value}/></label>
+      <label className="field">Mouth rig audition
+        <Select aria="Preview mouth shape" value={mouthTest} onChange={setMouthTest}
+          options={['auto',...visemeNames] as const}
+          render={value=>value==='auto'?'Automatic · speech/audio':value.toUpperCase()}/>
+      </label>
     </div><div className="factory-edit"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
+      <div className="factory-voice-config" aria-label="Persistent character voice configuration">
+        <strong>Character voice · used in every scene</strong>
+        <label className="field">Voice preset
+          <select aria-label="Character voice preset" value={draft.voicePreset ?? 'warm'}
+            onChange={e => update('voicePreset',e.target.value as 'warm'|'bright'|'deep')}>
+            <option value="warm">Warm</option><option value="bright">Bright</option><option value="deep">Deep</option>
+          </select>
+        </label>
+        <label className="field">Hosted voice ID (optional)
+          <input aria-label="Custom hosted voice ID" maxLength={120} spellCheck={false}
+            placeholder="Your provider reference voice ID" value={draft.hostedVoiceId??''}
+            onChange={event => {
+              const hostedVoiceId=event.target.value.trim();
+              setDraft(current => {
+                const { hostedVoiceId: _old, ...rest }=current;
+                return hostedVoiceId?{...rest,hostedVoiceId}:rest;
+              });
+            }}/>
+        </label>
+        <p className="small-text">Leave the hosted ID empty to use the configured voice preset. Local speech is always available.</p>
+      </div>
       <div className="factory-section-heading"><span>Start with a character</span><button type="button" className="surprise-button" onClick={() => {
         const item = characters[Math.floor(Math.random() * characters.length)];
         setDraft(current => ({ ...item, id: current.id, name: current.name }));
@@ -108,15 +137,38 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         </label>)}
         {section === 'Body' && <><p className="factory-helper">Start with three simple proportions. Your character stays rigged at every size.</p>{(['height', 'head', 'thickness'] as const).map(id => <label className="field slider" key={id}>{sliders[id]}<input type="range" min={id === 'thickness' ? .65 : .75} max={id === 'head' ? 1.35 : id === 'thickness' ? 1.45 : 1.3} step={.01} value={draft[id]} onChange={e => update(id, Number(e.target.value))}/></label>)}</>}
         {section === 'Face' && <div className="factory-teeth-editor">
-          <span>Teeth · tap a tooth to make it gold</span>
+          <span>Teeth · click to make gold, right-click for a missing tooth</span>
           <div className="factory-teeth-row" role="group" aria-label="Choose gold teeth">
             {Array.from({ length: 6 }, (_, index) => <button type="button" key={index}
               className={(draft.goldTeeth ?? []).includes(index) ? 'gold' : ''}
               aria-label={'Tooth ' + (index + 1)} aria-pressed={(draft.goldTeeth ?? []).includes(index)}
+              onContextMenu={event=>{event.preventDefault();update('missingTeeth',(draft.missingTeeth??[]).includes(index)
+                ?(draft.missingTeeth??[]).filter(value=>value!==index)
+                :[...(draft.missingTeeth??[]),index].sort((a,b)=>a-b));}}
+              title={(draft.missingTeeth??[]).includes(index)?'Missing tooth — right-click to restore':'Right-click to remove this tooth'}
               onClick={() => update('goldTeeth', (draft.goldTeeth ?? []).includes(index)
                 ? (draft.goldTeeth ?? []).filter(value => value !== index)
                 : [...(draft.goldTeeth ?? []), index].sort((a,b) => a-b))}>{index + 1}</button>)}
           </div>
+        </div>}
+        {section === 'Face' && <div className="factory-mouth-rig-editor">
+          <strong>Parametric SVG mouth rig</strong>
+          <p className="small-text">Character-specific proportions. The visemes animate jaw opening, lip rounding and position, closure, teeth and tongue automatically.</p>
+          {([
+            ['width','Mouth width',.65,1.5],
+            ['jawScale','Jaw opening',.6,1.5],
+            ['roundness','Lip roundness',0,1],
+            ['asymmetry','Mouth asymmetry',-1,1]
+          ] as const).map(([key,name,min,max])=><label key={key} className="field slider">
+            <span>{name} <small>{(draft.mouthRig?.[key]??({width:1,jawScale:1,roundness:.5,asymmetry:0})[key]).toFixed(2)}</small></span>
+            <input aria-label={name} type="range" min={min} max={max} step={.01}
+              value={draft.mouthRig?.[key]??({width:1,jawScale:1,roundness:.5,asymmetry:0})[key]}
+              onChange={event=>setDraft(current=>({ ...current,mouthRig:{
+                width:current.mouthRig?.width??1,jawScale:current.mouthRig?.jawScale??1,
+                roundness:current.mouthRig?.roundness??.5,asymmetry:current.mouthRig?.asymmetry??0,
+                [key]:Number(event.target.value)
+              }}))}/>
+          </label>)}
         </div>}
         {section === 'Face' && <div className="factory-toggle-row"><label className="check"><input type="checkbox" checked={draft.glasses} onChange={e => update('glasses', e.target.checked)}/> Glasses</label><label className="check"><input type="checkbox" checked={draft.earrings} onChange={e => update('earrings', e.target.checked)}/> Earrings</label></div>}
         {section === 'Outfit' && <div className="color-row">{Object.entries(colors).filter(([key]) => key !== 'skin').map(([key, title]) => <label key={key} title={title}><input type="color" aria-label={title} value={draft[key as keyof typeof colors]} onChange={e => update(key as keyof typeof colors, e.target.value)}/><span>{title}</span></label>)}</div>}

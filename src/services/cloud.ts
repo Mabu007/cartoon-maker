@@ -1,5 +1,5 @@
 import type { User } from 'firebase/auth';
-import { ProjectDocument, type Project } from '../engine/schema.ts';
+import { ProjectDocument, parseStoredProject, type Project } from '../engine/schema.ts';
 import { getAudio, projectAssets } from './audio.ts';
 
 const config = {
@@ -34,8 +34,8 @@ export async function cloudProjects(user: Account) {
   for (const item of result.docs) {
     try {
       const data = item.data();
-      const project = ProjectDocument.parse(JSON.parse(data.document));
-      if (project.id !== item.id || typeof data.updated !== 'number') throw new Error('Invalid project');
+      const project = parseStoredProject(JSON.parse(data.document));
+      if (project.id !== item.id || !Number.isFinite(data.updated)) throw new Error('Invalid project');
       documents.push({ project, updated: data.updated });
     } catch { skipped++; }
   }

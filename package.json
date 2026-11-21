@@ -14,7 +14,6 @@
     "@tybys/wasm-util": "^0.10.5",
     "buffer": "^6.0.3",
     "firebase": "^12.5.0",
-    "fix-webm-duration": "^1.0.6",
     "lucide-react": "^0.552.0",
     "mediabunny": "^1.66.2",
     "memfs-browser": "^3.5.10302",

@@ -24,9 +24,9 @@ const formattedText = (line: ScriptLine) => {
   return line.text;
 };
 
-export function ScreenplayStudio({ project, production, update, ai, approve, generate, busy, initialScene, initialLine, autoDraft }: {
+export function ScreenplayStudio({ project, production, update, ai, approve, generate, direct, busy, initialScene, initialLine, autoDraft }: {
   project: Project; production: Production; update: Update; ai: AiAccess; approve: () => void; generate: () => void;
-  busy: boolean; initialScene?: string; initialLine?: string; autoDraft?: boolean;
+  direct:()=>void;busy: boolean; initialScene?: string; initialLine?: string; autoDraft?: boolean;
 }) {
   const scenes = production.screenplay.scenes;
   const [sceneId, setSceneId] = useState(initialScene ?? '');
@@ -86,18 +86,16 @@ export function ScreenplayStudio({ project, production, update, ai, approve, gen
     if (!canUseAI(ai) || !current || draftBusy) return;
     setError(''); setDraftBusy(true);
     const outline = production.bible.scenes.find(scene => scene.id === current.id);
-    const active = (status: string) => status === 'approved' || status === 'locked';
-    const bible = { profile: active(production.bible.status) ? production.bible.profile : { title: production.bible.profile.title },
-      characters: production.bible.characters.filter(character => active(character.status)),
-      worlds: production.bible.worlds.filter(world => active(world.status)),
-      scenes: production.bible.scenes.filter(scene => active(scene.status)) };
+    // Unapproved story ideas are still valid drafting context. Creative
+    // approval protects finished decisions; it is not a beginner entry gate.
+    const bible=production.bible;
     const selected = scenes.filter(scene => draftScope === 'all' || scene.id === current.id ||
       ((draftScope === 'act' || draftScope === 'sequence') && Boolean(outline?.[draftScope]) &&
         bible.scenes.some(item => item.id === scene.id && item[draftScope] === outline?.[draftScope])));
     try {
       const next: ScriptSceneData[] = [];
       for (const scene of selected) {
-        const result = await filmmaker(ai, 'screenplay', prompt.trim() || 'Write this scene from the approved outline.', {
+        const result = await filmmaker(ai, 'screenplay', prompt.trim() || 'Draft this scene from the current story idea.', {
           bible, outline: bible.scenes.find(item => item.id === scene.id), scene: { ...scene, set: scene.environment },
           previous: next.at(-1)?.elements.slice(-6),
           cast: project.characters.filter(character => scene.cast.includes(character.id)).map(({ id, name }) => ({ id, name })),
@@ -132,7 +130,7 @@ export function ScreenplayStudio({ project, production, update, ai, approve, gen
     updateScenes(items => items.map(scene => draft.next.find(item => item.id === scene.id) ?? scene));
     setDraft(undefined); setPrompt('');
   }
-  const remaining = production.bible.scenes.filter(scene => ['approved', 'locked'].includes(scene.status) && !scenes.some(item => item.id === scene.id));
+  const remaining = production.bible.scenes.filter(scene => !scenes.some(item => item.id === scene.id));
   const exportText = () => {
     const script = [production.bible.profile.title, ...scenes.flatMap(scene => ['', ...scene.elements.flatMap((item, index) =>
       item.type === 'dialogue' && item.characterId && !hasCharacterSlug(scene, index) ? [`                        ${(speaker(item.characterId) ?? '').toUpperCase()}`, formattedText(item)] : [formattedText(item)]
@@ -142,9 +140,11 @@ export function ScreenplayStudio({ project, production, update, ai, approve, gen
   return <main className={`film-workspace write-workspace ${focus ? 'writing-focus' : ''}`}>
     <aside className="film-side screenplay-nav">
       <header><h2>Screenplay</h2><IconButton title="Add screenplay scene" disabled={scenes.length >= 30} onClick={addScene}><Plus size={17}/></IconButton></header>
-      <div className="screenplay-nav-list">{scenes.map((scene, index) => <button key={scene.id} className={scene.id === current?.id ? 'active' : ''} onClick={() => { setSceneId(scene.id); setSelected(''); }}>
-        <span>{index + 1}.</span>{scene.title}</button>)}</div>
-      {!!remaining.length && <button className="quiet" onClick={() => updateScenes(items => [...items, ...remaining.slice(0, 30 - items.length).map(fromOutline)])}>Import approved scenes</button>}
+      <div className="screenplay-nav-list">{scenes.map((scene,index)=><button key={scene.id}
+        className={scene.id===current?.id?'active':''}
+        onClick={()=>{setSceneId(scene.id);setSelected('');}}>
+        <span>{index+1}.</span>{scene.title}</button>)}</div>
+      {!!remaining.length && <button className="quiet" onClick={() => updateScenes(items => [...items, ...remaining.slice(0, 30 - items.length).map(fromOutline)])}>Add missing outline scenes</button>}
       <details><summary>Characters</summary>{project.characters.filter(character => scenes.some(scene => scene.cast.includes(character.id))).map(character => <button className="quiet" key={character.id} onClick={() => {
         const first = scenes.find(scene => scene.elements.some(item => item.characterId === character.id));
         const item = first?.elements.find(item => item.characterId === character.id);
@@ -161,14 +161,21 @@ export function ScreenplayStudio({ project, production, update, ai, approve, gen
       </details>}
     </aside>
     <section className="film-main screenplay-main">
-      <header className="film-heading screenplay-heading"><div><h1>{production.bible.profile.title}</h1>
-        <p>{words} words · ≈ {Math.max(1, Math.ceil(words / 180))} pp. · ≈ {Math.ceil(spokenWords / 2.4)}s spoken · {label(production.scriptStatus)}</p></div>
+      <header className="film-heading screenplay-heading"><div>
+        <span className="film-step-label">STEP 2 · WRITE</span>
+        <h1>{production.bible.profile.title || project.name}</h1>
+        <p>{words} words · ≈ {Math.max(1,Math.ceil(words/180))} screenplay page(s) ·
+          {Math.ceil(spokenWords/2.4)}s of dialogue</p>
+        <small className="write-guidance">Write your story here. You can direct scenes at any time, even before the screenplay is finished.</small>
+      </div>
         <div className="film-tools">
-          <IconButton title={focus ? 'Exit writing focus' : 'Focus writing'} active={focus} onClick={() => setFocus(value => !value)}><Maximize2 size={16}/></IconButton>
+          <IconButton title={focus?'Exit writing focus':'Focus writing'} active={focus} onClick={()=>setFocus(value=>!value)}><Maximize2 size={16}/></IconButton>
           <button className="quiet" disabled={!scenes.length} onClick={exportText}><Download size={15}/>Text</button>
-          <button className="quiet" disabled={!scenes.length} onClick={() => window.print()}>Print / PDF</button>
-          <button className="quiet" disabled={!scenes.length || production.scriptStatus === 'approved'} onClick={approve}><Check size={15}/>Approve screenplay</button>
-          <button className="primary" disabled={busy || production.scriptStatus !== 'approved'} onClick={generate}><Clapperboard size={16}/>{busy ? 'Compiling…' : 'Generate cartoon'}</button>
+          <button className="quiet" disabled={!scenes.length} onClick={()=>window.print()}>Print / PDF</button>
+          <button className="quiet" onClick={direct}><Clapperboard size={16}/>Open Director</button>
+          <button className="primary" disabled={busy||!scenes.length} onClick={generate}
+            title="Animate your screenplay. Existing manually directed clips are preserved where possible.">
+            <Sparkles size={16}/>{busy?'Creating scenes…':'Animate screenplay'}</button>
         </div>
       </header>
       {!!error && <p className="film-error" role="alert">{error}</p>}

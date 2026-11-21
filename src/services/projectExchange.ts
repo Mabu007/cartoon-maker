@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ProjectDocument, uid, type Project } from '../engine/schema.ts';
+import { ProjectDocument, parseStoredProject, uid, type Project } from '../engine/schema.ts';
 import { getOrFetchAudio, projectAssets, putAudio } from './audio.ts';
 
 export function download(name: string, blob: Blob) {
@@ -11,7 +11,7 @@ export function download(name: string, blob: Blob) {
 export const fileName = (name: string) => name.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'Toonroom';
 
 const backup = z.strictObject({
-  format: z.literal('toonroom-backup-1'), project: ProjectDocument,
+  format: z.literal('toonroom-backup-1'), project: z.unknown(),
   audio: z.record(z.string().regex(/^[a-zA-Z0-9-]+$/), z.strictObject({ type: z.string().max(100), data: z.string() }))
 });
 function asData(file: Blob) {
@@ -34,9 +34,10 @@ export async function backupMovie(project: Project) {
 export async function restoreMovie(file: File) {
   if (file.size > 160_000_000) throw new Error('This backup is larger than 160 MB.');
   const document = backup.parse(JSON.parse(await file.text()));
-  for (const id of projectAssets(document.project)) if (!Object.hasOwn(document.audio, id)) throw new Error('The project backup is missing audio.');
+  const project = parseStoredProject(document.project);
+  for (const id of projectAssets(project)) if (!Object.hasOwn(document.audio, id)) throw new Error('The project backup is missing audio.');
   const mapping = new Map<string, string>();
-  const files = projectAssets(document.project).map(id => {
+  const files = projectAssets(project).map(id => {
     const { type, data } = document.audio[id];
     const bytes = Uint8Array.from(atob(data), value => value.charCodeAt(0));
     const fresh = uid();
@@ -44,10 +45,11 @@ export async function restoreMovie(file: File) {
     return [fresh, new Blob([bytes], { type })] as const;
   });
   for (const [id, blob] of files) await putAudio(id, blob);
-  const project = document.project;
   const remap = (asset: string) => mapping.has(asset.slice(6)) && asset.startsWith('asset:') ? `asset:${mapping.get(asset.slice(6))}` : asset;
   return ProjectDocument.parse({ ...project, id: uid(), scenes: project.scenes.map(scene => ({ ...scene,
-    clips: scene.clips.map(clip => 'asset' in clip ? { ...clip, asset: remap(clip.asset) } : clip) })),
+    clips: scene.clips.map(clip => 'asset' in clip ? { ...clip, asset: remap(clip.asset),
+      ...(clip.track === 'dialogue' && clip.versions ? { versions: clip.versions.map(version => ({...version,asset:remap(version.asset)})) } : {})
+    } : clip) })),
     ...(project.production ? { production: { ...project.production, graph: project.production.graph.map(record => ({ ...record,
       events: Object.fromEntries(Object.entries(record.events).map(([id, event]) => {
         const clip = JSON.parse(event.signature);

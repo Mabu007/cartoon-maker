@@ -1,11 +1,10 @@
-import setDuration from 'fix-webm-duration';
 import { createRenderer, type Format } from '../engine/renderer.ts';
-import { locate, projectDuration } from '../engine/evaluate.ts';
+import { locate, MOVIE_FRAME_RATE, projectDuration } from '../engine/evaluate.ts';
 import type { Project } from '../engine/schema.ts';
 import { createAudioMixer } from './audio.ts';
 import { exportScale, hasFrameEncoder, type VideoExporter } from './exportTypes.ts';
 
-const codecs = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+const codecs = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4'];
 const recorderCodec = () => typeof MediaRecorder === 'undefined' || !HTMLCanvasElement.prototype.captureStream ? undefined : codecs.find(codec => MediaRecorder.isTypeSupported(codec));
 export const exportCodec = () => hasFrameEncoder() ? 'video/webm' : recorderCodec();
 const recorderExporter: VideoExporter = {
@@ -31,7 +30,7 @@ const recorderExporter: VideoExporter = {
       const duration = projectDuration(project.scenes);
       const destination = mixer.context.createMediaStreamDestination();
       mixer.output.connect(destination);
-      stream = renderer.canvas.captureStream(30);
+      stream = renderer.canvas.captureStream(MOVIE_FRAME_RATE);
       for (const track of destination.stream.getAudioTracks()) stream.addTrack(track);
       if (!stream.getVideoTracks().length || !stream.getAudioTracks().length) throw new Error('The browser did not provide both export tracks.');
       recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 128_000 });
@@ -55,8 +54,8 @@ const recorderExporter: VideoExporter = {
           try {
             const time = Math.max(0, mixer.context.currentTime - start);
             if (time >= duration) { renderAt(duration); progress(1); recorder!.stop(); return; }
-            const next = Math.floor(time * 30);
-            if (next !== frame) { renderAt(time); frame = next; progress(time / duration); }
+            const next = Math.floor(time * MOVIE_FRAME_RATE);
+            if (next !== frame) { renderAt(next / MOVIE_FRAME_RATE); frame = next; progress(time / duration); }
             frameHandle = requestAnimationFrame(tick);
           } catch (error) { clean(); finish(error); }
         };
@@ -64,8 +63,8 @@ const recorderExporter: VideoExporter = {
       });
       if (!movie.size) throw new Error('The encoder returned an empty recording.');
       if (movie.type.includes('mp4')) return { blob: movie, extension: 'mp4' };
-      const blob = await setDuration(movie, duration * 1000, { logger: false });
-      signal.throwIfAborted();
+      const { finalizeRecorderWebm } = await import('./recorderWebm.ts');
+      const blob = await finalizeRecorderWebm(movie, signal);
       return { blob, extension: 'webm' };
     } finally {
       if (recorder && recorder.state !== 'inactive') recorder.stop();

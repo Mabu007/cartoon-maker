@@ -25,7 +25,7 @@ export function Avatar({ character: c, large = false }: { character: Character; 
   </span>;
 }
 export const propIcon = { sofa: Sofa, chair: Armchair, table: Table2, desk: Table2, door: DoorOpen, window: PanelTop, television: Monitor, lamp: LampFloor, cup: Coffee, book: BookOpen, phone: Smartphone, plant: Sprout, microphone: Mic, streetlight: Cable, counter: Store, image: Image };
-export const trackIcon = { actors: UserRound, movement: MoveRight, body: Activity, face: Smile, gaze: Eye, props: Hand, dialogue: AudioLines, audio: Music2, camera: Clapperboard, transition: Blend };
+export const trackIcon = { actors: UserRound, movement: MoveRight, body: Activity, face: Smile, gaze: Eye, props: Hand, dialogue: AudioLines, audio: AudioLines, music: Music2, camera: Clapperboard, transition: Blend };
 export const formats: Format[] = ['16:9', '9:16', '1:1'];
 export const clipLabel = (clip: Clip, names: Record<string, string> = {}) => {
   switch (clip.track) {
@@ -36,7 +36,7 @@ export const clipLabel = (clip: Clip, names: Record<string, string> = {}) => {
     case 'body': return label(clip.action);
     case 'face': return label(clip.expression);
     case 'dialogue': return clip.text || 'Recorded dialogue';
-    case 'audio': return clip.name;
+    case 'audio': case 'music': return clip.name;
     case 'camera': return shotLabel(clip.shot);
     case 'transition': return label(clip.effect);
   }
