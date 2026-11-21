@@ -6,9 +6,18 @@ export default {
     if (request.method !== 'GET' && request.method !== 'HEAD')
       return new Response(null,{status:405,headers:{Allow:'GET, HEAD'}});
     try {
-      const signed = presignMedia(configuredR2(),'toonroom/logo.png','GET');
-      const upstream=await fetch(signed,{method:'GET',signal:AbortSignal.timeout(10000)});
-      if(!upstream.ok)return new Response(null,{status:404});
+      const r2=configuredR2();
+      // The official asset lives at bucket "toonroom" / object "logo.png".
+      // Accept the original prefixed object path as a read-only fallback so
+      // deployments with a different bucket layout remain compatible.
+      let upstream:Response|null=null;
+      for(const key of ['logo.png','toonroom/logo.png']){
+        const signed=presignMedia(r2,key,'GET');
+        const result=await fetch(signed,{method:'GET',signal:AbortSignal.timeout(10000)});
+        if(result.ok){upstream=result;break;}
+        if(result.status!==404)return new Response(null,{status:502});
+      }
+      if(!upstream)return new Response(null,{status:404});
       const max=4*1024*1024;
       const length=Number(upstream.headers.get('content-length')||'0');
       if(length>max)return new Response(null,{status:413});
