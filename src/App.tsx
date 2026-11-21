@@ -985,14 +985,19 @@ export default function App() {
       if (dialog || home!=='studio') return;
       const target = event.target;
       const el = target instanceof HTMLElement ? target : null;
-      // Never steal Backspace, clipboard, Space or shortcuts from text editors.
-      if (el?.isContentEditable || el?.closest('input,textarea,select,[role="textbox"],.monaco-editor,.cm-editor,[contenteditable]')) return;
-      const inClip = !!el?.closest('.clip,.timeline-keyframe');
-      const inTimeline = !!el?.closest('.professional-timeline');
-      if (el?.closest('[role="separator"]')) return;
-      const state = useStudio.getState(), hasTimelineSelection = state.clipIds.length > 0 || !!state.selectedKeyframe;
       const command = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+      const isHeightShortcut = !command && !event.altKey && key === 't';
+      const isArrowShortcut = !command && !event.altKey && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key);
+      const transportFocused = el === range.current;
+      // Text fields keep their native keyboard behavior. The preview range
+      // is a timeline control and shares the same playhead shortcuts.
+      if (!transportFocused && (el?.isContentEditable || el?.closest('input,textarea,select,[role="textbox"],.monaco-editor,.cm-editor,[contenteditable]'))) return;
+      if (transportFocused && !isArrowShortcut && !isHeightShortcut) return;
+      if (el?.closest('[role="separator"]') && !isHeightShortcut) return;
+      const inClip = !!el?.closest('.clip,.timeline-keyframe');
+      const inTimeline = !!el?.closest('.professional-timeline');
+      const state = useStudio.getState(), hasTimelineSelection = state.clipIds.length > 0 || !!state.selectedKeyframe;
       if (command && key === 's') { event.preventDefault(); persist(undefined,true); return; }
       if (command && (key === 'z' || key === 'y')) {
         event.preventDefault();
@@ -1000,8 +1005,8 @@ export default function App() {
         return;
       }
       if (workspace !== 'direct') return;
-      if(!command&&!event.altKey&&key==='t') {event.preventDefault();if(!event.repeat)toggleTimelineHeight();return;}
-      if (!command&&!event.altKey&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) {
+      if(isHeightShortcut) {event.preventDefault();if(!event.repeat)toggleTimelineHeight();return;}
+      if (isArrowShortcut) {
         event.preventDefault();
         if(event.key==='ArrowUp'||event.key==='ArrowDown'){
           seekMovie(nextClipEdge(movieRef.current,time.current.movie,event.key==='ArrowUp'?-1:1));
