@@ -49,6 +49,8 @@ export function enterSceneActor(scene:Scene,id:string,time:number,gait:Gait) {
   const actor=scene.actors.find(item=>item.id===id);
   if(!actor)throw Error('Select a character in this scene.');
   const start=timed(scene,time);
+  if(start>.11 && evaluate(scene,start-.11).actors.find(item=>item.id===id)?.visible)
+    throw Error('This character is already on screen. Hide or walk them out before another entrance.');
   const fromX=offscreen(actor.x);
   const duration=travelDuration(Math.abs(fromX-actor.x),gait,scene.duration-start-.1);
   if(duration<.2)throw Error('Move the playhead earlier to add an entrance.');
