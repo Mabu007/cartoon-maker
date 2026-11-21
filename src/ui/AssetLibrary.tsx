@@ -1,6 +1,7 @@
+import type { ActorEntrance } from '../engine/actorPresence.ts';
 import { MediaImage } from './MediaImage.tsx';
 import { ArrowUpRight, AudioLines, Boxes, Clapperboard, Image, Mic, Music2, Plus, Search,
-  Sparkles, UserRound, Copy, Trash2, Pencil, Save, X, Check, Settings2, Play, FileAudio } from 'lucide-react';
+  Sparkles, UserRound, Copy, Trash2, Pencil, Save, X, Check, Settings2, Play, FileAudio, Footprints, Zap } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { actions, environments, label, props, type Action, type Character, type Prop,
   type Scene, type Clip, type Project } from '../engine/schema.ts';
@@ -25,7 +26,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
   active:Library;change:(panel:Library)=>void;project:Project;characters:Character[];scene:Scene;
   newCharacter:()=>void;editCharacter:(character:Character)=>void;
   duplicateCharacter:(character:Character)=>void;removeCharacter:(character:Character)=>void;
-  addActor:(character:Character)=>void;
+  addActor:(character:Character,mode?:ActorEntrance)=>void;
   setWorld:(world:Scene['environment'])=>void;uploadWorld:(file:File)=>void;
   savedWorlds:SavedWorld[];applySavedWorld:(world:SavedWorld)=>void;
   saveCurrentWorld:()=>void;renameSavedWorld:(oldName:string,newName:string)=>void;
@@ -90,7 +91,9 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
                   <small>{current?'In this scene · ':''}{usage.sceneActors} appearance{usage.sceneActors!==1?'s':''} across movie</small></span>
               </button>
               <div className="asset-resource-actions">
-                <IconButton title={`Place ${character.name} in scene`} onClick={()=>addActor(character)}><Plus size={15}/></IconButton>
+                <IconButton title={`Place ${character.name} at the playhead`} onClick={()=>addActor(character,'place')}><Plus size={15}/></IconButton>
+                <IconButton title={`Walk ${character.name} into the scene at the playhead`} onClick={()=>addActor(character,'walk')}><Footprints size={15}/></IconButton>
+                <IconButton title={`Run ${character.name} into the scene at the playhead`} onClick={()=>addActor(character,'run')}><Zap size={15}/></IconButton>
                 <IconButton title={`Duplicate ${character.name}`} onClick={()=>duplicateCharacter(character)}><Copy size={15}/></IconButton>
                 <IconButton title={`Remove ${character.name} from cast`} onClick={()=>removeCharacter(character)}><Trash2 size={15}/></IconButton>
               </div>
