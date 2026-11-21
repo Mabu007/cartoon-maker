@@ -35,6 +35,7 @@ Computer Use performed the actual public UI workflow; the film was not created b
 
 - Landscape: VP8 WebM, **1280 × 720, 30 fps**, stereo Opus **48 kHz**, 30.020 s including codec padding, 9,684,581 bytes.
 - Portrait: VP8 WebM, **720 × 1280**, stereo Opus, 30.020 s.
+- Square: VP8 WebM, **720 × 720**, stereo Opus, 30.020 s.
 - FFmpeg decoded the complete landscape movie without errors.
 - Cross-correlation against the source speech: **0.99641**, measured dialogue offset **6 ms**.
 - Inspected actual exported frames: background, positions, pointing, camera close-up and clipped mouth artwork are present. Respect the file's full-range color metadata when extracting reference RGB frames from VP8.
@@ -42,7 +43,7 @@ Computer Use performed the actual public UI workflow; the film was not created b
 
 ### Responsive QA and fixes
 
-Actual Chromium browser zoom exercised 773 px and 451 px CSS viewports. This caught a retained five-row grid from the old Create/Write/Direct navigation that was compressing the stage. The new explicit four-row narrow layout restores a usable 328–360 px workspace. Assets/Stage/Inspector navigation works, and the document has no horizontal overflow at 451 px. Desktop uses the three intended rows and resizable side panels. Physical phone/tablet touch hardware and the user's Celeron laptop were not available.
+Actual Chromium browser zoom exercised 773 px and 451 px CSS viewports. This caught a retained five-row grid from the old Create/Write/Direct navigation that was compressing the stage. The new explicit four-row narrow layout restores a usable 328–360 px workspace. Assets/Stage/Inspector navigation works, and the document has no horizontal overflow at 451 px. Desktop uses the three intended rows and resizable side panels. Narrow navigation exposes Undo/Redo; adding a table and undoing it was exercised through those controls. Light-theme task labels, inputs and timeline contrast were corrected and checked in-browser. Physical phone/tablet touch hardware and the user's Celeron laptop were not available.
 
 ### Important integration fixes
 

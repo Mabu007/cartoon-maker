@@ -46,3 +46,11 @@
   .studio-shell.filmmaking-shell.mode-direct:has(.timeline-compact) {grid-template-rows:auto 42px minmax(300px,1fr) 44px}
   .studio-shell.filmmaking-shell.mode-direct.focus-mode {grid-template-rows:auto 42px minmax(300px,1fr)}
 }
+/* Keep task-critical text readable in the optional light editor. */
+.filmmaking-shell[data-theme="light"] :is(.scene-title,.stage-kicker,.timecode,.timecode span,.shot-pill,.inspector-card strong,.inspector details,.inspector summary,.inspector label,.layer-list button,.timeline-title,.timeline-title h2,.timeline-duration,.ruler,.ruler-points,.ruler-label,.timeline-tools,.timeline-tools .icon-button,.timeline-empty-track,.modal header p,.small-text) {color:var(--text)}
+.filmmaking-shell[data-theme="light"] :is(.inspector-card,.inspector-emblem,.shot-pill,.timeline-shortcuts) {background:var(--raised);color:var(--text)}
+.filmmaking-shell[data-theme="light"] :is(input:not([type="range"]):not([type="color"]),textarea,select) {background:var(--raised);color:var(--text);border-color:var(--line)}
+.filmmaking-shell[data-theme="light"] :is(.professional-timeline,.professional-timeline>header,.timeline-scroll,.timeline-sheet,.lane,.ruler,.ruler-label) {background:var(--panel);color:var(--text)}
+.filmmaking-shell[data-theme="light"] .timeline-row:nth-of-type(2n) .lane {background:#f4f0f8}
+.filmmaking-shell[data-theme="light"] .inspector details {border-color:var(--line)}
+.filmmaking-shell[data-theme="light"] .layer-list button {border-color:var(--line)}
