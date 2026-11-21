@@ -155,7 +155,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       if (!entity.group.visible) continue;
       const point = options.staged?.[prop.id] ?? prop;
       entity.group.position.set(point.x, point.y);
-      entity.group.scale.set(prop.scale);
+      entity.group.scale.set(prop.flip ? -prop.scale : prop.scale, prop.scale);
       entity.group.angle = prop.rotation;
       entity.group.zIndex = renderDepth(prop.depth, point.y);
       if (entity.kind !== prop.kind || entity.color !== prop.color || entity.imageData !== prop.imageData || entity.doorOpen !== ('doorOpen' in prop ? prop.doorOpen : undefined)) {
@@ -186,7 +186,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       } else { entity.art.visible = true; if (entity.sprite) entity.sprite.visible = false; }
       const [w, h] = [prop.imageData ? prop.imageWidth ?? 140 : propSize[prop.kind][0],
         prop.imageData ? prop.imageHeight ?? 140 : propSize[prop.kind][1]].map(n => n * prop.scale);
-      const rect: WorldEntityRect = { x: point.x, y: point.y, scaleX: prop.scale, scaleY: prop.scale,
+      const rect: WorldEntityRect = { x: point.x, y: point.y, scaleX: (prop.flip ? -prop.scale : prop.scale), scaleY: prop.scale,
         angle: prop.rotation, left: -w / (2 * prop.scale), right: w / (2 * prop.scale),
         top: -h / prop.scale, bottom: 5 };
       hitboxes.push({ id: prop.id, rect, bounds: worldEntityBounds(rect), depth: entity.group.zIndex });
@@ -276,9 +276,18 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   function pick(x: number, y: number) {
     const point = screenToWorld({ x, y }, currentCamera, { width, height }, format);
     const matches = hitboxes.filter(item => pointHitsEntity(point, item.rect)).sort((a, b) => b.depth - a.depth);
-    // Keep a selected prop draggable even when its geometry intersects an
-    // actor's hitbox at higher render depth.
-    const hit = matches.find(item => item.id === lastSelectedId) ?? matches[0];
+    // Small characters and thin props should not require pixel-perfect clicks.
+    // Convert a 12 screen-pixel radius to world units so camera zoom doesn't
+    // change selection tolerance. Exact hits always win over nearby hits.
+    const tolerance = 12 / Math.max(.2, currentCamera.zoom);
+    const nearby = matches.length ? [] : hitboxes.filter(item => {
+      const {left,right,top,bottom}=item.bounds;
+      return point.x >= left-tolerance && point.x <= right+tolerance &&
+        point.y >= top-tolerance && point.y <= bottom+tolerance;
+    }).sort((a,b)=>b.depth-a.depth);
+    // A selected entity remains draggable even when its box overlaps another.
+    const candidates = matches.length ? matches : nearby;
+    const hit = candidates.find(item => item.id === lastSelectedId) ?? candidates[0];
     return { id: hit?.id, x: point.x, y: point.y };
   }
   return { canvas: app.canvas, draw, pick, width, height, prepareImages,
