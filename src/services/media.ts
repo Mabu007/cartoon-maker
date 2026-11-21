@@ -12,6 +12,8 @@ const mediaRef=/^r2:(image|video):([a-f\d-]{12,64})$/i;
 let activeUser: Account|null=null;
 const urls=new Map<string,string>();
 const inflight=new Map<string,Promise<string>>();
+const uploaded=new Set<string>();
+const uploading=new Map<string,Promise<string>>();
 const subscribers=new Set<()=>void>();
 export function setMediaUser(user:Account|null){
   if(activeUser?.uid===user?.uid){activeUser=user;return;}
@@ -39,11 +41,22 @@ async function signedUrl(user:Account,action:'upload'|'read',kind:MediaKind,id:s
 }
 export async function uploadR2Media(user:Account,kind:MediaKind,blob:Blob,id:string=uid()) {
   if(!blob.size || blob.size>limits[kind])throw Error(`File exceeds the ${limits[kind]/1048576} MB ${kind} limit.`);
-  if(!mime[kind].has(blob.type))throw Error('Unsupported media type: '+(blob.type||'unknown'));
-  const url=await signedUrl(user,'upload',kind,id,blob);
-  const response=await fetch(url,{method:'PUT',body:blob,headers:{'Content-Type':blob.type},mode:'cors',credentials:'omit'});
-  if(!response.ok)throw Error(`R2 upload failed (HTTP ${response.status}). Check your bucket CORS policy.`);
-  return id;
+  const type=blob.type.split(';')[0].trim().toLowerCase();
+  if(!mime[kind].has(type))throw Error('Unsupported media type: '+(blob.type||'unknown'));
+  const key=user.uid+':'+kind+':'+id;
+  if(uploaded.has(key))return id;
+  const pending=uploading.get(key);
+  if(pending)return pending;
+  const task=(async()=>{
+    const file=blob.type===type?blob:new Blob([blob],{type});
+    const url=await signedUrl(user,'upload',kind,id,file);
+    const response=await fetch(url,{method:'PUT',body:file,headers:{'Content-Type':type},mode:'cors',credentials:'omit'});
+    if(!response.ok)throw Error(`R2 upload failed (HTTP ${response.status}). Check your bucket CORS policy.`);
+    uploaded.add(key);
+    return id;
+  })().finally(()=>uploading.delete(key));
+  uploading.set(key,task);
+  return task;
 }
 export async function readR2Media(user:Account,kind:MediaKind,id:string) {
   const url=await signedUrl(user,'read',kind,id);
