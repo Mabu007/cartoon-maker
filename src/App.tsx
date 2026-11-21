@@ -4,7 +4,7 @@ import { missingRentMovie } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
-import { compatibleObjects, nearestObject, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
+import { compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
 import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import type { Format } from './engine/renderer.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
