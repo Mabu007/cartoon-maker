@@ -1,17 +1,15 @@
-import type { Graphics } from 'pixi.js';
+import type { Container, Graphics } from 'pixi.js';
 import { armIK, gaitLeg, rig, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
-import { drawIllustratedHair, drawIllustratedFacialHair, drawIllustratedHand, drawIllustratedHead, drawIllustratedTorso, shade, type HandPose } from './illustration.ts';
+import { drawIllustratedHair, drawIllustratedHand, shade, type HandPose } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
+import { at, drawBag, drawHandheld, drawShoe, drawTop, drawWatch, sleeveCoverage, vector, type CostumeTexture } from './wardrobeArt.ts';
+import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { performanceHandPose } from './handPerformance.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
-function viewFromArt(art:typeof viewArt[View]):View {
-  return art.rear?(art.profile?'back':'back-quarter'):art.profile?'side':
-    art.face?'three-quarter':'front';
-}
 export const viewArt: Record<View, { width: number; face: number; far: boolean; rear: boolean; profile: boolean }> = {
   front: { width: 1, face: 0, far: true, rear: false, profile: false },
   'three-quarter': { width: .88, face: 12, far: true, rear: false, profile: false },
@@ -29,25 +27,42 @@ export function heldGripPoint(character: Character, view: View, pose: JointPose)
   const [, hand]=armIK(r.right.shoulder,{x:r.head.x+(art.rear?-26:45),y:r.head.y+43},28*character.arms,28*character.arms,1);
   return {x:hand.x+7,y:hand.y+9};
 }
-export function drawActor(g: Graphics, face: Graphics, c: Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
+export function drawActor(g:Graphics,face:Container,facialArt:Graphics,c:Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
-  actionTime = time, gaitWeight=1, listening=false, turnScale=1) {
+  actionTime = time, gaitWeight=1, listening=false, turnScale=1, costume?:CostumeTexture, lookAtCamera=false) {
   const art = viewArt[view];
   const r = rig(c, pose, art.width);
   const limbWidth = 10 * c.thickness;
   const arm = (side: 'left' | 'right', carrying = false) => {
     const joint = r[side];
     const [elbow, hand] = carrying ? armIK(joint.shoulder, { x: r.head.x + (art.rear ? -26 : 45), y: r.head.y + 43 }, 28 * c.arms, 28 * c.arms, 1) : [joint.elbow, joint.hand];
-    stroke(g, [joint.shoulder, elbow, hand], limbWidth, c.skin);
-    stroke(g, [joint.shoulder, { x: (joint.shoulder.x + elbow.x) / 2, y: (joint.shoulder.y + elbow.y) / 2 }], limbWidth + 5, c.shirt);
+    const coverage=sleeveCoverage(c);
+    const upper=coverage<=1;
+    const cuffStart=upper?joint.shoulder:elbow, cuffEnd=upper?elbow:hand;
+    const cover=upper?coverage:coverage-1;
+    const cuff={x:cuffStart.x+(cuffEnd.x-cuffStart.x)*cover,y:cuffStart.y+(cuffEnd.y-cuffStart.y)*cover};
+    stroke(g,[joint.shoulder,elbow,hand],limbWidth,c.skin);
+    if(coverage>0) {
+      stroke(g,upper?[joint.shoulder,cuff]:[joint.shoulder,elbow,cuff],limbWidth+4,c.shirt);
+      segment(g,cuff.x-3,cuff.y,cuff.x+3,cuff.y+1,c.wardrobe?.trim??shade(c.shirt,-.27),1.45);
+    }
+    const costumeHand = c.wardrobe?.hand ?? 'right';
+    const holdsCostume = side===costumeHand && !carrying && Boolean(c.wardrobe?.handheld && c.wardrobe.handheld!=='none');
     const handMode:HandPose = performanceHandPose({
-      action,locomotion,side,carrying,time,expression,
+      action,locomotion,side,carrying:carrying||holdsCostume,time,expression,
       speechWeight:speaking?(viseme?.weight??0):0
     });
-    drawIllustratedHand(g, hand.x, hand.y, limbWidth, c.skin, handMode, side === 'right' ? 1 : -1);
-    // Gentle curved sleeve-cuff instead of a rigid straight seam.
-    segment(g, (joint.shoulder.x + elbow.x) / 2 - 3, (joint.shoulder.y + elbow.y) / 2, (joint.shoulder.x + elbow.x) / 2 + 3, (joint.shoulder.y + elbow.y) / 2 + 2, shade(c.shirt, -.27), 1.5);
+    if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
+    if(holdsCostume) drawHandheld(g,c,hand);
+    const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
+    const rotation=handMode==='relaxed'?forearm-Math.PI/2:handMode==='open'?forearm+Math.PI/2:0;
+    const facing=art.profile?1:(side==='right'?1:-1)*(art.rear?-1:1);
+    g.context.save().setTransform(at(hand.x,hand.y,art.profile&&handMode==='relaxed'?.73:1,1,rotation*180/Math.PI));
+    drawIllustratedHand(g,0,0,limbWidth*(art.profile&&side==='left'?.78:.91),c.skin,handMode,facing<0?-1:1);
+    g.context.restore();
+    const watchSide=c.wardrobe?.watchSide??costumeHand;
+    if(watchSide==='both'||side===watchSide)drawWatch(g,c,hand,elbow);
     if (carrying && held) {
       const x = hand.x + 7, y = hand.y + 9;
       if (held.kind === 'cup') {
@@ -71,108 +86,84 @@ export function drawActor(g: Graphics, face: Graphics, c: Character, view: View,
       foot={x:joint.foot.x+(walkingFoot.x-joint.foot.x)*gaitWeight,
         y:joint.foot.y+(walkingFoot.y-joint.foot.y)*gaitWeight};
     }
-    stroke(g, [joint.upper, knee, foot], limbWidth + 1, c.pants);
-    const shoeDir = moving || (view !== 'front' && view !== 'back') ? forward * 6 : (side === 'left' ? -4 : 4);
-    const toe = Math.sign(shoeDir);
-    ellipse(g, foot.x + shoeDir, foot.y + 1, 12 * c.thickness, 6.5, c.shoes, 2.7);
-    segment(g, foot.x - 7 * toe + shoeDir, foot.y + 4, foot.x + 9 * toe + shoeDir, foot.y + 4, shade(c.shoes, -.27), 1.7);
-    segment(g, foot.x + shoeDir - 5 * toe, foot.y - 2, foot.x + shoeDir + 2 * toe, foot.y - 3, shade(c.shoes, .36), 1.2);
+    const bottom=c.wardrobe?.bottoms??(c.outfit==='athleisure'?'leggings':'straight');
+    const shorts=bottom==='shorts'||bottom==='biker-shorts';
+    const width={straight:11,cargo:16,joggers:13,shorts:15,'wide-leg':17,'skinny-jeans':8,skirt:10,'cargo-joggers':15,leggings:8,'biker-shorts':10}[bottom]*c.thickness;
+    if(shorts||bottom==='skirt') {
+      stroke(g,[joint.upper,knee,foot],limbWidth*.82,c.skin);
+      if(shorts)stroke(g,[joint.upper,{x:(joint.upper.x+knee.x)/2,y:(joint.upper.y+knee.y)/2}],width,c.pants);
+    } else {
+      stroke(g,[joint.upper,knee,foot],width,c.pants);
+      if(bottom==='joggers'||bottom==='cargo-joggers')segment(g,knee.x,knee.y,foot.x,foot.y,c.wardrobe?.trim??shade(c.pants,.22),1.4);
+      if(bottom==='cargo'||bottom==='cargo-joggers')rect(g,(joint.upper.x+knee.x)/2-5,(joint.upper.y+knee.y)/2-3,10,9,shade(c.pants,.13),2,1);
+      if(bottom==='skinny-jeans'||bottom==='leggings')segment(g,foot.x-3,foot.y-5,foot.x+3,foot.y-5,shade(c.pants,.28),1.4);
+    }
+    const toe=moving||art.profile||(view!=='front'&&view!=='back')?Math.sign(forward):(side==='left'?-1:1);
+    drawShoe(g,c,foot,toe,costume,view==='back');
   };
-  leg('left'); leg('right'); arm('left');
-  drawIllustratedTorso(g, c, art, r.neck, r.hip);
-  const top = r.neck.y + 8, midX = r.neck.x;
-  if (c.accessory === 'chain' && !art.rear) {
-    line(g, [{ x: midX - 12, y: top }, { x: midX, y: top + 17 }, { x: midX + 12, y: top }], '#f3ca65', 3);
-    ellipse(g, midX, top + 17, 3.6, 3.6, '#f3ca65', 1.2);
-  } else if (c.accessory === 'scarf') {
-    rect(g, midX - 20, top - 15, 39, 11, '#edb76e', 5, 2);
-    rect(g, midX + 9, top - 10, 11, 26, '#edb76e', 3, 2);
+  leg(art.rear?'right':'left'); leg(art.rear?'left':'right');
+  arm(art.rear?'right':'left',art.rear&&Boolean(held));
+  if(c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
+    const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness;
+    const hem=24+(c.wardrobe.hem??0)*12;
+    vector(g,`M ${x-width} ${y-5}H${x+width}L${x+width*1.29} ${y+hem}Q${x} ${y+hem+7} ${x-width*1.29} ${y+hem}Z`,c.pants,INK,2.1);
+    for(const offset of [-.57,0,.57]) segment(g,x+offset*width,y+2,x+offset*width*1.15,y+hem,shade(c.pants,-.28),1.1);
   }
-  arm('right', Boolean(held));
+  drawTop(g,c,art,r.neck,r.hip,costume);
+  drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
+  drawBag(g,c,art,r.neck,r.hip,undefined,costume);
+  arm(art.rear?'left':'right',!art.rear&&Boolean(held));
   face.position.set(r.head.x, r.head.y);
   face.angle = r.angle + (listening ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
   face.scale.set(c.head*turnScale,c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
   const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus);
   if (action === 'blink' && actionTime < .22) mood.blink = Math.max(mood.blink, 1 - Math.abs(actionTime - .11) / .11);
-  drawFace(face, c, art, mood);
+  const headView = lookAtCamera && (art.profile || art.rear)
+    ? view === 'back' ? 'back' : 'three-quarter' : view;
+  drawFace(face,facialArt,c,headView,mood,lookAtCamera);
 }
-function drawFace(g: Graphics, c: Character, art: typeof viewArt[View], mood: FacialPerformance) {
-  const { face, rear, profile, far } = art;
-  const { expression, blink, gazeX, gazeY, mouthOpen } = mood;
-  const width = c.shape === 'round' ? 47 : c.shape === 'square' ? 45 : 42;
-  const w = width * (profile ? .82 : .94 + art.width * .06);
-  const h = c.shape === 'round' ? 42 : 46;
-  const earWidth = c.ears === 'small' ? 6 : c.ears === 'wide' ? 10 : 8;
-  const ear = (x: number, y: number, visibleEarring: boolean) => {
-    ellipse(g, x, y, earWidth, 9, c.skin, 3.2);
-    g.moveTo(x - 3, y + 1).quadraticCurveTo(x + 2, y - 2, x + 3, y + 5).stroke({ color: shade(c.skin, -.22), width: 1.4 });
-    if (c.earrings && visibleEarring) {
-      ellipse(g, x, y + 9, 4.3, 6, '#f4cb65', 1.8);
-      ellipse(g, x, y + 7.1, 1.8, 2.5, c.skin);
-    }
-  };
-  if (!profile) ear(w - 1, 8, false);
-  drawIllustratedHead(g, c, art);
-  ear(profile ? -w + 3 : -w + 2, 8, true);
-  drawIllustratedHair(g, c, art, w, h);
-  if (c.hat === 'beanie') {
-    ellipse(g, 0, -h + 3, w + 2, 25, c.shirt, 3);
-    rect(g, -w - 2, -h + 2, w * 2 + 4, 13, c.shirt, 4, 3);
-  } else if (c.hat === 'cap') {
-    ellipse(g, 0, -h + 5, w + 1, 21, c.shirt, 3);
-    rect(g, -w + 2, -h + 6, w * 2 + (rear ? -2 : 20), 10, c.shirt, 4, 2.5);
+function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean) {
+  const art=viewArt[view], {rear,profile}=art;
+  const layers=resetEyeLayers(face);
+  const {w,h}=headMetrics(c,art), q=c.wardrobe;
+  const yScale=h/45;
+  const ears=profile?[-w*.47]:[-w+3,w-3];
+  if(!profile)drawEar(g,c,ears[1],8*yScale,-1);
+  vector(g,headOutline(c,art),c.skin,INK,3.5);
+  vector(g,`M ${-w*.81} 5 Q ${-w*.85} ${h*.63} ${-w*.32} ${h*.77} Q ${-w*.57} ${h*.55} ${-w*.81} 5Z`,shade(c.skin,-.10),INK,0);
+  const openHat=['none','visor','sun-visor','fascinator'].includes(c.hat);
+  if(openHat) {
+    if(!drawCatalogHair(g,c,art,w,h))drawIllustratedHair(g,c,art,w,h);
+  } else if(['bob','hime','mullet','ponytail','waves','wolf-cut','braids','locs','curtain-bangs'].includes(c.hair)) {
+    if(!drawCatalogHair(g,c,art,w,h*.83))drawIllustratedHair(g,c,art,w,h*.83);
   }
-  if (rear) { hideExpressionMouth(g); return; }
-  // Constrain cheek shading inside the actual head silhouette, including Sbu's
-  // shifted 3/4 face. These are subtle color planes, never detached circles.
-  const faceCenter = Math.max(-w * .12, Math.min(w * .16, face));
-  if (!profile && (expression === 'happy' || expression === 'excited' || expression === 'sad')) {
-    for (const offset of [-24, 24]) {
-      const x = Math.max(-w + 12, Math.min(w - 12, faceCenter + offset));
-      g.ellipse(x, 15, 7, 3.7).fill({ color: expression === 'happy' || expression === 'excited' ? '#d17b6f' : '#9d6f83', alpha: .19 });
-    }
+  drawEar(g,c,ears[0],8*yScale,1);
+  drawHat(g,c,art,w,h);
+  if(rear) {
+    hideExpressionMouth(face);
+    drawPiercing(g,c,art,ears,0);
+    drawExtra(g,c,art,w,h,'head');
+    return;
   }
-  const eyeX = profile ? face - 3 : face - 13 * c.eyeSpacing;
-  const secondX = face + (art.face ? 10 : 14) * c.eyeSpacing;
-  const eyeY = -5;
-  const eye = (x: number, narrow: boolean, isLeft: boolean) => {
-    const baseHeight = expression === 'surprised' || expression === 'excited' ? 11.5 : expression === 'angry' ? 5.5 :
-      expression === 'sleepy' ? 3 : expression === 'nervous' ? 10.4 : expression === 'smug' ? 5.5 :
-      expression === 'happy' ? 6.6 : c.eyes === 'relaxed' ? 5.5 : c.eyes === 'wide' ? 9.2 : 7.7;
-    const halfW = narrow ? 5.1 : 7.4;
-    const open = Math.max(.06, 1 - blink);
-    const eyeHeight = baseHeight * open;
-    const pupilX = x + Math.max(-halfW + 2.8, Math.min(halfW - 2.8, gazeX + (art.face ? 1.2 : 0)));
-    const pupilY = eyeY + Math.max(-eyeHeight + 2.5, Math.min(eyeHeight - 2.5, gazeY + .8));
-    if (eyeHeight < 1.4) {
-      g.moveTo(x - halfW, eyeY).quadraticCurveTo(x, eyeY + 1.7, x + halfW, eyeY)
-        .stroke({ color: INK, width: 2.6, cap: 'round' });
-    } else {
-      ellipse(g, x, eyeY, halfW, eyeHeight, '#fff5e9', 1.55);
-      ellipse(g, pupilX, pupilY, 2.8, Math.min(3.3, eyeHeight * .66), '#27213a');
-      if (eyeHeight > 3.4) ellipse(g, pupilX - 1.15, pupilY - 1.3, 1.1, 1.2, '#ffffff');
-      if (expression === 'happy' || expression === 'excited') {
-        g.moveTo(x - halfW, eyeY + eyeHeight * .57).quadraticCurveTo(x, eyeY + eyeHeight + 1.2, x + halfW, eyeY + eyeHeight * .57)
-          .stroke({ color: shade(c.skin, -.17), width: 1.15 });
-      }
-    }
-    const slant = expression === 'angry' ? (isLeft ? -4.5 : 4.5) :
-      expression === 'sad' ? (isLeft ? 4 : -4) : expression === 'confused' ? (isLeft ? 5 : -5) :
-      expression === 'smug' ? (isLeft ? -2 : 4) : expression === 'nervous' ? (isLeft ? 2.8 : -1.8) :
-      expression === 'thinking' ? (isLeft ? -3 : 2) : 0;
-    const browY = eyeY - baseHeight - (expression === 'surprised' || expression === 'excited' ? 10 : expression === 'angry' ? 2.3 : 5);
-    g.moveTo(x - halfW - 1, browY + slant).quadraticCurveTo(x, browY - (c.brows === 'arched' ? 6 : 1.5), x + halfW + 1, browY - slant)
-      .stroke({ color: INK, width: c.brows === 'bold' ? 4.1 : 2.6, cap: 'round' });
-    if (c.glasses) rect(g, x - halfW - 4, eyeY - baseHeight - 4, (halfW + 4) * 2, (baseHeight + 4) * 2, '#ffffff00', 4, 2, '#45344e');
-  };
-  eye(eyeX, false, true);
-  if (far) eye(secondX, Boolean(art.face), false);
-  if (c.glasses && far) segment(g, eyeX + 9, eyeY - 2, secondX - 8, eyeY - 2, INK, 2);
-  const noseX = profile ? w - 1 : face + 1;
-  const noseWidth = c.nose === 'long' ? 7 : c.nose === 'flat' ? 6 : 4;
-  ellipse(g, noseX, 8, noseWidth, c.nose === 'long' ? 6 : 3.4, c.skin, 1.7);
-  const mouthX = profile ? face + 3 : face;
-  drawIllustratedFacialHair(g, c, art, mouthX, w);
-  drawExpressionMouth(g, c, mood, mouthX, viewFromArt(art));
+  const center=profile?w*.62:art.face*w/42;
+  const facialOffset=q?.facialOffset??0;
+  const spacing=Math.min(w*.35,13*c.eyeSpacing);
+  const eyes=profile?[center+facialOffset]:[center-spacing+facialOffset,Math.min(w-8,center+spacing*(art.face?.81:1)-facialOffset)];
+  const eyeY=-5*yScale;
+  eyes.forEach((x,i)=>drawEye(g,layers.eyes[i],c,mood,x,eyeY,i?1:-1,Boolean(i&&art.face),camera,art.face));
+  if(q?.unibrow&&eyes.length>1)segment(g,eyes[0]+7,eyeY-12+(q.browOffset??0),eyes[1]-7,eyeY-12+(q.browOffset??0),c.hairColor,2);
+  if(!profile&&['happy','excited','sad'].includes(mood.expression)) {
+    for(const x of eyes)g.ellipse(Math.max(-w+9,Math.min(w-9,x+(x<center?-8:8))),14,5,2.7)
+      .fill({color:mood.expression==='sad'?'#956a80':'#db887b',alpha:.23});
+  }
+  drawEyewear(layers.eyewear,c,art,eyes,eyeY);
+  const noseX=profile?w*.94:center;
+  drawNose(g,c,art,noseX);
+  const mouthX=profile?w*.65:center;
+  drawBeard(g,c,art,mouthX,w,h);
+  drawPiercing(g,c,art,ears,profile?mouthX:noseX);
+  drawExtra(g,c,art,w,h,'head');
+  if(q?.extra==='mask') hideExpressionMouth(face);
+  else drawExpressionMouth(face,c,mood,mouthX,view);
 }

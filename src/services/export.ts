@@ -20,7 +20,7 @@ const recorderExporter: VideoExporter = {
       await mixer.prepare(project.scenes);
       signal.throwIfAborted();
       renderer = await createRenderer(format, exportScale(format), true);
-      await renderer.prepareImages(project.scenes);
+      await renderer.prepareImages(project.scenes,project.characters);
       signal.throwIfAborted();
       const renderAt = (time: number) => {
         const { scene, local } = locate(project.scenes, time);

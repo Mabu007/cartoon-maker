@@ -1,3 +1,6 @@
+import { drawSeat } from './seating.ts';
+import { isSeating, seats, type SeatingKind } from './seatingCatalog.ts';
+import { seatingStyles } from './characterCatalog.ts';
 import { Graphics } from 'pixi.js';
 import { scenePalettes } from './presets.ts';
 import type { Prop, Scene } from './schema.ts';
@@ -77,8 +80,9 @@ export function drawWorld(g: Graphics, environment: Scene['environment']) {
     for (let i = 0; i < 19; i++) { const bar = 13 + (i * 11 % 49); rect(g, 332 + i * 16, 158 - bar / 2, 6, bar, i % 2 ? '#e9a4aa' : '#bba7ef', 3); }
   }
 }
-export const propSize: Record<Prop['kind'], [number, number]> = { sofa: [326, 126], chair: [104, 126], table: [188, 68], desk: [185, 99], door: [128, 245], window: [215, 120], television: [145, 96], lamp: [103, 200], cup: [33, 28], book: [55, 12], phone: [25, 33], plant: [76, 113], microphone: [36, 71], streetlight: [85, 223], counter: [155, 110], image: [140, 140] };
+export const propSize: Record<Prop['kind'], [number, number]> = { sofa: [326, 126], chair: [104, 126], table: [188, 68], desk: [185, 99], door: [128, 245], window: [215, 120], television: [145, 96], lamp: [103, 200], cup: [33, 28], book: [55, 12], phone: [25, 33], plant: [76, 113], microphone: [36, 71], streetlight: [85, 223], counter: [155, 110], image: [140, 140], ...Object.fromEntries(seatingStyles.map(kind=>[kind,seats[kind].size])) as Record<SeatingKind,[number,number]> };
 export function drawProp(g: Graphics, { kind, color }: Pick<Prop, 'kind' | 'color'>, doorOpen = 0) {
+  if(isSeating(kind)){drawSeat(g,kind,color);return;}
   switch (kind) {
     case 'image':
       rect(g, -68, -135, 136, 133, '#383047', 10, 3, '#d5a8e5');

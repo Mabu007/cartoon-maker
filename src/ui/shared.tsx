@@ -1,3 +1,5 @@
+import { seatingStyles } from '../engine/characterCatalog.ts';
+import type { SeatingKind } from '../engine/seatingCatalog.ts';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X, ChevronDown, Armchair, BookOpen, DoorOpen, LampFloor, Monitor, Coffee, Smartphone, Sprout, Mic, PanelTop, Table2, Store, Cable, Sofa, UserRound, MoveRight, Activity, Smile, AudioLines, Music2, Clapperboard, Blend, Image, Eye, Hand } from 'lucide-react';
 import { label, shotLabel, type Character, type Clip } from '../engine/schema.ts';
@@ -24,7 +26,7 @@ export function Avatar({ character: c, large = false }: { character: Character; 
     <i className="avatar-body"/><i className="avatar-ear"/><i className="avatar-head"><i className="avatar-hair"/><i className="avatar-eye"/><i className="avatar-eye avatar-eye-two"/><i className="avatar-mouth"/>{c.glasses && <i className="avatar-glasses"/>}{c.earrings && <i className="avatar-ring"/>}{c.hat !== 'none' && <i className="avatar-hat"/>}</i>
   </span>;
 }
-export const propIcon = { sofa: Sofa, chair: Armchair, table: Table2, desk: Table2, door: DoorOpen, window: PanelTop, television: Monitor, lamp: LampFloor, cup: Coffee, book: BookOpen, phone: Smartphone, plant: Sprout, microphone: Mic, streetlight: Cable, counter: Store, image: Image };
+export const propIcon = { sofa: Sofa, chair: Armchair, table: Table2, desk: Table2, door: DoorOpen, window: PanelTop, television: Monitor, lamp: LampFloor, cup: Coffee, book: BookOpen, phone: Smartphone, plant: Sprout, microphone: Mic, streetlight: Cable, counter: Store, image: Image, ...Object.fromEntries(seatingStyles.map(kind=>[kind,Armchair])) as Record<SeatingKind,typeof Armchair> };
 export const trackIcon = { actors: UserRound, movement: MoveRight, body: Activity, face: Smile, gaze: Eye, props: Hand, dialogue: AudioLines, audio: AudioLines, music: Music2, camera: Clapperboard, transition: Blend };
 export const formats: Format[] = ['16:9', '9:16', '1:1'];
 export const clipLabel = (clip: Clip, names: Record<string, string> = {}) => {

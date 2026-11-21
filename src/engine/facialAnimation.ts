@@ -32,12 +32,10 @@ export function facialPerformance(
   const anxiousDouble = expression === 'nervous' ? clamp(1-Math.abs(phase-.83)/.035)*.88:0;
   const blink = Math.max(baseBlink,anxiousDouble);
   // Deterministic pupil microsaccades; explicit look targets always dominate.
-  const cycle=((t+seed*1.7)%3.9);
-  const glanceAway=focus && cycle>3.38 && cycle<3.56 ? .23 : 1;
   const micro=Math.sin(t*1.12+seed*11)*.14;
-  const gazeX=focus ? clamp(focus.x,-1,1)*3.45*glanceAway+micro :
+  const gazeX=focus ? clamp(focus.x,-1,1)*3.45+micro*.25 :
     Math.sin(t*.83+seed*11)*1.48+Math.sin(t*.3+seed*3)*.36;
-  const gazeY=focus ? clamp(focus.y,-1,1)*2.45*glanceAway+
+  const gazeY=focus ? clamp(focus.y,-1,1)*2.45+
     Math.sin(t*.42+seed)*.09 : Math.sin(t*.6+seed*8)*.84;
   const expressive: Partial<Record<Action, Expression>> = {
     laugh: 'happy', cry: 'sad', angry: 'angry', surprise: 'surprised',

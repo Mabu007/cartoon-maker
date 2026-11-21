@@ -95,6 +95,9 @@ export function mergeLocal(scope: string, remote: SavedProject[]) {
 }
 export function removeLocal(scope: string, id: string) {
   writeLocal(scope, readLocal(scope).filter(raw => parseEntry(raw)?.project.id !== id));
+  forgetEditorSession(scope,id);
+}
+export function forgetEditorSession(scope:string,id:string) {
   const session=lastEditorSession(scope);
   // Legacy in-memory storage fixtures implement getItem/setItem only.
   // An unavailable removeItem must never block deleting the movie itself.

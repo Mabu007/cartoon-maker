@@ -1,5 +1,9 @@
 import { mediaUrl } from '../services/media.ts';
-import { viewForward } from './animation.ts';
+import { aimEyes, eyeWorldPoint } from './gaze.ts';
+import { drawSeat } from './seating.ts';
+import { isSeating, seats } from './seatingCatalog.ts';
+import { costumeImages } from './wardrobeArt.ts';
+import { rig, viewForward } from './animation.ts';
 import { Application, Container, Graphics, Text, Sprite, Texture } from 'pixi.js';
 import { drawActor, heldGripPoint } from './actorArt.ts';
 import { cameraViewport, screenToWorld, worldEntityBounds, pointHitsEntity, renderDepth, type WorldEntityRect } from './cameraTransform.ts';
@@ -11,10 +15,10 @@ export type Format = '16:9' | '9:16' | '1:1';
 const sizes: Record<Format, [number, number]> = { '16:9': [960, 540], '9:16': [303.75, 540], '1:1': [540, 540] };
 export const dimensions = (format: Format, scale = 1): [number, number] => sizes[format].map(n => Math.round(n * scale)) as [number, number];
 
-type Entity = { group: Container; art: Graphics; face?: Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
-  sprite?: Sprite; heldSprite?: Sprite; imageData?: string };
+type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
+  foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; imageData?: string };
 export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: number; y: number };
-  previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
+  previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
   const app = new Application();
@@ -38,6 +42,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       image.onload = () => {
         try {
           const texture = Texture.from(image);
+          if(destroyed) {texture.destroy(true);reject(new Error('Renderer closed.'));return;}
           textures.set(data, texture);
           resolve(texture);
         } catch (error) { reject(error); }
@@ -48,12 +53,26 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     requests.set(data, load);
     return load;
   }
-  async function prepareImages(scenes: Scene[]) {
-    const urls = new Set(scenes.flatMap(scene => [
+  async function prepareImages(scenes: Scene[], characters:Character[] = []) {
+    const usedCharacters=new Set(scenes.flatMap(scene=>scene.actors.map(actor=>actor.characterId)));
+    const urls = new Set([...characters.filter(character=>usedCharacters.has(character.id)).flatMap(costumeImages), ...scenes.flatMap(scene => [
       ...(scene.backgroundImage ? [scene.backgroundImage] : []),
       ...scene.objects.flatMap(prop => prop.imageData ? [prop.imageData] : [])
-    ]));
+    ])]);
     await Promise.all([...urls].map(loadImage));
+  }
+  const badCostumes = new Set<string>();
+  let repaintCostume: (()=>void)|undefined;
+  let costumeFrame=0;
+  function costumeTexture(data:string):Texture|undefined {
+    const ready=textures.get(data);
+    if(!ready&&!badCostumes.has(data)&&!requests.has(data)) {
+      void loadImage(data).then(()=>{
+        if(destroyed||costumeFrame)return;
+        costumeFrame=requestAnimationFrame(()=>{costumeFrame=0;if(!destroyed)repaintCostume?.();});
+      }).catch(()=>{badCostumes.add(data);});
+    }
+    return ready;
   }
   let requestedBackdrop: string | undefined;
   let destroyed = false;
@@ -82,7 +101,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       const group = new Container();
       entity = { group, art };
       if (isActor) {
-        entity.shadow = new Graphics(); entity.face = new Graphics();
+        entity.shadow = new Graphics(); entity.face = new Container(); entity.facialArt=new Graphics();
+        entity.face.addChild(entity.facialArt);
         group.addChild(entity.shadow, art, entity.face);
       } else {
         const sprite = new Sprite(Texture.EMPTY);
@@ -97,7 +117,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return entity;
   }
   function draw(scene: Scene, characters: Character[], time: number, options: RenderOptions = {}) {
-    lastFrame = evaluate(scene, time);
+    repaintCostume=()=>{draw(scene,characters,time,options);};
+    const characterById = new Map(characters.map(character => [character.id, character]));
+    lastFrame = evaluate(scene, time, characterById);
     const { actors, camera, sounds } = lastFrame;
     if (options.characterPreview) {
       if (!wasCharacterPreview) {
@@ -146,22 +168,35 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     lastSelectedId = options.selected;
     const used = new Set<string>();
     const carrying = new Set(actors.flatMap(actor => actor.held && actor.visible ? [actor.held.id] : []));
-    const characterById = new Map(characters.map(character => [character.id, character]));
     const sourceActorById = new Map(scene.actors.map(actor => [actor.id, actor]));
     for (const prop of options.edit ? scene.objects : lastFrame.objects) {
       const key = entityKey(prop.id, false);
       used.add(key);
       const entity = get(prop.id);
       entity.group.visible = options.edit || !carrying.has(prop.id);
-      if (!entity.group.visible) continue;
+      if (!entity.group.visible) {if(entity.foreground)entity.foreground.visible=false;continue;}
       const point = options.staged?.[prop.id] ?? prop;
       entity.group.position.set(point.x, point.y);
       entity.group.scale.set(prop.flip ? -prop.scale : prop.scale, prop.scale);
       entity.group.angle = prop.rotation;
       entity.group.zIndex = renderDepth(prop.depth, point.y);
+      if(isSeating(prop.kind)) {
+        if(!entity.foreground) {entity.foreground=new Graphics();elements.addChild(entity.foreground);}
+        const front=entity.foreground, seat=seats[prop.kind];
+        front.visible=entity.group.visible;
+        front.position.copyFrom(entity.group.position);front.scale.copyFrom(entity.group.scale);front.angle=prop.rotation;
+        const seated=options.edit?undefined:actors.find(actor=>actor.visible&&actor.action==='sit'&&
+          Math.abs(actor.x-point.x)<seat.size[0]*prop.scale*.44&&Math.abs(actor.y-point.y)<70*prop.scale);
+        if(seated) {
+          const depth=renderDepth(seated.depth,seated.y);
+          entity.group.zIndex=Math.min(entity.group.zIndex,depth-.03);
+          front.zIndex=depth+.03;
+        } else front.zIndex=entity.group.zIndex+.03;
+      }
       if (entity.kind !== prop.kind || entity.color !== prop.color || entity.imageData !== prop.imageData || entity.doorOpen !== ('doorOpen' in prop ? prop.doorOpen : undefined)) {
         const opening='doorOpen' in prop ? Number(prop.doorOpen) : undefined;
         drawProp(entity.art.clear(), prop, opening);entity.doorOpen=opening;
+        if(entity.foreground&&isSeating(prop.kind))drawSeat(entity.foreground.clear(),prop.kind,prop.color,true);
         entity.kind = prop.kind; entity.color = prop.color; entity.imageData = prop.imageData;
         if (entity.sprite) entity.sprite.visible = false;
       }
@@ -210,13 +245,17 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.zIndex = renderDepth(actor.depth, point.y);
       entity.art.position.y = -lift;
       ellipse(entity.shadow!.clear(), 0, 3, 39 - Math.min(10, Math.max(0, lift / 5)), 7, '#816a61');
-      drawActor(entity.art.clear(), entity.face!.clear(), character, view,
+      const cameraGaze=options.characterPreview?Boolean(options.previewCamera):actor.gazeTarget==='camera'&&actor.action!=='look-away';
+      const projectedEyes=actor.gazePoint?eyeWorldPoint({...actor,...point,flip:directionFlip},character):undefined;
+      const targetFocus=projectedEyes&&actor.gazePoint
+        ? aimEyes(projectedEyes,actor.gazePoint,directionFlip,actor.rotation+rig(character,actor.pose,1).angle*(directionFlip?-1:1),actor.scale):actor.focus;
+      drawActor(entity.art.clear(),entity.face!,entity.facialArt!.clear(),character,view,
         options.edit ? {} : actor.pose, options.edit ? source.expression : actor.expression,
         options.amplitude?.(actor.id, time) ?? 0, options.edit ? undefined : actor.held,
         time, actor.action, actor.id, actor.speaking || Boolean(options.characterPreview&&options.previewViseme),
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
-        options.characterPreview ? options.previewFocus : actor.focus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale);
+        options.characterPreview ? options.previewFocus : targetFocus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,costumeTexture,cameraGaze);
       entity.face!.y -= lift;
       if (actor.held?.imageData && !options.edit) {
         const url = actor.held.imageData;
@@ -249,7 +288,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         top: -(172 * character.height + 49 * character.head) - lift / actor.scale, bottom: 10 / actor.scale };
       hitboxes.push({ id: actor.id, rect, bounds: worldEntityBounds(rect), depth: entity.group.zIndex });
     }
-    for (const [id, entity] of items) if (!used.has(id)) { entity.group.destroy({ children: true }); items.delete(id); }
+    for (const [id, entity] of items) if (!used.has(id)) { entity.group.destroy({ children: true }); entity.foreground?.destroy(); items.delete(id); }
     const hovered = hitboxes.find(hit => hit.id === options.hovered && hit.id !== options.selected);
     if (hovered) {
       const {left,right,top,bottom}=hovered.bounds;
@@ -298,6 +337,16 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return { id: hit?.id, x: point.x, y: point.y };
   }
   return { canvas: app.canvas, draw, pick, width, height, prepareImages,
-    destroy: () => { destroyed = true; requests.clear(); textures.clear(); app.destroy(true, { children: true, texture: true, textureSource: true, context: true }); } };
+    destroy: () => {
+      destroyed=true;
+      cancelAnimationFrame(costumeFrame);
+      repaintCostume=undefined;
+      requests.clear();
+      // Actor previews and exports can close while a separate stage is active.
+      // Keep Pixi's global render pools valid for those remaining renderers.
+      app.destroy({removeView:true,releaseGlobalResources:false},{children:true,texture:true,textureSource:true,context:true});
+      for(const texture of textures.values())if(!texture.destroyed)texture.destroy(true);
+      textures.clear();
+    } };
 }
 export type Renderer = Awaited<ReturnType<typeof createRenderer>>;

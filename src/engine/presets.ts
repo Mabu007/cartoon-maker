@@ -1,3 +1,5 @@
+import { seatingNames, seatingStyles } from './characterCatalog.ts';
+import { seats, isSeating, type SeatingKind } from './seatingCatalog.ts';
 import { uid, type Anchor, type Character, type Clip, type Project, type Prop, type Scene } from './schema.ts';
 
 const base: Character = {
@@ -14,13 +16,13 @@ export const characters: Character[] = [base,
   { ...base, id: 'lerato', name: 'Lerato', skin: '#d49569', shirt: '#7fcfae', pants: '#4c415a', hair: 'curls', beard: 'none', head: 1.12, height: .84, outfit: 'uniform', eyes: 'wide', earrings: true },
   { ...base, id: 'bra-j', name: 'Bra J', skin: '#76452f', shirt: '#ce9472', pants: '#2c3545', shoes: '#dfca9c', hair: 'bald', beard: 'full', head: .98, height: 1.2, thickness: 1.14, shape: 'square', hat: 'cap', outfit: 'jacket', accessory: 'chain' }
 ];
-export const propColors: Record<Prop['kind'], string> = { sofa: '#e18556', chair: '#cf8c69', table: '#754e4b', desk: '#936b57', door: '#b4a38d', window: '#8ebcad', television: '#343447', lamp: '#f6ca70', cup: '#f5e8ce', book: '#f88e78', phone: '#7569a6', plant: '#6d9878', microphone: '#414057', streetlight: '#504b62', counter: '#d59964', image: '#d9c8e4' };
+export const propColors: Record<Prop['kind'], string> = { sofa: '#e18556', chair: '#cf8c69', table: '#754e4b', desk: '#936b57', door: '#b4a38d', window: '#8ebcad', television: '#343447', lamp: '#f6ca70', cup: '#f5e8ce', book: '#f88e78', phone: '#7569a6', plant: '#6d9878', microphone: '#414057', streetlight: '#504b62', counter: '#d59964', image: '#d9c8e4', ...Object.fromEntries(seatingStyles.map(kind=>[kind,seats[kind].color])) as Record<SeatingKind,string> };
 export const anchors: Partial<Record<Prop['kind'], Anchor>> = {
   sofa: { x: 10, y: -18, action: 'sit', facing: 'three-quarter' }, chair: { x: 0, y: -13, action: 'sit', facing: 'side' },
   cup: { x: 10, y: -10, action: 'hold' }, phone: { x: 3, y: -14, action: 'hold' }, book: { x: 4, y: -6, action: 'hold' }, door: { x: 25, y: -104, action: 'open' }
 };
 export function makeProp(kind: Prop['kind'], x = 480, y = 420, options: Partial<Prop> = {}): Prop {
-  return { id: uid(), name: kind[0].toUpperCase() + kind.slice(1), kind, color: propColors[kind], x, y, scale: 1, rotation: 0, depth: 0, ...options };
+  return { id: uid(), name: isSeating(kind)?seatingNames[kind]:kind[0].toUpperCase() + kind.slice(1), kind, color: propColors[kind], x, y, scale: 1, rotation: 0, depth: 0, ...options };
 }
 const furniture = (kind: Prop['kind'], x: number, y: number, scale: number, depth: number, color?: string) => makeProp(kind, x, y, { id: kind, scale, depth, ...(color ? { color } : {}) });
 export function makeScene(environment: Scene['environment'] = 'Living room', furnished = true): Scene {

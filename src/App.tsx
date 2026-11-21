@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Cloud, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { missingRentMovie } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
@@ -7,10 +7,11 @@ import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.t
 import { compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
 import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import type { Format } from './engine/renderer.ts';
-import { cloudAudio, cloudEnabled, cloudProjects, deleteCloud, listenAccount, login, logout, uploadProject, type Account } from './services/cloud.ts';
+import { cloudAudio, cloudEnabled, cloudProjects, listenAccount, login, logout, type Account } from './services/cloud.ts';
 import { audioLength, getOrFetchAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
 import { type Recognizer } from './services/lipSync.ts';
-import { duplicateProject, listLocal, mergeLocal, removeLocal, saveLocal, updateProjectOrganization, renameSavedProject, lastEditorSession, editorSessionFor, rememberEditorSession, type SavedProject, type ProjectCollection } from './services/projects.ts';
+import { duplicateProject, lastEditorSession, editorSessionFor, rememberEditorSession, type SavedProject, type ProjectCollection } from './services/projects.ts';
+import { listDeviceProjects, mergeDeviceProjects, organizeDeviceProject, removeDeviceProject, renameDeviceProject, saveDeviceProject } from './services/deviceProjects.ts';
 import { characterUsage, removeCharacterFromProject, propUsage } from './engine/assetSafety.ts';
 import { addMovieScene, duplicateMovieScene, renameMovieScene, reorderMovieScene, removeMovieScene } from './engine/sceneWorkflow.ts';
 
@@ -19,7 +20,7 @@ import { backupMovie, restoreMovie } from './services/projectExchange.ts';
 import { PrecisionLipSyncEditor } from './ui/PrecisionLipSyncEditor.tsx';
 import { analyzeLocalLipSync } from './services/localLipSync.ts';
 import { prepareArtwork } from './services/artwork.ts';
-import { imageToR2, setMediaUser } from './services/media.ts';
+import { setMediaUser } from './services/media.ts';
 import { addSceneActor, enterSceneActor, exitSceneActor, setActorVisibleAt, type ActorEntrance } from './engine/actorPresence.ts';
 import { changeClipTiming, copyClip, currentScene, initial, removeEntity, useStudio, type Selection } from './studio.ts';
 import { AssetLibrary } from './ui/AssetLibrary.tsx';
@@ -93,6 +94,7 @@ export default function App() {
   const [dialog, setDialog] = useState<Dialog>(null), [account, setAccount] = useState<Account | null>(null), [items, setItems] = useState<SavedProject[]>([]);
   const [authReady,setAuthReady]=useState(!cloudEnabled);
   const scope = account?.uid ?? 'guest';
+  const [loadedScope,setLoadedScope]=useState<string>();
   const [worlds, setWorlds] = useState<WorldPreset[]>([]);
   const [saveStatus, setSaveStatus] = useState('Saved on device'), [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
   const [factory, setFactory] = useState<Character>(), [requestedClip, setRequestedClip] = useState<ClipRequest>({});
@@ -107,10 +109,8 @@ export default function App() {
   const mixer = useRef<Mixer | null>(null), time = useRef<PreviewTime>({ scene, local: 0 });
   const range = useRef<HTMLInputElement>(null), counter = useRef<HTMLSpanElement>(null), frame = useRef(0), animationToken = useRef(0);
   const livePlaying = useRef(false), livePreparing = useRef(false), settings = useRef({ loop, muted, playbackRange }), originalScope = useRef(scope);
-  const cloudDeletes = useRef(new Set<string>());
-  const cloudQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const localDeletes = useRef(new Set<string>());
   const timelineClipboard = useRef<{ projectId: string; sceneId: string; clips: Clip[] } | null>(null);
-  const saveToken = useRef(0);
   settings.current = { loop, muted, playbackRange };
   const actorNames = Object.fromEntries(scene.actors.map(actor => [actor.id, project.characters.find(character => character.id === actor.characterId)?.name ?? 'Actor']));
   const tell = useCallback((message: string, error = false) => setNotice({ message, error }), []);
@@ -166,68 +166,64 @@ export default function App() {
     pause();setPlaybackRange(undefined);setPlacingDestination(false); setArrange(true);  close();
     useStudio.getState().open(next, edited);
     updateCursor(currentScene(useStudio.getState()), 0, false);
-    saveToken.current++;
     setSaveStatus(edited ? 'Saving…' : 'Saved on device');
   }
   useEffect(() => {
     let alive = true;
-    const active = useStudio.getState();
-    let local: SavedProject[];
-    try {
-      if (originalScope.current !== scope && active.dirty) {
-        saveLocal(originalScope.current, active.project);
-        active.markSaved(active.project);
-      }
-      local = listLocal(scope);
-      if (originalScope.current !== scope || local.length) loadProject(local[0]?.project ?? initial);
-      originalScope.current = scope;
-      setItems(local); setWorlds(worldPresets(scope));
-    } catch (error) {
-      setSaveStatus('Save failed');
-      tell(errorMessage(error), true);
-      return;
-    }
+    const openedScope = originalScope.current;
+    const state = useStudio.getState();
     setMediaUser(account);
     setRemoteAudio(account ? id => cloudAudio(account, id) : undefined);
-    const opened = useStudio.getState();
-    if (account) void cloudProjects(account).then(result => {
-      if (!alive) return;
-      const merged = mergeLocal(scope, result.documents.filter(entry => !cloudDeletes.current.has(scope + '/' + entry.project.id)));
-      setItems(merged);
-      const current = useStudio.getState();
-      if (current.session === opened.session && current.project === opened.project && !current.dirty) {
-        const cached = local.find(entry => entry.project.id === current.project.id);
-        const latest = merged.find(entry => entry.project.id === current.project.id);
-        if (latest && (!cached || latest.updated > cached.updated)) loadProject(latest.project);
-        else if (current.project.id === initial.id && merged[0] && merged[0].project.id !== initial.id) loadProject(merged[0].project);
-      }
-      if (result.skipped) tell(`${result.skipped} invalid cloud project(s) were skipped.`, true);
-    }).catch(error => { if (alive) tell(`Cloud projects unavailable. ${errorMessage(error)}`, true); });
-    return () => { alive = false; };
-  }, [scope]);
-
-  function persist(document = useStudio.getState().project, manual = false) {
-    const saveScope = originalScope.current;
-    const syncAccount = saveScope === scope ? account : null;
-    const token = ++saveToken.current;
-    try {
-      if (cloudDeletes.current.has(saveScope + '/' + document.id)) throw new Error('This project is being deleted.');
-      const updated = saveLocal(saveScope, document);
-      useStudio.getState().markSaved(document);
-      if (saveScope === scope) setItems(listLocal(saveScope));
-      setSaveStatus(syncAccount ? 'Syncing…' : 'Saved on device');
-      if (manual) tell('Project saved on this device.');
-      if (syncAccount) {
-        cloudQueue.current = cloudQueue.current.catch(() => {}).then(() => uploadProject(syncAccount, document, updated)).then(() => {
-          if (saveToken.current === token && useStudio.getState().project === document) setSaveStatus('Saved to cloud');
-        }).catch(error => {
-          if (saveToken.current === token && useStudio.getState().project === document) {
-            setSaveStatus('Cloud sync failed'); tell(`Saved on this device. ${errorMessage(error)}`, true);
+    async function loadScope() {
+      try {
+        if(openedScope!==scope&&state.dirty)await saveDeviceProject(openedScope,state.project);
+        const local=await listDeviceProjects(scope);
+        if(!alive)return;
+        if(openedScope!==scope||local.length)loadProject(local[0]?.project??initial);
+        originalScope.current=scope;
+        setLoadedScope(scope);setItems(local);setWorlds(worldPresets(scope));
+        const recoveryKey='toonroom.recovered-cloud.v1.'+scope;
+        if(!account||localStorage.getItem(recoveryKey))return;
+        const opened=useStudio.getState();
+        try {
+          const result=await cloudProjects(account);
+          if(!alive)return;
+          const merged=await mergeDeviceProjects(scope,result.documents.filter(entry=>!localDeletes.current.has(scope+'/'+entry.project.id)));
+          if(!alive)return;
+          localStorage.setItem(recoveryKey,'1');
+          setItems(merged);
+          const current=useStudio.getState();
+          if(current.session===opened.session&&current.project===opened.project&&!current.dirty){
+            const cached=local.find(entry=>entry.project.id===current.project.id);
+            const latest=merged.find(entry=>entry.project.id===current.project.id);
+            if(latest&&(!cached||latest.updated>cached.updated))loadProject(latest.project);
+            else if(current.project.id===initial.id&&merged[0]&&merged[0].project.id!==initial.id)loadProject(merged[0].project);
           }
-        });
+          if(result.skipped)tell(`${result.skipped} earlier project(s) could not be recovered.`,true);
+        } catch(error) {
+          if(alive)tell(`Earlier cloud projects could not be recovered. ${errorMessage(error)}`,true);
+        }
+      } catch(error) {
+        if(alive){setSaveStatus('Save failed');showError(error);}
       }
+    }
+    void loadScope();
+    return ()=>{alive=false;};
+  },[scope]);
+
+  async function persist(document = useStudio.getState().project, manual = false) {
+    const saveScope=originalScope.current;
+    try {
+      if(localDeletes.current.has(saveScope+'/'+document.id))throw new Error('This project is being deleted.');
+      await saveDeviceProject(saveScope,document);
+      if(originalScope.current===saveScope)useStudio.getState().markSaved(document);
+      if(originalScope.current===saveScope) {
+        setItems(await listDeviceProjects(saveScope));
+        if(useStudio.getState().project===document)setSaveStatus('Saved on device');
+      }
+      if(manual)tell('Project saved on this device.');
       return true;
-    } catch (error) { setSaveStatus('Save failed'); showError(error); return false; }
+    } catch(error) {setSaveStatus('Save failed');showError(error);return false;}
   }
   useEffect(() => {
     if (!dirty) return;
@@ -241,11 +237,16 @@ export default function App() {
   useEffect(() => {
     const flush = () => {
       const current = useStudio.getState();
-      if (!current.dirty || cloudDeletes.current.has(originalScope.current + '/' + current.project.id)) return;
-      try { saveLocal(originalScope.current, current.project); } catch { /* keep pending edits in memory */ }
+      if (!current.dirty || localDeletes.current.has(originalScope.current + '/' + current.project.id)) return;
+      void saveDeviceProject(originalScope.current,current.project).catch(()=>{});
     };
-    window.addEventListener('pagehide', flush);
-    return () => window.removeEventListener('pagehide', flush);
+    const background=()=>{if(document.visibilityState==='hidden')flush();};
+    document.addEventListener('visibilitychange',background);
+    window.addEventListener('pagehide',flush);
+    return ()=>{
+      document.removeEventListener('visibilitychange',background);
+      window.removeEventListener('pagehide',flush);
+    };
   }, []);
   useEffect(() => {
     const local = time.current.scene.id === scene.id ? clamp(time.current.local, 0, scene.duration) : 0;
@@ -306,8 +307,11 @@ export default function App() {
     if (!target) return;
     pause();setPlaybackRange(undefined); updateCursor(target, 0, true); state.setScene(target.id); close();
   }
-  function openProject(value: Project, isNew = false) {
-    if (useStudio.getState().dirty && !persist()) return false;
+  async function openProject(value: Project, isNew = false) {
+    if(loadedScope!==scope)return false;
+    const previous=useStudio.getState();
+    if(previous.dirty&&!await persist(previous.project))return false;
+    if(originalScope.current!==scope||useStudio.getState().project!==previous.project)return false;
     loadProject(value, isNew); setHome('studio');
     return true;
   }
@@ -438,11 +442,9 @@ export default function App() {
     try {
       const imported = await prepareArtwork(file, 'world');
       pause();
-      let artwork=imported.data, cloudPending=false;
-      if(account){try{artwork=await imageToR2(account,imported.data);}catch{cloudPending=true;}}
-      commitScene(current => ({ ...current, backgroundImage: artwork }));
+      commitScene(current => ({ ...current, backgroundImage: imported.data }));
       setMobilePanel('stage');
-      tell(cloudPending?'World added locally. R2 upload will be retried on cloud save; check your bucket CORS if sync fails.':'World image added. Your cast and props are still in place.',cloudPending);
+      tell('World image added.');
     } catch (error) { showError(error); }
   }
   async function uploadProp(file: File) {
@@ -450,11 +452,9 @@ export default function App() {
       const imported = await prepareArtwork(file, 'prop');
       const maxDimension = Math.max(imported.width, imported.height);
       const sizing = Math.min(1, 165 / maxDimension);
-      let artwork=imported.data,cloudPending=false;
-      if(account){try{artwork=await imageToR2(account,imported.data);}catch{cloudPending=true;}}
       const prop = makeProp('image', 480, 435, {
         name: file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Picture prop',
-        imageData: artwork,
+        imageData: imported.data,
         imageWidth: Math.max(10, Math.round(imported.width * sizing)),
         imageHeight: Math.max(10, Math.round(imported.height * sizing)), interaction: 'none'
       });
@@ -462,7 +462,7 @@ export default function App() {
       commitScene(current => ({ ...current, objects: [...current.objects, prop] }));
       select({ kind: 'object', id: prop.id });
       setMobilePanel('inspector');
-      tell(cloudPending?'Picture added locally. R2 upload pending; check your bucket CORS if cloud sync fails.':'Picture prop added. Set its interaction type in the inspector.',cloudPending);
+      tell('Picture prop added. Set its interaction type in the inspector.');
     } catch (error) { showError(error); }
   }
   function storeWorlds(next:WorldPreset[]){
@@ -738,18 +738,17 @@ export default function App() {
   function addSound(name: typeof soundNames[number]) { const start = clamp(time.current.local, 0, scene.duration - .1); run(() => addClip({ id: uid(), track: 'audio', name: label(name), asset: `builtin:${name}`, length: Math.min(.8, scene.duration - start), start, muted: false, volume: .8, offset: 0 })); }
   async function deleteSavedProject(item: Project) {
     const key = scope + '/' + item.id;
-    if (originalScope.current !== scope || cloudDeletes.current.has(key)) return;
-    cloudDeletes.current.add(key);
+    if (originalScope.current !== scope || localDeletes.current.has(key)) return;
+    localDeletes.current.add(key);
     try {
-      if (account) { await cloudQueue.current; await deleteCloud(account, item.id); }
-      removeLocal(scope, item.id);
+      await removeDeviceProject(scope,item.id);
       if (originalScope.current !== scope) return;
-      const entries = listLocal(scope);
+      const entries=await listDeviceProjects(scope);
       setItems(entries);
       if (useStudio.getState().project.id === item.id) loadProject(entries[0]?.project ?? makeProject());
       tell('Project deleted.');
     } catch (error) {
-      cloudDeletes.current.delete(key);
+      localDeletes.current.delete(key);
       showError(error);
     }
   }
@@ -757,11 +756,11 @@ export default function App() {
     ask(`Delete “${item.name}”?`, 'This permanently removes the saved project.', () => void deleteSavedProject(item));
   }
   function newMovie() { startManualMovie(); }
-  function startManualMovie() {
+  async function startManualMovie() {
     const next = makeProject();
     next.name = 'Untitled cartoon';
     next.scenes[0] = { ...next.scenes[0], name: 'Scene 1', duration: 30, actors: [], clips: [], objects: [] };
-    if (!openProject(next, true)) return;
+    if(!await openProject(next,true))return;
     localStorage.setItem('toonroom.started', '1');
      setArrange(true); setMobilePanel('stage');
     useStudio.getState().setLibrary('Worlds');
@@ -770,38 +769,29 @@ export default function App() {
     // The dedicated Projects UI displays the destructive confirmation.
     void deleteSavedProject(item);
   }
-  function organizeHomeProject(id:string,changes:{favorite?:boolean;collection?:ProjectCollection}){
-    try{setItems(updateProjectOrganization(scope,id,changes));}
+  async function organizeHomeProject(id:string,changes:{favorite?:boolean;collection?:ProjectCollection}){
+    try{await organizeDeviceProject(scope,id,changes);setItems(await listDeviceProjects(scope));}
     catch(error){showError(error);}
   }
   async function renameHomeProject(value:Project,name:string) {
-    const next=renameSavedProject(scope,value.id,name);
+    const next=await renameDeviceProject(scope,value.id,name);
     const current=useStudio.getState();
     if(current.project.id===value.id){
       current.edit(existing=>({...existing,name:next.name,...(existing.production?.bible.status!=='locked'&&existing.production?
         {production:{...existing.production,bible:{...existing.production.bible,
           profile:{...existing.production.bible.profile,title:next.name}}}}:{})}));
     }
-    setItems(listLocal(scope));
-    if(account){
-      const entry=listLocal(scope).find(item=>item.project.id===next.id);
-      if(entry){
-        cloudQueue.current=cloudQueue.current.catch(()=>{}).then(()=>uploadProject(account,entry.project,entry.updated));
-        try{await cloudQueue.current;}catch(error){tell('Renamed locally; cloud sync will need another attempt.',true);}
-      }
-    }
+    setItems(await listDeviceProjects(scope));
   }
-  function duplicateHomeProject(value:Project) {
+  async function duplicateHomeProject(value:Project) {
     try{
       const copy=duplicateProject(value);
-      const updated=saveLocal(scope,copy);
-      setItems(listLocal(scope));
-      if(account)cloudQueue.current=cloudQueue.current.catch(()=>{}).then(()=>uploadProject(account,copy,updated))
-        .catch(error=>tell('Duplicate saved locally; cloud copy failed: '+errorMessage(error),true));
+      await saveDeviceProject(scope,copy);
+      setItems(await listDeviceProjects(scope));
     }catch(error){showError(error);}
   }
-  function openLibraryProject(value:Project){
-    if(!openProject(value))return;
+  async function openLibraryProject(value:Project){
+    if(!await openProject(value))return;
     const previous=editorSessionFor(scope,value.id)??(
       lastEditorSession(scope)?.projectId===value.id?lastEditorSession(scope):undefined);
 
@@ -814,14 +804,13 @@ export default function App() {
     }
   }
   function openRentExample() {
-    if (!openProject(missingRentMovie(), true)) return;
-
+    void openProject(missingRentMovie(),true);
   }
   async function exchange(file: File) {
     try {
       const value = await restoreMovie(file);
       if (useStudio.getState().session !== session) throw new Error('The project changed while the backup was loading. Import it again.');
-      if (!openProject(value, true)) return;
+      if(!await openProject(value,true))return;
         close(); tell('Project restored as a new copy.');
     } catch (error) { showError(error); }
   }
@@ -901,7 +890,7 @@ export default function App() {
     window.addEventListener('keydown', keys); return () => window.removeEventListener('keydown', keys);
   });
   useEffect(() => { const timer = setTimeout(() => { if (compact === false) window.dispatchEvent(new CustomEvent('toonroom-time', { detail: time.current.local })); }, 0); return () => clearTimeout(timer); }, [compact, scene.id]);
-  const headerStatus = saveStatus === 'Saving…' || saveStatus === 'Syncing…' ? saveStatus : saveStatus === 'Save failed' || saveStatus === 'Cloud sync failed' ? saveStatus : account && saveStatus === 'Saved to cloud' ? 'Saved to cloud' : 'Saved locally';
+  const headerStatus = saveStatus;
   let content: ReactNode;
   if (dialog === 'character') content = <CharacterFactory source={factory} save={saveCharacter} close={close} remove={deleteCharacter}/>;
   if (dialog === 'clip') content = <AddClipDialog scene={scene} actors={actorNames} time={time.current.local} request={requestedClip} close={close} add={clip => run(() => addClip(clip))} audio={showAudio}/>;
@@ -920,13 +909,13 @@ export default function App() {
     if (clip?.track === 'dialogue' && character) content = <PrecisionLipSyncEditor key={clip.id} clip={clip} character={character} change={patchClip} close={close} regenerate={() => alignVoiceClip(clip,'phonetic')} undo={() => useStudio.getState().undo()} redo={() => useStudio.getState().redo()} canUndo={hasUndo} canRedo={hasRedo}/>;
   }
   if (dialog === 'export') content = <ExportDialog project={project} initialFormat={format} initialSubtitles={subtitles} close={close}/>;
-  if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value => { if (openProject(value)) {   } }} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
+  if (dialog === 'projects') content = <ProjectsDialog items={items} current={project.id} close={close} create={newMovie} open={value=>void openProject(value)} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
   if (dialog === 'scenes') content = <ScenesDialog scenes={project.scenes} active={scene.id}
     close={close} open={switchScene} rename={renameDirectScene} savePreset={saveWorld}
     add={createDirectScene} copy={duplicateDirectScene}
     reorder={reorderDirectScene} drop={dropDirectScene}/>;
   if (dialog === 'account') content = <AccountDialog available={cloudEnabled} account={account} login={login} logout={async () => {
-    if (useStudio.getState().dirty && !persist()) throw new Error('Save your current project before signing out.');
+    if (useStudio.getState().dirty && !await persist()) throw new Error('Save your current project before signing out.');
     await logout();
   }} close={close}/>;
   if (dialog === 'help') content = <HelpDialog close={close} demo={() => { openProject(makeProject(true), true);  }}/>;
@@ -938,7 +927,7 @@ export default function App() {
     }}/>;
   const noticeToast = notice && <div className={`toast ${notice.error ? 'toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{!notice.error && <Check size={16}/>}<span>{notice.message}</span><IconButton title="Dismiss notice" onClick={() => setNotice(null)}><X size={14}/></IconButton></div>;
   if (!account || !authReady || home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
-    <Welcome screen={account&&authReady&&home==='projects'?'projects':'landing'} items={items} lastSession={lastEditorSession(scope)}
+    <Welcome screen={account&&authReady&&loadedScope===scope&&home==='projects'?'projects':'landing'} items={items} lastSession={lastEditorSession(scope)}
       account={account} authAvailable={cloudEnabled&&authReady} login={login}
       logout={async()=>{await logout();setHome('landing');}}
       enter={()=>setHome('projects')}
@@ -955,7 +944,7 @@ export default function App() {
   return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''}`}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
-      <div className="project-controls"><button className="quiet project-button" onClick={() => { pause(); if (useStudio.getState().dirty && !persist()) return; close(); setHome('projects'); }}><House size={17}/><span>Home</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label>{saveStatus==='Save failed'&&<button className="quiet" onClick={()=>void backupMovie(project).catch(showError)}>Download recovery backup</button>}<span className="save-state" role="status">{account ? <Cloud size={14}/> : <Check size={14}/>} {headerStatus}</span></div>
+      <div className="project-controls"><button className="quiet project-button" onClick={async()=>{pause();if(useStudio.getState().dirty&&!await persist())return;close();setHome('projects');}}><House size={17}/><span>Home</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label>{saveStatus==='Save failed'&&<button className="quiet" onClick={()=>void backupMovie(project).catch(showError)}>Download recovery backup</button>}<span className="save-state" role="status"><Check size={14}/> {headerStatus}</span></div>
       <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title={playing?'Pause preview':'Play preview'} onClick={() => void play()}>{playing?<Pause size={17}/>:<Play size={17}/>}</IconButton><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
     </header>
     {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button><IconButton title="Undo" disabled={!hasUndo} onClick={() => run(() => useStudio.getState().undo())}><Undo2 size={17}/></IconButton><IconButton title="Redo" disabled={!hasRedo} onClick={() => run(() => useStudio.getState().redo())}><Redo2 size={17}/></IconButton></nav>

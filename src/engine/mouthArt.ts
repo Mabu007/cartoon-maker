@@ -1,12 +1,13 @@
 import { Container, Graphics } from 'pixi.js';
 import type { Character, View } from './schema.ts';
 import type { FacialPerformance } from './facialAnimation.ts';
+import { illustratedPath } from './illustration.ts';
 import { mouthGeometry, type MouthGeometry } from './mouthRig.ts';
 
 type MouthLayer = { root:Container; cavity:Graphics; mask:Graphics; inside:Container;
   teeth:Graphics[]; tongue:Graphics; lips:Graphics };
-const layers=new WeakMap<Graphics,MouthLayer>();
-function getLayer(face:Graphics):MouthLayer {
+const layers=new WeakMap<Container,MouthLayer>();
+function getLayer(face:Container):MouthLayer {
   const previous=layers.get(face);
   if(previous)return previous;
   const root=new Container(),cavity=new Graphics(),mask=new Graphics();
@@ -21,7 +22,7 @@ function getLayer(face:Graphics):MouthLayer {
   return result;
 }
 /** Clearing Graphics paths does not remove cached children on rear views. */
-export function hideExpressionMouth(face:Graphics){
+export function hideExpressionMouth(face:Container){
   const layer=layers.get(face);
   if(layer)layer.root.visible=false;
 }
@@ -38,7 +39,7 @@ export function traceMouthCavity(g:Graphics,shape:MouthGeometry):Graphics {
  * <clipPath>, and Pixi's renderer uses its equivalent native Graphics mask.
  * Neither implementation swaps image mouth shapes or approximates clipping.
  */
-export function drawExpressionMouth(face:Graphics,character:Character,mood:FacialPerformance,x:number,view:View='front') {
+export function drawExpressionMouth(face:Container,character:Character,mood:FacialPerformance,x:number,view:View='front') {
   const layer=getLayer(face),model=mouthGeometry(character,mood,view);
   layer.root.visible=true;
   layer.root.position.set(x,27);
@@ -48,11 +49,9 @@ export function drawExpressionMouth(face:Graphics,character:Character,mood:Facia
   if(!model.open) {
     for(const item of layer.teeth)item.clear();
     layer.tongue.clear();
-    const asym=model.parameters.asymmetry;
-    layer.lips.moveTo(-model.rx,asym*1.9)
-      .quadraticCurveTo(0,mood.expression==='sad'?-2.6:1.4,
-        model.rx,-asym*1.9)
-      .stroke({color:'#302438',width:character.mouth==='full'?3.1:2.5,cap:'round'});
+    layer.lips.path(illustratedPath(model.restPath)).stroke({
+      color:character.wardrobe?.lipColor??'#302438',width:(character.mouth==='full'?3.1:2.5)*(character.wardrobe?.lipThickness??1),cap:'round'
+    });
     if(character.mouth==='full')layer.lips.moveTo(-model.rx*.7,2.4)
       .quadraticCurveTo(0,3.3,model.rx*.7,2.2)
       .stroke({color:'#693a4a',width:1.2,cap:'round'});
@@ -67,15 +66,17 @@ export function drawExpressionMouth(face:Graphics,character:Character,mood:Facia
     const graphic=layer.teeth[i];graphic.clear();
     const tooth=model.teeth.find(item=>item.index===i);
     if(!tooth||tooth.height<.3)continue;
-    graphic.roundRect(tooth.x,tooth.y,tooth.width,tooth.height,.6)
-      .fill(tooth.fill).stroke({color:tooth.outline,width:.48});
+    if(tooth.pointed)graphic.poly([tooth.x,tooth.y,tooth.x+tooth.width,tooth.y,tooth.x+tooth.width*.58,tooth.y+tooth.height]);
+    else graphic.roundRect(tooth.x,tooth.y,tooth.width,tooth.height,.6);
+    graphic.fill(tooth.fill).stroke({color:tooth.outline,width:.48});
+    if(character.wardrobe?.toothStyle==='braces')graphic.rect(tooth.x,tooth.y+tooth.height*.36,tooth.width,1).fill('#9098aa');
   }
   const {rx,top,bottom,cornerLeft,cornerRight}=model;
   // Same lip control points and quadratic paths as SvgMouthRig.
   layer.lips.moveTo(-rx,cornerLeft)
     .quadraticCurveTo(-rx*.4,top-1.2,0,top-1.45)
     .quadraticCurveTo(rx*.4,top-1.05,rx,cornerRight)
-    .stroke({color:'#713d4c',width:character.mouth==='full'?2.1:1.65,cap:'round'});
+    .stroke({color:character.wardrobe?.lipColor??'#713d4c',width:(character.mouth==='full'?2.1:1.65)*(character.wardrobe?.lipThickness??1),cap:'round'});
   layer.lips.moveTo(-rx,cornerLeft)
     .quadraticCurveTo(-rx*.35,bottom+.65,0,bottom+1.15)
     .quadraticCurveTo(rx*.35,bottom+.65,rx,cornerRight)

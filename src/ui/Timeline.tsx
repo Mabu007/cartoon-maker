@@ -30,7 +30,7 @@ export function Timeline({
   const playheadRef=useRef(playhead),drag=useRef<DragSession|null>(null),scrub=useRef(false),contextRef=useRef<HTMLDivElement>(null);
   const anchor=useRef<string|null>(null);
   const [labelWidth,setLabelWidth]=useState(200);
-  const sheetWidth=Math.max(viewport,260)*zoom;
+  const sheetWidth=labelWidth+Math.max(viewport-labelWidth, 300)*zoom;
   const unitsPerPixel=scene.duration/Math.max(1,sheetWidth-labelWidth);
   const pixelsPerSecond=1/unitsPerPixel;
   const shown=preview?.id===scene.id?preview:scene;

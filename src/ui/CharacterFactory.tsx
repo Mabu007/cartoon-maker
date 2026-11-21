@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Copy, Maximize2, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { createRenderer } from '../engine/renderer.ts';
 import { fitCharacterPreview } from '../engine/previewLayout.ts';
+import { CharacterChoices } from './CharacterChoices.tsx';
 import { NativeCharacterPreview } from './NativeCharacterPreview.tsx';
 import { actions, expressions, label, uid, views, type Action, type Character, type Expression, type Scene, type View } from '../engine/schema.ts';
 import { characters } from '../engine/presets.ts';
@@ -10,21 +11,17 @@ import { Avatar, IconButton, Modal, Select } from './shared.tsx';
 
 const sliders = { height: 'Height', head: 'Head size', thickness: 'Build', torso: 'Torso length', arms: 'Arm length', legs: 'Leg length', eyeSpacing: 'Eye spacing' } as const;
 const skinTones = ['#f2c49b', '#d89b70', '#b97550', '#925b40', '#76452f', '#503123'];
-const colors = { skin: 'Skin tone', shirt: 'Top', pants: 'Trousers', hairColor: 'Hair color', shoes: 'Shoes' } as const;
-const styles = {
-  shape: ['round', 'oval', 'square'], eyes: ['round', 'relaxed', 'wide'], brows: ['arched', 'straight', 'bold'], nose: ['button', 'long', 'flat'], mouth: ['smile', 'line', 'full'], ears: ['round', 'small', 'wide'],
-  hair: ['fade', 'puff', 'locs', 'buzz', 'bald', 'afro', 'braids', 'curls'], beard: ['none', 'goatee', 'full'], hat: ['none', 'cap', 'beanie'], outfit: ['tee', 'hoodie', 'jacket', 'sweater', 'uniform'], accessory: ['none', 'chain', 'scarf']
-} as const;
-const styleGroups = { Hair: ['hair', 'beard', 'hat'], Face: ['shape', 'eyes', 'brows', 'nose', 'mouth', 'ears'], Outfit: ['outfit', 'accessory'], Body: [] } as const;
+const sections = ['Hair','Face','Outfit','Accessories','Body'] as const;
 const viewLabels: Record<View, string> = { front: 'Front', 'three-quarter': '¾ Front', side: 'Side', 'back-quarter': '¾ Back', back: 'Back' };
 export function CharacterFactory({ source, save, close, remove }: { source?: Character; save: (value: Character) => void; close: () => void; remove: (id: string) => void }) {
   const [draft, setDraft] = useState<Character>(() => source ?? { ...characters[0], id: uid(), name: 'New character' });
-  const [section, setSection] = useState<keyof typeof styleGroups>('Hair'), [view, setView] = useState<View>('three-quarter');
+  const [section, setSection] = useState<typeof sections[number]>('Hair'), [view, setView] = useState<View>('three-quarter');
   const [action, setAction] = useState<Action>('idle'), [expression, setExpression] = useState<Expression>('neutral');
   const [look, setLook] = useState<'auto'|'camera'|'left'|'right'|'up'>('auto');
   const [mouthTest,setMouthTest]=useState<'auto'|Viseme>('auto');
   const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.4), [fallback, setFallback] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const [tooth,setTooth]=useState(0);
   const canvas = useRef<HTMLDivElement>(null);
   const frame = useRef({ draft, action, expression, view, flip, scale, look, mouthTest });
   frame.current = { draft, action, expression, view, flip, scale, look, mouthTest };
@@ -76,7 +73,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           const gaze = look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } :
             look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 };
           try {
-            renderer.draw(scene,[draft],time,{characterPreview:true,previewFocus:gaze,
+            renderer.draw(scene,[draft],time,{characterPreview:true,previewFocus:gaze,previewCamera:look==='camera',
               previewViseme:mouthTest==='auto'?undefined:mouthTest});
           } catch (cause) {
             useNativePreview(cause);
@@ -90,6 +87,10 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
     return () => { alive = false; cancelAnimationFrame(handle); try { dispose(); } catch { /* fallback already disposed the renderer */ } };
   }, []);
   const update = <K extends keyof Character>(key: K, value: Character[K]) => setDraft(item => ({ ...item, [key]: value }));
+  type Closet = NonNullable<Character['wardrobe']>;
+  const updateCloset=<K extends keyof Closet>(key:K,value:Closet[K])=>setDraft(item=>({...item,wardrobe:{...item.wardrobe,[key]:value}}));
+  const toothColors=Array.from({length:6},(_,index)=>draft.toothColors?.[index]??(draft.goldTeeth?.includes(index)?'#eac05c':'#fff4de'));
+
   return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
     <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas">{fallback ? <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={fitCharacterPreview(draft, scale, action).scale} focus={look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } : look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 }} mouthTest={mouthTest==='auto'?undefined:mouthTest}/> : <div className="factory-renderer-mount" ref={canvas}/>}</div><div className="factory-zoom"><IconButton title="Fit entire character" onClick={() => setScale(1.4)}><Maximize2 size={15}/></IconButton><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
       <div className="segmented view-choice" aria-label="Character view">{views.map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{viewLabels[item]}</button>)}</div>
@@ -108,28 +109,28 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         setDraft(current => ({ ...item, id: current.id, name: current.name }));
       }}>Surprise me ✨</button></div>
       <div className="preset-row" aria-label="Character presets">{characters.map(item => <button key={item.id} type="button" title={item.name} aria-label={`Use ${item.name} preset`} onClick={() => setDraft({ ...item, id: draft.id, name: draft.name })}><Avatar character={item}/><span>{item.name}</span></button>)}</div>
-      <div className="segmented factory-categories">{(['Hair', 'Face', 'Outfit', 'Body'] as const).map(item => <button key={item} type="button" onClick={() => setSection(item)} className={item === section ? 'active' : ''}>{item}</button>)}</div>
+      <div className="segmented factory-categories">{sections.map(item => <button key={item} type="button" onClick={() => setSection(item)} className={item === section ? 'active' : ''}>{item}</button>)}</div>
       <div className="factory-fields">
-        {styleGroups[section].map(key => <label className="field" key={key}>{label(key)}
-          {key === 'hair' || key === 'outfit' || key === 'shape'
-            ? <div className="choice-pills">{styles[key].map(value => <button type="button" className={draft[key] === value ? 'selected' : ''} key={value} onClick={() => update(key, value)}>{label(value)}</button>)}</div>
-            : <Select aria={label(key)} value={draft[key]} onChange={v => update(key, v)} options={styles[key]}/>}
-        </label>)}
+        {section!=='Body'&&<CharacterChoices key={section} section={section} character={draft} change={update} changeCloset={updateCloset}/>}
         {section === 'Body' && <><p className="factory-helper">Start with three simple proportions. Your character stays rigged at every size.</p>{(['height', 'head', 'thickness'] as const).map(id => <label className="field slider" key={id}>{sliders[id]}<input type="range" min={id === 'thickness' ? .65 : .75} max={id === 'head' ? 1.35 : id === 'thickness' ? 1.45 : 1.3} step={.01} value={draft[id]} onChange={e => update(id, Number(e.target.value))}/></label>)}</>}
         {section === 'Face' && <div className="factory-teeth-editor">
-          <span>Teeth · click to make gold, right-click for a missing tooth</span>
-          <div className="factory-teeth-row" role="group" aria-label="Choose gold teeth">
-            {Array.from({ length: 6 }, (_, index) => <button type="button" key={index}
-              className={(draft.goldTeeth ?? []).includes(index) ? 'gold' : ''}
-              aria-label={'Tooth ' + (index + 1)} aria-pressed={(draft.goldTeeth ?? []).includes(index)}
-              onContextMenu={event=>{event.preventDefault();update('missingTeeth',(draft.missingTeeth??[]).includes(index)
-                ?(draft.missingTeeth??[]).filter(value=>value!==index)
-                :[...(draft.missingTeeth??[]),index].sort((a,b)=>a-b));}}
-              title={(draft.missingTeeth??[]).includes(index)?'Missing tooth — right-click to restore':'Right-click to remove this tooth'}
-              onClick={() => update('goldTeeth', (draft.goldTeeth ?? []).includes(index)
-                ? (draft.goldTeeth ?? []).filter(value => value !== index)
-                : [...(draft.goldTeeth ?? []), index].sort((a,b) => a-b))}>{index + 1}</button>)}
+          <strong>Tooth color</strong>
+          <div className="factory-teeth-row" role="group" aria-label="Select a tooth">
+            {toothColors.map((color,index)=><button type="button" key={index} aria-pressed={tooth===index}
+              aria-label={`Tooth ${index+1}`} title={draft.missingTeeth?.includes(index)?'Missing tooth':`Tooth ${index+1}`}
+              style={{background:draft.missingTeeth?.includes(index)?undefined:color,color:'#2b2235'}}
+              className={tooth===index?'is-selected':''} onClick={()=>{setTooth(index);setMouthTest('wide');}}>{index+1}</button>)}
           </div>
+          <div className="field-row">
+            <label>Color <input type="color" aria-label="Selected tooth color" value={toothColors[tooth]}
+              onChange={e=>update('toothColors',toothColors.map((color,index)=>index===tooth?e.target.value:color))}/></label>
+            <label className="check"><input type="checkbox" checked={draft.missingTeeth?.includes(tooth)??false}
+              onChange={e=>update('missingTeeth',e.target.checked?[...(draft.missingTeeth??[]),tooth]:(draft.missingTeeth??[]).filter(index=>index!==tooth))}/> Missing tooth</label>
+          </div>
+          <label className="field slider">Tooth color intensity
+            <input type="range" min="0" max="1" step=".01" value={draft.wardrobe?.teethIntensity??1}
+              onChange={e=>updateCloset('teethIntensity',Number(e.target.value))}/>
+          </label>
         </div>}
         {section === 'Face' && <div className="factory-mouth-rig-editor">
           <strong>Parametric SVG mouth rig</strong>
@@ -150,11 +151,9 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
               }}))}/>
           </label>)}
         </div>}
-        {section === 'Face' && <div className="factory-toggle-row"><label className="check"><input type="checkbox" checked={draft.glasses} onChange={e => update('glasses', e.target.checked)}/> Glasses</label><label className="check"><input type="checkbox" checked={draft.earrings} onChange={e => update('earrings', e.target.checked)}/> Earrings</label></div>}
-        {section === 'Outfit' && <div className="color-row">{Object.entries(colors).filter(([key]) => key !== 'skin').map(([key, title]) => <label key={key} title={title}><input type="color" aria-label={title} value={draft[key as keyof typeof colors]} onChange={e => update(key as keyof typeof colors, e.target.value)}/><span>{title}</span></label>)}</div>}
         <div className="factory-skin"><span>Skin tone</span><div className="tone-swatches">{skinTones.map(tone => <button key={tone} type="button" className={draft.skin.toLowerCase() === tone ? 'selected' : ''} style={{ backgroundColor: tone }} title={tone} aria-label={`Skin tone ${tone}`} onClick={() => update('skin', tone)}/>)}</div><label className="custom-tone">Custom <input type="color" aria-label="Custom skin tone" value={draft.skin} onChange={e => update('skin', e.target.value)}/></label></div>
         {(section === 'Face' || section === 'Body') && <><button type="button" className="advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(value => !value)}>{advanced ? '− Hide advanced proportions' : '+ Advanced proportions'}</button>
-        {advanced && <div className="factory-advanced">{(section === 'Face' ? ['eyeSpacing'] : ['torso', 'arms', 'legs']).map(key => { const id = key as keyof typeof sliders; return <label className="field slider" key={key}>{sliders[id]}<input type="range" min={.65} max={id === 'eyeSpacing' ? 1.4 : 1.3} step={.01} value={draft[id]} onChange={event => update(id, Number(event.target.value))}/></label>; })}</div>}</>}
+        {advanced && <div className="factory-advanced">{(section === 'Face' ? ['eyeSpacing'] : ['torso', 'arms', 'legs']).map(key => { const id = key as keyof typeof sliders; return <label className="field slider" key={key}>{sliders[id]}<input type="range" min={id==='eyeSpacing'?.65:.75} max={id === 'eyeSpacing' ? 1.4 : 1.3} step={.01} value={draft[id]} onChange={event => update(id, Number(event.target.value))}/></label>; })}</div>}</>}
       </div>
     </div></div>
     <footer className="modal-footer">{source && <><IconButton title="Delete character" onClick={() => remove(source.id)}><Trash2 size={17}/></IconButton><button className="quiet" disabled={!draft.name.trim()} onClick={() => save({ ...draft, id: uid(), name: `${draft.name.trim().slice(0, 54)} copy` })}><Copy size={16}/> Duplicate</button></>}<span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!draft.name.trim()} onClick={() => save({ ...draft, name: draft.name.trim() })}><Save size={16}/> Save character</button></footer>

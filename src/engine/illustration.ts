@@ -38,24 +38,6 @@ function detail(g: Graphics, d: string, color: string, width = 1.8) {
   part(g, d, 'none', color, width);
 }
 
-export function drawIllustratedHead(g: Graphics, c: Character, art: IllustratedView) {
-  const base = c.shape === 'round' ? 47 : c.shape === 'square' ? 45 : 42;
-  const w = base * (art.profile ? .82 : .94 + art.width * .06);
-  const h = c.shape === 'round' ? 42 : 46;
-  const contour = c.shape === 'square'
-    ? 'M ' + (-w + 14) + ' ' + (-h) + ' C ' + (-w - 2) + ' ' + (-h) + ' ' + (-w - 5) + ' ' + (-h + 11) + ' ' + (-w) + ' -4 C ' + (-w - 3) + ' 24 ' + (-w + 4) + ' ' + (h - 1) + ' -8 ' + h + ' C 14 ' + (h + 3) + ' ' + (w + 2) + ' 24 ' + w + ' -8 C ' + (w + 2) + ' ' + (-h + 11) + ' ' + (w - 4) + ' ' + (-h) + ' ' + (w - 15) + ' ' + (-h) + ' Z'
-    : 'M 1 ' + (-h - 2) + ' C ' + (-w * .7) + ' ' + (-h - 6) + ' ' + (-w - 4) + ' ' + (-h * .52) + ' ' + (-w) + ' 3 C ' + (-w + 1) + ' ' + (h * .7) + ' ' + (-w * .38) + ' ' + (h + 5) + ' 1 ' + h + ' C ' + (w * .65) + ' ' + (h + 5) + ' ' + (w + 5) + ' ' + (h * .38) + ' ' + w + ' -7 C ' + (w - 1) + ' ' + (-h * .72) + ' ' + (w * .53) + ' ' + (-h - 3) + ' 1 ' + (-h - 2) + ' Z';
-  part(g, contour, c.skin, INK, 3.8);
-  // Gentle cheek / temple planes make the head feel illustrated without hard highlights.
-  part(g, 'M ' + (-w + 7) + ' 2 C ' + (-w + 4) + ' 17 ' + (-w * .7) + ' 30 ' + (-w * .38) + ' 33 Q ' + (-w + 13) + ' 19 ' + (-w + 7) + ' 2 Z', shade(c.skin, -.11), 'none', 0);
-  part(g, 'M ' + (w - 11) + ' -23 Q ' + (w - 3) + ' -10 ' + (w - 10) + ' 5', 'none', shade(c.skin, .19), 2);
-  if (!art.rear) {
-    part(g, 'M ' + (-w + 10) + ' 18 Q ' + (-w + 14) + ' 22 ' + (-w + 9) + ' 27', 'none', shade(c.skin, -.18), 1.6);
-    if (!art.profile) part(g, 'M ' + (w - 15) + ' 22 Q ' + (w - 8) + ' 20 ' + (w - 11) + ' 13', 'none', shade(c.skin, -.13), 1.5);
-  }
-  return { w, h };
-}
-
 export function drawIllustratedHair(g: Graphics, c: Character, art: IllustratedView, w: number, h: number) {
   if (c.hair === 'bald') return;
   const color = c.hairColor, light = shade(color, .35), mid = shade(color, .18), dark = shade(color, -.18);
@@ -155,54 +137,6 @@ export function drawIllustratedHair(g: Graphics, c: Character, art: IllustratedV
     }
   }
   if (back) detail(g, 'M ' + (-w*.60) + ' -8 Q 0 1 ' + (w*.60) + ' -8', mid, 1.2);
-}
-
-/** Distinct upper-lip moustache and cheek/jaw beard, leaving the mouth visible. */
-export function drawIllustratedFacialHair(g: Graphics, c: Character, art: IllustratedView, center: number, w: number) {
-  if (c.beard === 'none' || art.rear) return;
-  const hair = c.hairColor, highlight = shade(hair, .28);
-  const x = Math.max(-w*.19, Math.min(w*.21, center));
-  const side = art.profile ? .78 : 1;
-  // Two tapered, independently outlined moustache lobes sit above (not on) the mouth.
-  part(g, 'M ' + (x-1) + ' 17 Q ' + (x-7*side) + ' 12 ' + (x-16*side) + ' 16 Q ' + (x-12*side) + ' 23 ' + (x-3) + ' 20 Q ' + x + ' 19 ' + (x-1) + ' 17 Z', hair, 'none', 0);
-  if (!art.profile) part(g, 'M ' + (x+1) + ' 17 Q ' + (x+8) + ' 12 ' + (x+16) + ' 16 Q ' + (x+12) + ' 23 ' + (x+3) + ' 20 Q ' + x + ' 19 ' + (x+1) + ' 17 Z', hair, 'none', 0);
-  detail(g, 'M ' + (x-12*side) + ' 17 Q ' + (x-6*side) + ' 14 ' + (x-3) + ' 18', highlight, 1.1);
-  if (c.beard === 'goatee') {
-    // Vertical chin tuft, separated from both moustache and speaking mouth.
-    part(g, 'M ' + (x-9*side) + ' 32 Q ' + (x-12*side) + ' 41 ' + x + ' 45 Q ' + (x+12*side) + ' 41 ' + (x+9*side) + ' 32 Q ' + (x+2) + ' 37 ' + (x-9*side) + ' 32 Z', hair, 'none', 0);
-    detail(g, 'M ' + (x-4) + ' 37 Q ' + (x-1) + ' 40 ' + (x+1) + ' 38', highlight, 1.2);
-  } else {
-    // Sideburns follow the cheeks and form a connected U-shaped jawline.
-    // The skin around the lips stays clear so facial speech remains legible.
-    const outer = 'M ' + (-w+4) + ' 13 Q ' + (-w+2) + ' 32 ' + (-w*.53) + ' 39 Q 0 54 ' + (w*.54) + ' 39 Q ' + (w-3) + ' 31 ' + (w-4) + ' 13' +
-      ' L ' + (w-11) + ' 23 Q ' + (w*.46) + ' 43 0 45 Q ' + (-w*.46) + ' 43 ' + (-w+11) + ' 23 Z';
-    part(g, outer, hair, 'none', 0);
-    detail(g, 'M ' + (-w*.52) + ' 38 Q 0 50 ' + (w*.52) + ' 38', highlight, 1.5);
-  }
-}
-
-export function drawIllustratedTorso(g: Graphics, c: Character, art: IllustratedView, neck: {x:number;y:number}, hip: {x:number;y:number}) {
-  const shoulder = (c.outfit === 'hoodie' ? 26 : 24) * art.width * c.thickness;
-  const waist = (19 + (c.outfit === 'jacket' ? 3 : 0)) * art.width * c.thickness;
-  const top = neck.y + 2, bottom = hip.y + 7, x = neck.x, bx = hip.x;
-  const silhouette = 'M ' + (x - 10) + ' ' + (top - 4) + ' C ' + (x - 22) + ' ' + (top - 1) + ' ' + (x - shoulder) + ' ' + (top + 5) + ' ' + (x - shoulder) + ' ' + (top + 14) + ' L ' + (bx - waist) + ' ' + (bottom - 4) + ' Q ' + (bx - waist) + ' ' + (bottom + 3) + ' ' + bx + ' ' + bottom + ' Q ' + (bx + waist) + ' ' + (bottom + 3) + ' ' + (bx + waist) + ' ' + (bottom - 4) + ' L ' + (x + shoulder) + ' ' + (top + 14) + ' Q ' + (x + shoulder + 2) + ' ' + (top + 2) + ' ' + (x + 10) + ' ' + (top - 4) + ' Z';
-  part(g, silhouette, c.shirt, INK, 3.2);
-  part(g, 'M ' + (x + shoulder - 8) + ' ' + (top + 15) + ' Q ' + (x + shoulder - 4) + ' ' + (top + 27) + ' ' + (bx + waist - 5) + ' ' + (bottom - 6) + ' L ' + (bx + waist - 11) + ' ' + (bottom - 8) + ' Z', shade(c.shirt, -.15), 'none', 0);
-  if (c.outfit === 'hoodie') {
-    part(g, 'M ' + (x - 13) + ' ' + (top - 5) + ' Q ' + x + ' ' + (top + 10) + ' ' + (x + 13) + ' ' + (top - 5) + ' L ' + (x + 16) + ' ' + (top + 5) + ' Q ' + x + ' ' + (top + 21) + ' ' + (x - 16) + ' ' + (top + 5) + ' Z', shade(c.shirt, -.18), INK, 2);
-    detail(g, 'M ' + (x - 5) + ' ' + (top + 11) + ' L ' + (x - 6) + ' ' + (top + 25) + ' M ' + (x + 5) + ' ' + (top + 11) + ' L ' + (x + 6) + ' ' + (top + 23), '#f9e5c2', 2);
-    part(g, 'M ' + (bx - 13) + ' ' + (bottom - 20) + ' Q ' + bx + ' ' + (bottom - 13) + ' ' + (bx + 13) + ' ' + (bottom - 20) + ' L ' + (bx + 13) + ' ' + (bottom - 9) + ' L ' + (bx - 13) + ' ' + (bottom - 9) + ' Z', shade(c.shirt, -.10), shade(c.shirt, -.25), 1.4);
-  } else if (c.outfit === 'jacket' || c.outfit === 'uniform') {
-    const trim = c.outfit === 'uniform' ? '#f5e7ce' : shade(c.shirt, .4);
-    part(g, 'M ' + (x - 9) + ' ' + (top - 4) + ' L ' + (x - 1) + ' ' + (top + 13) + ' L ' + (x - 13) + ' ' + (top + 19) + ' L ' + (x - 20) + ' ' + (top + 3) + ' Z', trim, INK, 1.3);
-    part(g, 'M ' + (x + 9) + ' ' + (top - 4) + ' L ' + (x + 1) + ' ' + (top + 13) + ' L ' + (x + 13) + ' ' + (top + 19) + ' L ' + (x + 20) + ' ' + (top + 3) + ' Z', trim, INK, 1.3);
-    detail(g, 'M ' + x + ' ' + (top + 12) + ' L ' + bx + ' ' + (bottom - 4), shade(c.shirt, -.48), 1.8);
-    for (let i=0;i<3;i++) part(g, 'M ' + (bx + 4) + ' ' + (top + 24 + i*10) + ' l 2 0', 'none', '#f5deae', 2);
-  } else {
-    detail(g, 'M ' + (x - 10) + ' ' + (top - 3) + ' Q ' + x + ' ' + (top + 11) + ' ' + (x + 10) + ' ' + (top - 3), shade(c.shirt, -.35), 2);
-    if (c.outfit === 'sweater') for (let i=0;i<4;i++) detail(g, 'M ' + (bx - 12 + i*8) + ' ' + (bottom - 6) + ' l 0 4', shade(c.shirt, -.28), 1.5);
-  }
-  detail(g, 'M ' + (bx - waist + 7) + ' ' + (bottom - 15) + ' Q ' + (bx - waist + 10) + ' ' + (bottom - 11) + ' ' + (bx - waist + 7) + ' ' + (bottom - 7), shade(c.shirt, -.23), 1.3);
 }
 
 export type HandPose = 'relaxed' | 'open' | 'point' | 'grip' | 'fist';
