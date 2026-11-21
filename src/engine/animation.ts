@@ -72,7 +72,37 @@ const gait = (running: boolean) => {
 };
 const seated: JointPose = { leftHip: 84, rightHip: 79, leftKnee: -83, rightKnee: -81, torso: -5, rightShoulder: 22, rightElbow: 24, leftShoulder: -18, leftElbow: 23 };
 const make = (id: Action, duration: number, loop: boolean, keys: Animation['keys'], expression?: Animation['expression']): Animation => ({ id, duration, loop, keys, expression });
+type ExtraAction = typeof import('./performanceCatalog.ts').extraActions[number];
+const move = (id:Action,duration:number,poses:[number,JointPose,number?][],loop=false,expression?:Animation['expression']) =>
+  make(id,duration,loop,poses.map(([at,pose,lift])=>key(at,pose,lift)),expression);
+const guard:JointPose={torso:9,leftHip:-17,rightHip:20,leftKnee:-24,rightKnee:-31,leftShoulder:66,rightShoulder:46,leftElbow:67,rightElbow:89};
+const relaxed:JointPose={torso:-5,leftShoulder:-12,rightElbow:12,head:7};
+const bounce:JointPose={leftKnee:-33,rightKnee:-33,leftHip:17,rightHip:17,leftShoulder:-31,rightShoulder:29};
+const additional:Record<ExtraAction,Animation>={
+  'idle-relaxed':move('idle-relaxed',2.8,[[0,relaxed],[.5,{...relaxed,head:2,neck:5},2],[1,relaxed]],true),
+  'idle-alert':move('idle-alert',1.9,[[0,{torso:7,leftShoulder:-13,rightShoulder:15}],[.5,{torso:9,head:-12,rightElbow:27},2],[1,{torso:7,leftShoulder:-13,rightShoulder:15}]],true),
+  'idle-bored':move('idle-bored',3.6,[[0,{torso:-10,head:14}],[.5,{torso:-14,head:19,rightShoulder:10},-3],[1,{torso:-10,head:14}]],true,'sleepy'),
+  'idle-nervous':move('idle-nervous',.72,[[0,{head:7,leftElbow:35,rightElbow:54}],[.5,{head:-6,leftElbow:42,rightElbow:36,torso:-4},2],[1,{head:7,leftElbow:35,rightElbow:54}]],true,'nervous'),
+  'cartoon-guard':move('cartoon-guard',.9,[[0,guard],[.5,{...guard,head:7,torso:15},-4],[1,guard]],true),
+  'cartoon-jab':move('cartoon-jab',.46,[[0,guard],[.23,{...guard,torso:-9}],[.47,{...guard,torso:18,rightShoulder:89,rightElbow:4}],[1,guard]]),
+  'cartoon-hook':move('cartoon-hook',.65,[[0,guard],[.32,{...guard,torso:-23,rightShoulder:-42,rightElbow:54}],[.61,{...guard,torso:27,rightShoulder:98,rightElbow:53}],[1,guard]]),
+  'cartoon-kick':move('cartoon-kick',.73,[[0,guard],[.28,{...guard,rightHip:51,rightKnee:-79,torso:-10},1],[.52,{...guard,rightHip:97,rightKnee:-9,torso:-16},5],[1,guard]]),
+  'cartoon-block':move('cartoon-block',.62,[[0,guard],[.28,{...guard,rightShoulder:117,leftShoulder:105,rightElbow:52,leftElbow:76,head:13},-6],[.72,{...guard,rightShoulder:110,leftShoulder:108},-4],[1,guard]]),
+  'cartoon-dodge':move('cartoon-dodge',.64,[[0,guard],[.44,{...guard,torso:-37,head:17,leftKnee:-49,rightKnee:-52},-18],[1,guard]]),
+  'cartoon-recoil':move('cartoon-recoil',.64,[[0,guard],[.25,{torso:-40,head:-26,rightShoulder:102,leftShoulder:-104,leftHip:21,rightHip:-19},13],[.7,{torso:-16,head:9},-4],[1,{}]],false,'surprised'),
+  'cartoon-fall':move('cartoon-fall',1,[[0,{}],[.32,{torso:-21,head:-30,leftShoulder:-106,rightShoulder:113},11],[.68,{torso:-68,head:23,leftHip:25,rightHip:36,leftKnee:-80},-49],[1,{torso:-76,leftHip:72,rightHip:78,rightKnee:-71},-66]],false,'surprised'),
+  'dance-bounce':move('dance-bounce',.63,[[0,bounce,-9],[.44,{leftShoulder:-65,rightShoulder:60,head:7,leftHip:15},13],[1,bounce,-9]],true,'happy'),
+  'dance-side-step':move('dance-side-step',1.08,[[0,bounce],[.25,{leftHip:31,rightHip:-19,leftShoulder:-61,rightShoulder:23,torso:-13},5],[.75,{leftHip:18,rightHip:-32,leftShoulder:-23,rightShoulder:61,torso:14},5],[1,bounce]],true,'happy'),
+  'dance-shuffle':move('dance-shuffle',.82,[[0,{...bounce,rightHip:32}],[.25,{leftHip:22,rightKnee:-50,torso:12},8],[.5,{...bounce,leftHip:-24}],[.75,{rightHip:-25,leftKnee:-48,torso:-12},8],[1,{...bounce,rightHip:32}]],true,'happy'),
+  'dance-arm-wave':move('dance-arm-wave',1.08,[[0,{...bounce,leftShoulder:-77,rightShoulder:26}],[.35,{...bounce,leftShoulder:-115,leftElbow:64,rightShoulder:72}],[.68,{...bounce,leftShoulder:-42,rightShoulder:118,rightElbow:-65}],[1,{...bounce,leftShoulder:-77,rightShoulder:26}]],true,'happy'),
+  'dance-celebration':move('dance-celebration',.88,[[0,bounce,-8],[.33,{leftShoulder:-155,rightShoulder:153,leftHip:24,rightKnee:-35},21],[.7,{leftShoulder:-96,rightShoulder:108,torso:15},5],[1,bounce,-8]],true,'excited'),
+  clap:move('clap',.5,[[0,{leftShoulder:65,rightShoulder:-63}],[.48,{leftShoulder:51,rightShoulder:-51,leftElbow:27,rightElbow:-23},2],[1,{leftShoulder:65,rightShoulder:-63}]],true,'happy'),
+  crouch:move('crouch',.53,[[0,{}],[1,{leftHip:43,rightHip:43,leftKnee:-67,rightKnee:-68,torso:24},-24]]),
+  reach:move('reach',.64,[[0,{}],[.4,{rightShoulder:66,torso:10}],[1,{rightShoulder:134,rightElbow:6,torso:14},3]]),
+  stumble:move('stumble',.8,[[0,{}],[.26,{leftHip:42,rightKnee:-52,torso:26,leftShoulder:-62},7],[.55,{rightHip:31,leftKnee:-62,torso:-18,rightShoulder:72},-6],[1,{}]],false,'surprised')
+};
 export const animations: Record<Action, Animation> = {
+  ...additional,
   idle: make('idle', 3, true, [key(0), key(.5, { torso: 2, head: -2, leftShoulder: 3 }, 2), key(1)]),
   walk: make('walk', .88, true, gait(false)), run: make('run', .54, true, gait(true)),
   stop: make('stop', .5, false, [key(0, { torso: 17, leftHip: 25, rightHip: -15 }), key(.45, { torso: -9, leftHip: 9, leftKnee: -10 }), key(1)]),
@@ -143,10 +173,10 @@ export function footContactAt(time: number, action: Gait, side: 'left' | 'right'
   return { x: stride * (-.5 + recovery), y: -Math.sin(recovery * Math.PI) * (action === 'run' ? 19 : 10), planted: false };
 }
 export function gaitLeg(upper: Point, legScale: number, time: number, action: Gait,
-  side: 'left' | 'right', forward: number, lift: number, velocity?: number) {
+  side: 'left' | 'right', forward: number, lift: number, velocity?: number, liftScale=1) {
   const step = footContactAt(time, action, side, velocity);
   const length = 38 * legScale;
-  const goal = { x: upper.x + step.x * forward * legScale, y: step.y * legScale + (step.planted ? lift : lift * .35) };
+  const goal = { x: upper.x + step.x * forward * legScale, y: step.y * legScale * liftScale + (step.planted ? lift : lift * .35) };
   return armIK(upper, goal, length, length * 1.09, -forward);
 }
 export function rig(c: Character, pose: JointPose, width: number) {

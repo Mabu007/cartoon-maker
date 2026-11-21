@@ -21,3 +21,22 @@ export function movieTicks(duration: number, pixelsPerSecond: number, from: numb
   if (to >= duration - step && ticks.at(-1) !== duration) ticks.push(duration);
   return ticks;
 }
+
+const edgeCache = new WeakMap<MovieTiming, number[]>();
+export function nextClipEdge(timing: MovieTiming, at: number, direction: -1|1) {
+  let edges=edgeCache.get(timing);
+  if(!edges){
+    edges=[...new Set(timing.spans.flatMap(({scene,start,end})=>[
+      start,end,...scene.clips.flatMap(clip=>[start+clip.start,start+clip.start+clip.length])
+    ]))].sort((a,b)=>a-b);
+    edgeCache.set(timing,edges);
+  }
+  const threshold=at+direction*.0001;
+  let first=0, last=edges.length;
+  while(first<last){
+    const middle=(first+last)>>>1;
+    if(direction===1?edges[middle]<=threshold:edges[middle]<threshold)first=middle+1;
+    else last=middle;
+  }
+  return direction===1 ? edges[first]??timing.duration : edges[first-1]??0;
+}

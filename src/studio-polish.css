@@ -364,3 +364,55 @@
 }
 .movie-track-segment.active-scene {background:var(--scene-lane-selected);}
 @media(max-width:790px){.timeline-resize {height:15px;top:-7px;}}
+
+.studio-shell.filmmaking-shell.mode-direct.timeline-tall:not(.focus-mode):not(:has(.timeline-compact)) {
+  grid-template-rows:62px minmax(105px,1fr) max(170px,calc(100dvh - 195px));
+}
+.mode-direct .asset-rail { overflow:auto; scrollbar-width:thin; }
+.asset-library-group { display:grid; gap:4px; }
+.sound-library-row { display:flex; align-items:center; gap:5px; }
+.sound-library-row .asset-row { flex:1; min-width:0; }
+.stage-placement-tools {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+  margin-bottom:8px;
+  padding:7px 9px;
+  border:1px solid var(--studio-outline);
+  border-radius:8px;
+  background:var(--studio-rail);
+}
+.stage-placement-tools strong { flex:1 1 205px; font-size:12px; }
+.mode-direct .canvas-mount.stage-destination.place-mode { cursor:crosshair; }
+.stage-path-guide {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+}
+.stage-path-guide polyline {
+  fill:none;
+  stroke:#f3ff80;
+  stroke-width:2;
+  stroke-dasharray:7 5;
+  vector-effect:non-scaling-stroke;
+  filter:drop-shadow(0 1px 2px #201319);
+}
+.stage-path-guide circle { fill:#f3ff80; stroke:#251641; stroke-width:2; }
+.stage-edge-tools {
+  position:absolute;
+  inset:auto 8px 8px;
+  display:flex;
+  justify-content:space-between;
+  pointer-events:none;
+}
+.stage-edge-tools button { pointer-events:auto; background:#211935; color:#fff; }
+.clip-vfx { background:#4a326e; border-color:#9670d6; }
+.clip.clip-text { background:#543940; border-color:#d5859a; }
+@media(max-width:790px) {
+  .studio-shell.filmmaking-shell.mode-direct.timeline-tall:not(.focus-mode):not(:has(.timeline-compact)) {
+    grid-template-rows:auto 42px minmax(240px,1fr) max(240px,68dvh);
+  }
+}

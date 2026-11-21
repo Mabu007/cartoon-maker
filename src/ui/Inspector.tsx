@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { evaluate } from '../engine/evaluate.ts';
+import { gaitStyles, gaitStyleNames, transitionNames, vfxNames } from '../engine/performanceCatalog.ts';
 import { MediaImage } from './MediaImage.tsx';
 import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, ArrowLeft, ArrowRight, FlipHorizontal, Footprints, Zap, Eye, EyeOff } from 'lucide-react';
 import { actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
@@ -8,8 +11,9 @@ import { changeClipTiming, type Selection } from '../studio.ts';
 import { resizeSceneTimeline } from '../engine/timelineEditing.ts';
 import { VoiceClipControls } from './VoiceClipControls.tsx';
 
-export function Inspector({ onPresence, scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, setDestination, precision, rerecord, regenerateVoice, restoreVoiceVersion, alignVoiceClip }: {
+export function Inspector({ onPresence, scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, setDestination, previewPath, onWalk, onRecover, onOverlay, getPlayhead, precision, rerecord, regenerateVoice, restoreVoiceVersion, alignVoiceClip }: {
   onPresence:(id:string,action:'walk-in'|'run-in'|'walk-out'|'run-out'|'show'|'hide')=>void;
+  previewPath:()=>void;onWalk:(id:string)=>void;onRecover:(id:string)=>void;onOverlay:(id:string)=>void;getPlayhead:()=>number;
   scene: Scene; actors: Record<string, string>; characters: Character[]; selection: Selection; select: (value: Selection) => void;
   patchActor: (actor: ActorData) => void; patchObject: (object: Prop) => void; patchClip: (clip: Clip) => void; patchScene: (patch: Partial<Scene>) => void;
   editCharacter: (character: Character) => void; addDialogue: () => void; addAction: () => void; scenes: number; sceneIndex: number; openScenes: () => void; remove: () => void; duplicate: () => void;
@@ -18,6 +22,17 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
   alignVoiceClip: (clip: Extract<Clip,{track:'dialogue'}>, recognizer:'pocketSphinx'|'phonetic')=>Promise<string>;
 }) {
   const actor = scene.actors.find(item => item.id === selection?.id);
+  const [actorStatus,setActorStatus]=useState('');
+  useEffect(()=>{
+    if(!actor)return;
+    const update=()=>{
+      const frame=evaluate(scene,getPlayhead()).actors.find(item=>item.id===actor.id);
+      setActorStatus(!frame?.visible?'Hidden at the playhead':frame.x<0||frame.x>960||frame.y<0||frame.y>540?'Offstage at the playhead':'');
+    };
+    update();
+    window.addEventListener('toonroom-seek',update);
+    return ()=>window.removeEventListener('toonroom-seek',update);
+  },[actor,scene,getPlayhead]);
   const character = actor && characters.find(item => item.id === actor.characterId);
   const object = scene.objects.find(item => item.id === selection?.id);
   const clip = scene.clips.find(item => item.id === selection?.id);
@@ -45,7 +60,10 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
      <div className="actor-entrance-section">
        <strong>On-screen timing</strong>
        <p className="small-text">Position the playhead first. Entrance and exit clips are editable on the timeline.</p>
+       {actorStatus&&<p className="small-text" role="status">{actorStatus}</p>}
        <div className="actor-entrance-grid">
+         <button type="button" onClick={()=>onWalk(actor.id)}><Footprints size={15}/> Draw walk path</button>
+         <button type="button" onClick={()=>onRecover(actor.id)}><Eye size={15}/> Bring on stage</button>
          <button type="button" onClick={()=>onPresence(actor.id,'walk-in')}><Footprints size={15}/> Walk in</button>
          <button type="button" onClick={()=>onPresence(actor.id,'run-in')}><Zap size={15}/> Run in</button>
          <button type="button" onClick={()=>onPresence(actor.id,'walk-out')}><Footprints size={15}/> Walk out</button>
@@ -69,7 +87,25 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
       </details>}
       {clip && <><details open><summary>Timing</summary><div className="field-row"><NumberField text="Start" value={clip.start} min={0} max={scene.duration - .1} step={.01} onChange={start => patchClip(changeClipTiming(clip, start, clip.length, scene.duration))}/><NumberField text="Length" value={clip.length} min={.1} max={scene.duration - clip.start} step={.01} onChange={length => patchClip(changeClipTiming(clip, clip.start, length, scene.duration))}/></div></details><details open><summary>{label(clip.track)} settings</summary>
         {'actor' in clip && <label className="field">Actor<Select aria="Clip actor" value={clip.actor} onChange={actor => patchClip({ ...clip, actor })} options={Object.keys(actors)} render={id => actors[id]}/></label>}
-        {clip.track === 'movement' && <><button className="primary full" onClick={setDestination}>Set destination on stage</button><div className="field-row"><NumberField text="From X" value={clip.fromX} min={-2000} max={3000} onChange={fromX => patchClip({ ...clip, fromX })}/><NumberField text="From Y" value={clip.fromY} min={-2000} max={3000} onChange={fromY => patchClip({ ...clip, fromY })}/></div><div className="field-row"><NumberField text="To X" value={clip.toX} min={-2000} max={3000} onChange={toX => patchClip({ ...clip, toX })}/><NumberField text="To Y" value={clip.toY} min={-2000} max={3000} onChange={toY => patchClip({ ...clip, toY })}/></div></>}
+        {clip.track === 'movement' && <>
+          <button className="primary full" onClick={setDestination}>Edit path on stage</button>
+          <button className="quiet full" onClick={previewPath}>Preview path</button>
+          <label className="field">Pace<Select aria="Path pace" value={clip.gait??'walk'} options={['walk','run']} onChange={gait=>patchClip({...clip,gait})}/></label>
+          <label className="field">Style<Select aria="Path style" value={clip.style??'natural'} options={gaitStyles} render={style=>gaitStyleNames[style]} onChange={style=>patchClip({...clip,style})}/></label>
+        </>}
+        {clip.track==='vfx'&&<>
+          <label className="field">Effect<Select aria="Visual effect" value={clip.effect} options={vfxNames} onChange={effect=>patchClip({...clip,effect})}/></label>
+          <NumberField text="Strength" value={clip.strength} min={.1} max={2} step={.05} onChange={strength=>patchClip({...clip,strength})}/>
+          {clip.effect!=='camera-shake'&&<button className="primary full" onClick={()=>onOverlay(clip.id)}>Place effect on stage</button>}
+        </>}
+        {clip.track==='text'&&<>
+          <label className="field">Text<textarea key={clip.id+'/'+clip.text} defaultValue={clip.text} aria-label="Edit on-screen text" rows={3} maxLength={180}
+            onBlur={event=>{const text=event.currentTarget.value.trim();if(text&&text!==clip.text)patchClip({...clip,text});else event.currentTarget.value=clip.text;}}/></label>
+          <label className="field">Text style<Select aria="Text style" value={clip.style} options={['title','caption','comic']} onChange={style=>patchClip({...clip,style})}/></label>
+          <label className="field">Color<input aria-label="Text color" type="color" value={clip.color} onChange={event=>patchClip({...clip,color:event.currentTarget.value})}/></label>
+          <NumberField text="Size" value={clip.size} min={12} max={120} step={1} onChange={size=>patchClip({...clip,size})}/>
+          <button className="primary full" onClick={()=>onOverlay(clip.id)}>Place text on stage</button>
+        </>}
         {clip.track === 'actors' && clip.visible !== undefined && <label className="check"><input type="checkbox" checked={clip.visible} onChange={event => patchClip({ ...clip, visible: event.target.checked })}/>Visible from this cue</label>}
         {clip.track === 'gaze' && <label className="field">Look at<Select aria="Timeline gaze target" value={clip.target} options={['camera', ...Object.keys(actors).filter(id => id !== clip.actor), ...scene.objects.map(item => item.id)]}
           onChange={target => patchClip({ ...clip, target })} render={id => actors[id] ?? scene.objects.find(item => item.id === id)?.name ?? label(id)}/></label>}
@@ -98,7 +134,7 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
           <label className="field">Transition<Select aria="Camera transition" value={clip.transition} onChange={transition => patchClip({ ...clip, transition })} options={['cut', 'glide']}/></label>
           <p className="small-text">Camera: {clip.start.toFixed(2)}s – {(clip.start + clip.length).toFixed(2)}s ({clip.length.toFixed(2)}s). {clip.transition === 'glide' ? 'Smooth glide from previous framing.' : 'Instant cut to this framing.'}</p>
         </>}
-        {clip.track === 'transition' && <label className="field">Transition<Select aria="Scene transition" value={clip.effect} onChange={effect => patchClip({ ...clip, effect })} options={['fade-in', 'fade-out']}/></label>}
+        {clip.track === 'transition' && <label className="field">Transition<Select aria="Scene transition" value={clip.effect} onChange={effect => patchClip({ ...clip, effect })} options={transitionNames}/></label>}
       </details></>}
       {object && objectDependencies(scene, object.id, actors).length > 0 && <p className="small-text" role="status">This object supports {objectDependencies(scene, object.id, actors).length} timeline action(s). Deleting it will let you choose replacements.</p>}
       <div className="inspector-actions"><button className="quiet" onClick={duplicate}><Copy size={14}/> Duplicate</button><IconButton title="Delete selection" onClick={remove}><Trash2 size={16}/></IconButton></div>

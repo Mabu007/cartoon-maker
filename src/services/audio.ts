@@ -1,3 +1,4 @@
+import { soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
 import { clamp } from '../engine/animation.ts';
 import { builtinVoiceNames, soundNames, type Project, type Scene, type SoundClip } from '../engine/schema.ts';
 import { applyGainEnvelope, audibleAudioTrack } from '../engine/audioMix.ts';
@@ -31,8 +32,8 @@ export async function getAudio(id: string) {
     request.onerror = () => reject(request.error);
   });
 }
-function effect(context: BaseAudioContext, name: string) {
-  const duration = name === 'pop' ? .21 : name === 'whoosh' ? .55 : .47;
+function effect(context: BaseAudioContext, name: SoundName) {
+  const duration = soundDurations[name];
   const buffer = context.createBuffer(1, Math.floor(context.sampleRate * duration), context.sampleRate);
   const data = buffer.getChannelData(0);
   let seed = 17128;
@@ -41,7 +42,26 @@ function effect(context: BaseAudioContext, name: string) {
     const remaining = 1 - t / duration;
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     const noise = (seed / 0xffffffff) * 2 - 1;
-    if (name === 'whoosh') data[i] = noise * Math.sin(Math.PI * t / duration) ** 2 * .3;
+    const phase=(hz:number)=>Math.sin(t*hz*Math.PI*2);
+    if(name==='cartoon-boom'||name==='impact-thud'||name==='dance-kick'||name==='footstep')
+      data[i]=(.67*Math.sin(2*Math.PI*(68*t+1.8*(1-Math.exp(-t*55))))+.26*noise*Math.exp(-t*20))*Math.exp(-t*(name==='cartoon-boom'?8:20));
+    else if(name==='swing-swish'||name==='crowd-cheer')
+      data[i]=noise*Math.sin(Math.PI*t/duration)**2*.28*(name==='crowd-cheer'?(.8+.2*phase(17)):1);
+    else if(name==='punch-pop'||name==='dance-clap'||name==='short-drum-roll') {
+      const beat=name==='short-drum-roll'?t%.074:t;
+      data[i]=(noise*.6+phase(138)*.25)*Math.exp(-beat*64)*remaining;
+    } else if(name==='comedy-boing'||name==='slide-whistle') {
+      const hz=name==='comedy-boing'?280+160*Math.exp(-t*5)*phase(11):280+t*1400;
+      data[i]=Math.sin(2*Math.PI*t*hz)*.5*remaining;
+    } else if(name==='record-scratch')data[i]=(noise*.35+phase(113+phase(6)*28)*.29)*remaining**2;
+    else if(name==='sparkle-chime'||name==='dramatic-hit'||name==='funny-sting'||name==='sad-trombone'){
+      const interval=duration/(name==='sad-trombone'?4:3);
+      const note=Math.floor(t/interval), age=t%interval;
+      const hz=name==='sad-trombone'?[190,179,168,141][note]??141
+        :name==='sparkle-chime'?[880,1174,1568][note]??1568
+        :name==='dramatic-hit'?[108,76,57][note]??57:[330,494,185][note]??185;
+      data[i]=(Math.sin(age*hz*2*Math.PI)*.36+Math.sin(age*hz*4*Math.PI)*.16)*Math.min(1,age*180)*Math.exp(-age/interval*3);
+    } else if (name === 'whoosh') data[i] = noise * Math.sin(Math.PI * t / duration) ** 2 * .3;
     else if (name === 'rimshot') data[i] = (noise * .55 + Math.sin(t * 721) * .45) * (Math.exp(-t * 65) + (t > .12 ? .6 * Math.exp(-(t - .12) * 35) : 0));
     else {
       const hz = name === 'pop' ? 530 - t * 1600 : name === 'ding' ? 740 : t > .15 ? 275 : 410;
@@ -85,7 +105,7 @@ async function readSound(asset: string) {
       const context = decoderContext ??= new OfflineAudioContext(2, 1, 48000);
       const name = asset.split(':')[1];
       let buffer: AudioBuffer;
-      if (asset.startsWith('builtin:') && soundTypes.has(name)) buffer = effect(context, name);
+      if (asset.startsWith('builtin:') && soundTypes.has(name)) buffer = effect(context, name as SoundName);
       else if (asset.startsWith('builtin:') && builtinVoices.has(name)) {
         const response = await fetch(`/audio/${name}.mp3`);
         if (!response.ok) throw new Error(`Could not load audio “${name}”`);
@@ -102,6 +122,31 @@ async function readSound(asset: string) {
     pending.catch(() => { if (decoders.get(asset) === pending) decoders.delete(asset); });
   }
   return pending;
+}
+
+let audition: { context: AudioContext; source: AudioBufferSourceNode } | undefined;
+let auditionToken=0;
+export async function previewSound(name:SoundName) {
+  const token=++auditionToken;
+  if(audition){audition.source.stop();void audition.context.close().catch(()=>{});audition=undefined;}
+  const context=new AudioContext();
+  try {
+    await context.resume();
+    const {buffer}=await readSound('builtin:'+name);
+    if(token!==auditionToken){await context.close();return;}
+    const source=context.createBufferSource(), gain=context.createGain();
+    gain.gain.value=.45;
+    source.buffer=buffer;source.connect(gain);gain.connect(context.destination);
+    audition={context,source};
+    source.onended=()=>{
+      if(audition?.source===source)audition=undefined;
+      if(context.state!=='closed')void context.close().catch(()=>{});
+    };
+    source.start();
+  } catch(error) {
+    if(context.state!=='closed')void context.close().catch(()=>{});
+    throw error;
+  }
 }
 export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is SoundClip => clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music');
 export const projectAssets = (project: Project) => [...new Set(project.scenes.flatMap(scene =>

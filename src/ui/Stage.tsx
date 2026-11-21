@@ -10,13 +10,16 @@ import type { Selection } from '../studio.ts';
 type Position = { x: number; y: number };
 type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
 export type PreviewTime = { scene: Scene; local: number; movie: number };
-export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, flipEntity, duplicateEntity, removeEntity }: {
+export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, edgePlacement, flipEntity, duplicateEntity, removeEntity }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
   selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
-  onDestination?: (position: Position) => void; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
+  onDestination?: (position: Position, waypoint?: boolean) => void; pathPoints?: Position[]; edgePlacement?: boolean; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
   flipEntity?: (id: string) => void; duplicateEntity?: (id: string) => void; removeEntity?: (id: string) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), hover = useRef<string | undefined>(undefined), repaint = useRef<() => void>(() => {});
+  const guide=useRef<SVGSVGElement>(null);
+  const currentPath=useRef(pathPoints);
+  currentPath.current=pathPoints;
   const renderedFrame=useRef<ReturnType<typeof evaluate> | undefined>(undefined);
   const dialogue = useRef<{ scene: Scene; amplitude: Awaited<ReturnType<typeof prepareDialoguePreview>> } | null>(null);
   useEffect(() => {
@@ -81,6 +84,16 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
             : p.mixer.current?.amplitude(scene, id, t) ?? 0
         });
         renderedFrame.current=frame;
+        const overlay=guide.current;
+        if(overlay && currentPath.current?.length){
+          overlay.setAttribute('viewBox',`0 0 ${renderer.width} ${renderer.height}`);
+          const points=currentPath.current.map(renderer.projectPoint);
+          overlay.querySelector('polyline')?.setAttribute('points',points.map(({x,y})=>x+','+y).join(' '));
+          overlay.querySelectorAll('circle').forEach((dot,index)=>{
+            const point=points[index];
+            if(point){dot.setAttribute('cx',String(point.x));dot.setAttribute('cy',String(point.y));}
+          });
+        }
         if (frame.shot !== lastShot) { lastShot = frame.shot; p.onFrame?.(frame.shot); }
         } catch (error) { fail(error); }
       };
@@ -110,7 +123,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       }
     };
   }, [format, quality, restart]);
-  useEffect(() => { if (!playing) repaint.current(); }, [project, scene, playing, edit, selection, subtitles]);
+  useEffect(() => { if (!playing) repaint.current(); }, [project, scene, playing, edit, selection, subtitles, pathPoints]);
   useEffect(() => { const refresh = () => repaint.current(); window.addEventListener('toonroom-seek', refresh); return () => window.removeEventListener('toonroom-seek', refresh); }, []);
   const selectedActor = selection?.kind === 'actor' ? scene.actors.find(item=>item.id===selection.id) : undefined;
   const selectedObject = selection?.kind === 'object' ? scene.objects.find(item=>item.id===selection.id) : undefined;
@@ -127,7 +140,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       onPointerDown={event => {
         if (playing || event.button !== 0) return;
         const hit = pointer(event);
-        if(hit && onDestination){onDestination({x:hit.x,y:hit.y});return;}
+        if(hit && onDestination){onDestination({x:hit.x,y:hit.y},event.shiftKey);return;}
         if (!hit?.id) { selected(null); return; }
         const actor = scene.actors.find(item => item.id === hit.id), object = scene.objects.find(item => item.id === hit.id);
         const entity = actor ?? object;
@@ -141,6 +154,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         event.currentTarget.setPointerCapture(event.pointerId);
       }} onPointerMove={event => {
         const item = drag.current, hit = pointer(event);
+         if(onDestination)return;
          if (!item) {
            event.currentTarget.dataset.hoverEntity = hit?.id ? 'true' : 'false';
            if (hover.current !== hit?.id) { hover.current = hit?.id; repaint.current(); }
@@ -157,6 +171,17 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       onPointerLeave={event => { if (!drag.current) { hover.current = undefined; event.currentTarget.dataset.hoverEntity = 'false'; repaint.current(); } }}
        onPointerCancel={() => { drag.current = null; repaint.current(); }}
       onLostPointerCapture={() => { drag.current = null; repaint.current(); }} />
+    {!playing && !!pathPoints?.length && <svg className="stage-path-guide" ref={guide} aria-hidden="true">
+      <polyline/><g>{pathPoints.map((_,index)=><circle key={index} r={index===0 || index===pathPoints.length-1?7:4}/>)}</g>
+    </svg>}
+    {edgePlacement&&!status&&<div className="stage-edge-tools" role="group" aria-label="Place offstage">
+      {(['left','right'] as const).map(side=><button key={side} className="quiet" type="button" onClick={()=>{
+        const renderer=engine.current;
+        if(!renderer)return;
+        const {x,y}=renderer.pick(side==='left'?-72:renderer.width+72,renderer.height*.82);
+        onDestination?.({x,y});
+      }}>Off {side}</button>)}
+    </div>}
     {selectedName && !playing && !onDestination && selection && <div className="stage-context-toolbar" role="toolbar" aria-label={selectedName+' scene tools'}>
        <span className="stage-context-selection"><MousePointer2 size={15}/><strong>{selectedName}</strong><small>Drag to move</small></span>
        <button type="button" title="Flip horizontally" aria-label={'Flip '+selectedName+' horizontally'} onClick={()=>flipEntity?.(selection.id)}><FlipHorizontal size={16}/><span>Flip</span></button>

@@ -1,3 +1,4 @@
+import { gaitProfiles, type GaitStyle } from './performanceCatalog.ts';
 import { Graphics, type Container } from 'pixi.js';
 import { armIK, gaitLeg, rig, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
@@ -31,7 +32,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics}) {
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle}) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
   const art = viewArt[view];
@@ -83,7 +84,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const moving = locomotion === 'walk' || locomotion === 'run';
     if (moving) {
       const [walkingKnee,walkingFoot]=gaitLeg(joint.upper,c.legs*c.height,gaitTime,
-        locomotion,side,forward,lift,velocity);
+        locomotion,side,forward,lift,velocity,gaitProfiles[appearance?.gaitStyle??'natural'].lift);
       knee={x:joint.knee.x+(walkingKnee.x-joint.knee.x)*gaitWeight,
         y:joint.knee.y+(walkingKnee.y-joint.knee.y)*gaitWeight};
       foot={x:joint.foot.x+(walkingFoot.x-joint.foot.x)*gaitWeight,

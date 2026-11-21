@@ -1,18 +1,20 @@
 import type { ActorEntrance } from '../engine/actorPresence.ts';
 import { MediaImage } from './MediaImage.tsx';
 import { ArrowUpRight, AudioLines, Boxes, Clapperboard, Image, Mic, Music2, Plus, Search,
-  Sparkles, UserRound, Copy, Trash2, Pencil, Save, X, Check, Settings2, Play, FileAudio, Footprints, Zap } from 'lucide-react';
+  Sparkles, UserRound, Copy, Trash2, Pencil, Save, X, Check, Settings2, Play, FileAudio, Footprints, Zap, Type, Blend } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { actions, environments, label, props, type Action, type Character, type Prop,
+import { environments, label, props, type Action, type Character, type Prop,
   type Scene, type Clip, type Project } from '../engine/schema.ts';
 import { seatingNames } from '../engine/characterCatalog.ts';
 import { isSeating } from '../engine/seatingCatalog.ts';
 import { characterUsage, propUsage } from '../engine/assetSafety.ts';
 import { scenePalettes, soundNames } from '../engine/presets.ts';
+import { actionGroups, soundGroups, vfxNames, transitionPresets, type SoundName } from '../engine/performanceCatalog.ts';
+import { previewSound } from '../services/audio.ts';
 import type { Library } from '../studio.ts';
 import { Avatar, IconButton, propIcon } from './shared.tsx';
 
-const tabs = { Cast: UserRound, Worlds: Image, Props: Boxes, Actions: Clapperboard, Audio: Music2 };
+const tabs = { Cast: UserRound, Worlds: Image, Props: Boxes, Actions: Clapperboard, Effects: Sparkles, Audio: Music2 };
 export type SavedWorld = {name:string;environment:Scene['environment'];objects:Prop[];backgroundImage?:string};
 type AudioClip=Extract<Clip,{track:'dialogue'|'audio'|'music'}>;
 function audioName(clip:AudioClip,characters:Record<string,string>){
@@ -22,7 +24,7 @@ function audioName(clip:AudioClip,characters:Record<string,string>){
 export function AssetLibrary({ active, change, project, characters, scene, newCharacter, editCharacter,
   duplicateCharacter,removeCharacter,addActor,setWorld,uploadWorld,savedWorlds,applySavedWorld,
   saveCurrentWorld,renameSavedWorld,duplicateSavedWorld,deleteSavedWorld,clearWorldImage,
-  addProp,uploadProp,inspectProp,duplicateProp,deleteProp,addAction,holdObject,addSound,dialogue,audio,music,
+  addProp,uploadProp,inspectProp,duplicateProp,deleteProp,addAction,selectActor,addVfx,addTransition,addText,holdObject,addSound,dialogue,audio,music,
   inspectAudio,duplicateAudio,deleteAudio
 }:{
   active:Library;change:(panel:Library)=>void;project:Project;characters:Character[];scene:Scene;
@@ -37,10 +39,13 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
   addProp:(kind:Prop['kind'])=>void;uploadProp:(file:File)=>void;
   inspectProp:(id:string)=>void;duplicateProp:(id:string)=>void;deleteProp:(id:string)=>void;
   addAction:(action:Action)=>void;holdObject?:()=>void;addSound:(sound:typeof soundNames[number])=>void;
+  selectActor:(id:string)=>void;addVfx:(effect:typeof vfxNames[number])=>void;
+  addTransition:(effect:typeof transitionPresets[number])=>void;addText:()=>void;
   dialogue:()=>void;audio:()=>void;music:()=>void;
   inspectAudio:(id:string)=>void;duplicateAudio:(id:string)=>void;deleteAudio:(id:string)=>void;
 }){
   const [filter,setFilter]=useState('');
+  const [soundError,setSoundError]=useState('');
   const [editingWorld,setEditingWorld]=useState<string>();
   const [worldName,setWorldName]=useState('');
   const [renameError,setRenameError]=useState('');
@@ -73,7 +78,7 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
         <p>{active==='Cast'?`${characters.length} character${characters.length!==1?'s':''} · Edit or place`:
           active==='Worlds'?'Build and save your movie sets':
           active==='Props'?'Add, arrange and customize objects':
-          active==='Actions'?'Movement, acting and gestures':'Dialogue, music and sound'}</p>
+          active==='Actions'?'Movement, acting, cartoon fights and dance':active==='Effects'?'Effects, transitions and on-screen text':'Dialogue, music and sound'}</p>
       </div>
       {active==='Cast'&&<IconButton title="Create a new character" className="square-add"
         onClick={newCharacter}><Plus size={17}/></IconButton>}
@@ -83,6 +88,8 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
           value={filter} onChange={e=>setFilter(e.target.value)}/></label>
       <div className="asset-list">
         {active==='Cast'&&<>
+          {scene.actors.some(item=>match(names[item.id]))&&<div className="small-label">In this scene</div>}
+          {scene.actors.filter(item=>match(names[item.id])).map(item=><button key={item.id} className="asset-row" onClick={()=>selectActor(item.id)} aria-label={`Select ${names[item.id]} in scene`}><UserRound size={16}/><span>{names[item.id]}</span><Settings2 size={14}/></button>)}
           {characters.filter(item=>match(item.name)).map(character=>{
             const usage=characterUsage(project,character.id),current=scene.actors.filter(a=>a.characterId===character.id).length;
             return <article className="asset-manage-row" key={character.id} draggable onDragStart={e=>{e.dataTransfer.setData('application/x-toonroom-character',character.id);e.dataTransfer.effectAllowed='copy';}}>
@@ -190,12 +197,22 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
           {!scene.objects.length&&<p className="empty-small">No props yet. Add one above to dress the scene.</p>}
         </>}
         {active==='Actions'&&<button className="asset-row" onClick={holdObject}><Boxes size={16}/><span>Hold object</span><Plus size={14}/></button>}
-        {active==='Actions'&&actions.filter(match).map(action=>
+        {active==='Actions'&&Object.entries(actionGroups).map(([group,entries])=>{
+          const matches=entries.filter(action=>match(label(action))||match(group));
+          return matches.length>0&&<section className="asset-library-group" key={group}><h3 className="small-label">{group}</h3>{matches.map(action=>
           <button className="asset-row" key={action} draggable
             title="Click to configure, or drag to Actions / Movement"
             onDragStart={event=>{event.dataTransfer.setData('application/x-toonroom-action',action);
               event.dataTransfer.effectAllowed='copy';}}
-            onClick={()=>addAction(action)}><Clapperboard size={16}/><span>{label(action)}</span><Plus size={14}/></button>)}
+            onClick={()=>addAction(action)}><Clapperboard size={16}/><span>{label(action)}</span><Plus size={14}/></button>)}</section>;
+        })}
+        {active==='Effects'&&<>
+          {match('text')&&<button className="asset-create" onClick={addText}><Type size={16}/> Add text</button>}
+          {vfxNames.some(effect=>match(label(effect)))&&<div className="small-label">Visual effects</div>}
+          {vfxNames.filter(effect=>match(label(effect))).map(effect=><button key={effect} className="asset-row" onClick={()=>addVfx(effect)}><Sparkles size={16}/><span>{label(effect)}</span><Plus size={14}/></button>)}
+          {transitionPresets.some(effect=>match(label(effect)))&&<div className="small-label">Transitions</div>}
+          {transitionPresets.filter(effect=>match(label(effect))).map(effect=><button key={effect} className="asset-row" onClick={()=>addTransition(effect)}><Blend size={16}/><span>{label(effect)}</span><Plus size={14}/></button>)}
+        </>}
         {active==='Audio'&&<>
           <button className="asset-row" onClick={dialogue}><Mic size={16}/><span>Add or record dialogue</span><Plus size={14}/></button>
           <div className="asset-media-actions">
@@ -209,11 +226,17 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
             </button>
           </div>
           <div className="small-label">Built-in sound effects</div>
-          {soundNames.filter(match).map(sound=><button className="asset-row" key={sound} draggable
-            title="Click to add, or drag to the SFX / Music track"
-            onDragStart={event=>{event.dataTransfer.setData('application/x-toonroom-sound',sound);
-              event.dataTransfer.effectAllowed='copy';}}
-            onClick={()=>addSound(sound)}><Sparkles size={15}/><span>{label(sound)}</span><Plus size={14}/></button>)}
+          {soundError&&<p role="status" className="small-text">{soundError}</p>}
+          {Object.entries(soundGroups).map(([group,entries])=>{
+            const sounds=entries.filter(sound=>match(label(sound))||match(group));
+            return sounds.length>0&&<section className="asset-library-group" key={group}><h3 className="small-label">{group}</h3>{sounds.map((sound:SoundName)=>
+              <div className="sound-library-row" key={sound}>
+                <button className="asset-row" draggable title="Click to add, or drag to the SFX or Music track"
+                  onDragStart={event=>{event.dataTransfer.setData('application/x-toonroom-sound',sound);event.dataTransfer.effectAllowed='copy';}}
+                  onClick={()=>addSound(sound)}><AudioLines size={15}/><span>{label(sound)}</span><Plus size={14}/></button>
+                <IconButton title={'Preview '+label(sound)} onClick={()=>{setSoundError('');void previewSound(sound).catch(()=>setSoundError('Sound preview is unavailable.'));}}><Play size={14}/></IconButton>
+              </div>)}</section>;
+          })}
           <div className="asset-heading asset-section-heading"><div>
             <h3>Recorded & imported clips</h3><p>Choose a clip to edit audio, lip sync or timing</p></div></div>
           {audioClips.filter(clip=>match(audioName(clip,names))||match(clip.track)).map(clip=>

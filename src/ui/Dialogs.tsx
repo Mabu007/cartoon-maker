@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles, Pencil, Check, X } from 'lucide-react';
-import { animations, clamp, gaitSpeeds } from '../engine/animation.ts';
+import { animations, clamp } from '../engine/animation.ts';
 import { soundNames } from '../engine/presets.ts';
+import { soundDurations, transitionNames, vfxNames } from '../engine/performanceCatalog.ts';
 import { anchorFor, compatibleObjects } from '../engine/interactions.ts';
 import { actions, expressions, label, shots, trackNames, tracks, uid, type Action, type Clip, type Project, type Scene, type Track, type Character } from '../engine/schema.ts';
 import { exportFormatLabel, type Format } from '../engine/videoFormats.ts';
-import { evaluate, projectDuration } from '../engine/evaluate.ts';
+import { projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
@@ -16,26 +17,23 @@ import type { SavedProject } from '../services/projects.ts';
 import { clipLabel, clock, formats, IconButton, Modal, Select, trackIcon } from './shared.tsx';
 
 export type ClipRequest = { track?: Track; action?: Action; actor?: string };
-export function AddClipDialog({ close, request, scene, actors, time, add, audio }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; add: (clip: Clip) => void; audio: (track: 'dialogue' | 'audio' | 'music', actor: string, start: number) => void }) {
+export function AddClipDialog({ close, request, scene, actors, time, add, audio, path, point }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; path:(actor:string,gait:'walk'|'run',start:number)=>void; point:(actor:string,action:'point'|'reach',start:number)=>void; add: (clip: Clip) => void; audio: (track: 'dialogue' | 'audio' | 'music', actor: string, start: number) => void }) {
   const [track, setTrack] = useState<Track>(request.track ?? 'body');
   const [presence, setPresence] = useState<'show'|'hide'|'span'>('show');
   const [actor, setActor] = useState(request.actor ?? Object.keys(actors)[0] ?? '');
-  const [action, setAction] = useState<Action>(request.action ?? 'walk');
+  const [action, setAction] = useState<Action>(request.action ?? 'idle');
   const [layer, setLayer] = useState<'body' | 'gesture'>(request.action && ['wave', 'point', 'nod', 'shake', 'talk'].includes(request.action) ? 'gesture' : 'body');
   const [target, setTarget] = useState(''), [expression, setExpression] = useState<typeof expressions[number]>('happy');
   const [shot, setShot] = useState<typeof shots[number]>('medium'), [transition, setTransition] = useState<'cut' | 'glide'>('cut');
-  const [effect, setEffect] = useState<'fade-in' | 'fade-out'>('fade-in'), [sound, setSound] = useState<typeof soundNames[number]>('pop');
+  const [effect, setEffect] = useState<typeof transitionNames[number]>('fade-in'), [sound, setSound] = useState<typeof soundNames[number]>('pop');
+  const [vfx,setVfx]=useState<typeof vfxNames[number]>('impact-boom');
+  const [text,setText]=useState('');
   const [gait, setGait] = useState<'walk' | 'run'>(request.action === 'run' ? 'run' : 'walk');
   const [interaction, setInteraction] = useState<'equip' | 'release' | 'open' | 'close'>('equip');
   const [start, setStart] = useState(clamp(time, 0, scene.duration - .1));
-  const [length, setLength] = useState(request.action ? Math.max(1, animations[request.action].duration) : 2);
+  const [length, setLength] = useState(request.action ? Math.max(1, animations[request.action].duration) : request.track==='audio'?soundDurations.pop:request.track==='transition'?.5:request.track==='vfx'?.75:2);
   const needsActor = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue'].includes(track);
   const place = scene.actors.find(item => item.id === actor);
-  const [toX, setToX] = useState((place?.x ?? 480) + 145);
-  const [toY, setToY] = useState(place?.y ?? 420);
-  const evaluated = evaluate(scene, start).actors.find(item => item.id === actor);
-  const travel = Math.hypot(toX - (evaluated?.x ?? 0), toY - (evaluated?.y ?? 0));
-  const travelLength = Math.max(.1, travel / (gaitSpeeds[gait] * (place?.scale ?? 1)));
   const holdables = scene.objects.filter(item => ['hold','open'].includes(anchorFor(item)?.action??''));
   const cueTargets = track === 'gaze' ? ['camera', ...Object.keys(actors).filter(id => id !== actor), ...scene.objects.map(item => item.id)] : holdables.map(item => item.id);
   const cueTarget = cueTargets.includes(target) ? target : cueTargets[0];
@@ -48,41 +46,49 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     const base = { id: uid(), start: at, length: clamp(length, .1, scene.duration - at) };
     if (track === 'dialogue' || track === 'music') { audio(track, actor, at); return; }
     if (track === 'camera') return add({ ...base, track, shot, transition, ...(actor ? { focus: actor } : {}) });
+    if (track === 'text') return add({ ...base, track, text:text.trim(), x:480,y:190,color:'#ffffff',size:44,style:'title' });
+    if (track === 'vfx') return add({ ...base, track, effect:vfx,x:480,y:252,strength:1 });
     if (track === 'transition') return add({ ...base, track, effect });
     if (track === 'audio') return add({ ...base, track, name: label(sound), asset: `builtin:${sound}`, volume: .75, muted: false, offset: 0 });
     if (!place) return;
     if (track === 'actors') return add({ ...base, track, actor,
       ...(presence==='span'?{}:{length:.1,visible:presence==='show'}) });
-    if (track === 'movement' && evaluated && travelLength <= scene.duration - at + .0001)
-      return add({ ...base, length: travelLength, track, actor, gait, fromX: evaluated.x, fromY: evaluated.y, toX: clamp(toX, -2000, 3000), toY: clamp(toY, -2000, 3000) });
-    if (track === 'movement') return;
+    if (track === 'movement') return path(actor,gait,at);
+    if (track === 'body' && (action==='walk'||action==='run')) return path(actor,action,at);
+    if (track === 'body' && (action==='point'||action==='reach')) return point(actor,action,at);
     if (track === 'gaze') return cueTarget ? add({ ...base, track, actor, target: cueTarget }) : undefined;
     if (track === 'props') return cueTarget ? add({ ...base, track, actor, target: cueTarget, interaction:resolvedInteraction }) : undefined;
     if (track === 'face') return add({ ...base, track, actor, expression });
     return add({ ...base, track, actor, action, layer: action === 'sit' ? 'body' : layer,
       ...(selectedTarget ? { target: selectedTarget } : {}) });
   }
+  const drawsPath=track==='movement'||(track==='body'&&(action==='walk'||action==='run'));
+  const placesPoint=track==='body'&&(action==='point'||action==='reach');
   return <Modal title="Add timeline clip" description="Choose what happens at the playhead." close={close}><form onSubmit={e => { e.preventDefault(); submit(); }}>
-    <div className="dialog-fields"><label className="field">Track<Select aria="Track" value={track} options={tracks} onChange={setTrack} render={id => trackNames[id]}/></label>
-    {(needsActor || track === 'camera') && <label className="field">{track === 'camera' ? 'Focus' : 'Actor'}<Select aria="Actor" value={actor} onChange={value => { setActor(value); setTarget(''); const item = scene.actors.find(entry => entry.id === value); if (item) { setToX(item.x + 145); setToY(item.y); } }} options={track === 'camera' ? ['', ...Object.keys(actors)] : Object.keys(actors)} render={id => actors[id] ?? 'Automatic'}/></label>}
+    <div className="dialog-fields"><label className="field">Track<Select aria="Track" value={track} options={tracks} onChange={value=>{setTrack(value);if(value==='audio')setLength(soundDurations[sound]);if(value==='transition')setLength(.5);if(value==='vfx')setLength(.75);}} render={id => trackNames[id]}/></label>
+    {(needsActor || track === 'camera') && <label className="field">{track === 'camera' ? 'Focus' : 'Actor'}<Select aria="Actor" value={actor} onChange={value => { setActor(value); setTarget(''); }} options={track === 'camera' ? ['', ...Object.keys(actors)] : Object.keys(actors)} render={id => actors[id] ?? 'Automatic'}/></label>}
     {needsActor && !actor && <p className="form-error">Add an actor to the scene first.</p>}
     {track==='actors'&&<><label className="field">On-screen event<Select aria="Actor visibility event"
       value={presence} onChange={setPresence} options={['show','hide','span'] as const}
       render={value=>value==='show'?'Show from this time':value==='hide'?'Hide from this time':'Visible only during clip'}/></label>
       <p className="small-text">Use Show/Hide to let characters enter and leave. Visible-only clips use their own duration.</p></>}
-    {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setTarget(''); setLayer(['wave','point','nod','shake','shrug','laugh','talk','listen','think'].includes(value)?'gesture':'body'); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={action === 'sit' ? 'body' : layer} onChange={setLayer} options={action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label></div>{action==='sit'&&<p className="small-text">Sit anywhere. Linking a chair or sofa is optional; characters stay where you placed them.</p>}
+    {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setLength(Math.max(.1,animations[value].duration)); setTarget(''); setLayer(['wave','point','nod','shake','shrug','laugh','talk','listen','think'].includes(value)?'gesture':'body'); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={action === 'sit' ? 'body' : layer} onChange={setLayer} options={action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label></div>{action==='sit'&&<p className="small-text">Sit anywhere. Linking a chair or sofa is optional; characters stay where you placed them.</p>}
       {!!choices.length && <label className="field">{action === 'sit' ? 'Sit on' : 'Interact with'}<Select aria={action === 'sit' ? 'Seat' : 'Interact with'} value={selectedTarget} onChange={setTarget}
         options={['', ...choices.map(item => item.id)]}
         render={id => id==='' ? action==='sit'?'Sit where placed (no seat)':'No object' : choices.find(item => item.id === id)?.name ?? 'No object'}/></label>}</>}
     {(track === 'gaze' || track === 'props') && <label className="field">Target<Select aria="Cue target" value={cueTarget ?? ''} options={cueTargets} onChange={setTarget} render={id => actors[id] ?? scene.objects.find(item => item.id === id)?.name ?? label(id)}/></label>}
     {track === 'props' && <label className="field">Interaction<Select aria="Prop interaction" value={interaction} options={['equip', 'release']} onChange={setInteraction}/></label>}
-    {track === 'movement' && <><label className="field">Travel pace<Select aria="Travel pace" value={gait} options={['walk', 'run']} onChange={setGait}/></label><div className="field-row"><label className="field">End X<input type="number" value={toX} onChange={e => setToX(Number(e.target.value))}/></label><label className="field">End Y<input type="number" value={toY} onChange={e => setToY(Number(e.target.value))}/></label></div><small>{travelLength.toFixed(2)} seconds at {gait} pace</small>{travelLength > scene.duration - start && <p className="form-error">Move the start earlier or choose a closer destination.</p>}</>}
+    {track === 'movement' && <label className="field">Travel pace<Select aria="Travel pace" value={gait} options={['walk', 'run']} onChange={setGait}/></label>}
+    {drawsPath&&<p className="small-text">Click the start and finish on the stage. Shift-click adds waypoints between them.</p>}
+    {placesPoint&&<p className="small-text">Click the target on the stage.</p>}
+    {track==='text'&&<label className="field">On-screen text<textarea aria-label="On-screen text" value={text} maxLength={180} rows={3} onChange={event=>setText(event.target.value)} required/></label>}
+    {track==='vfx'&&<label className="field">Visual effect<Select aria="Visual effect" value={vfx} onChange={setVfx} options={vfxNames}/></label>}
     {track === 'face' && <label className="field">Expression<Select aria="Expression" value={expression} onChange={setExpression} options={expressions}/></label>}
     {track === 'camera' && <div className="field-row"><label className="field">Shot<Select aria="Shot" value={shot} onChange={setShot} options={shots}/></label><label className="field">Transition<Select aria="Transition" value={transition} onChange={setTransition} options={['cut', 'glide']}/></label></div>}
-    {track === 'transition' && <label className="field">Effect<Select aria="Effect" value={effect} onChange={setEffect} options={['fade-in', 'fade-out']}/></label>}
-    {(track === 'audio') && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={setSound} options={soundNames}/></label>}
-    <div className="field-row"><label className="field">Start (seconds)<input aria-label="Clip start" type="number" value={Math.round(start * 100) / 100} min={0} max={scene.duration - .1} step="any" onChange={e => setStart(Number(e.target.value))}/></label>{track !== 'dialogue' && track !== 'movement' && <label className="field">Length (seconds)<input aria-label="Clip length" type="number" value={length} min={.1} max={180} step="any" onChange={e => setLength(Number(e.target.value))}/></label>}</div></div>
-    <footer className="modal-footer">{(track === 'audio' || track === 'music') && <button type="button" className="quiet" onClick={() => audio(track, '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={(needsActor && !actor) || (track === 'movement' && travelLength > scene.duration - start) || (['gaze', 'props'].includes(track) && !cueTarget) }><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : 'Add clip'}</button></footer>
+    {track === 'transition' && <label className="field">Effect<Select aria="Effect" value={effect} onChange={setEffect} options={transitionNames}/></label>}
+    {(track === 'audio') && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={value=>{setSound(value);setLength(soundDurations[value]);}} options={soundNames}/></label>}
+    <div className="field-row"><label className="field">Start (seconds)<input aria-label="Clip start" type="number" value={Math.round(start * 100) / 100} min={0} max={scene.duration - .1} step="any" onChange={e => setStart(Number(e.target.value))}/></label>{track !== 'dialogue' && !drawsPath && !placesPoint && <label className="field">Length (seconds)<input aria-label="Clip length" type="number" value={length} min={.1} max={180} step="any" onChange={e => setLength(Number(e.target.value))}/></label>}</div></div>
+    <footer className="modal-footer">{(track === 'audio' || track === 'music') && <button type="button" className="quiet" onClick={() => audio(track, '', start)}><FileAudio size={16}/> Upload audio</button>}<span className="spacer"/><button type="button" className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={(needsActor && !actor) || (track === 'text' && !text.trim()) || (['gaze', 'props'].includes(track) && !cueTarget) }><Plus size={16}/>{track === 'dialogue' ? 'Continue to dialogue' : drawsPath?'Draw path on stage':placesPoint?'Pick target on stage':'Add clip'}</button></footer>
   </form></Modal>;
 }
 

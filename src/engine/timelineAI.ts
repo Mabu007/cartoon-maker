@@ -13,8 +13,8 @@ export type PreparedSpeech = {
 type Options={deferSpeech?:boolean;generatedAssets?:readonly string[]};
 const allowedClipPatch:Readonly<Record<Clip['track'],readonly string[]>>={
   actors:['start','length','visible'],
-  movement:['start','length','fromX','fromY','toX','toY','gait','keyframes'],
-  body:['start','length','action','layer','target'],
+  movement:['start','length','fromX','fromY','toX','toY','gait','style','keyframes'],
+  body:['start','length','action','layer','target','pointAt'],
   face:['start','length','expression'],
   gaze:['start','length','target'],
   props:['start','length','target','interaction'],
@@ -22,7 +22,9 @@ const allowedClipPatch:Readonly<Record<Clip['track'],readonly string[]>>={
   audio:['start','length','offset','volume','muted','fadeIn','fadeOut','name','loop','asset'],
   music:['start','length','offset','volume','muted','fadeIn','fadeOut','name','loop','asset'],
   camera:['start','length','shot','focus','transition'],
-  transition:['start','length','effect']
+  transition:['start','length','effect'],
+  vfx:['start','length','effect','x','y','strength'],
+  text:['start','length','text','x','y','size','color','style']
 };
 function locked(scene:Scene,track:Clip['track']){
   if(scene.trackSettings?.[track]?.locked)

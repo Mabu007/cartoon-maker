@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type DragEvent } from 'react';
-import { ChevronDown, ChevronUp, Copy, Keyboard, Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Lock, Unlock, Volume2, VolumeX, Headphones, ChevronRight, ListFilter, Clapperboard, Image, CopyPlus, ClipboardPaste } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, Keyboard, Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Lock, Unlock, Volume2, VolumeX, Headphones, ChevronRight, ListFilter, Clapperboard, Image, CopyPlus, ClipboardPaste, PanelBottom } from 'lucide-react';
 import { AudioWaveform } from './AudioWaveform.tsx';
-import { clamp } from '../engine/animation.ts';
+import { animations, clamp } from '../engine/animation.ts';
 import { movieTicks, type MovieTiming, type MovieCursor } from '../engine/movieTime.ts';
 import { TimelineResize } from './TimelineResize.tsx';
-import { tracks, trackNames, uid, type Character, type Clip, type Scene, type Track } from '../engine/schema.ts';
+import { soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
+import { actions, tracks, trackNames, uid, type Character, type Clip, type Scene, type Track } from '../engine/schema.ts';
 import { selectClipRange, snapGuides, snapTime, snapMoveDelta, moveTimelineClips, trimTimelineClip, trackIsLocked } from '../engine/timelineEditing.ts';
 import { type Selection } from '../studio.ts';
 import { clipLabel, clock, IconButton, trackIcon } from './shared.tsx';
@@ -16,7 +17,7 @@ type DragSession = {
 };
 type ContextMenu = {x:number;y:number;id:string}|null;
 
-const standardTracks = new Set<Track>(['actors','movement','body','face','dialogue','audio','music','camera']);
+const standardTracks = new Set<Track>(['actors','movement','body','face','dialogue','audio','music','camera','transition','vfx','text']);
 function sceneTracks(scene: Scene) {
   const groups = new Map(tracks.map(track => [track, [] as Clip[]]));
   for (const clip of scene.clips) groups.get(clip.track)!.push(clip);
@@ -47,13 +48,16 @@ function packedTracks(scene: Scene) {
 
 export function Timeline({
   scene, movie, characters, selection, selectedClipIds, selectedKeyframe, selectClips, selectKeyframe,
-  seek, seekMovie, seekScene, addScene, manageScenes, add, remove, duplicate, copy, cut, paste, split,
+  seek, seekMovie, seekScene, addScene, manageScenes, tall, onTall, onPath, onPoint, add, remove, duplicate, copy, cut, paste, split,
   apply, compact, playing, onCompact, onResizeScene, playhead
 }: {
   scene: Scene; movie: MovieTiming; characters: Character[]; selection: Selection;
   selectedClipIds: string[]; selectedKeyframe: Keyframe;
   selectClips: (ids: string[]) => void; selectKeyframe: (clipId:string,index:number) => void;
   seek: (t:number) => void; seekMovie:(time:number)=>void; seekScene:(id:string,time:number)=>void;
+  tall:boolean;onTall:()=>void;
+  onPath:(actor:string,gait:'walk'|'run',start:number)=>void;
+  onPoint:(actor:string,action:'point'|'reach',start:number)=>void;
   addScene:()=>void; manageScenes:()=>void; add: (track?:Track) => void;
   remove: () => void; duplicate: () => void; copy: () => void; cut: () => void; paste: () => void; split: () => void;
   apply: (next:Scene, ids?:string[]) => void; compact:boolean; playing:boolean; onCompact:()=>void;
@@ -227,26 +231,30 @@ export function Timeline({
     if(trackIsLocked(source,track))return;
     const box=event.currentTarget.getBoundingClientRect();
     const start=Math.max(0,Math.min(source.duration-.1,Math.round(clamp((event.clientX-box.left)/box.width)*source.duration*100)/100));
-    const action=event.dataTransfer.getData('application/x-toonroom-action');
+    const action=actions.find(value=>value===event.dataTransfer.getData('application/x-toonroom-action'));
     const sound=event.dataTransfer.getData('application/x-toonroom-sound');
     const actor=(source.id===scene.id?source.actors.find(a=>a.id===selection?.id):undefined)??source.actors[0];
     const insert=(clip:Clip)=>{seekScene(source.id,start);apply({...source,clips:[...source.clips,clip]},[clip.id]);};
-    const length=Math.min(2,source.duration-start);
-    if(length<.1)return;
-    if(action && (track==='body'||track==='movement') && actor){
-      if(track==='movement' && (action==='walk'||action==='run')){
-        const next:Clip={id:uid(),track:'movement',actor:actor.id,start,length,fromX:actor.x,fromY:actor.y,toX:Math.min(3000,actor.x+140),toY:actor.y,gait:action};
-        insert(next);return;
-      }
-      if(track==='body'){
-        const next:Clip={id:uid(),track:'body',actor:actor.id,start,length,action:action as Extract<Clip,{track:'body'}>['action'],layer:(['idle','sit','stand','walk','run','jump','turn'].includes(action)?'body':'gesture')};
-        insert(next);return;
+    if(actor&&action&&(track==='body'||track==='movement')){
+      if(action==='walk'||action==='run'){
+        if(trackIsLocked(source,'movement'))return;
+        seekScene(source.id,start);
+        onPath(actor.id,action,start);
+      } else if(track==='body'){
+        if(action==='point'||action==='reach'){
+          seekScene(source.id,start);
+          onPoint(actor.id,action,start);
+          return;
+        }
+        const animation=animations[action];
+        const length=Math.min(animation.loop?Math.max(1.5,animation.duration):animation.duration,source.duration-start);
+        const layer=['wave','nod','shake','shrug','clap','laugh','cry','talk','fist','open-hand','blink','look-away','hand-on-hip','hand-to-face','hand-to-pocket'].includes(action)?'gesture':'body';
+        insert({id:uid(),track:'body',actor:actor.id,start,length,action,layer});
       }
     }
-    if(sound && (track==='audio'||track==='music')){
-      const base={id:uid(),name:sound,start,length,volume:0.6,muted:false,offset:0,asset:'builtin:'+sound};
-      const next:Clip=track==='audio'?{...base,track:'audio'}:{...base,track:'music'};
-      insert(next);
+    if((track==='audio'||track==='music')&&Object.hasOwn(soundDurations,sound)){
+      const length=Math.min(soundDurations[sound as SoundName],source.duration-start);
+      insert({id:uid(),track,name:sound,start,length,volume:.6,muted:false,offset:0,asset:'builtin:'+sound});
     }
   }
   function toggle(track:Track,key:'muted'|'locked'|'collapsed'|'solo'){
@@ -311,7 +319,7 @@ export function Timeline({
             onPointerCancel={()=>{drag.current=null;setPreview(null);}}
             onLostPointerCapture={()=>{drag.current=null;setPreview(null);}}>
             {!locked&&<span className="clip-handle" data-edge="in" title="Trim start"/>}
-            {!tiny&&(clip.track==='dialogue'||((clip.track==='audio'||clip.track==='music')&&clip.asset.startsWith('asset:')))&&<AudioWaveform asset={clip.asset} offset={clip.offset} length={clip.length}/>}<Icon size={11}/><span className="clip-text">{clipLabel(clip,names)}{clip.track==='camera'&&<small className="camera-clip-mode"> {clip.transition === 'glide' ? '↝' : '│'}</small>}</span>
+            {!tiny&&(clip.track==='dialogue'||((clip.track==='audio'||clip.track==='music')&&clip.asset.startsWith('asset:')))&&<AudioWaveform asset={clip.asset} offset={clip.offset} length={clip.length}/>}<Icon size={11}/><span className="clip-label-text">{clipLabel(clip,names)}{clip.track==='camera'&&<small className="camera-clip-mode"> {clip.transition === 'glide' ? '↝' : '│'}</small>}</span>
             {clip.track==='movement'&&clip.keyframes?.map((key,index)=><span key={index} role="button" tabIndex={0}
               className={`timeline-keyframe ${active&&selectedKeyframe?.clipId===clip.id&&selectedKeyframe.index===index?'selected':''}`}
               style={{left:key.time*100+'%'}} title={`Keyframe ${index+1} · ${(span.start+clip.start+clip.length*key.time).toFixed(2)}s`}
@@ -352,6 +360,7 @@ export function Timeline({
         <IconButton title="Zoom out timeline (−)" onClick={()=>setZoomAround(zoom/1.4)} disabled={zoom<=1}><ZoomOut size={16}/></IconButton>
         <span className="zoom-label">{Math.round(zoom*100)}%</span>
         <IconButton title="Zoom in timeline (+)" onClick={()=>setZoomAround(zoom*1.4)} disabled={zoom>=maxZoom}><ZoomIn size={16}/></IconButton>
+        <IconButton title={tall?'Restore timeline height (T)':'Expand timeline height (T)'} active={tall} onClick={onTall}><PanelBottom size={16}/></IconButton>
         <IconButton title="Fit entire movie to timeline width" onClick={()=>{setZoom(1);if(viewportRef.current)viewportRef.current.scrollLeft=0;}}><Maximize2 size={15}/></IconButton>
       </div>
     </header>
@@ -360,7 +369,9 @@ export function Timeline({
       <span>Ctrl/Cmd + Shift + Z · Redo</span><span>Ctrl/Cmd + C/X/V · Copy/Cut/Paste</span>
       <span>Ctrl/Cmd + D · Duplicate</span><span>S · Split at playhead</span>
       <span>Backspace / Delete · Delete selected clips or keyframe</span><span>Ctrl/Cmd + A · Select all clips in this scene</span>
-      <span>+ / − · Timeline zoom</span><span>Escape · Clear selection</span>
+      <span>T · Expand or restore timeline height</span>
+      <span>↑ / ↓ · Previous or next clip edge</span><span>← / → · Step one frame. Hold to accelerate</span>
+      <span>Shift + ← / → · Step half a second</span><span>+ / − · Timeline zoom</span><span>Escape · Clear selection</span>
       <span>Shift+Click · Select range</span><span>Ctrl/Cmd+Click · Toggle selection</span>
       <span>Drag edges · Trim</span><span>Right-click clip · Actions</span>
       <span>Double-click ruler · Add marker</span><span>Right-click marker · Remove marker</span>

@@ -1,3 +1,4 @@
+import { drawVisualEffect, drawTransition, effectTime, titleStyle } from './visualEffects.ts';
 import { mediaUrl } from '../services/media.ts';
 import { aimEyes, eyeWorldPoint } from './gaze.ts';
 import { drawSeat } from './seating.ts';
@@ -6,7 +7,7 @@ import { costumeImages } from './wardrobeArt.ts';
 import { rig, viewForward } from './animation.ts';
 import { Application, Container, Graphics, Text, Sprite, Texture } from 'pixi.js';
 import { drawActor, heldGripPoint } from './actorArt.ts';
-import { cameraViewport, screenToWorld, worldEntityBounds, pointHitsEntity, renderDepth, type WorldEntityRect } from './cameraTransform.ts';
+import { cameraViewport, screenToWorld, worldToScreen, worldEntityBounds, pointHitsEntity, renderDepth, type WorldEntityRect } from './cameraTransform.ts';
 import { drawProp, drawWorld, ellipse, propSize, rect } from './art.ts';
 import { evaluate } from './evaluate.ts';
 import { HEIGHT, WIDTH, type Character, type Scene } from './schema.ts';
@@ -83,11 +84,13 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   const elements = new Container({ sortableChildren: true });
   const guides = new Graphics();
   const fade = new Graphics();
+  const vfxArt = new Graphics(), titles = new Container();
+  const titleLabels = new Map<string,{text:Text;style:string}>();
   const captionBackground = new Graphics();
   const caption = new Text({ text: '', style: { fontFamily: 'Arial', fill: '#fffbf4', fontWeight: '600', fontSize: 21, wordWrap: true, wordWrapWidth: width - 44, align: 'center' } });
   caption.anchor.set(.5, 1);
   world.addChild(background, backdrop, elements, guides);
-  app.stage.addChild(world, captionBackground, caption, fade);
+  app.stage.addChild(world, vfxArt, titles, captionBackground, caption, fade);
   app.stage.scale.set(pixelWidth / width, pixelHeight / height);
   const items = new Map<string, Entity>();
   let lastEnvironment: Scene['environment'] | undefined;
@@ -124,7 +127,15 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     repaintLatestFrame=()=>{draw(scene,characters,time,options);};
     const characterById = new Map(characters.map(character => [character.id, character]));
     lastFrame = evaluate(scene, time, characterById, width);
-    const { actors, camera, sounds } = lastFrame;
+    const { actors, sounds, effects, transition } = lastFrame;
+    const camera={...lastFrame.camera};
+    for(const clip of effects){
+      if(clip.track!=='vfx'||clip.effect!=='camera-shake')continue;
+      const p=effectTime(clip,time), decay=Math.sin(Math.PI*p)*(1-p)*clip.strength;
+      camera.x+=Math.sin(p*81)*15*decay;
+      camera.y+=Math.cos(p*67)*9*decay;
+      camera.zoom+=.026*decay;
+    }
     if (options.characterPreview) {
       if (!wasCharacterPreview) {
         background.clear().rect(0, 0, WIDTH, HEIGHT).fill('#635575');
@@ -258,7 +269,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         options.characterPreview ? options.previewFocus : targetFocus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear()});
+        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle});
       entity.face!.y -= lift;
       if (actor.held?.imageData && !options.edit) {
         const url = actor.held.imageData;
@@ -318,7 +329,27 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       caption.position.set(width / 2, height - 23);
       captionBackground.roundRect((width - caption.width) / 2 - 12, height - 28 - caption.height, caption.width + 24, caption.height + 10, 7).fill({ color: '#211b2c', alpha: .88 });
     }
-    if (!options.edit && lastFrame.fade) fade.rect(0, 0, width, height).fill({ color: '#171522', alpha: lastFrame.fade });
+    vfxArt.clear();
+    const activeTitles=new Set<string>();
+    for(const clip of effects){
+      const point=worldToScreen(clip,camera,{width,height},format);
+      if(clip.track==='vfx') {
+        if(clip.effect!=='camera-shake')drawVisualEffect(vfxArt,clip,point,effectTime(clip,time),width,height);
+        continue;
+      }
+      activeTitles.add(clip.id);
+      const style=[clip.size,clip.color,clip.style].join('/');
+      let entry=titleLabels.get(clip.id);
+      if(!entry){
+        const text=new Text({text:clip.text,style:titleStyle(clip,width)});
+        text.anchor.set(.5);titles.addChild(text);entry={text,style};titleLabels.set(clip.id,entry);
+      }
+      if(entry.text.text!==clip.text)entry.text.text=clip.text;
+      if(entry.style!==style){entry.text.style=titleStyle(clip,width);entry.style=style;}
+      entry.text.position.set(point.x,point.y);
+    }
+    for(const [id,entry] of titleLabels)if(!activeTitles.has(id)){entry.text.destroy();titleLabels.delete(id);}
+    if(!options.edit&&transition)drawTransition(fade,transition.effect,transition.progress,width,height);
     app.render();
     return lastFrame;
   }
@@ -340,6 +371,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return { id: hit?.id, x: point.x, y: point.y };
   }
   return { canvas: app.canvas, draw, pick, width, height, prepareImages,
+    projectPoint: (point:{x:number;y:number})=>worldToScreen(point,currentCamera,{width,height},format),
     preloadBackground: (image: string | undefined) => {if (image) void loadImage(image).catch(()=>{});},
     destroy: () => {
       destroyed=true;

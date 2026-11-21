@@ -1,3 +1,4 @@
+import { gaitProfiles, type GaitStyle } from './performanceCatalog.ts';
 import { animations, armIK, blend, clamp, ease, mix, rig, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
 import { actorWorldPoint, eyeWorldPoint, aimEyes } from './gaze.ts';
 import { anchorFor } from './interactions.ts';
@@ -8,7 +9,7 @@ import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
   speaking: boolean; actionTime: number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
-  gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
+  gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
@@ -53,7 +54,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     let x = position.x;
     let y = position.y;
     const travelling = movement && active(movement, t) ? movement : undefined;
-    const direction = movement && movement.fromX !== movement.toX ? Math.sign(movement.toX - movement.fromX) : undefined;
+    const lead = movement ? movementPosition(movement,clamp(progress+.003)) : undefined;
+    const trail = movement ? movementPosition(movement,clamp(progress-.003)) : undefined;
+    const deltaX = lead && trail ? lead.x-trail.x : 0;
+    const direction = Math.abs(deltaX)>.0001 ? Math.sign(deltaX) : movement ? Math.sign(movement.toX-movement.fromX) : 0;
     let flip = direction ? direction !== viewForward(actor.view) : actor.flip;
     let view = actor.view;
     const body = latest(clips.filter((clip): clip is Extract<Clip, { track: 'body' }> => clip.track === 'body' && clip.layer === 'body' && active(clip, t)));
@@ -64,7 +68,9 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     let held: Prop | undefined;
     const locomotion: Action = body?.action ?? travelling?.gait ?? (travelling ? 'walk' : 'idle');
     let action: Action = locomotion;
-    const gaitTime = t - (travelling?.start ?? body?.start ?? t);
+    const gaitStyle=travelling?.style??'natural';
+    const profile=gaitProfiles[gaitStyle];
+    const gaitTime=(t - (travelling?.start ?? body?.start ?? t))/profile.step;
     const gaitVelocity = travelling ? (() => {
       // Finite difference samples the actual authored path, including user
       // keyframes and the same ease ramp used by visual position.
@@ -82,8 +88,12 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     }
     if (!body && (locomotion === 'walk' || locomotion === 'run')) {
       const step=sample(animations[locomotion],gaitTime);
-      pose=blend(idle.pose,step.pose,gaitWeight);
-      lift=mix(idle.lift,step.lift,gaitWeight);
+      const styled={...step.pose,torso:(step.pose.torso??0)+profile.lean,
+        leftShoulder:(step.pose.leftShoulder??0)*profile.arm+profile.reach,
+        rightShoulder:(step.pose.rightShoulder??0)*profile.arm+profile.reach,
+        head:(step.pose.head??0)-profile.lean*.4};
+      pose=blend(idle.pose,styled,gaitWeight);
+      lift=mix(idle.lift,step.lift*profile.lift,gaitWeight);
     }
     for (const clip of [body, gesture]) {
       if (!clip) continue;
@@ -103,6 +113,13 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       const offsets = (activeAction === 'sit' && clip.start === 0) ||
         (activeAction === 'stand' && !supportedSitBefore) ? definition.duration : 0;
       const next = sample(definition, !isGesture && (activeAction === 'walk' || activeAction === 'run') ? gaitTime : t - clip.start + offsets);
+      if ((activeAction==='point'||activeAction==='reach')&&clip.pointAt) {
+        const dx=clip.pointAt.x-x, dy=clip.pointAt.y-(y-116*actor.scale);
+        flip=Math.abs(dx)>5 ? dx<0 : flip;
+        if(view==='back'||view==='back-quarter')view='three-quarter';
+        const angle=Math.atan2(Math.abs(dx),dy)*180/Math.PI;
+        next.pose={...next.pose,rightShoulder:angle-13-(pose.torso??0)-(pose.hips??0),rightElbow:5};
+      }
       const weight = activeAction === 'sit' || activeAction === 'stand' ? 1 : frameWeight(clip, t);
       pose = blend(pose, next.pose, weight, isGesture);
       if (!isGesture) lift = mix(lift, next.lift, weight);
@@ -135,7 +152,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? objectsById.get(propCue.target) : undefined;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking: Boolean(spoken), actionTime: action === gesture?.action ? t - gesture.start : t - (body?.start ?? t), locomotion, gaitTime, gaitVelocity, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held };
+      speaking: Boolean(spoken), actionTime: action === gesture?.action ? t - gesture.start : t - (body?.start ?? t), locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
@@ -241,7 +258,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const position = movementPosition(move, at);
     return { ...object, x: position.x + 42, y: position.y - 35 };
   });
-  return { actors, objects, sounds, camera, shot: cameraClip?.shot ?? 'wide', fade: transition?.effect === 'fade-in' ? 1 - fade : fade };
+  const effects=timelineClips.filter((clip):clip is Extract<Clip,{track:'vfx'|'text'}>=>(clip.track==='vfx'||clip.track==='text')&&active(clip,t));
+  return { actors, objects, sounds, camera, effects, transition:transition?{effect:transition.effect,progress:fade}:undefined, shot: cameraClip?.shot ?? 'wide', fade: transition?.effect === 'fade-in' ? 1 - fade : fade };
 }
 export type SceneState = ReturnType<typeof evaluate>;
 export const MOVIE_FRAME_RATE = 30;
