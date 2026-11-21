@@ -9,7 +9,7 @@ const config = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 export const cloudEnabled = Boolean(config.apiKey && config.authDomain && config.projectId && config.appId);
-export type Account = Pick<User, 'uid' | 'email' | 'getIdToken'>;
+export type Account = Pick<User, 'uid' | 'email' | 'displayName' | 'getIdToken'>;
 const connect = async () => {
   const [{ initializeApp }, auth, db, storage] = await Promise.all([import('firebase/app'), import('firebase/auth'), import('firebase/firestore'), import('firebase/storage')]);
   const app = initializeApp(config);
@@ -22,10 +22,14 @@ export async function listenAccount(change: (user: Account | null) => void) {
   const { auth, account } = await service();
   return auth.onAuthStateChanged(account, change);
 }
-export async function login(email: string, password: string, register: boolean) {
+export async function login(email: string, password: string, register: boolean, displayName?: string) {
+  if (register && (!displayName?.trim() || displayName.trim().length < 2 || displayName.trim().length > 70))
+    throw Error('Choose a creator name between 2 and 70 characters.');
   const { auth, account } = await service();
-  if (register) await auth.createUserWithEmailAndPassword(account, email, password);
-  else await auth.signInWithEmailAndPassword(account, email, password);
+  if (register) {
+    const created = await auth.createUserWithEmailAndPassword(account, email, password);
+    await auth.updateProfile(created.user, { displayName: displayName!.trim() });
+  } else await auth.signInWithEmailAndPassword(account, email, password);
 }
 export async function logout() { const { auth, account } = await service(); await auth.signOut(account); }
 export async function cloudProjects(user: Account) {
