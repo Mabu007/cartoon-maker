@@ -1,4 +1,4 @@
-import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound } from 'lucide-react';
+import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, ArrowLeft, ArrowRight, FlipHorizontal } from 'lucide-react';
 import { actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
 import { anchorFor, compatibleObjects, objectDependencies } from '../engine/interactions.ts';
 import { anchors } from '../engine/presets.ts';
@@ -34,8 +34,14 @@ export function Inspector({ scene, actors, characters, selection, select, patchA
   render={id => id === '' ? 'Automatic · follow conversation' : id === 'camera' ? 'Look into camera' :
     scene.actors.find(item => item.id === id) ? 'Look at ' + (actors[id] ?? 'character') :
     'Look at ' + (scene.objects.find(item => item.id === id)?.name ?? 'prop')}/></label>
-    <p className="small-text">Eye contact automatically follows speakers. Override it to direct attention to a person, prop or the camera.</p><label className="check"><input type="checkbox" checked={actor.flip} onChange={e => patchActor({ ...actor, flip: e.target.checked })}/> Mirror actor</label><button className="quiet full" onClick={addAction}><Clapperboard size={15}/> Choose action</button><button className="quiet full" onClick={addDialogue}><AudioLines size={15}/> Add dialogue</button>{character && <button className="quiet full" onClick={() => editCharacter(character)}>Edit character</button>}</details>}
+    <p className="small-text">Eye contact follows speakers. Set a target above when you want to direct a look.</p>
+     <div className="facing-controls" role="group" aria-label="Actor facing direction">
+       <button type="button" className={actor.view==='side'&&actor.flip?'active':''} aria-pressed={actor.view==='side'&&actor.flip} onClick={()=>patchActor({...actor,view:'side',flip:true})}><ArrowLeft size={15}/> Face left</button>
+       <button type="button" className={actor.view==='side'&&!actor.flip?'active':''} aria-pressed={actor.view==='side'&&!actor.flip} onClick={()=>patchActor({...actor,view:'side',flip:false})}><ArrowRight size={15}/> Face right</button>
+       <button type="button" aria-label="Flip actor horizontally" title="Flip selected actor" onClick={()=>patchActor({...actor,flip:!actor.flip})}><FlipHorizontal size={16}/> Flip</button>
+     </div><p className="small-text">Movement clips automatically orient actors in their travel direction.</p><button className="quiet full" onClick={addAction}><Clapperboard size={15}/> Choose action</button><button className="quiet full" onClick={addDialogue}><AudioLines size={15}/> Add dialogue</button>{character && <button className="quiet full" onClick={() => editCharacter(character)}>Edit character</button>}</details>}
       {object && <details open><summary>Appearance</summary>
+         <button type="button" className="flip-prop-button" aria-pressed={!!object.flip} onClick={()=>patchObject({...object,flip:!object.flip})}><FlipHorizontal size={16}/> Flip object horizontally</button>
         {object.imageData ? <>
           <img src={object.imageData} alt={object.name} className="inspector-image-preview"/>
           <label className="field">Interaction type<Select aria="Image prop interaction" value={object.interaction ?? 'none'}
