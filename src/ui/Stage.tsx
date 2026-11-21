@@ -16,7 +16,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   onDestination?: (position: Position) => void; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
   flipEntity?: (id: string) => void; duplicateEntity?: (id: string) => void; removeEntity?: (id: string) => void;
 }) {
-  const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), repaint = useRef<() => void>(() => {});
+  const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), hover = useRef<string | undefined>(undefined), repaint = useRef<() => void>(() => {});
   const dialogue = useRef<{ scene: Scene; amplitude: Awaited<ReturnType<typeof prepareDialoguePreview>> } | null>(null);
   useEffect(() => {
     let active = true;
@@ -65,6 +65,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         const scene = p.playing ? live : p.scene;
         const frame = renderer.draw(scene, p.project.characters, local, {
           selected: p.selection?.kind !== 'clip' && !p.playing ? p.selection?.id : undefined,
+           hovered: !p.playing ? hover.current : undefined,
           ...(drag.current?.moved && drag.current.sceneId === scene.id ? { staged: { [drag.current.id]: drag.current.current } } : {}),
           edit: false, subtitles: p.subtitles,
           amplitude: (id, t) => !p.playing && dialogue.current?.scene === scene
@@ -133,6 +134,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         const item = drag.current, hit = pointer(event);
          if (!item) {
            event.currentTarget.dataset.hoverEntity = hit?.id ? 'true' : 'false';
+           if (hover.current !== hit?.id) { hover.current = hit?.id; repaint.current(); }
            return;
          }
          if (!hit || item.sceneId !== scene.id) return;
@@ -143,7 +145,8 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         item.current = { x: clamp(Math.round((item.origin.x + dx) / grid) * grid, -2000, 3000), y: clamp(Math.round((item.origin.y + dy) / grid) * grid, -2000, 3000) };
         repaint.current();
       }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved && item.sceneId === scene.id) { const source=scene.actors.find(a=>a.id===item.id)??scene.objects.find(o=>o.id===item.id);if(source)move(item.id,{x:source.x+item.current.x-item.origin.x,y:source.y+item.current.y-item.origin.y}); } repaint.current(); }}
-      onPointerCancel={() => { drag.current = null; repaint.current(); }}
+      onPointerLeave={event => { if (!drag.current) { hover.current = undefined; event.currentTarget.dataset.hoverEntity = 'false'; repaint.current(); } }}
+       onPointerCancel={() => { drag.current = null; repaint.current(); }}
       onLostPointerCapture={() => { drag.current = null; repaint.current(); }} />
     {selectedName && !playing && !onDestination && selection && <div className="stage-context-toolbar" role="toolbar" aria-label={selectedName+' scene tools'}>
        <span className="stage-context-selection"><MousePointer2 size={15}/><strong>{selectedName}</strong><small>Drag to move</small></span>
