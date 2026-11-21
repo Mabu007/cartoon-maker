@@ -73,7 +73,7 @@ export function repairOrphanedObjectActions(scene: Scene): Scene {
   let changed = false;
   const targets = new Set([...scene.actors.map(actor => actor.id), ...scene.objects.map(object => object.id), 'camera']);
   const valid = scene.clips.filter(clip => clip.track === 'gaze' ? targets.has(clip.target) :
-    clip.track === 'props' ? scene.objects.some(object => object.id === clip.target && anchorFor(object)?.action === 'hold') : true);
+    clip.track === 'props' ? scene.objects.some(object => object.id === clip.target && anchorFor(object)?.action === (clip.interaction==='open'||clip.interaction==='close'?'open':'hold')) : true);
   changed = valid.length !== scene.clips.length;
   const clips = valid.map(clip => {
     if (clip.track !== 'body') return clip;

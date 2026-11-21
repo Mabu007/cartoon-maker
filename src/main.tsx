@@ -4,3 +4,5 @@ import './style.css';
 
 createRoot(document.getElementById('root')!).render(<App/>);
 import './filmmaking.css';
+
+import './simplified.css';

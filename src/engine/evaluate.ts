@@ -216,6 +216,7 @@ export function evaluate(scene: Scene, time: number) {
   const fade = transition ? clamp((t - transition.start) / transition.length) : 0;
   const objects = scene.objects.map(object => {
     const cue = latest(timelineClips.filter(clip => clip.track === 'props' && clip.target === object.id && clip.start <= t));
+    if(cue?.track==='props' && (cue.interaction==='open'||cue.interaction==='close')) {const progress=ease(clamp((t-cue.start)/Math.min(.7,cue.length)));return {...object,doorOpen:cue.interaction==='open'?progress:1-progress};}
     if (cue?.track !== 'props' || cue.interaction !== 'release') return object;
     const owner = scene.actors.find(actor => actor.id === cue.actor);
     const move = latest(timelineClips.filter(clip => clip.track === 'movement' && clip.actor === cue.actor && clip.start <= cue.start));

@@ -78,7 +78,7 @@ export function drawWorld(g: Graphics, environment: Scene['environment']) {
   }
 }
 export const propSize: Record<Prop['kind'], [number, number]> = { sofa: [326, 126], chair: [104, 126], table: [188, 68], desk: [185, 99], door: [128, 245], window: [215, 120], television: [145, 96], lamp: [103, 200], cup: [33, 28], book: [55, 12], phone: [25, 33], plant: [76, 113], microphone: [36, 71], streetlight: [85, 223], counter: [155, 110], image: [140, 140] };
-export function drawProp(g: Graphics, { kind, color }: Pick<Prop, 'kind' | 'color'>) {
+export function drawProp(g: Graphics, { kind, color }: Pick<Prop, 'kind' | 'color'>, doorOpen = 0) {
   switch (kind) {
     case 'image':
       rect(g, -68, -135, 136, 133, '#383047', 10, 3, '#d5a8e5');
@@ -109,11 +109,14 @@ export function drawProp(g: Graphics, { kind, color }: Pick<Prop, 'kind' | 'colo
       rect(g, -w / 2, -h, w, 24, color, 10, 4);
       segment(g, -w * .38, -h + 7, w * .38, -h + 7, '#b88b70', 2); break;
     }
-    case 'door':
+    case 'door': {
       rect(g, -66, -246, 132, 247, '#66755f', 5, 3, '#586453');
-      rect(g, -55, -235, 110, 235, color, 3, 4, '#555c4c');
-      for (const y of [-219, -105]) rect(g, -40, y, 81, 82, color, 3, 3, '#858b71');
-      ellipse(g, 33, -116, 6, 6, '#e3b97d', 2, '#635a4c'); break;
+      rect(g,-55,-235,110,235,'#303b38',1);
+      const panel=110*(1-doorOpen*.84),slant=doorOpen*12;
+      poly(g,[-55,-235,-55+panel,-235-slant,-55+panel,-slant,-55,0],color,3,'#555c4c');
+      for (const y of [-219,-105]) rect(g,-48,y,panel*.73,82,color,3,2,'#858b71');
+      ellipse(g,-55+panel*.8,-116-slant/2,Math.max(2,6*(1-doorOpen*.6)),6,'#e3b97d',2,'#635a4c');break;
+    }
     case 'window':
       rect(g, -104, -111, 208, 111, '#809174', 7); rect(g, -109, -121, 211, 113, '#e7cd9e', 8, 5, '#64694f');
       rect(g, -99, -111, 191, 92, color, 3, 2, '#828366');

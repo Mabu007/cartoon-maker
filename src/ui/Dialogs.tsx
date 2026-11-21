@@ -8,8 +8,8 @@ import { type Format } from '../engine/renderer.ts';
 import { evaluate, projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
 import { audioLength, putAudio } from '../services/audio.ts';
-import { analyzeLipSync } from '../services/lipSync.ts';
-import { speechProvider, voices, synthesizeCached } from '../services/speech.ts';
+import { analyzeLocalLipSync } from '../services/localLipSync.ts';
+
 import { browserExporter, exportCodec } from '../services/export.ts';
 import type { SavedProject } from '../services/projects.ts';
 import { clipLabel, clock, formats, IconButton, Modal, Select, trackIcon } from './shared.tsx';
@@ -24,7 +24,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
   const [shot, setShot] = useState<typeof shots[number]>('medium'), [transition, setTransition] = useState<'cut' | 'glide'>('cut');
   const [effect, setEffect] = useState<'fade-in' | 'fade-out'>('fade-in'), [sound, setSound] = useState<typeof soundNames[number]>('pop');
   const [gait, setGait] = useState<'walk' | 'run'>(request.action === 'run' ? 'run' : 'walk');
-  const [interaction, setInteraction] = useState<'equip' | 'release'>('equip');
+  const [interaction, setInteraction] = useState<'equip' | 'release' | 'open' | 'close'>('equip');
   const [start, setStart] = useState(clamp(time, 0, scene.duration - .1));
   const [length, setLength] = useState(request.action ? Math.max(1, animations[request.action].duration) : 2);
   const needsActor = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue'].includes(track);
@@ -34,9 +34,11 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
   const evaluated = evaluate(scene, start).actors.find(item => item.id === actor);
   const travel = Math.hypot(toX - (evaluated?.x ?? 0), toY - (evaluated?.y ?? 0));
   const travelLength = Math.max(.1, travel / (gaitSpeeds[gait] * (place?.scale ?? 1)));
-  const holdables = scene.objects.filter(item => anchorFor(item)?.action === 'hold');
+  const holdables = scene.objects.filter(item => ['hold','open'].includes(anchorFor(item)?.action??''));
   const cueTargets = track === 'gaze' ? ['camera', ...Object.keys(actors).filter(id => id !== actor), ...scene.objects.map(item => item.id)] : holdables.map(item => item.id);
   const cueTarget = cueTargets.includes(target) ? target : cueTargets[0];
+  const door = scene.objects.find(item=>item.id===cueTarget)?.kind==='door';
+  const resolvedInteraction = door ? (interaction==='close'?'close':'open') : (interaction==='release'?'release':'equip');
   const choices = compatibleObjects(scene, action);
   const seat = action === 'sit' ? nearestObject(scene, actor, 'sit') : undefined;
   const selectedTarget = action === 'sit'
@@ -55,7 +57,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
       return add({ ...base, length: travelLength, track, actor, gait, fromX: evaluated.x, fromY: evaluated.y, toX: clamp(toX, -2000, 3000), toY: clamp(toY, -2000, 3000) });
     if (track === 'movement') return;
     if (track === 'gaze') return cueTarget ? add({ ...base, track, actor, target: cueTarget }) : undefined;
-    if (track === 'props') return cueTarget ? add({ ...base, track, actor, target: cueTarget, interaction }) : undefined;
+    if (track === 'props') return cueTarget ? add({ ...base, track, actor, target: cueTarget, interaction:resolvedInteraction }) : undefined;
     if (track === 'face') return add({ ...base, track, actor, expression });
     if (action === 'sit' && !selectedTarget) return;
     return add({ ...base, track, actor, action, layer: action === 'sit' ? 'body' : layer,
@@ -65,7 +67,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
     <div className="dialog-fields"><label className="field">Track<Select aria="Track" value={track} options={tracks} onChange={setTrack} render={id => trackNames[id]}/></label>
     {(needsActor || track === 'camera') && <label className="field">{track === 'camera' ? 'Focus' : 'Actor'}<Select aria="Actor" value={actor} onChange={value => { setActor(value); setTarget(''); const item = scene.actors.find(entry => entry.id === value); if (item) { setToX(item.x + 145); setToY(item.y); } }} options={track === 'camera' ? ['', ...Object.keys(actors)] : Object.keys(actors)} render={id => actors[id] ?? 'Automatic'}/></label>}
     {needsActor && !actor && <p className="form-error">Add an actor to the scene first.</p>}
-    {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setTarget(''); if (value === 'sit') setLayer('body'); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={action === 'sit' ? 'body' : layer} onChange={setLayer} options={action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label></div>{action === 'sit' && !choices.length && <p className="form-error" role="alert">Add a chair or sofa to this scene before making a character sit.</p>}
+    {track === 'body' && <><div className="field-row"><label className="field">Action<Select aria="Action" value={action} onChange={value => { setAction(value); setTarget(''); setLayer(['wave','point','nod','shake','shrug','laugh','talk','listen','think'].includes(value)?'gesture':'body'); }} options={actions}/></label><label className="field">Layer<Select aria="Layer" value={action === 'sit' ? 'body' : layer} onChange={setLayer} options={action === 'sit' ? ['body'] as const : ['body', 'gesture'] as const}/></label></div>{action === 'sit' && !choices.length && <p className="form-error" role="alert">Add a chair or sofa to this scene before making a character sit.</p>}
       {!!choices.length && <label className="field">{action === 'sit' ? 'Sit on' : 'Interact with'}<Select aria={action === 'sit' ? 'Seat' : 'Interact with'} value={selectedTarget} onChange={setTarget}
         options={action === 'sit' ? choices.map(item => item.id) : ['', ...choices.map(item => item.id)]}
         render={id => choices.find(item => item.id === id)?.name ?? 'Empty hands'}/></label>}</>}
@@ -81,79 +83,56 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio 
   </form></Modal>;
 }
 
-export type AudioRequest = { track: 'dialogue' | 'audio' | 'music'; actor?: string; start: number };
-export function AudioDialog({ request, actors, characters, scene, account, add, close }: { request: AudioRequest; actors: Record<string, string>; characters: Character[]; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
-  const isDialogue = request.track === 'dialogue';
-  const getVoice = (actorId:string) => characters.find(c=>c.id===scene.actors.find(a=>a.id===actorId)?.characterId);
-  const initialActor=request.actor || Object.keys(actors)[0] || '';
-  const [actor, setActor] = useState(initialActor), [text, setText] = useState(''),
-    [voice, setVoice] = useState<string>(getVoice(initialActor)?.voicePreset ?? 'warm');
-  const [start, setStart] = useState(clamp(request.start, 0, scene.duration - .1)), [name, setName] = useState('');
-  const [recording, setRecording] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [asset, setAsset] = useState<{ blob: Blob; url: string; length: number; generationText?: string }>();
-  const [lipStatus, setLipStatus] = useState('');
-  const recorder = useRef<MediaRecorder | undefined>(undefined), inputStream = useRef<MediaStream | undefined>(undefined), alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; inputStream.current?.getTracks().forEach(track => track.stop()); if (recorder.current?.state === 'recording') recorder.current.stop(); }; }, []);
-  useEffect(() => () => { if (asset) URL.revokeObjectURL(asset.url); }, [asset]);
-  async function load(blob: Blob, label: string, generationText?:string) {
-    if (blob.size >= 20 * 1024 * 1024) throw new Error('Choose an audio file smaller than 20 MB.');
-    const length = await audioLength(blob);
-    if (length < .1) throw new Error('The recording is too short.');
-    if (alive.current) { setAsset({ blob, url: URL.createObjectURL(blob), length, generationText }); setName(label); }
+export type AudioRequest = { track: 'dialogue' | 'audio' | 'music'; actor?: string; start: number; replaceId?: string };
+export function AudioDialog({ request, actors, scene, add, close }: { request: AudioRequest; actors: Record<string, string>; characters: Character[]; scene: Scene; account: Account | null; add: (clip: Clip) => void; close: () => void }) {
+  const isDialogue=request.track==='dialogue';
+  const [actor,setActor]=useState(request.actor??Object.keys(actors)[0]??''),[start,setStart]=useState(clamp(request.start,0,scene.duration-.1));
+  const [asset,setAsset]=useState<{blob:Blob;url:string;length:number;name:string}>();
+  const [busy,setBusy]=useState(false),[recording,setRecording]=useState(false),[error,setError]=useState('');
+  const alive=useRef(true),stream=useRef<MediaStream | undefined>(undefined),recorder=useRef<MediaRecorder | undefined>(undefined),limit=useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;clearTimeout(limit.current);stream.current?.getTracks().forEach(t=>t.stop());if(recorder.current?.state==='recording')recorder.current.stop();};},[]);
+  useEffect(()=>()=>{if(asset)URL.revokeObjectURL(asset.url);},[asset]);
+  async function work(task:()=>Promise<void>){if(busy)return;setBusy(true);setError('');try{await task();}catch(e){if(alive.current)setError(e instanceof Error?e.message:'Could not load recording.');}finally{if(alive.current)setBusy(false);}}
+  async function load(blob:Blob,name:string){
+    if(!blob.size||blob.size>20*1024*1024)throw Error('Choose an audio file smaller than 20 MB.');
+    let length:number;try{length=await audioLength(blob);}catch{throw Error('This audio could not be decoded. Try WAV, MP3, M4A or WebM.');}
+    if(length<.1||length>180)throw Error('Record between 0.1 and 180 seconds.');
+    if(alive.current)setAsset({blob,name,url:URL.createObjectURL(blob),length});
   }
-  async function work(command: () => Promise<void>) {
-    setBusy(true); setError('');
-    try { await command(); } catch (error) { setError(error instanceof Error ? error.message : 'Could not load audio.'); } finally { if (alive.current) setBusy(false); }
-  }
-  async function record() {
-    if (recorder.current?.state === 'recording') { recorder.current.stop(); return; }
-    await work(async () => {
-      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') throw new Error('Microphone recording is unavailable. Upload audio instead.');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!alive.current) { stream.getTracks().forEach(track => track.stop()); return; }
-      inputStream.current = stream;
-      try {
-        const mic = new MediaRecorder(stream); recorder.current = mic;
-        const chunks: Blob[] = [];
-        mic.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-        mic.onstop = () => { stream.getTracks().forEach(track => track.stop()); if (!alive.current) return; setRecording(false); void work(() => load(new Blob(chunks, { type: mic.mimeType.split(';')[0] || 'audio/webm' }), 'Microphone recording')); };
-        mic.onerror = () => { stream.getTracks().forEach(track => track.stop()); setRecording(false); setError('The microphone recording failed.'); };
-        mic.start(); setRecording(true);
-      } catch (error) { stream.getTracks().forEach(track => track.stop()); throw error; }
+  async function record(){
+    if(recorder.current?.state==='recording'){clearTimeout(limit.current);recorder.current.stop();return;}
+    await work(async()=>{
+      if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined')throw Error('Recording is unavailable in this browser. Upload audio instead.');
+      let input:MediaStream;try{input=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}catch(e){throw Error(e instanceof DOMException&&e.name==='NotAllowedError'?'Microphone permission was denied. Allow the microphone in your browser or upload audio.':'No working microphone was found. Connect one or upload audio.');}
+      if(!alive.current){input.getTracks().forEach(t=>t.stop());return;}
+      stream.current=input;
+      try{
+        const mic=new MediaRecorder(input);recorder.current=mic;const chunks:Blob[]=[];
+        mic.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+        mic.onstop=()=>{clearTimeout(limit.current);input.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);void work(()=>load(new Blob(chunks,{type:mic.mimeType}),'Voice recording'));}};
+        mic.onerror=()=>{clearTimeout(limit.current);input.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);setError('The recording stopped unexpectedly. Try again or upload audio.');}};
+        mic.start();setRecording(true);limit.current=setTimeout(()=>{if(mic.state==='recording')mic.stop();},179000);
+      }catch(e){input.getTracks().forEach(t=>t.stop());throw e;}
     });
   }
-  const save = () => work(async () => {
-    if (!asset) return;
-    if (isDialogue && asset.generationText && asset.generationText!==text.trim())
-      throw new Error('The dialogue text changed since speech generation. Generate the updated line before adding it.');
-    const at = clamp(start, 0, scene.duration - .1);
-    const id = uid(); await putAudio(id, asset.blob);
-    const common = { id: uid(), start: at, length: clamp(asset.length, .1, scene.duration - at), asset: `asset:${id}`, volume: 1, muted: false, offset: 0 };
-    if (isDialogue) {
-      const analysis = await analyzeLipSync(asset.blob, text.trim(), asset.length,{
-        token:await account?.getIdToken().catch(()=>undefined)
-      });
-      if (!alive.current) return;
-      setLipStatus(analysis.source === 'rhubarb' ? 'Rhubarb audio-derived mouth cues ready and cached.'
-        : 'Estimated lip-sync (NOT Rhubarb). '+(analysis.reason??'Analyzer unavailable.'));
-      add({ ...common, track: 'dialogue', text: text.trim(), actor, voicePreset:voice as 'warm'|'bright'|'deep', visemes: analysis.cues,
-        lipSync:{source:analysis.source,engine:analysis.engine,analyzedDuration:analysis.analyzedDuration,
-          ...(analysis.cacheKey?{cacheKey:analysis.cacheKey}:{})} });
-    } else {
-      if (!alive.current) return;
-      const title = name.trim().slice(0, 80);
-      if (request.track === 'music') add({ ...common, track: 'music', name: title || 'Music' });
-      else add({ ...common, track: 'audio', name: title || 'SFX' });
-    }
-  });
-  return <Modal title={isDialogue ? 'Add dialogue' : request.track === 'music' ? 'Add music' : 'Add sound effect'} description={isDialogue ? 'Generate a voice, record your own, or attach an audio file.' : request.track === 'music' ? 'Import a soundtrack or music loop.' : 'Import a sound effect or recording.'} close={close}>
-    <div className="dialog-fields">{isDialogue && <><label className="field">Actor<Select aria="Dialogue actor" value={actor} onChange={value=>{setActor(value);setVoice(getVoice(value)?.voicePreset??'warm');}} options={Object.keys(actors)} render={id => actors[id]}/></label>{!actor && <p className="form-error">Add an actor to the scene first.</p>}<label className="field">Dialogue<textarea value={text} maxLength={400} onChange={e => setText(e.target.value)} placeholder="What does your character say?"/></label><div className="field-row"><label className="field">Voice<Select aria="Voice" value={voice} onChange={setVoice} options={voices.map(item => item.id)} render={id => voices.find(item => item.id === id)!.name}/></label><button disabled={!text.trim() || busy || recording} className="quiet generate-voice" onClick={() => work(async () => load(await synthesizeCached(speechProvider(account),text,voice,getVoice(actor)?.hostedVoiceId), 'Generated voice',text.trim()))}><Sparkles size={16}/> Generate voice</button></div>{(!account || import.meta.env.VITE_HOSTED_SPEECH !== 'true') && <p className="small-text">Voice generation runs on this device. The first use downloads the voice engine.</p>}</>}
-    <div className="field-row"><label className={`quiet file-button ${busy || recording ? 'disabled' : ''}`}><FileAudio size={16}/> Upload audio<input type="file" accept="audio/*,.webm" disabled={busy || recording} onChange={e => { const file = e.target.files?.[0]; if (file) void work(() => load(file, file.name.replace(/\.[^.]+$/, ''))); e.currentTarget.value = ''; }}/></label><button className={`quiet ${recording ? 'recording' : ''}`} disabled={busy} onClick={() => void record()}>{recording ? <Square size={15}/> : <Mic size={16}/>} {recording ? 'Stop recording' : 'Record voice'}</button></div>
-    {asset && <><audio controls src={asset.url} aria-label="Preview audio"/>{!isDialogue && <label className="field">Name<input value={name} maxLength={80} onChange={e => setName(e.target.value)}/></label>}</>}
-    <label className="field">Start (seconds)<input type="number" step=".01" min={0} max={scene.duration - .1} value={Math.round(start * 100) / 100} onChange={e => setStart(Number(e.target.value))}/></label>
-    {asset && start + asset.length > scene.duration && <p className="small-text">Audio will trim at the end of this scene.</p>}
-    {lipStatus && <p className="small-text" role="status">{lipStatus}</p>}{busy && <p className="small-text" role="status">Preparing audio / syncing mouth cues…</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>
-    <footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!asset || busy || recording || (isDialogue && !actor)} onClick={() => void save()}><Plus size={16}/> Add to timeline</button></footer>
+  async function save(){await work(async()=>{
+    if(!asset)return;
+    const analysis=isDialogue?await analyzeLocalLipSync(asset.blob):undefined;
+    if(!alive.current)return;
+    const id=uid();await putAudio(id,asset.blob);if(!alive.current)return;
+    const common={id:uid(),start,length:Math.min(asset.length,scene.duration-start),asset:'asset:'+id,offset:0,volume:1,muted:false};
+    if(isDialogue&&analysis)add({...common,track:'dialogue',actor,text:'',visemes:analysis.cues,lipSync:{source:'dsp',engine:analysis.engine,cacheKey:analysis.cacheKey,analyzedDuration:analysis.duration}});
+    else if(request.track==='music')add({...common,track:'music',name:asset.name.slice(0,80)});
+    else add({...common,track:'audio',name:asset.name.slice(0,80)});
+  });}
+  return <Modal title={isDialogue?(request.replaceId?'Replace voice':'Give your character a voice'):request.track==='music'?'Add music':'Add sound'} description={isDialogue?'Record yourself or upload audio. Mouth animation is created automatically on this device.':'Upload a recording for your cartoon.'} close={close}>
+    <div className="dialog-fields">{isDialogue&&<label className="field">Character<Select aria="Dialogue actor" value={actor} options={Object.keys(actors)} onChange={setActor} render={id=>actors[id]}/></label>}
+    <div className="voice-source-buttons"><button className={recording?'danger':'primary'} disabled={busy} onClick={()=>void record()}>{recording?<Square size={19}/>:<Mic size={19}/>} {recording?'Stop recording':'Record voice'}</button><label className="quiet file-button"><FileAudio size={18}/>Upload audio<input type="file" aria-label="Upload voice recording" accept="audio/*,.webm,.m4a" disabled={busy||recording} onChange={e=>{const file=e.target.files?.[0];if(file)void work(()=>load(file,file.name.replace(/\.[^.]+$/,'')));e.target.value='';}}/></label></div>
+    {recording&&<p className="recording-indicator" role="status">Recording… Speak naturally, then press Stop.</p>}
+    {asset&&<><audio controls src={asset.url} aria-label="Preview audio"/><p className="small-text">{asset.name} · {asset.length.toFixed(2)} seconds</p></>}
+    <label className="field">Start on timeline (seconds)<input aria-label="Recording start" type="number" min={0} max={scene.duration-.1} step={.01} value={start} onChange={e=>setStart(clamp(Number(e.target.value),0,scene.duration-.1))}/></label>
+    {asset&&asset.length+start>scene.duration&&<p className="small-text">This recording will trim at the scene end. Extend the scene to hear the rest.</p>}
+    {busy&&<p role="status">Preparing audio and automatic lip sync…</p>}{error&&<p className="form-error" role="alert">{error}</p>}</div><footer className="modal-footer"><button className="quiet" onClick={close}>Cancel</button><span className="spacer"/><button className="primary" disabled={!asset||busy||recording||(isDialogue&&!actor)} onClick={()=>void save()}>{request.replaceId?'Replace recording':'Add to timeline'}</button></footer>
   </Modal>;
 }
 

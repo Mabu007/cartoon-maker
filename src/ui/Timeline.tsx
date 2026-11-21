@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type DragEvent } from 'react';
 import { ChevronDown, ChevronUp, ClipboardCopy, Code2, Copy, Keyboard, Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Lock, Unlock, Volume2, VolumeX, Headphones, ChevronRight, ListFilter, CopyPlus, ClipboardPaste } from 'lucide-react';
+import { AudioWaveform } from './AudioWaveform.tsx';
 import { clamp } from '../engine/animation.ts';
 import { tracks, trackNames, uid, type Clip, type Scene, type Track } from '../engine/schema.ts';
 import { compatibleObjects } from '../engine/interactions.ts';
@@ -180,7 +181,7 @@ export function Timeline({
       if(track==='body'){
         const target=action==='sit'?compatibleObjects(scene,'sit')[0]?.id:undefined;
         if(action==='sit'&&!target)return;
-        const next:Clip={id:uid(),track:'body',actor:actor.id,start,length,action:action as Extract<Clip,{track:'body'}>['action'],layer:'gesture',...(target?{target}: {})};
+        const next:Clip={id:uid(),track:'body',actor:actor.id,start,length,action:action as Extract<Clip,{track:'body'}>['action'],layer:(['idle','sit','stand','walk','run','jump','turn'].includes(action)?'body':'gesture'),...(target?{target}: {})};
         apply({...scene,clips:[...scene.clips,next]},[next.id]);return;
       }
     }
@@ -239,7 +240,7 @@ export function Timeline({
             onPointerCancel={()=>{drag.current=null;setPreview(null);}}
             onLostPointerCapture={()=>{drag.current=null;setPreview(null);}}>
             {!locked&&<span className="clip-handle" data-edge="in" title="Trim start"/>}
-            <Icon size={11}/><span className="clip-text">{clipLabel(clip,names)}{clip.track==='camera'&&<small className="camera-clip-mode"> {clip.transition === 'glide' ? '↝' : '│'}</small>}</span>
+            {(clip.track==='dialogue'||((clip.track==='audio'||clip.track==='music')&&clip.asset.startsWith('asset:')))&&<AudioWaveform asset={clip.asset} offset={clip.offset} length={clip.length}/>}<Icon size={11}/><span className="clip-text">{clipLabel(clip,names)}{clip.track==='camera'&&<small className="camera-clip-mode"> {clip.transition === 'glide' ? '↝' : '│'}</small>}</span>
             {clip.track==='movement'&&clip.keyframes?.map((key,index)=><span key={index} role="button" tabIndex={0}
               className={`timeline-keyframe ${selectedKeyframe?.clipId===clip.id&&selectedKeyframe.index===index?'selected':''}`}
               style={{left:key.time*100+'%'}} title={`Keyframe ${index+1} · ${(clip.start+clip.length*key.time).toFixed(2)}s`}
@@ -271,16 +272,6 @@ export function Timeline({
         <IconButton title="Paste at playhead (Ctrl/Cmd+V)" onClick={paste}><ClipboardPaste size={15}/></IconButton>
         <IconButton title="Delete selected (Backspace/Delete)" onClick={remove} disabled={!selectedClipIds.length&&!selectedKeyframe}><Trash2 size={15}/></IconButton>
         <span className="divider"/>
-        <button type="button" className="quiet mini" title="Open Timeline Code Mode" onClick={onCode}><Code2 size={15}/> Code</button>
-        <div className="ai-context-wrapper" ref={contextRef}>
-          <button type="button" className="quiet mini ai-context-toggle" aria-haspopup="menu" aria-expanded={contextOpen} onClick={()=>setContextOpen(v=>!v)}><ClipboardCopy size={15}/> AI Context <ChevronDown size={13}/></button>
-          {contextOpen&&<div className="ai-context-menu" role="menu" aria-label="AI Context actions">
-            <button role="menuitem" onClick={()=>{setContextOpen(false);onContext();}}>Copy Scene-Building Context</button>
-            <button role="menuitem" onClick={()=>{setContextOpen(false);onCopyScene();}}>Copy Current Scene</button>
-            <button role="menuitem" onClick={()=>{setContextOpen(false);onCopyProject();}}>Copy Entire Project Timeline</button>
-            <button role="menuitem" onClick={()=>{setContextOpen(false);onCode();}}>Open Timeline Code Editor</button>
-          </div>}
-        </div>
         <IconButton title="Shortcut help" onClick={()=>setShortcuts(v=>!v)}><Keyboard size={16}/></IconButton>
         <span className="divider"/>
         <IconButton title={snap?'Disable snapping':'Enable snapping'} active={snap} onClick={()=>setSnap(v=>!v)}><Magnet size={16}/></IconButton>
@@ -312,7 +303,7 @@ export function Timeline({
           </div>
         </div>
         <div className="timeline-grid" aria-hidden="true"><div className="grid-lines">{ticks.slice(1).map((value,index)=><i key={index} style={{left:(index+1)/divisions*100+'%'}}/>)}</div><div className="playhead" ref={needle} style={{left:playhead/scene.duration*100+'%'}}><i/></div></div>
-        {tracks.map(lane)}
+        {tracks.filter(track=>['movement','body','face','dialogue','audio','music','camera'].includes(track)||byTrack[track].length).map(lane)}
       </div>
     </div>}
     {menu&&<div className="timeline-context-menu" role="menu" style={{left:menu.x,top:menu.y}}>

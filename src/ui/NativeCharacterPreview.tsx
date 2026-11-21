@@ -10,11 +10,13 @@ import type { Action, Character, Expression, View } from '../engine/schema.ts';
  * accelerated stage can't initialize or loses its graphics context, character
  * creation stays available using this lightweight, parametric preview.
  */
-export function NativeCharacterPreview({ character: c, view, action, expression, flip, scale, focus, mouthTest }: {
-  character: Character; view: View; action: Action; expression: Expression; flip: boolean; scale: number; focus?: { x: number; y: number }; mouthTest?: Viseme;
+export function NativeCharacterPreview({ character: c, view, action, expression, flip, scale, focus, mouthTest, mouthSample, faceOnly, frozenTime }: {
+  character: Character; view: View; action: Action; expression: Expression; flip: boolean; scale: number; focus?: { x: number; y: number }; mouthTest?: Viseme; mouthSample?: import('../engine/visemes.ts').VisemeSample; faceOnly?: boolean; frozenTime?: number;
 }) {
-  const [elapsed, setElapsed] = useState(0);
+  const [animatedElapsed, setElapsed] = useState(0);
+  const elapsed = frozenTime ?? animatedElapsed;
   useEffect(() => {
+    if (frozenTime !== undefined) return;
     let frame = 0, start = 0, last = -200;
     const animate = (time: number) => {
       if (!start) start = time;
@@ -23,12 +25,12 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     };
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [frozenTime !== undefined]);
   const mouthMask = 'toon-mouth-' + useId().replace(/:/g, '');
-  const speech = mouthTest ? {shape:mouthTest,weight:mouthTest==='rest'?0:1} :
+  const speech = mouthSample ?? (mouthTest ? {shape:mouthTest,weight:mouthTest==='rest'?0:1} :
     action === 'talk'
-      ? sampleViseme('Hello there! Let us create a cartoon. Watch my mouth moving!', 8, elapsed % 8) : undefined;
-  const mood = facialPerformance(elapsed, c.id, action, expression, 0, speech, focus);
+      ? sampleViseme('Hello there! Let us create a cartoon. Watch my mouth moving!', 8, elapsed % 8) : undefined);
+  const mood = facialPerformance(elapsed, c.id, action, expression, mouthSample?.weight??0, speech, focus);
   const emotion = mood.expression;
   const rear = view === 'back' || view === 'back-quarter';
   const profile = view === 'side';
@@ -64,7 +66,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     ? 'M ' + (-headW + 14) + ' ' + (headY - headH) + ' Q ' + (-headW - 5) + ' ' + (headY - headH) + ' ' + (-headW) + ' ' + (headY - 9) + ' Q ' + (-headW - 4) + ' ' + (headY + headH) + ' 0 ' + (headY + headH) + ' Q ' + headW + ' ' + (headY + headH) + ' ' + headW + ' ' + (headY - 9) + ' Q ' + headW + ' ' + (headY - headH) + ' ' + (headW - 15) + ' ' + (headY - headH) + ' Z'
     : 'M 0 ' + (headY - headH) + ' C ' + (-headW * 1.3) + ' ' + (headY - headH) + ' ' + (-headW * 1.3) + ' ' + (headY + headH * .75) + ' 0 ' + (headY + headH) + ' C ' + (headW * 1.3) + ' ' + (headY + headH * 1.15) + ' ' + (headW * 1.3) + ' ' + (headY - headH) + ' 0 ' + (headY - headH) + ' Z';
   const mainHair = 'M ' + (-headW) + ' ' + (headY - 5) + ' C ' + (-headW - 13) + ' ' + (headY - headH - 9) + ' ' + (-headW / 2) + ' ' + (headY - headH - 13) + ' 2 ' + (headY - headH - 8) + ' C ' + headW + ' ' + (headY - headH - 14) + ' ' + (headW + 6) + ' ' + (headY - headH + 7) + ' ' + headW + ' ' + (headY - 6) + (rear ? ' Q 0 ' + (headY + headH) + ' ' + (-headW) + ' ' + (headY - 5) : ' Q 12 ' + (headY - 22) + ' -3 ' + (headY - 19) + ' Q ' + (-headW + 8) + ' ' + (headY - 10) + ' ' + (-headW) + ' ' + (headY - 5)) + ' Z';
-  return <svg className="native-character-svg" viewBox="0 0 540 540" role="img" aria-label={'Character preview: ' + c.name + ', ' + view + ' view'}>
+  return <svg className="native-character-svg" viewBox={faceOnly?"175 215 190 145":"0 0 540 540"} role="img" aria-label={'Character preview: ' + c.name + ', ' + view + ' view'}>
     <rect width="540" height="540" fill="#665777"/>
     {Array.from({ length: 6 }, (_, i) => <rect key={i} x={16 + i * 91} y="24" width="65" height="404" rx="31" fill={i % 2 ? '#7c6a90' : '#705f83'}/>)}
     <path d="M 0 443 H 540 V 540 H 0 Z" fill="#4b3c56"/>

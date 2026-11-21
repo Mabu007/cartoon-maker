@@ -1,6 +1,6 @@
 import type { VisemeCue, Viseme } from './visemes.ts';
 
-export const DSP_ENGINE = 'toonroom-dsp-1';
+export const DSP_ENGINE = 'toonroom-dsp-2';
 export type DspAnalysis = { cues: VisemeCue[]; waveform: number[]; duration: number; noiseFloor: number };
 const bound = (n: number, a = 0, b = 1) => Math.max(a, Math.min(b, n));
 function percentile(values: number[], p: number) {
@@ -65,7 +65,7 @@ export function analyzePCM(pcm: Float32Array, sampleRate: number): DspAnalysis {
     let shape: Viseme = 'rest';
     if (active) {
       const spectral = spectrum(data, i * hop, window);
-      shape = spectral.high > .48 ? 'pucker' : spectral.low > .72 ? 'round' : spectral.centroid > 34 ? 'wide' : 'open';
+      shape = spectral.high > .48 ? 'pucker' : level > .62 ? 'open' : spectral.centroid > 19 || level > .32 ? 'wide' : spectral.low > .72 ? 'round' : 'open';
       if (energy < previousRms * .43 && at - lastChange > .065) shape = 'closed';
     }
     const prior = cues.at(-1);
@@ -75,6 +75,23 @@ export function analyzePCM(pcm: Float32Array, sampleRate: number): DspAnalysis {
     if (prior && prior.shape === shape && Math.abs((prior.strength ?? 0) - strength) < .19 && prior.end - prior.start < .18) prior.end = end;
     else { cues.push({ start: at, end, shape, strength }); lastChange = at; }
     previousRms = energy;
+  }
+  // Bound stored data to the canonical cue budget on long, rapidly varying
+  // recordings. Each bucket keeps the dominant observed texture, not a guess
+  // about a spoken syllable. Ordinary recordings retain full 20 ms detail.
+  if(cues.length>3000){
+    const limited:VisemeCue[]=[];let cursor=0;
+    for(let i=0;i<3000;i++){
+      const start=i*duration/3000,end=(i+1)*duration/3000,weights=new Map<Viseme,number>();let strength=0;
+      while(cursor<cues.length&&cues[cursor].end<=start)cursor++;
+      for(let j=cursor;j<cues.length&&cues[j].start<end;j++){
+        const span=Math.max(0,Math.min(end,cues[j].end)-Math.max(start,cues[j].start));
+        weights.set(cues[j].shape,(weights.get(cues[j].shape)??0)+span);strength+=(cues[j].strength??0)*span;
+      }
+      const shape=[...weights].sort((a,b)=>b[1]-a[1])[0]?.[0]??'rest';
+      limited.push({start,end,shape,strength:shape==='rest'?0:bound(strength/(end-start))});
+    }
+    return {cues:limited,waveform,duration,noiseFloor};
   }
   return { cues, waveform, duration, noiseFloor };
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent }
 import { AlertCircle, Clapperboard } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
 import { type Project, type Scene } from '../engine/schema.ts';
+import { evaluate } from '../engine/evaluate.ts';
 import { clamp } from '../engine/animation.ts';
 import { prepareDialoguePreview, type Mixer } from '../services/audio.ts';
 import type { Selection } from '../studio.ts';
@@ -9,10 +10,10 @@ import type { Selection } from '../studio.ts';
 type Position = { x: number; y: number };
 type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
 export type PreviewTime = { scene: Scene; local: number };
-export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame }: {
+export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
   selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
-  mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
+  onDestination?: (position: Position) => void; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), repaint = useRef<() => void>(() => {});
   const dialogue = useRef<{ scene: Scene; amplitude: Awaited<ReturnType<typeof prepareDialoguePreview>> } | null>(null);
@@ -64,7 +65,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         const frame = renderer.draw(scene, p.project.characters, local, {
           selected: p.selection?.kind !== 'clip' && !p.playing ? p.selection?.id : undefined,
           ...(drag.current?.moved && drag.current.sceneId === scene.id ? { staged: { [drag.current.id]: drag.current.current } } : {}),
-          edit: p.edit && !p.playing, subtitles: p.subtitles,
+          edit: false, subtitles: p.subtitles,
           amplitude: (id, t) => !p.playing && dialogue.current?.scene === scene
             ? dialogue.current.amplitude(id, t)
             : p.mixer.current?.amplitude(scene, id, t) ?? 0
@@ -108,10 +109,11 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     return renderer.pick((event.clientX - box.left) * renderer.width / box.width, (event.clientY - box.top) * renderer.height / box.height);
   }
   return <div className={`stage-format format-${format.replace(':', '-')}`}>
-    <div className={`canvas-mount ${edit ? 'place-mode' : ''}`} ref={mount}
+    <div className={`canvas-mount ${edit ? 'place-mode' : ''} ${onDestination?'stage-destination':''}`} ref={mount}
       onPointerDown={event => {
         if (playing || event.button !== 0) return;
         const hit = pointer(event);
+        if(hit && onDestination){onDestination({x:hit.x,y:hit.y});return;}
         if (!hit?.id) { selected(null); return; }
         const actor = scene.actors.find(item => item.id === hit.id), object = scene.objects.find(item => item.id === hit.id);
         const entity = actor ?? object;
@@ -119,7 +121,9 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         const kind = actor ? 'actor' : 'object';
         selected({ kind, id: entity.id });
         if (!edit) return;
-        drag.current = { sceneId: scene.id, id: entity.id, origin: entity, pointer: hit, current: entity, moved: false };
+        const frame=evaluate(scene,time.current.local);
+        const origin=frame.actors.find(a=>a.id===entity.id)??frame.objects.find(o=>o.id===entity.id)??entity;
+        drag.current = { sceneId: scene.id, id: entity.id, origin, pointer: hit, current: origin, moved: false };
         event.currentTarget.setPointerCapture(event.pointerId);
       }} onPointerMove={event => {
         const item = drag.current, hit = item && pointer(event);
@@ -130,7 +134,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         item.moved = true;
         item.current = { x: clamp(Math.round((item.origin.x + dx) / grid) * grid, -2000, 3000), y: clamp(Math.round((item.origin.y + dy) / grid) * grid, -2000, 3000) };
         repaint.current();
-      }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved && item.sceneId === scene.id) move(item.id, item.current); repaint.current(); }}
+      }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved && item.sceneId === scene.id) { const source=scene.actors.find(a=>a.id===item.id)??scene.objects.find(o=>o.id===item.id);if(source)move(item.id,{x:source.x+item.current.x-item.origin.x,y:source.y+item.current.y-item.origin.y}); } repaint.current(); }}
       onPointerCancel={() => { drag.current = null; repaint.current(); }}
       onLostPointerCapture={() => { drag.current = null; repaint.current(); }} />
     {status && <div className="stage-status">{status.startsWith('Loading') ? <Clapperboard size={22}/> : <AlertCircle size={22}/>}<span>{status}</span>{!status.startsWith('Loading') && <button type="button" className="quiet" onClick={() => setRestart(value => value + 1)}>Retry preview</button>}</div>}

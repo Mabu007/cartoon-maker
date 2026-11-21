@@ -59,3 +59,19 @@ test('invalid manual cue ranges cannot corrupt saved projects',()=>{
  if(clip.track!=='dialogue')return;clip.manualVisemes=[{start:1,end:.5,shape:'open'}];
  assert.equal(ProjectDocument.safeParse(project).success,false);
 });
+
+test('maximum-length rapid audio fits the project cue budget',()=>{
+ const pcm=Float32Array.from({length:16000*180},(_,i)=>Math.sin(i*.07)*Math.sin(i*.002)**2*.4);
+ const result=analyzePCM(pcm,16000);assert.ok(result.cues.length<=3000);assert.equal(result.cues.at(-1)!.end,180);
+ assert.ok(result.cues.some(c=>c.shape!=='rest'));
+});
+
+test('door anchors open and close deterministically without becoming held props',()=>{
+ const project=makeProject(true),scene=project.scenes[0],door=scene.objects.find(o=>o.kind==='door')!,actor=scene.actors[0];
+ scene.clips.push({id:'open-door',track:'props',actor:actor.id,target:door.id,interaction:'open',start:2,length:1});
+ scene.clips.push({id:'close-door',track:'props',actor:actor.id,target:door.id,interaction:'close',start:10,length:1});
+ const valid=ProjectDocument.parse(project).scenes[0];
+ const opening=(time:number)=>{const item=evaluate(valid,time).objects.find(o=>o.id===door.id)!;return 'doorOpen' in item?item.doorOpen:0;};
+ assert.equal(opening(1),0);assert.ok(Number(opening(2.35))>0);assert.equal(opening(3),1);assert.equal(opening(11),0);
+ assert.notEqual(evaluate(valid,3).actors.find(a=>a.id===actor.id)!.held?.id,door.id);
+});
