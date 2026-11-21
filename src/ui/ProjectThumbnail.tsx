@@ -1,3 +1,4 @@
+import { MediaSvgImage } from './MediaImage.tsx';
 import { scenePalettes } from '../engine/presets.ts';
 import type { Project } from '../engine/schema.ts';
 
@@ -33,11 +34,11 @@ export function ProjectThumbnail({project,compact=false}:{project:Project;compac
     <rect x="87" y="91" width="182" height="158" rx="8" fill={scene.environment==='Township street'?'#eac7a0':'#a3bfd5'}/>
     <path d="M178 92V248M88 174H270" stroke="#fbf2e4" strokeWidth="12"/>
     <circle cx="238" cy="114" r="25" fill="#fef3d4" opacity=".64"/>
-    {scene.backgroundImage&&<image href={scene.backgroundImage} width="960" height="540"
+    {scene.backgroundImage&&<MediaSvgImage source={scene.backgroundImage} width={960} height={540}
       preserveAspectRatio="xMidYMid slice"/>}
     {!scene.backgroundImage&&stageProps.map(object=><g key={object.id}
       transform={`translate(${object.x} ${object.y}) rotate(${object.rotation}) scale(${object.scale})`}>
-      {object.imageData?<image href={object.imageData}
+      {object.imageData?<MediaSvgImage source={object.imageData}
         x={-(object.imageWidth??90)/2} y={-(object.imageHeight??90)}
         width={object.imageWidth??90} height={object.imageHeight??90}/>
         :<><ellipse cy="7" rx="56" ry="13" fill="#141222" opacity=".14"/>
