@@ -204,7 +204,7 @@ test('facial performances blink, move eyes and mouths, do not synchronize actors
   assert.equal(facialPerformance(1.5, 'actor-zee', 'celebrate', 'neutral').expression, 'excited');
 });
 
-test('seat deletion cannot leave characters sitting on air and can reassign another chair', () => {
+test('removing furniture preserves independent sitting and supports optional seat reassignment', () => {
   const extra = { id: 'alternate-chair', name: 'Alternative chair', kind: 'chair' as const,
     x: 590, y: 420, scale: 1, rotation: 0, depth: 0, color: '#cc8877' };
   const withChair = { ...scene, objects: [...scene.objects, extra] };
@@ -219,11 +219,13 @@ test('seat deletion cannot leave characters sitting on air and can reassign anot
   const withoutSofa = removeObjectWithDecisions(withChair, 'sofa');
   const safeClip = withoutSofa.clips.find(item => item.id === deps[0].clip.id);
   assert.equal(safeClip?.track, 'body');
-  assert.equal(safeClip?.track === 'body' && safeClip.action, 'stand');
+  assert.equal(safeClip?.track === 'body' && safeClip.action, 'sit');
   assert.equal(safeClip?.track === 'body' && safeClip.target, undefined);
-  const standing = evaluate(withoutSofa, 2).actors.find(item => item.id === 'actor-zee')!;
-  assert(standing.lift > -20, 'actor must be standing on scene floor');
-  assert(evaluate(withoutSofa, 0).actors.find(item => item.id === 'actor-zee')!.lift > -5, 'actor must never spend the first frames sitting without a chair');
+  const stillSitting = evaluate(withoutSofa, 2).actors.find(item => item.id === 'actor-zee')!;
+  assert.equal(stillSitting.lift,-49,'Removing a seat must not delete an authored Sit performance');
+  const before = evaluate(withChair,2).actors.find(item=>item.id==='actor-zee')!;
+  assert.equal(stillSitting.x,before.x,'Sitting never snaps between object anchors');
+  assert.equal(stillSitting.y,before.y,'Sitting never floats to the object anchor');
   assert(ProjectDocument.safeParse({ ...demo, scenes: [withoutSofa] }).success);
 
   const reassigned = removeObjectWithDecisions(withChair, 'sofa', { [deps[0].clip.id]: 'object:alternate-chair' });
@@ -244,18 +246,18 @@ test('holding props and whole-world replacement never preserve missing targets',
   assert.equal(evaluate(withoutCup, 1.6).actors.find(item => item.id === 'actor-zee')?.held, undefined);
   const newWorld = replaceWorldObjects(scene, makeScene('Classroom').objects);
   assert(newWorld.clips.every(item => item.track !== 'body' || !item.target || newWorld.objects.some(object => object.id === item.target)));
-  assert(newWorld.clips.some(item => item.track === 'body' && item.action === 'stand'));
+  assert(newWorld.clips.some(item => item.track === 'body' && item.action === 'sit' && !item.target));
   assert(ProjectDocument.safeParse({ ...demo, scenes: [newWorld] }).success);
 });
 
-test('legacy unsupported sit clips are repaired when loading projects', () => {
+test('unanchored sit clips remain valid and executable during legacy project loading', () => {
   const sit = scene.clips.find(clip => clip.track === 'body' && clip.action === 'sit')!;
   const oldScene = { ...scene, clips: scene.clips.map(clip => clip.id === sit.id ? { ...sit, target: undefined } : clip) };
   const fixed = repairOrphanedObjectActions(oldScene);
-  assert(fixed.clips.some(item => item.id === sit.id && item.track === 'body' && item.action === 'stand'));
+  assert(fixed.clips.some(item => item.id === sit.id && item.track === 'body' && item.action === 'sit'));
   assert(ProjectDocument.safeParse({ ...demo, scenes: [fixed] }).success);
   const badFrame = evaluate(oldScene, 2).actors.find(item => item.id === 'actor-zee')!;
-  assert(badFrame.lift > -20, 'even un-migrated legacy clips cannot sit on air at runtime');
+  assert.equal(badFrame.lift,-49,'An unanchored Sit animation plays without missing-prop failures');
 });
 
 
@@ -264,7 +266,7 @@ test('object deletion + undo/redo preserves the original object/action graph', (
   useStudio.getState().editScene(current => removeObjectWithDecisions(current, 'sofa'));
   const afterDelete = currentScene(useStudio.getState());
   assert.equal(afterDelete.objects.some(item => item.id === 'sofa'), false);
-  assert(afterDelete.clips.some(clip => clip.track === 'body' && clip.actor === 'actor-zee' && clip.action === 'stand'));
+  assert(afterDelete.clips.some(clip => clip.track === 'body' && clip.actor === 'actor-zee' && clip.action === 'sit' && !clip.target));
   useStudio.getState().undo();
   const restored = currentScene(useStudio.getState());
   assert(restored.objects.some(item => item.id === 'sofa'));
@@ -360,4 +362,23 @@ test('deleted props do not leave stale actor eye focus targets', () => {
   const valid = runEdit({ ...demo, scenes: [withFocus] }, document => ({ ...document, scenes: [removeEntity(withFocus, 'sofa')] }));
   const actor = valid.scenes[0].actors.find(item => item.id === 'actor-sbu');
   assert.equal(actor?.gazeTarget, undefined);
+});
+
+
+test('Sit at a chosen position never slides to an optional distant chair',()=>{
+  const fresh=makeProject(),empty={...fresh.scenes[0],objects:[]};
+  const actor={id:'test-sitter',characterId:fresh.characters[0].id,x:715,y:437,scale:1,rotation:0,depth:0,view:'front' as const,expression:'neutral' as const,flip:false};
+  const sit={id:'sit-alone',start:2,length:3,track:'body' as const,actor:actor.id,action:'sit' as const,layer:'body' as const};
+  const noChair={...empty,actors:[actor],clips:[sit]};
+  const near=evaluate(noChair,2.8).actors[0];
+  assert.equal(near.action,'sit');
+  assert.equal(near.x,715);
+  assert.equal(near.y,437);
+  assert(ProjectDocument.safeParse({...fresh,scenes:[noChair]}).success);
+  const distant={...noChair,objects:[{id:'chair-for-optional-use',name:'Chair',kind:'chair' as const,x:60,y:360,scale:1,rotation:0,depth:0,color:'#b89d88'}],
+    clips:[{...sit,target:'chair-for-optional-use'}]};
+  const onChair=evaluate(distant,2.8).actors[0];
+  assert.equal(onChair.x,715);
+  assert.equal(onChair.y,437);
+  assert.equal(onChair.action,'sit');
 });
