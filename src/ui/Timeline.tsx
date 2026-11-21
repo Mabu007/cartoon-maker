@@ -303,7 +303,7 @@ export function Timeline({
           </div>
         </div>
         <div className="timeline-grid" aria-hidden="true"><div className="grid-lines">{ticks.slice(1).map((value,index)=><i key={index} style={{left:(index+1)/divisions*100+'%'}}/>)}</div><div className="playhead" ref={needle} style={{left:playhead/scene.duration*100+'%'}}><i/></div></div>
-        {tracks.filter(track=>['movement','body','face','dialogue','audio','music','camera'].includes(track)||byTrack[track].length).map(lane)}
+        {tracks.filter(track=>['actors','movement','body','face','dialogue','audio','music','camera'].includes(track)||byTrack[track].length).map(lane)}
       </div>
     </div>}
     {menu&&<div className="timeline-context-menu" role="menu" style={{left:menu.x,top:menu.y}}>
