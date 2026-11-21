@@ -1,34 +1,40 @@
-import { AudioBufferSource, BufferTarget, CanvasSource, canEncodeAudio, canEncodeVideo, Output, WebMOutputFormat } from 'mediabunny';
+import { AudioBufferSource, BufferTarget, CanvasSource, canEncodeAudio, canEncodeVideo, Mp4OutputFormat, Output, WebMOutputFormat } from 'mediabunny';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from '../engine/evaluate.ts';
-import { createRenderer, dimensions } from '../engine/renderer.ts';
+import { createRenderer } from '../engine/renderer.ts';
+import { exportScale, videoFormats, type Format } from '../engine/videoFormats.ts';
 import { createAudioMixer, mixOffline } from './audio.ts';
-import { exportScale, type VideoExporter } from './exportTypes.ts';
+import { audioBitrate, videoBitrate, type VideoContainer, type VideoExporter } from './exportTypes.ts';
 
 export class UnsupportedFrameEncoder extends Error {}
-export const frameExporter: VideoExporter = {
+async function encoderCodecs(format: Format, container: VideoContainer) {
+  const [width, height] = videoFormats[format].pixels;
+  const audio = container === 'mp4' ? 'aac' : 'opus';
+  const options = { width, height, bitrate: videoBitrate };
+  const audioSupported = await canEncodeAudio(audio, { numberOfChannels: 2, sampleRate: 48000, bitrate: audioBitrate });
+  if (!audioSupported) return;
+  const videoCodecs = container === 'mp4' ? ['avc'] as const : ['vp8','vp9'] as const;
+  for (const video of videoCodecs) {
+    if (await canEncodeVideo(video, options)) return { video, audio } as const;
+  }
+}
+export const frameExporter = (container: VideoContainer): VideoExporter => ({
   async run(project, format, subtitles, signal, progress) {
-    const scale = exportScale(format);
-    const [width, height] = dimensions(format, scale);
-    const [vp8, vp9, opus] = await Promise.all([
-      canEncodeVideo('vp8', { width, height, bitrate: 2_500_000 }),
-      canEncodeVideo('vp9', { width, height, bitrate: 2_500_000 }),
-      canEncodeAudio('opus', { numberOfChannels: 2, sampleRate: 48000, bitrate: 128_000 })
-    ]);
-    if ((!vp8 && !vp9) || !opus) throw new UnsupportedFrameEncoder('The browser does not support frame-by-frame WebM encoding.');
+    const codecs = await encoderCodecs(format, container);
+    if (!codecs) throw new UnsupportedFrameEncoder(`The browser cannot encode ${container.toUpperCase()} frame by frame.`);
     signal.throwIfAborted();
     const duration = projectDuration(project.scenes);
     const mixer = createAudioMixer();
     const target = new BufferTarget();
-    const output = new Output({ format: new WebMOutputFormat(), target });
+    const output = new Output({ format: container === 'mp4' ? new Mp4OutputFormat() : new WebMOutputFormat(), target });
     let renderer: Awaited<ReturnType<typeof createRenderer>> | undefined;
     try {
       const audio = await mixOffline(project.scenes, duration, signal);
       await mixer.prepare(project.scenes);
       signal.throwIfAborted();
-      renderer = await createRenderer(format, scale, true);
-      await renderer.prepareImages(project.scenes);
-      const video = new CanvasSource(renderer.canvas, { codec: vp8 ? 'vp8' : 'vp9', bitrate: 2_500_000, latencyMode: 'quality', keyFrameInterval: 2 });
-      const sound = new AudioBufferSource({ codec: 'opus', bitrate: 128_000 });
+      renderer = await createRenderer(format, exportScale(format), true);
+      await renderer.prepareImages(project.scenes,project.characters);
+      const video = new CanvasSource(renderer.canvas, { codec: codecs.video, bitrate: videoBitrate, latencyMode: 'quality', keyFrameInterval: 2 });
+      const sound = new AudioBufferSource({ codec: codecs.audio, bitrate: audioBitrate });
       output.addVideoTrack(video, { frameRate: MOVIE_FRAME_RATE });
       output.addAudioTrack(sound);
       await output.start();
@@ -53,11 +59,11 @@ export const frameExporter: VideoExporter = {
       await output.finalize();
       if (!target.buffer?.byteLength) throw new Error('The encoder returned an empty recording.');
       progress(1);
-      return { blob: new Blob([target.buffer], { type: 'video/webm' }), extension: 'webm' };
+      return { blob: new Blob([target.buffer], { type: `video/${container}` }), extension: container };
     } finally {
       if (output.state === 'started' || output.state === 'pending') await output.cancel().catch(() => {});
       renderer?.destroy();
       mixer.close();
     }
   }
-};
+});

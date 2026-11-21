@@ -16,7 +16,7 @@ export function Welcome(props: Props){
   if(props.screen==='landing')return <SirvibeLanding account={props.account} available={props.authAvailable} login={props.login} enter={props.enter}/>;
   return <main className="simple-home sv-projects-home">
     <header>
-      <button className="home-wordmark" onClick={props.openLanding}><img className="sv-project-logo" src="/api/logo" alt="" onError={event=>{event.currentTarget.hidden=true;}}/>SIRVIBE<span>.</span></button>
+      <button className="home-wordmark" onClick={props.openLanding}><img className="sv-project-logo" src="/sirvibe-logo.png" alt="" onError={event=>{event.currentTarget.hidden=true;}}/>SIRVIBE<span>.</span></button>
       <div className="home-tools">
         <span className="sv-project-account">{props.account?.displayName||props.account?.email||'Creator'}</span>
         <button className="quiet" onClick={props.openProjects}><FolderOpen size={17}/>My cartoons</button>

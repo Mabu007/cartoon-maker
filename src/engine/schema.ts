@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { characterStyles, seatingStyles, wardrobeStyles } from './characterCatalog.ts';
 import { cameraConflicts, normalizeCameraTimeline } from './cameraTimeline.ts';
 
 export const WIDTH = 960;
@@ -8,7 +9,7 @@ export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', '
 export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think', 'lean', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away'] as const;
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow', 'extreme-close-up', 'over-shoulder', 'establishing', 'reaction', 'pan', 'tilt', 'zoom', 'hold'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
-export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image'] as const;
+export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image', ...seatingStyles] as const;
 export const tracks = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue', 'audio', 'music', 'camera', 'transition'] as const;
 export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'SFX', music: 'Music', camera: 'Camera', transition: 'Transitions' };
 const id = z.string().min(1).max(100);
@@ -26,10 +27,33 @@ export const HostedVoiceId = z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-
 export const CharacterDefinition = z.strictObject({
   id, name: z.string().trim().min(1).max(60), skin: color, shirt: color, pants: color, hairColor: color, shoes: color,
   height: num(.75, 1.3), head: num(.75, 1.35), torso: num(.75, 1.3), arms: num(.75, 1.3), legs: num(.75, 1.3), thickness: num(.65, 1.45), eyeSpacing: num(.65, 1.4),
-  shape: z.enum(['round', 'oval', 'square']), eyes: z.enum(['round', 'relaxed', 'wide']), brows: z.enum(['arched', 'straight', 'bold']),
-  nose: z.enum(['button', 'long', 'flat']), mouth: z.enum(['smile', 'line', 'full']), ears: z.enum(['round', 'small', 'wide']),
-  hair: z.enum(['fade', 'puff', 'locs', 'buzz', 'bald', 'afro', 'braids', 'curls']), beard: z.enum(['none', 'goatee', 'full']), hat: z.enum(['none', 'cap', 'beanie']),
-  glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(['tee', 'hoodie', 'jacket', 'sweater', 'uniform']), accessory: z.enum(['none', 'chain', 'scarf']), goldTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional(),
+  shape: z.enum(characterStyles.shape), eyes: z.enum(characterStyles.eyes), brows: z.enum(characterStyles.brows),
+  nose: z.enum(characterStyles.nose), mouth: z.enum(characterStyles.mouth), ears: z.enum(characterStyles.ears),
+  hair: z.enum(characterStyles.hair), beard: z.enum(characterStyles.beard), hat: z.enum(characterStyles.hat),
+  glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(characterStyles.outfit), accessory: z.enum(characterStyles.accessory),
+  goldTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional(),
+  wardrobe: z.strictObject({
+    bottoms:z.enum(wardrobeStyles.bottoms), footwear:z.enum(wardrobeStyles.footwear), watch:z.enum(wardrobeStyles.watch),
+    bag:z.enum(wardrobeStyles.bag), eyewear:z.enum(wardrobeStyles.eyewear), piercing:z.enum(wardrobeStyles.piercing),
+    extra:z.enum(wardrobeStyles.extra), handheld:z.enum(wardrobeStyles.handheld), pattern:z.enum(wardrobeStyles.pattern),
+    pupil:z.enum(wardrobeStyles.pupil), piercingSide:z.enum(wardrobeStyles.side), hand:z.enum(['left','right']),
+    toothStyle:z.enum(wardrobeStyles.toothStyle), sleeve:z.enum(wardrobeStyles.sleeve),
+    neckline:z.enum(wardrobeStyles.neckline), closure:z.enum(wardrobeStyles.closure), hatWear:z.enum(wardrobeStyles.hatWear),
+    watchSide:z.enum(wardrobeStyles.side),
+    mustache:z.enum(wardrobeStyles.mustache), chinHair:z.enum(wardrobeStyles.chinHair), jawHair:z.enum(wardrobeStyles.jawHair),
+    trim:color, sole:color, laces:color, metal:color, accessoryColor:color, iris:color, sclera:color, lens:color, frame:color, lipColor:color,
+    patternImage:propImageData, logoImage:propImageData, bagLogo:propImageData, shoeLogo:propImageData,
+    patternScale:num(.25,4), patternRotation:num(-180,180), patternOpacity:num(0,1), logoScale:num(.4,2),
+    waist:num(.65,1.5), hem:num(-1,1), lensOpacity:num(0,1), rim:num(.5,4), glint:z.boolean(),
+    pupilSize:num(.4,1.8), ring:num(0,1), veins:num(0,1), eyelid:num(0,.8), undereye:num(0,1),
+    crownWidth:num(.72,1.28), cheekWidth:num(.72,1.28), jawWidth:num(.72,1.28), chinWidth:num(.6,1.4), headStretch:num(.8,1.25),
+    browInner:num(-45,45), browOuter:num(-45,45), browBend:num(-1,1), browThickness:num(.5,2), browSpacing:num(-4,4),
+    browOffset:num(-6,6), unibrow:z.boolean(), earScale:num(.6,1.5), earTilt:num(0,60), earTip:num(0,1), earlobe:num(.5,1.5),
+    noseLength:num(.6,1.6), noseWidth:num(.65,1.5), noseTilt:num(-30,30), noseFlare:num(0,1), noseBlush:num(0,1),
+    mouthCurve:num(-1,1), restJaw:num(0,1), lipThickness:num(.5,2), teethIntensity:num(0,1), facialOffset:num(-4,4),
+    beardLength:num(.7,1.55), beardWidth:num(.7,1.25), beardFullness:num(.5,1.5), piercingSize:num(.5,1.8), heelHeight:num(.4,1.8),
+    hatTilt:num(-45,45), propTilt:num(-90,90), tucked:z.boolean(), socks:z.boolean(), hood:z.boolean(),
+  }).partial().optional(),
   voicePreset: VoicePreset.optional(), hostedVoiceId: HostedVoiceId.optional(),
   mouthRig: z.strictObject({ width: num(.65,1.5), jawScale: num(.6,1.5),
     roundness: num(0,1), asymmetry: num(-1,1) }).optional(),

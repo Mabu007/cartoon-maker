@@ -12,8 +12,10 @@ export const PREVIEW_FOOT_PADDING = 14;
 export function fitCharacterPreview(character: Character, requestedZoom: number, action: Action = 'idle') {
   const head = rig(character, {}, 1).head;
   const hair = character.hair === 'puff' ? 100 : character.hair === 'curls' ? 75 : character.hair === 'afro' ? 65 : ['braids', 'locs'].includes(character.hair) ? 24 : 20;
+  const extra = character.hat==='witch'||character.hat==='top-hat'?48:0;
+  const tallHair=['afro-puffs','space-buns','top-knot','pompadour','ponytail'].includes(character.hair)?64:0;
   const highestPoint = Math.min(
-    head.y - (50 + hair) * character.head,
+    head.y - (50*(character.wardrobe?.headStretch??1) + Math.max(hair,extra,tallHair)) * character.head,
     -76 * character.legs * character.height - 54 * character.torso * character.height - 71 * character.arms
   );
   const motion = action === 'jump' ? 83 : action === 'celebrate' ? 54 : action === 'wave' ? 37 : action === 'run' ? 29 : 20;

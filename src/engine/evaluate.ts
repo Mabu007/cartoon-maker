@@ -1,14 +1,15 @@
-import { animations, blend, clamp, ease, mix, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
+import { animations, armIK, blend, clamp, ease, mix, rig, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
+import { actorWorldPoint, eyeWorldPoint, aimEyes } from './gaze.ts';
 import { anchorFor } from './interactions.ts';
 import { audibleAudioTrack } from './audioMix.ts';
 import { effectiveCues } from './dspLipSync.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
-import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
+import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
   speaking: boolean; actionTime: number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
-  focus?: { x: number; y: number }; held?: Prop };
+  focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -27,7 +28,7 @@ export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, pro
   const weight = clamp((t - left.time) / Math.max(1e-9, right.time - left.time));
   return { x: mix(left.x, right.x, weight), y: mix(left.y, right.y, weight) };
 }
-export function evaluate(scene: Scene, time: number) {
+export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<string,Character>, viewportWidth: number = WIDTH) {
   const t = clamp(time, 0, Math.max(0, scene.duration - .000001));
   const timelineClips = scene.clips.filter(clip => !scene.trackSettings?.[clip.track]?.muted);
   const sounds = timelineClips.filter((clip): clip is SoundClip => (clip.track === 'audio' || clip.track === 'music' || clip.track === 'dialogue') && audibleAudioTrack(scene,clip.track) && active(clip, t));
@@ -161,15 +162,29 @@ export function evaluate(scene: Scene, time: number) {
       : undefined;
     const other = targetActor ?? implicit;
     if (other) {
-      focusX = other.x;
-      focusY = other.y - 150 * other.scale;
+      const character=characters?.get(other.characterId);
+      const eyes=character?eyeWorldPoint(other,character):undefined;
+      focusX = eyes?.x??other.x;
+      focusY = eyes?.y??other.y - 150 * other.scale;
+    } else if (actor.held&&(!targetId||targetId===actor.held.id)&&(!actor.speaking||targetProp)) {
+      const character=characters?.get(actor.characterId);
+      if(character) {
+        const pose=rig(character,actor.pose,1), rear=actor.view==='back'||actor.view==='back-quarter';
+        const [,hand]=armIK(pose.right.shoulder,{x:pose.head.x+(rear?-26:45),y:pose.head.y+43},28*character.arms,28*character.arms,1);
+        const point=actorWorldPoint(actor,{x:hand.x+7,y:hand.y});
+        focusX=point.x;focusY=point.y;
+      } else {focusX=actor.held.x;focusY=actor.held.y;}
     } else if (targetProp) {
       focusX = targetProp.x;
       focusY = targetProp.y - (targetProp.imageHeight ?? 50) * targetProp.scale * .55;
-    } else if (actor.held && !targetId && !actor.speaking) {
-      focusX = actor.held.x; focusY = actor.held.y;
     }
     if (focusX !== undefined && focusY !== undefined) {
+      actor.gazePoint={x:focusX,y:focusY};
+      const character=characters?.get(actor.characterId);
+      if(character) {
+        actor.focus=aimEyes(eyeWorldPoint(actor,character),actor.gazePoint,actor.flip,actor.rotation,actor.scale);
+        continue;
+      }
       const deltaX = (focusX - actor.x) * (actor.flip ? -1 : 1);
       const eyeHeight = actor.y - 153 * actor.scale - actor.lift;
       actor.focus = { x: clamp(deltaX / 190, -1, 1), y: clamp((focusY - eyeHeight) / 140, -1, 1) };
@@ -179,7 +194,10 @@ export function evaluate(scene: Scene, time: number) {
   const cameraClip = latest(cameraClips.filter(clip => active(clip, t)));
   function frame(clip?: typeof cameraClip): CameraState {
     const target = actors.find(actor => actor.id === clip?.focus && actor.visible) ?? actors.find(actor => actor.visible);
-    if (!clip || clip.shot === 'wide' || clip.shot === 'establishing' || !target) return { x: WIDTH / 2, y: HEIGHT / 2, zoom: 1 };
+    const horizontal = (x: number, zoom: number) => clamp(x, viewportWidth / (2 * zoom), WIDTH - viewportWidth / (2 * zoom));
+    if (!clip || !target) return { x: WIDTH / 2, y: HEIGHT / 2, zoom: 1 };
+    if (clip.shot === 'wide' || clip.shot === 'establishing')
+      return { x: horizontal(clip.focus ? target.x : WIDTH / 2, 1), y: HEIGHT / 2, zoom: 1 };
     if (clip.shot === 'two-shot') {
       // Frame the focused character and their nearest visible scene partner,
       // not the average of every actor (which could leave both off-camera).
@@ -187,10 +205,10 @@ export function evaluate(scene: Scene, time: number) {
         .sort((a, b) => Math.abs(a.x - target.x) - Math.abs(b.x - target.x))[0];
       const pair = partner ? [target, partner] : [target];
       const spread = partner ? Math.abs(target.x - partner.x) : 0;
-      const zoom = clamp((WIDTH - 180) / (spread + 200), 1, 1.55);
+      const zoom = clamp((viewportWidth - 180) / (spread + 200), 1, 1.55);
       const mid = pair.reduce((sum, actor) => sum + actor.x, 0) / pair.length;
       const midY = pair.reduce((sum, actor) => sum + actor.y - 120 * actor.scale - actor.lift, 0) / pair.length;
-      return { x: clamp(mid, WIDTH / (2 * zoom), WIDTH - WIDTH / (2 * zoom)),
+      return { x: horizontal(mid, zoom),
         y: clamp(midY, HEIGHT / (2 * zoom), HEIGHT - HEIGHT / (2 * zoom)), zoom };
     }
     const close = ['close-up', 'reaction', 'extreme-close-up'].includes(clip.shot);
@@ -199,7 +217,7 @@ export function evaluate(scene: Scene, time: number) {
     const shoulder = clip.shot === 'over-shoulder' ? actors.find(actor => actor.id !== target.id && actor.visible) : undefined;
     const desiredX = shoulder ? target.x + (shoulder.x - target.x) * .24 : target.x;
     const view = clip.shot === 'front' || clip.shot === 'side' || clip.shot === 'back' ? clip.shot : undefined;
-    return { x: clamp(desiredX, WIDTH / (2 * zoom), WIDTH - WIDTH / (2 * zoom)), y: clamp(desiredY, HEIGHT / (2 * zoom), HEIGHT - HEIGHT / (2 * zoom)), zoom, view };
+    return { x: horizontal(desiredX, zoom), y: clamp(desiredY, HEIGHT / (2 * zoom), HEIGHT - HEIGHT / (2 * zoom)), zoom, view };
   }
   const previous = frame(cameraClip && latest(cameraClips.filter(clip => clip.start < cameraClip.start)));
   const camera = cameraClip?.shot === 'hold' ? previous : frame(cameraClip);

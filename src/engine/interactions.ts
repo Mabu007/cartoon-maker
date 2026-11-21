@@ -1,3 +1,4 @@
+import { isSeating, seats } from './seatingCatalog.ts';
 import { anchors } from './presets.ts';
 import { actions, type Action, type Anchor, type Clip, type Prop, type Scene } from './schema.ts';
 
@@ -13,6 +14,7 @@ export function anchorFor(object: Prop): Anchor | undefined {
       return { action: 'hold', x: 0, y: -(object.imageHeight ?? 70) * .5 };
     return undefined;
   }
+  if(isSeating(object.kind))return {action:'sit',x:0,y:seats[object.kind].seat};
   return anchors[object.kind];
 }
 const fallbackFor = (clip: DependentAction): Action => clip.action === 'sit' ? 'sit' : 'idle';

@@ -5,6 +5,8 @@ import { ProjectDocument, parseStoredProject, type Clip, type Scene } from '../s
 import { cameraConflicts, insertCameraShot, normalizeCameraTimeline, type CameraClip } from '../src/engine/cameraTimeline.ts';
 import { cameraViewport, screenToWorld, worldToScreen, worldToEntity, entityToWorld, pointHitsEntity, worldEntityBounds, renderDepth, type WorldEntityRect } from '../src/engine/cameraTransform.ts';
 import { evaluate, locate, projectDuration, MOVIE_FRAME_RATE } from '../src/engine/evaluate.ts';
+import { dimensions } from '../src/engine/renderer.ts';
+import { exportScale, formats, videoFormats } from '../src/engine/videoFormats.ts';
 import { heldGripPoint } from '../src/engine/actorArt.ts';
 import { resizeSceneTimeline, trimTimelineClip, moveTimelineClips, translateSceneActor } from '../src/engine/timelineEditing.ts';
 import { useStudio } from '../src/studio.ts';
@@ -186,4 +188,23 @@ test('canvas dragging translates all movement keys while preserving authored tim
   assert.deepEqual(shifted.keyframes,move.keyframes!.map(k=>({...k,x:k.x+dx,y:k.y+dy})));
   assert.deepEqual(shifted.keyframes?.map(k=>k.time),move.keyframes!.map(k=>k.time));
   assert.equal(translateSceneActor(scene,'non-existent',{x:1,y:1}),scene);
+});
+
+test('platform presets export exactly 1080p landscape and portrait while keeping square exports available',()=>{
+  for(const format of formats) assert.deepEqual(dimensions(format,exportScale(format)),videoFormats[format].pixels);
+  assert.deepEqual(videoFormats['16:9'].pixels,[1920,1080]);
+  assert.deepEqual(videoFormats['9:16'].pixels,[1080,1920]);
+});
+
+test('the portrait camera frames a chosen actor near the edge of the authored world',()=>{
+  const actor={...original.actors[0],x:165};
+  const scene={...original,actors:[actor],clips:[shot('wide',0,5,'wide',actor.id),shot('close',5,5,'close-up',actor.id)]};
+  const [width,height]=videoFormats['9:16'].viewport;
+  const viewport={width,height};
+  for(const time of [1,6]){
+    const camera=evaluate(scene,time,undefined,width).camera;
+    const point=worldToScreen(actor,camera,viewport,'9:16');
+    assert(Math.abs(point.x-width/2)<.001);
+  }
+  assert.equal(evaluate(scene,1).camera.x,480);
 });

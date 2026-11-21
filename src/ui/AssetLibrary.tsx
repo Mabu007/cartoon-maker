@@ -5,6 +5,8 @@ import { ArrowUpRight, AudioLines, Boxes, Clapperboard, Image, Mic, Music2, Plus
 import { useRef, useState } from 'react';
 import { actions, environments, label, props, type Action, type Character, type Prop,
   type Scene, type Clip, type Project } from '../engine/schema.ts';
+import { seatingNames } from '../engine/characterCatalog.ts';
+import { isSeating } from '../engine/seatingCatalog.ts';
 import { characterUsage, propUsage } from '../engine/assetSafety.ts';
 import { scenePalettes, soundNames } from '../engine/presets.ts';
 import type { Library } from '../studio.ts';
@@ -162,10 +164,10 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
             aria-label="Upload image prop"
             onChange={event=>{const file=event.target.files?.[0];if(file)uploadProp(file);event.target.value='';}}/>
           <div className="small-label">Add from collection</div>
-          <div className="asset-grid">{props.filter(kind=>kind!=='image'&&match(kind)).map(kind=>{
+          <div className="asset-grid">{props.filter(kind=>kind!=='image'&&match(isSeating(kind)?seatingNames[kind]:kind)).map(kind=>{
             const Icon=propIcon[kind];
             return <button className="prop-card" key={kind} draggable onDragStart={event=>{event.dataTransfer.setData('application/x-toonroom-prop',kind);event.dataTransfer.effectAllowed='copy';}} onClick={()=>addProp(kind)}>
-              <Icon size={23}/><span>{label(kind)}</span></button>;
+              <Icon size={23}/><span>{isSeating(kind)?seatingNames[kind]:label(kind)}</span></button>;
           })}</div>
           <div className="asset-heading asset-section-heading"><div><h3>Props in this scene</h3>
             <p>Select to edit, move or customize</p></div></div>

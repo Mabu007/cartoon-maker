@@ -8,9 +8,9 @@ export type MouthParameters = {
   asymmetry: number;
 };
 export type MouthTooth = { id: string; index: number; x: number; y: number;
-  width: number; height: number; fill: string; outline: string };
+  width: number; height: number; fill: string; outline: string; pointed?:boolean };
 export type MouthGeometry = { parameters: MouthParameters; cavityPath: string;
-  upperLipPath: string; lowerLipPath: string;
+  upperLipPath: string; lowerLipPath: string; restPath:string;
   rx: number; top: number; bottom: number; cornerLeft: number; cornerRight: number;
   teeth: MouthTooth[]; tongue: { x: number; y: number; rx: number; ry: number; visible: boolean };
   open: boolean; profileScale: number };
@@ -57,6 +57,10 @@ export function mouthParameters(character:Character,mood:FacialPerformance):Mout
   if(!mood.speaking&&mood.expression==='smug')p.asymmetry=.75;
   if(!mood.speaking&&mood.expression==='confused')p.asymmetry=-.55;
   if(mood.speaking&&mood.expression==='nervous')p.asymmetry+=.12;
+  if(!mood.speaking&&(character.wardrobe?.restJaw??0)>0) {
+    const rest=character.wardrobe!.restJaw!;
+    p={...p,jawOpening:Math.max(p.jawOpening,rest),lipClosure:0,teethVisibility:Math.max(p.teethVisibility,.7*rest)};
+  }
   p.mouthWidth*=size?.width??1;
   p.jawOpening*=size?.jawScale??1;
   p.lipRounding=cap(p.lipRounding+((size?.roundness??.5)-.5)*.25);
@@ -67,15 +71,20 @@ export function mouthParameters(character:Character,mood:FacialPerformance):Mout
 export function mouthGeometry(character:Character,mood:FacialPerformance,view:View):MouthGeometry {
   const parameters=mouthParameters(character,mood);
   const profileScale=view==='side'?.75:view==='three-quarter'?.9:1;
-  const width=character.mouth==='full'?12:character.mouth==='line'?9:11;
+  const width=character.mouth==='full'?12:character.mouth==='line'?9:character.mouth==='wavy'?10:12.5;
   const rx=width*parameters.mouthWidth*(1-.22*parameters.lipRounding);
   const opening=parameters.jawOpening*(1-parameters.lipClosure);
   const height=opening*(character.mouth==='full'?12.6:11.3);
   const top=-height*(.73+parameters.upperLip*.15);
   const bottom=height*(.88+parameters.lowerLip*.18);
-  const cornerLeft=parameters.asymmetry*1.9,cornerRight=-parameters.asymmetry*1.9;
+  const curve=(character.wardrobe?.mouthCurve??0)*-4;
+  const cornerLeft=curve+parameters.asymmetry*1.9,cornerRight=curve-parameters.asymmetry*1.9;
   const upperLipPath=`M ${fmt(-rx)} ${fmt(cornerLeft)} Q ${fmt(-rx*.4)} ${fmt(top-1.2)} 0 ${fmt(top-1.45)}
     Q ${fmt(rx*.4)} ${fmt(top-1.05)} ${fmt(rx)} ${fmt(cornerRight)}`;
+  const restY=mood.expression==='sad'?-2.6:1.4;
+  const restPath=character.mouth==='wavy'
+    ? `M ${-rx} ${cornerLeft} C ${-rx*.4} -4 ${rx*.4} 5 ${rx} ${cornerRight}`
+    : `M ${-rx} ${cornerLeft} Q 0 ${restY} ${rx} ${cornerRight}`;
   const lowerLipPath=`M ${fmt(-rx)} ${fmt(cornerLeft)} Q ${fmt(-rx*.35)} ${fmt(bottom+.65)} 0 ${fmt(bottom+1.15)}
     Q ${fmt(rx*.35)} ${fmt(bottom+.65)} ${fmt(rx)} ${fmt(cornerRight)}`;
   // Cubic path uses the exact points also used by Pixi's Graphics mask.
@@ -86,15 +95,20 @@ export function mouthGeometry(character:Character,mood:FacialPerformance,view:Vi
     C ${fmt(-rx*.36)} ${fmt(bottom)} ${fmt(-rx*.75)} ${fmt(bottom*.9)} ${fmt(-rx)} ${fmt(cornerLeft)} Z`;
   const open=height>.2;
   const span=rx*1.55,step=span/6;
+  const detail=character.wardrobe?.toothStyle??'standard';
+  const intensity=character.wardrobe?.teethIntensity??1;
+  const painted=(custom:string,base:string)=>'#'+[1,3,5].map(i=>
+    Math.round(mix(parseInt(base.slice(i,i+2),16),parseInt(custom.slice(i,i+2),16),intensity)).toString(16).padStart(2,'0')).join('');
   const teeth=Array.from({length:6},(_,index):MouthTooth=>{
-    const custom=character.toothColors?.[index],gold=character.goldTeeth?.includes(index);
-    return {id:`tooth-${index}`,index,x:-span/2+index*step+.3,
-      y:top+.6,width:Math.max(1,step-.65),height:Math.max(0,(bottom-top)*.55*parameters.teethVisibility),
-      fill:custom??(gold?'#eac05c':'#fff4de'),outline:gold?'#a77e34':'#e1d4c9'};
-  }).filter(tooth=>!character.missingTeeth?.includes(tooth.index));
-  return {parameters,cavityPath,upperLipPath,lowerLipPath,rx,top,bottom,
+    const gold=character.goldTeeth?.includes(index), custom=character.toothColors?.[index]??(gold?'#eac05c':'#fff4de');
+    const fang=detail==='fangs'&&(index===1||index===4);
+    return {id:`tooth-${index}`,index,x:-span/2+index*step+.3+(detail==='gap'&&index>2?.75:0),
+      y:top+.6,width:Math.max(1,step-.65-(detail==='gap'&&index===2?1:0)),height:Math.max(0,(bottom-top)*(fang?.83:.55)*parameters.teethVisibility),
+      pointed:fang,fill:painted(custom,'#fff4de'),outline:painted(gold?'#a77e34':'#e1d4c9','#e1d4c9')};
+  }).filter(tooth=>detail!=='none'&&!character.missingTeeth?.includes(tooth.index));
+  return {parameters,cavityPath,upperLipPath,lowerLipPath,restPath,rx,top,bottom,
     cornerLeft,cornerRight,teeth,
-    tongue:{x:0,y:bottom*.58,rx:rx*.45,ry:Math.max(0,(bottom-top)*.18*parameters.tongueVisibility),
-      visible:open&&parameters.tongueVisibility>.05},
+    tongue:{x:0,y:bottom*.58,rx:rx*.45,ry:Math.max(0,(bottom-top)*(detail==='tongue'?.28:.18)*Math.max(parameters.tongueVisibility,detail==='tongue'?.78:0)),
+      visible:open&&(parameters.tongueVisibility>.05||detail==='tongue')},
     open,profileScale};
 }

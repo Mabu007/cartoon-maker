@@ -53,7 +53,7 @@ export function SirvibeLanding({account,available,login,enter}:{
     <header className="sv-nav">
       <div className="sv-nav-inner">
         <a href="#top" className="sv-identity" aria-label="SIRVIBE home">
-          <span className="sv-brand-icon"><img src="/api/logo" alt="" onError={event=>{event.currentTarget.hidden=true;}}/></span>
+          <span className="sv-brand-icon"><img src="/sirvibe-logo.png" alt="" onError={event=>{event.currentTarget.hidden=true;}}/></span>
           <span className="sv-wordmark">SIRVIBE<span className="sv-mark">.</span></span>
         </a>
         <nav aria-label="Main navigation" className="sv-nav-links">
@@ -138,7 +138,7 @@ export function SirvibeLanding({account,available,login,enter}:{
           <button className="sv-primary sv-auth-submit" type="submit" disabled={busy||!available}>{busy?'Connecting…':mode==='register'?'Create free account':'Log in'} <ArrowRight size={17}/></button>
         </form>
         <p className="sv-auth-switch">{mode==='register'?'Already have a profile?':'New to SIRVIBE?'} <button type="button" onClick={()=>{setError('');setMode(mode==='register'?'login':'register');}}>{mode==='register'?'Log in':'Create an account'}</button></p>
-        <span className="sv-auth-trust"><LockKeyhole size={13}/> Your projects are tied to your private account.</span>
+        <span className="sv-auth-trust"><LockKeyhole size={13}/> Your projects are saved on this device.</span>
       </section>
     </div>}
   </div>;

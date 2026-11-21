@@ -2,11 +2,13 @@ import { WIDTH, HEIGHT } from './schema.ts';
 export type CameraPose = { x: number; y: number; zoom: number };
 export type Point = { x: number; y: number };
 export type Viewport = { width: number; height: number };
-export type ViewportFormat = '16:9' | '9:16' | '1:1';
+export type { Format as ViewportFormat } from './videoFormats.ts';
+import type { Format as ViewportFormat } from './videoFormats.ts';
 /** The authored world is always 960 × 540, independent of camera framing. */
 export function cameraViewport(camera: CameraPose, viewport: Viewport, format: ViewportFormat) {
   const zoom = Math.max(0.001,camera.zoom);
-  const centerX = format === '16:9' || zoom > 1 ? camera.x : WIDTH / 2;
+  const halfWidth = Math.min(WIDTH / 2, viewport.width / (2 * zoom));
+  const centerX = format === '16:9' ? camera.x : Math.max(halfWidth, Math.min(WIDTH - halfWidth, camera.x));
   return { zoom, x: viewport.width / 2 - centerX * zoom, y: viewport.height / 2 - camera.y * zoom };
 }
 export function worldToScreen(point: Point, camera: CameraPose, viewport: Viewport, format: ViewportFormat): Point {
