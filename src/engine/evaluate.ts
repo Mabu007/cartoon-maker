@@ -1,6 +1,7 @@
 import { animations, blend, clamp, ease, mix, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
 import { anchorFor } from './interactions.ts';
 import { audibleAudioTrack } from './audioMix.ts';
+import { effectiveCues } from './dspLipSync.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
@@ -130,7 +131,7 @@ export function evaluate(scene: Scene, time: number) {
     // timestamp in export. A dialogue offset shifts source *audio* time only.
     const audioTime = spoken ? t - spoken.start + spoken.offset : -1;
     const viseme = spoken?.visemes?.length
-      ? sampleTimedViseme(spoken.visemes,audioTime)
+      ? sampleTimedViseme(spoken.manualVisemes?.length ? effectiveCues(spoken.visemes, spoken.manualVisemes) : spoken.visemes,audioTime)
       : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
     if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? objectsById.get(propCue.target) : undefined;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
