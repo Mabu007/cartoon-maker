@@ -1,3 +1,4 @@
+import { gaitStyles, vfxNames, transitionNames } from './performanceCatalog.ts';
 import { ProjectDocument, builtinVoiceNames, soundNames, tracks, actions, shots, expressions, environments, type Clip, type Scene, type Project } from './schema.ts';
 import { repairOrphanedObjectActions } from './interactions.ts';
 
@@ -73,11 +74,14 @@ export function sceneContext(project: Project, scene: Scene): string {
     'start and length are measured in seconds; each clip must fit within scene.duration.',
     'Camera shots are mutually exclusive; at most one camera clip may be active at any time.',
     'Valid tracks: ' + tracks.join(', '),
+    'Movement styles: ' + gaitStyles.join(', '),
+    'Visual effects: ' + vfxNames.join(', '),
+    'Transitions: ' + transitionNames.join(', '),
     'Available character actions: ' + actions.join(', '),
     'Available expressions: ' + expressions.join(', '),
     'Available camera shots: ' + shots.join(', '),
     'Available environments: ' + environments.join(', '),
-    'Track clip shapes: actors {actor,visible}; movement {actor,fromX,fromY,toX,toY,gait?}; body {actor,action,layer,target?}; face {actor,expression}; gaze {actor,target}; props {actor,target,interaction}; dialogue {actor,text,asset,volume,muted,offset}; audio/music {asset,name,volume,muted,offset}; camera {shot,focus?,transition}; transition {effect}.',
+    'Track clip shapes: actors {actor,visible}; movement {actor,fromX,fromY,toX,toY,gait?,style?,keyframes?}; body {actor,action,layer,target?,pointAt?}; face {actor,expression}; gaze {actor,target}; props {actor,target,interaction}; dialogue {actor,text,asset,volume,muted,offset}; audio/music {asset,name,volume,muted,offset}; camera {shot,focus?,transition}; transition {effect}; vfx {effect,x,y,strength}; text {text,x,y,color,size,style}.',
     'Every clip requires id, track, start, length. Dialogue and audio assets must be existing asset IDs; do not invent sound files.',
     'Cast: ' + JSON.stringify(characterNames),
     'Scene actors: ' + JSON.stringify(actors),

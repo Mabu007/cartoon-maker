@@ -1,3 +1,4 @@
+import { extraActions, gaitStyles, transitionNames, vfxNames, soundDurations, type SoundName } from './performanceCatalog.ts';
 import { z } from 'zod';
 import { characterStyles, seatingStyles, wardrobeStyles } from './characterCatalog.ts';
 import { cameraConflicts, normalizeCameraTimeline } from './cameraTimeline.ts';
@@ -6,12 +7,12 @@ export const WIDTH = 960;
 export const HEIGHT = 540;
 export const views = ['front', 'three-quarter', 'side', 'back-quarter', 'back'] as const;
 export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', 'sleepy', 'angry', 'surprised', 'sad', 'thinking', 'nervous'] as const;
-export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think', 'lean', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away'] as const;
+export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think', 'lean', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away', ...extraActions] as const;
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow', 'extreme-close-up', 'over-shoulder', 'establishing', 'reaction', 'pan', 'tilt', 'zoom', 'hold'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
 export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image', ...seatingStyles] as const;
-export const tracks = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue', 'audio', 'music', 'camera', 'transition'] as const;
-export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'SFX', music: 'Music', camera: 'Camera', transition: 'Transitions' };
+export const tracks = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue', 'audio', 'music', 'camera', 'transition', 'vfx', 'text'] as const;
+export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'SFX', music: 'Music', camera: 'Camera', transition: 'Transitions', vfx: 'VFX', text: 'Text' };
 const id = z.string().min(1).max(100);
 const color = z.string().regex(/^#[\da-f]{6}$/i);
 // Portable WebP thumbnails are embedded in project JSON. A strict budget keeps
@@ -72,10 +73,10 @@ export const SkeletonDefinition = z.record(Joint, Joint.nullable());
 export const AnimationClip = z.strictObject({ id: z.enum(actions), duration: num(.1, 60), loop: z.boolean(), keys: z.array(z.strictObject({ time: num(0, 1), pose: z.partialRecord(Joint, z.number().finite()), lift: z.number().finite().optional() })).min(2), expression: z.enum(expressions).optional(), views: z.array(CharacterView).optional() });
 const time = { id, start: num(0, 180), length: num(.1, 180) };
 const ActorClip = z.strictObject({ ...time, track: z.literal('actors'), actor: id, visible: z.boolean().optional() });
-const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: id, fromX: position.x, fromY: position.y, toX: position.x, toY: position.y, gait: z.enum(['walk', 'run']).optional(),
+const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: id, fromX: position.x, fromY: position.y, toX: position.x, toY: position.y, gait: z.enum(['walk', 'run']).optional(), style: z.enum(gaitStyles).optional(),
   /** Optional normalized spatial keys. When present they drive the evaluated path. */
   keyframes: z.array(z.strictObject({ time: num(0, 1), x: position.x, y: position.y })).min(2).max(32).optional() });
-const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional() });
+const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional(), pointAt: z.strictObject({ x: position.x, y: position.y }).optional() });
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });
 const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']) });
 const FaceClip = z.strictObject({ ...time, track: z.literal('face'), actor: id, expression: z.enum(expressions) });
@@ -94,8 +95,11 @@ export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal
 const AudioClip = z.strictObject({ ...time, ...sound, track: z.literal('audio'), name: z.string().min(1).max(80) });
 const MusicClip = z.strictObject({ ...time, ...sound, track: z.literal('music'), name: z.string().min(1).max(80) });
 export const CameraShot = z.strictObject({ ...time, track: z.literal('camera'), shot: z.enum(shots), focus: id.optional(), transition: z.enum(['cut', 'glide']) });
-const Transition = z.strictObject({ ...time, track: z.literal('transition'), effect: z.enum(['fade-in', 'fade-out', 'dissolve']) });
-export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, MusicClip, CameraShot, Transition]);
+const Transition = z.strictObject({ ...time, track: z.literal('transition'), effect: z.enum(transitionNames) });
+const VfxClip = z.strictObject({ ...time, track:z.literal('vfx'), effect:z.enum(vfxNames), x:position.x, y:position.y, strength:num(.1,2) });
+const TextClip = z.strictObject({ ...time, track:z.literal('text'), text:z.string().trim().min(1).max(180), x:position.x, y:position.y,
+  size:num(12,120), color, style:z.enum(['caption','title','comic']) });
+export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, MusicClip, CameraShot, Transition, VfxClip, TextClip]);
 export const TimelineTrack = z.enum(tracks);
 export const TimelineMarker = z.strictObject({ id, name: z.string().trim().min(1).max(60), time: num(0, 180) });
 export const TimelineTrackSettings = z.strictObject({ muted: z.boolean().optional(), solo: z.boolean().optional(), locked: z.boolean().optional(), collapsed: z.boolean().optional() });
@@ -133,7 +137,7 @@ export const StoryBibleSchema = z.strictObject({
 });
 const cueTime = { id: id.optional(), seconds: num(.1, 60).default(1), delay: num(0, 60).default(0), parallel: z.boolean().default(false) };
 export const builtinVoiceNames = ['zee-spicy', 'sbu-food', 'zee-safe', 'sbu-lunch', 'sbu-receipt'] as const;
-export const soundNames = ['ding', 'pop', 'sting', 'whoosh', 'rimshot'] as const;
+export const soundNames = Object.keys(soundDurations) as SoundName[];
 export const Direction = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('move'), ...cueTime, actor: id, x: position.x, y: position.y.optional(), gait: z.enum(['walk', 'run']) }),
   z.strictObject({ kind: z.literal('action'), ...cueTime, actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional() }),
@@ -143,7 +147,7 @@ export const Direction = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('presence'), ...cueTime, actor: id, visible: z.boolean() }),
   z.strictObject({ kind: z.literal('camera'), ...cueTime, shot: z.enum(shots), actor: id.optional(), transition: z.enum(['cut', 'glide']) }),
   z.strictObject({ kind: z.literal('sound'), ...cueTime, sound: z.enum(soundNames) }),
-  z.strictObject({ kind: z.literal('transition'), ...cueTime, effect: z.enum(['fade-in', 'fade-out', 'dissolve']) }),
+  z.strictObject({ kind: z.literal('transition'), ...cueTime, effect: z.enum(transitionNames) }),
   z.strictObject({ kind: z.literal('pause'), ...cueTime })
 ]);
 export const ScriptElement = z.strictObject({ id, type: z.enum(scriptTypes), text: z.string().max(400),

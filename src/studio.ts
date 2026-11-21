@@ -8,7 +8,7 @@ import { removeObjectWithDecisions, repairOrphanedObjectActions, repairGazeTarge
 
 export const initial = ProjectDocument.parse(makeProject(true));
 export type Selection = { kind: 'actor' | 'object' | 'clip'; id: string } | null;
-export type Library = 'Cast' | 'Worlds' | 'Props' | 'Actions' | 'Audio';
+export type Library = 'Cast' | 'Worlds' | 'Props' | 'Actions' | 'Audio' | 'Effects';
 type Snapshot = { project: Project; sceneId: string; selection: Selection; clipIds: string[]; selectedKeyframe: { clipId: string; index: number } | null };
 export type SceneTarget = { session: number; sceneId: string };
 export interface StudioState extends Snapshot {
