@@ -96,7 +96,7 @@ with sync_playwright() as pw:
     button("Unmute SFX").click()
     button("Zoom in around playhead").click()
     expect(page.locator(".zoom-label")).to_have_text("140%")
-    button("Fit entire scene to timeline width").click()
+    button("Fit entire movie to timeline width").click()
     expect(page.locator(".zoom-label")).to_have_text("100%")
     sfx.first.click()
     page.keyboard.press("Control+c")

@@ -170,6 +170,42 @@ export type Production = z.infer<typeof ProductionSchema>;
 export type StoryBible = z.infer<typeof StoryBibleSchema>;
 export type StoryScene = z.infer<typeof storyScene>;
 
+const imageBudget = 32_000_000;
+const imageBudgetMessage = 'Movie artwork exceeds the storage budget. Use smaller images or remove unused images.';
+const sceneImageSize = (scene: Scene) => (scene.backgroundImage?.length ?? 0) +
+  scene.objects.reduce((size, object) => size + (object.imageData?.length ?? 0), 0);
+
+function verifySceneRelationships(scene: Scene, characters: ReadonlySet<string>, ctx: z.RefinementCtx, path: (string | number)[]) {
+  for (const message of cameraConflicts(scene.clips))
+    ctx.addIssue({ code: 'custom', path: [...path, 'clips'], message });
+  verifyIds([...scene.actors, ...scene.objects, ...scene.clips, ...(scene.markers ?? [])], ctx, path);
+  for (const [markerIndex, marker] of (scene.markers ?? []).entries())
+    if (marker.time > scene.duration) ctx.addIssue({ code: 'custom', path: [...path, 'markers', markerIndex, 'time'], message: 'Marker exceeds scene duration' });
+  const actors = new Set(scene.actors.map(actor => actor.id));
+  const objects = new Set(scene.objects.map(object => object.id));
+  if (scene.actors.some(actor => !characters.has(actor.characterId))) ctx.addIssue({ code: 'custom', path, message: 'Actor refers to a missing character' });
+  for (const actor of scene.actors) if (actor.gazeTarget && actor.gazeTarget !== 'camera' && !actors.has(actor.gazeTarget) && !objects.has(actor.gazeTarget))
+    ctx.addIssue({ code: 'custom', path: [...path, 'actors', actor.id, 'gazeTarget'], message: 'Gaze target was removed' });
+  for (const clip of scene.clips) {
+    const targetValid = !('target' in clip) || !clip.target ||
+      (clip.track === 'gaze' ? clip.target === 'camera' || actors.has(clip.target) || objects.has(clip.target) : objects.has(clip.target));
+    const clipPath = [...path, 'clips', clip.id];
+    if (clip.start + clip.length > scene.duration + .0001) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip is outside the scene' });
+    if (clip.track === 'movement' && clip.keyframes) {
+      const keys = clip.keyframes;
+      if (keys[0].time !== 0 || keys[keys.length - 1].time !== 1 || keys.some((key, i) => i > 0 && key.time <= keys[i - 1].time))
+        ctx.addIssue({ code: 'custom', path: [...clipPath, 'keyframes'], message: 'Movement keyframes must begin at 0, end at 1 and have strictly increasing times' });
+    }
+    if(clip.track==='dialogue') for(const cues of [clip.visemes,clip.manualVisemes,...(clip.versions??[]).flatMap(version=>[version.visemes,version.manualVisemes])]) {
+      if(cues?.some((cue,index)=>cue.end<=cue.start || index>0&&cue.start<cues[index-1].end-.00001))
+        ctx.addIssue({code:'custom',path:clipPath,message:'Mouth cues must have positive duration and be ordered without overlaps'});
+    }
+    if ('actor' in clip && !actors.has(clip.actor)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing actor' });
+    if (!targetValid) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing target' });
+    if ('focus' in clip && clip.focus && !actors.has(clip.focus)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Camera shot has unknown focus' });
+  }
+}
+
 export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name: z.string().trim().min(1).max(100), characters: z.array(CharacterDefinition).max(80), production: ProductionSchema.optional(), scenes: z.array(SceneDefinition).min(1).max(30) }).superRefine((project, ctx) => {
   verifyIds(project.characters, ctx, ['characters']);
   verifyIds(project.scenes, ctx, ['scenes']);
@@ -182,41 +218,20 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
     verifyIds(screenplay.scenes.flatMap(scene => scene.elements), ctx, ['production', 'screenplay', 'elements']);
     verifyIds(graph.map(scene => ({ id: scene.sceneId })), ctx, ['production', 'graph']);
   }
-  const embeddedImageBytes = project.scenes.reduce((sum, scene) =>
-    sum + (scene.backgroundImage?.length ?? 0) + scene.objects.reduce((n, obj) => n + (obj.imageData?.length ?? 0), 0), 0);
-  if (embeddedImageBytes > 780_000) ctx.addIssue({ code: 'custom', path: ['scenes'], message: 'Image budget exceeded. Use smaller or fewer images in this project.' });
-  project.scenes.forEach((scene, index) => {
-    const path = ['scenes', index];
-    for (const message of cameraConflicts(scene.clips))
-      ctx.addIssue({ code: 'custom', path: [...path, 'clips'], message });
-    verifyIds([...scene.actors, ...scene.objects, ...scene.clips, ...(scene.markers ?? [])], ctx, path);
-    for (const [markerIndex, marker] of (scene.markers ?? []).entries())
-      if (marker.time > scene.duration) ctx.addIssue({ code: 'custom', path: [...path, 'markers', markerIndex, 'time'], message: 'Marker exceeds scene duration' });
-    const actors = new Set(scene.actors.map(actor => actor.id));
-    const objects = new Set(scene.objects.map(object => object.id));
-    if (scene.actors.some(actor => !characters.has(actor.characterId))) ctx.addIssue({ code: 'custom', path, message: 'Actor refers to a missing character' });
-    for (const actor of scene.actors) if (actor.gazeTarget && actor.gazeTarget !== 'camera' && !actors.has(actor.gazeTarget) && !objects.has(actor.gazeTarget))
-      ctx.addIssue({ code: 'custom', path: [...path, 'actors', actor.id, 'gazeTarget'], message: 'Gaze target was removed' });
-    for (const clip of scene.clips) {
-      const targetValid = !('target' in clip) || !clip.target ||
-        (clip.track === 'gaze' ? clip.target === 'camera' || actors.has(clip.target) || objects.has(clip.target) : objects.has(clip.target));
-      const clipPath = [...path, 'clips', clip.id];
-      if (clip.start + clip.length > scene.duration + .0001) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip is outside the scene' });
-      if (clip.track === 'movement' && clip.keyframes) {
-        const keys = clip.keyframes;
-        if (keys[0].time !== 0 || keys[keys.length - 1].time !== 1 || keys.some((key, i) => i > 0 && key.time <= keys[i - 1].time))
-          ctx.addIssue({ code: 'custom', path: [...clipPath, 'keyframes'], message: 'Movement keyframes must begin at 0, end at 1 and have strictly increasing times' });
-      }
-      if(clip.track==='dialogue') for(const cues of [clip.visemes,clip.manualVisemes,...(clip.versions??[]).flatMap(version=>[version.visemes,version.manualVisemes])]) {
-        if(cues?.some((cue,index)=>cue.end<=cue.start || index>0&&cue.start<cues[index-1].end-.00001))
-          ctx.addIssue({code:'custom',path:clipPath,message:'Mouth cues must have positive duration and be ordered without overlaps'});
-      }
-      if ('actor' in clip && !actors.has(clip.actor)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing actor' });
-      if (!targetValid) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing target' });
-      if ('focus' in clip && clip.focus && !actors.has(clip.focus)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Camera shot has unknown focus' });
-    }
-  });
+  if (project.scenes.reduce((size, scene) => size + sceneImageSize(scene), 0) > imageBudget)
+    ctx.addIssue({ code: 'custom', path: ['scenes'], message: imageBudgetMessage });
+  project.scenes.forEach((scene, index) => verifySceneRelationships(scene, characters, ctx, ['scenes', index]));
 });
+
+export function parseEditedScene(project: Project, previous: Scene, next: Scene) {
+  const characters = new Set(project.characters.map(character => character.id));
+  return SceneDefinition.superRefine((scene, ctx) => {
+    verifySceneRelationships(scene, characters, ctx, []);
+    const combined = project.scenes.reduce((size, item) => size + sceneImageSize(item.id === previous.id ? scene : item), 0);
+    if (combined > imageBudget) ctx.addIssue({ code: 'custom', message: imageBudgetMessage });
+  }).parse(next);
+}
+
 
 export type View = z.infer<typeof CharacterView>;
 export type Character = z.infer<typeof CharacterDefinition>;

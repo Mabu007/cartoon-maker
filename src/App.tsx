@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { missingRentMovie } from './engine/production.ts';
 import { clamp } from './engine/animation.ts';
+import { movieTiming, type MovieCursor } from './engine/movieTime.ts';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
 import { compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
-import { label, shotLabel, SceneDefinition, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
+import { label, shotLabel, SceneDefinition, props as propKinds, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import { formatLabel, type Format } from './engine/videoFormats.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, listenAccount, login, logout, type Account } from './services/cloud.ts';
 import { audioLength, getOrFetchAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
@@ -34,7 +35,7 @@ import { Timeline } from './ui/Timeline.tsx';
 import { TimelineCodeDialog } from './ui/TimelineCodeDialog.tsx';
 import { Welcome } from './ui/Welcome.tsx';
 import { insertCameraShot, sceneToCode, validateSceneReplacement } from './engine/timelineCode.ts';
-import { movieToCode, sceneBuildingContext, validateMovieReplacement } from './engine/movieTimeline.ts';
+import { movieToCode, validateMovieReplacement } from './engine/movieTimeline.ts';
 import { deleteMovementKeyframe, deleteTimelineClips, duplicateTimelineClips, pasteTimelineClips, resizeSceneTimeline, selectableClips, splitTimelineClips, translateSceneActor } from './engine/timelineEditing.ts';
 
 
@@ -90,7 +91,8 @@ export default function App() {
   const session = useStudio(state => state.session);
   const sceneTarget = { session, sceneId: scene.id };
   const dirty = useStudio(state => state.dirty);
-  const sceneIndex = project.scenes.findIndex(item => item.id === scene.id);
+  const movie = useMemo(() => movieTiming(project.scenes), [project.scenes]);
+  const sceneIndex = movie.byId.get(scene.id)?.index ?? 0;
   const [dialog, setDialog] = useState<Dialog>(null), [account, setAccount] = useState<Account | null>(null), [items, setItems] = useState<SavedProject[]>([]);
   const [authReady,setAuthReady]=useState(!cloudEnabled);
   const scope = account?.uid ?? 'guest';
@@ -106,7 +108,9 @@ export default function App() {
   const [snap, setSnap] = useState(true), [compact, setCompact] = useState(false), [focus, setFocus] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'stage' | 'library' | 'inspector'>('stage');
   const [playing, setPlaying] = useState(false), [preparing, setPreparing] = useState(false), [loop, setLoop] = useState(false), [muted, setMuted] = useState(false), [shot, setShot] = useState('wide');
-  const mixer = useRef<Mixer | null>(null), time = useRef<PreviewTime>({ scene, local: 0 });
+  const mixer = useRef<Mixer | null>(null), time = useRef<PreviewTime>({ scene, local: 0, movie: 0 });
+  const movieRef = useRef(movie);
+  movieRef.current = movie;
   const range = useRef<HTMLInputElement>(null), counter = useRef<HTMLSpanElement>(null), frame = useRef(0), animationToken = useRef(0);
   const livePlaying = useRef(false), livePreparing = useRef(false), settings = useRef({ loop, muted, playbackRange }), originalScope = useRef(scope);
   const localDeletes = useRef(new Set<string>());
@@ -139,7 +143,7 @@ export default function App() {
       const current=useStudio.getState();
       try{rememberEditorSession(scope,{
         projectId:current.project.id,sceneId:current.sceneId,workspace,
-        playhead:time.current.local
+        playhead:time.current.scene.id === current.sceneId ? time.current.local : 0
       });}catch(error){console.warn('Could not save editor position',error);}
     };
     remember();
@@ -148,11 +152,16 @@ export default function App() {
     return ()=>{remember();window.clearInterval(timer);window.removeEventListener('pagehide',remember);};
   },[home,scope,workspace,project.id,scene.id]);
 
-  function updateCursor(scene: Scene, pos: number, redraw: boolean) {
-    time.current = { scene, local: pos };
-    if (range.current) range.current.value = String(pos);
-    if (counter.current) counter.current.textContent = clock(pos);
+  function updateCursor(scene: Scene, pos: number, redraw: boolean, movieTime?: number, reveal = false) {
+    const timing = movieRef.current;
+    const start = timing.byId.get(scene.id)?.start ??
+      movieTiming(useStudio.getState().project.scenes).byId.get(scene.id)?.start ?? 0;
+    const at = movieTime ?? start + pos;
+    time.current = { scene, local: pos, movie: at };
+    if (range.current) range.current.value = String(at);
+    if (counter.current) counter.current.textContent = clock(at);
     window.dispatchEvent(new CustomEvent('toonroom-time', { detail: pos }));
+    window.dispatchEvent(new CustomEvent<MovieCursor>('sirvibe-movie-time', { detail: { at, reveal } }));
     if (redraw) window.dispatchEvent(new Event('toonroom-seek'));
   }
   function pause() {
@@ -260,14 +269,21 @@ export default function App() {
     livePreparing.current = true; setPreparing(true); setArrange(false);
     const state = useStudio.getState(), current = currentScene(state);
     const playback=settings.current.playbackRange;
-    const at = playback ? clamp(time.current.local>=playback.end-.01?playback.start:time.current.local,playback.start,playback.end) : time.current.local >= current.duration - .01 ? 0 : time.current.local;
+    const looping = settings.current.loop;
+    const timing = movieRef.current;
+    const activeIndex = timing.byId.get(current.id)?.index ?? 0;
+    const atEnd = time.current.local >= current.duration - .001;
+    const startIndex = !looping && !playback && atEnd ? (activeIndex + 1) % state.project.scenes.length : activeIndex;
+    const at = playback
+      ? clamp(time.current.local >= playback.end - .01 ? playback.start : time.current.local, playback.start, playback.end)
+      : atEnd ? 0 : time.current.local;
+    const sequence = looping || playback ? [current] : state.project.scenes.slice(startIndex);
+    const sequenceStart = timing.spans[startIndex]?.start ?? 0;
     try {
       const audio = mixer.current ??= createAudioMixer();
       await audio.context.resume();
       audio.monitor();
       audio.master.gain.value = settings.current.muted ? 0 : 1;
-      const startIndex = state.project.scenes.findIndex(item => item.id === current.id);
-      const sequence = (settings.current.loop || playback) ? [current] : state.project.scenes.slice(startIndex);
       await audio.prepare(sequence);
       if (token !== animationToken.current) return;
       const startTime = audio.context.currentTime + .03;
@@ -281,15 +297,22 @@ export default function App() {
         let elapsed = Math.max(earliest, audio.context.currentTime - origin);
         if (elapsed >= duration) {
           if (settings.current.loop && sequence.length === 1) { const start=playback?.start??0;origin = audio.context.currentTime-start; earliest = start; elapsed = start; audio.schedule(sequence, start, audio.context.currentTime); }
-          else { const last = sequence.at(-1)!; updateCursor(last, playback?.end??last.duration, true); pause(); return; }
+          else {
+            const last = sequence.at(-1)!;
+            useStudio.getState().setScene(last.id);
+            updateCursor(last, playback?.end ?? last.duration, true, sequenceStart + duration);
+            pause();
+            return;
+          }
         }
         const next = locate(sequence, elapsed);
-        if (time.current.scene.id !== next.scene.id) {
-          time.current = { scene: next.scene, local: next.local };
-          useStudio.getState().setScene(next.scene.id);
-        }
+        const changedScene = time.current.scene.id !== next.scene.id;
+        if (changedScene) useStudio.getState().setScene(next.scene.id);
         const position = Math.floor(elapsed * MOVIE_FRAME_RATE);
-        if (position !== lastFrame) { updateCursor(next.scene, next.local, false); lastFrame = position; }
+        if (position !== lastFrame || changedScene) {
+          updateCursor(next.scene, next.local, false, sequenceStart + elapsed);
+          lastFrame = position;
+        }
         frame.current = requestAnimationFrame(tick);
       };
       frame.current = requestAnimationFrame(tick);
@@ -300,12 +323,28 @@ export default function App() {
     const current=currentScene(useStudio.getState());
     updateCursor(current,clamp(value,0,current.duration),true);
   }
-  function switchScene(value: Scene) {
+  function seekScene(id: string, local: number) {
     const state = useStudio.getState();
     if (state.session !== session) return;
-    const target = state.project.scenes.find(item => item.id === value.id);
+    const target = state.project.scenes.find(item => item.id === id);
     if (!target) return;
-    pause();setPlaybackRange(undefined); updateCursor(target, 0, true); state.setScene(target.id); close();
+    if (livePlaying.current || livePreparing.current) pause();
+    if (state.sceneId !== id) {
+      setPlaybackRange(undefined);
+      setPlacingDestination(false);
+      setArrange(true);
+      state.setScene(id);
+    }
+    updateCursor(target, clamp(local, 0, target.duration), true, undefined, true);
+  }
+  function seekMovie(value: number) {
+    const state = useStudio.getState();
+    const next = locate(state.project.scenes, value);
+    seekScene(next.scene.id, next.local);
+  }
+  function switchScene(value: Scene) {
+    seekScene(value.id, 0);
+    close();
   }
   async function openProject(value: Project, isNew = false) {
     if(loadedScope!==scope)return false;
@@ -438,13 +477,25 @@ export default function App() {
       ask('Change the furnished world?', 'This replaces the current props.' + (used ? ' ' + used + ' dependent timeline action(s) will safely change to standing/empty-handed actions.' : '') + ' Use Undo to restore the original world.', () => applyWorld(environment, furnished, backgroundImage));
     } else applyWorld(environment, furnished, backgroundImage);
   }
+  function commitArtwork(command: (value: Scene) => Scene) {
+    const state = useStudio.getState();
+    if (state.session !== sceneTarget.session || !state.project.scenes.some(item => item.id === sceneTarget.sceneId))
+      throw new Error('The original scene is no longer available.');
+    pause();
+    if (state.sceneId === sceneTarget.sceneId) {
+      state.editScene(command, sceneTarget);
+      return true;
+    }
+    state.edit(project => ({
+      ...project, scenes: project.scenes.map(item => item.id === sceneTarget.sceneId ? command(item) : item)
+    }));
+    return false;
+  }
   async function uploadWorld(file: File) {
     try {
       const imported = await prepareArtwork(file, 'world');
-      pause();
-      commitScene(current => ({ ...current, backgroundImage: imported.data }));
-      setMobilePanel('stage');
-      tell('World image added.');
+      if (commitArtwork(current => ({ ...current, backgroundImage: imported.data }))) setMobilePanel('stage');
+      tell('World image added to ' + scene.name + '.');
     } catch (error) { showError(error); }
   }
   async function uploadProp(file: File) {
@@ -458,10 +509,10 @@ export default function App() {
         imageWidth: Math.max(10, Math.round(imported.width * sizing)),
         imageHeight: Math.max(10, Math.round(imported.height * sizing)), interaction: 'none'
       });
-      pause();
-      commitScene(current => ({ ...current, objects: [...current.objects, prop] }));
-      select({ kind: 'object', id: prop.id });
-      setMobilePanel('inspector');
+      if (commitArtwork(current => ({ ...current, objects: [...current.objects, prop] }))) {
+        select({ kind: 'object', id: prop.id });
+        setMobilePanel('inspector');
+      }
       tell('Picture prop added. Set its interaction type in the inspector.');
     } catch (error) { showError(error); }
   }
@@ -599,7 +650,7 @@ export default function App() {
       if (state.session !== session || state.sceneId !== next.id) throw new Error('Scene changed during timeline edit.');
       const previous = currentScene(state);
       if (previous === next) return;
-      commitScene(() => next);
+      state.editScene(() => next, { session, sceneId: next.id });
       if (ids) useStudio.getState().selectClips(ids);
       const updated = currentScene(useStudio.getState());
       if (time.current.local > updated.duration) updateCursor(updated, updated.duration, false);
@@ -864,7 +915,7 @@ export default function App() {
         return;
       }
       if (workspace !== 'direct') return;
-      if (['ArrowLeft','ArrowRight'].includes(event.key) && !command && !event.altKey && !(arrange && state.selection?.kind !== 'clip' && state.selection)) { event.preventDefault(); seek(time.current.local + (event.key==='ArrowRight'?1:-1) / MOVIE_FRAME_RATE); return; }
+      if (['ArrowLeft','ArrowRight'].includes(event.key) && !command && !event.altKey && !(arrange && state.selection?.kind !== 'clip' && state.selection)) { event.preventDefault(); seekMovie(time.current.movie + (event.key==='ArrowRight'?1:-1) / MOVIE_FRAME_RATE); return; }
       if (event.code === 'Space' && !command && !event.altKey) { event.preventDefault(); void play(); return; }
       if (command && key === 'a' && (inTimeline || hasTimelineSelection)) { event.preventDefault(); state.selectClips(currentScene(state).clips.map(clip=>clip.id)); return; }
       if (command && key === 'c' && hasTimelineSelection) { event.preventDefault(); copyTimelineSelection(); return; }
@@ -889,7 +940,6 @@ export default function App() {
     };
     window.addEventListener('keydown', keys); return () => window.removeEventListener('keydown', keys);
   });
-  useEffect(() => { const timer = setTimeout(() => { if (compact === false) window.dispatchEvent(new CustomEvent('toonroom-time', { detail: time.current.local })); }, 0); return () => clearTimeout(timer); }, [compact, scene.id]);
   const headerStatus = saveStatus;
   let content: ReactNode;
   if (dialog === 'character') content = <CharacterFactory source={factory} save={saveCharacter} close={close} remove={deleteCharacter}/>;
@@ -966,7 +1016,7 @@ export default function App() {
       <section className="stage-panel" aria-label="Studio stage" onDragOver={event=>{if(event.dataTransfer.types.some(type=>type.startsWith('application/x-toonroom-')))event.preventDefault();}} onDrop={event=>{
         event.preventDefault();const character=project.characters.find(c=>c.id===event.dataTransfer.getData('application/x-toonroom-character'));
         if(character){addActor(character);return;}
-        const kind=event.dataTransfer.getData('application/x-toonroom-prop');if(kind&&['chair','table','desk','sofa','door','window','cup','lamp','book','plant','microphone','phone','television','counter','streetlight'].includes(kind))addObject(kind as Prop['kind']);
+        const kind=event.dataTransfer.getData('application/x-toonroom-prop');if(kind&&(propKinds as readonly string[]).includes(kind)&&kind!=='image')addObject(kind as Prop['kind']);
       }}>
         <header className="stage-heading"><div className="stage-scene-heading">
           <span className="stage-kicker"><i/> SCENE PREVIEW</span>
@@ -996,18 +1046,17 @@ export default function App() {
             editScene(current => translateSceneActor(current,id,coords));
           } else if (object) patchObject({ ...object, ...coords });
         }}/></div>
-        <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause scene' : 'Play scene'} aria-label={playing || preparing ? 'Pause scene' : 'Play scene'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop scene" onClick={() => seek(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock((scene).duration)}</span></span><input className="preview-range" aria-label="Seek scene" ref={range} type="range" min={0} max={(scene).duration} step={.01} defaultValue={0} onChange={e => seek(Number(e.target.value))}/><div className="transport-end"><details className="playback-range-controls"><summary title="Play a selected time range">Range</summary><div><label>From<input aria-label="Playback range start" type="number" step=".1" min={0} max={scene.duration-.1} value={playbackRange?.start??0} onChange={e=>{pause();setPlaybackRange({start:clamp(Number(e.target.value),0,(playbackRange?.end??scene.duration)-.1),end:playbackRange?.end??scene.duration});}}/></label><label>To<input aria-label="Playback range end" type="number" step=".1" min={(playbackRange?.start??0)+.1} max={scene.duration} value={playbackRange?.end??scene.duration} onChange={e=>{pause();setPlaybackRange({start:playbackRange?.start??0,end:clamp(Number(e.target.value),(playbackRange?.start??0)+.1,scene.duration)});}}/></label><button className="quiet" onClick={()=>{pause();setPlaybackRange(undefined);}}>Whole film</button></div></details><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
+        <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause movie' : 'Play movie'} aria-label={playing || preparing ? 'Pause movie' : 'Play movie'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop movie" onClick={() => seekMovie(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock(movie.duration)}</span></span><input className="preview-range" aria-label="Seek movie" ref={range} type="range" min={0} max={movie.duration} step={.01} defaultValue={0} onChange={e => seekMovie(Number(e.target.value))}/><div className="transport-end"><details className="playback-range-controls"><summary title="Play a selected time range in this scene">Scene range</summary><div><label>From<input aria-label="Playback range start" type="number" step=".1" min={0} max={scene.duration-.1} value={playbackRange?.start??0} onChange={e=>{pause();setPlaybackRange({start:clamp(Number(e.target.value),0,(playbackRange?.end??scene.duration)-.1),end:playbackRange?.end??scene.duration});}}/></label><label>To<input aria-label="Playback range end" type="number" step=".1" min={(playbackRange?.start??0)+.1} max={scene.duration} value={playbackRange?.end??scene.duration} onChange={e=>{pause();setPlaybackRange({start:playbackRange?.start??0,end:clamp(Number(e.target.value),(playbackRange?.start??0)+.1,scene.duration)});}}/></label><button className="quiet" onClick={()=>{pause();setPlaybackRange(undefined);}}>Whole film</button></div></details><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
       </section>
       {<Inspector onPresence={actorPresence} scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} setDestination={() => {pause();setPlacingDestination(true);tell('Click the stage to set the walking destination.');}} alignVoiceClip={alignVoiceClip} precision={() => showDialog('lipsync')} rerecord={() => { const clip=scene.clips.find(c=>c.id===selection?.id); if(clip?.track==='dialogue'){pause();setRequestedAudio({track:'dialogue',actor:clip.actor,start:clip.start,replaceId:clip.id});setDialog('audio');} }}/>}
       <PanelResize side="left" value={assetWidth} change={setAssetWidth}/>
       <PanelResize side="right" value={inspectorWidth} change={setInspectorWidth}/>
     </main>
-    <Timeline key={session} scene={scene} names={actorNames} selection={selection} selectedClipIds={selectedClipIds} selectedKeyframe={selectedKeyframe}
-      select={select} selectClips={useStudio.getState().selectClips} selectKeyframe={useStudio.getState().selectKeyframe}
-      seek={seek} change={patchClip} add={showClip} remove={()=>run(deleteTimelineSelection)} duplicate={duplicateTimelineSelection}
+    <Timeline key={session} scene={scene} movie={movie} characters={project.characters} selection={selection} selectedClipIds={selectedClipIds} selectedKeyframe={selectedKeyframe}
+      selectClips={useStudio.getState().selectClips} selectKeyframe={useStudio.getState().selectKeyframe}
+      seek={seek} seekMovie={seekMovie} seekScene={seekScene} addScene={createDirectScene} manageScenes={()=>showDialog('scenes')} add={showClip} remove={()=>run(deleteTimelineSelection)} duplicate={duplicateTimelineSelection}
       copy={copyTimelineSelection} cut={()=>run(cutTimelineSelection)} paste={pasteTimelineSelection} split={splitTimelineSelection}
-      selectAll={()=>useStudio.getState().selectClips(scene.clips.map(c=>c.id))}
-      apply={editTimeline} compact={compact} onCode={() => showDialog('code')} onContext={() => { void navigator.clipboard.writeText(sceneBuildingContext(project, scene)).then(() => tell('AI scene-building context copied.'), showError); }} onCopyScene={() => { void navigator.clipboard.writeText(sceneToCode(scene)).then(() => tell('Current scene JSON copied.'), showError); }} onCopyProject={() => { void navigator.clipboard.writeText(movieToCode(project)).then(() => tell('Entire movie timeline JSON copied.'), showError); }} onResizeScene={duration => { editScene(current => resizeSceneTimeline(current,duration)); const updated=currentScene(useStudio.getState()); if(time.current.local>updated.duration)seek(updated.duration); }} playhead={time.current.local} onCompact={() => setCompact(value => !value)}/></>}
+      apply={editTimeline} compact={compact} playing={playing} onResizeScene={duration => { editScene(current => resizeSceneTimeline(current,duration)); const updated=currentScene(useStudio.getState()); if(time.current.local>updated.duration)seek(updated.duration); }} playhead={time.current.movie} onCompact={() => setCompact(value => !value)}/></>}
     {backupInput}
     {noticeToast}
     {content}

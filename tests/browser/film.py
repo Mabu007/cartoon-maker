@@ -230,15 +230,15 @@ with sync_playwright() as p:
     assert reopened == baseline
     click("Cancel")
     status("Real refresh/reopen: exact canonical document retained")
-    click("Stop scene")
-    click("Play scene")
+    click("Stop movie")
+    click("Play movie")
     expect(t.get_by_title("Manage all scenes")).to_have_text(
         "The inspection", timeout=30000
     )
     expect(t.get_by_title("Manage all scenes")).to_have_text(
         "The receipt", timeout=30000
     )
-    expect(btn("Play scene")).to_be_visible(timeout=18000)
+    expect(btn("Play movie")).to_be_visible(timeout=18000)
     status("Played across both scene cuts")
     t.screenshot(path=out / "desktop.png")
     if options.recorder:

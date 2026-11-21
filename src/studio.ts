@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ProjectDocument, parseStoredProject, type Clip, type Project, type Scene } from './engine/schema.ts';
+import { ProjectDocument, parseEditedScene, parseStoredProject, type Clip, type Project, type Scene } from './engine/schema.ts';
 import { makeProject } from './engine/presets.ts';
 import { validateTimelineChange } from './engine/timelineCode.ts';
 import { duplicateClips } from './engine/timelineEditing.ts';
@@ -32,6 +32,17 @@ function validSelection(scene: Scene, selection: Selection): Selection {
   const items = selection.kind === 'actor' ? scene.actors : selection.kind === 'object' ? scene.objects : scene.clips;
   return items.some(item => item.id === selection.id) ? selection : null;
 }
+function recordEdit(state: StudioState, project: Project): Partial<StudioState> {
+  const scene = currentScene({ project, sceneId: state.sceneId });
+  const previous = scene.id === state.sceneId;
+  const existing = new Map(scene.clips.map(clip => [clip.id, clip]));
+  const clipIds = previous ? state.clipIds.filter(id => existing.has(id)) : [];
+  const keyframe = previous ? state.selectedKeyframe : null;
+  const selectedKeyframe = keyframe && existing.get(keyframe.clipId)?.track === 'movement' &&
+    (existing.get(keyframe.clipId) as Extract<Clip, { track: 'movement' }>).keyframes?.[keyframe.index] ? keyframe : null;
+  return { project, sceneId: scene.id, selection: previous ? validSelection(scene, state.selection) : null, clipIds, selectedKeyframe,
+    past: [...state.past.slice(-39), snapshot(state)], future: [], dirty: true };
+}
 export const useStudio = create<StudioState>((set, get) => ({
   project: initial, sceneId: initial.scenes[0].id, selection: null, clipIds: [], selectedKeyframe: null, session: 0, library: 'Cast', past: [], future: [], dirty: false,
   open: (project, dirty = false) => {
@@ -57,26 +68,19 @@ export const useStudio = create<StudioState>((set, get) => ({
   edit: command => set(state => {
     const project = runEdit(state.project, command);
     if (project === state.project) return state;
-    const scene = currentScene({ project, sceneId: state.sceneId });
-    const previous = scene.id === state.sceneId;
-    const existing = new Map(scene.clips.map(clip => [clip.id, clip]));
-    const clipIds = previous ? state.clipIds.filter(id => existing.has(id)) : [];
-    const keyframe = previous ? state.selectedKeyframe : null;
-    const selectedKeyframe = keyframe && existing.get(keyframe.clipId)?.track === 'movement' &&
-      (existing.get(keyframe.clipId) as Extract<Clip, { track: 'movement' }>).keyframes?.[keyframe.index] ? keyframe : null;
-    return { project, sceneId: scene.id, selection: previous ? validSelection(scene, state.selection) : null, clipIds, selectedKeyframe,
-      past: [...state.past.slice(-39), snapshot(state)], future: [], dirty: true };
+    return recordEdit(state, project);
   }),
   editScene: (command, target) => {
     const state = get();
     const scene = currentScene(state);
     if (target && (target.session !== state.session || target.sceneId !== scene.id)) throw new Error('The active scene changed. Start this edit again in the intended scene.');
-    state.edit(project => ({ ...project, scenes: project.scenes.map(item => {
-      if (item.id !== scene.id) return item;
-      const next = command(item);
-      if (next.id !== scene.id) throw new Error('A scene edit must keep its original ID.');
-      return next;
-    }) }));
+    const proposed = command(structuredClone(scene));
+    if (proposed.id !== scene.id) throw new Error('A scene edit must keep its original ID.');
+    const next = parseEditedScene(state.project, scene, proposed);
+    validateTimelineChange(next, scene);
+    if (JSON.stringify(next) === JSON.stringify(scene)) return;
+    const project = { ...state.project, scenes: state.project.scenes.map(item => item.id === scene.id ? next : item) };
+    set(recordEdit(state, project));
   },
   markSaved: project => set(state => state.project === project && state.dirty ? { dirty: false } : state),
   undo: () => set(state => state.past.length ? { ...state.past.at(-1)!, past: state.past.slice(0, -1), future: [snapshot(state), ...state.future], dirty: true } : state),
