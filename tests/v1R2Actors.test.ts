@@ -26,6 +26,7 @@ test('third cast member enters at playhead, runs on the movement track, then rem
 test('a character can walk out, disappear at the scheduled exit, and return later',()=>{
   const movie=makeProject(false);
   const first=addSceneActor(movie.scenes[0],movie.characters[0].id,0,'place');
+  assert.throws(()=>enterSceneActor(first.scene,first.actorId,8,'walk'),/already on screen/i);
   const out=exitSceneActor(first.scene,first.actorId,4,'run');
   const movement=out.clips.find(c=>c.track==='movement'&&c.actor===first.actorId);
   assert(movement&&movement.track==='movement');
