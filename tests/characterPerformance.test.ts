@@ -4,7 +4,7 @@ import { makeProject } from '../src/engine/presets.ts';
 import { ProjectDocument,views,type Expression } from '../src/engine/schema.ts';
 import { mouthGeometry,mouthParameters,blendMouthParameters } from '../src/engine/mouthRig.ts';
 import { facialPerformance } from '../src/engine/facialAnimation.ts';
-import { performanceHandPose } from '../src/engine/handPerformance.ts';
+import { handPerformance } from '../src/engine/handPerformance.ts';
 import { sampleTimedViseme,visemeNames } from '../src/engine/visemes.ts';
 import { motionBlend,travelProgress,travelSpeed,footContactAt,turnHeadScale } from '../src/engine/animation.ts';
 import { evaluate,movementPosition,MOVIE_FRAME_RATE } from '../src/engine/evaluate.ts';
@@ -136,17 +136,14 @@ test('speakers and listeners have independently targeted eyes and listening stat
  assert(Number.isFinite(listener.focus!.x));
  assert(!Number.isNaN(listener.focus!.y));
 });
-test('point, wave, palm, fist, speech beats and held prop use distinct hand poses',()=>{
- const input={action:'idle' as const,locomotion:'idle' as const,side:'right' as const,
-  carrying:false,time:0,expression:'neutral' as const,speechWeight:0};
- assert.equal(performanceHandPose({...input,action:'point'}),'point');
- assert.equal(performanceHandPose({...input,action:'wave'}),'open');
- assert.equal(performanceHandPose({...input,action:'open-hand'}),'open');
- assert.equal(performanceHandPose({...input,action:'fist'}),'fist');
- assert.equal(performanceHandPose({...input,carrying:true,action:'point'}),'grip');
- const speech=Array.from({length:10},(_,i)=>performanceHandPose({...input,time:i*.7,speechWeight:1}));
- assert(speech.includes('open')&&speech.includes('point')&&speech.includes('relaxed'));
- assert.equal(performanceHandPose({...input,side:'left',action:'point'}),'relaxed');
+test('authored point, wave, palm and fist use distinct hand poses and respect prop grip',()=>{
+ const input={action:'idle' as const,locomotion:'idle' as const,side:'right' as const,carrying:false};
+ assert.equal(handPerformance({...input,action:'point'}).pose,'point');
+ assert.equal(handPerformance({...input,action:'wave'}).pose,'open');
+ assert.equal(handPerformance({...input,action:'open-hand'}).pose,'open');
+ assert.equal(handPerformance({...input,action:'fist'}).pose,'fist');
+ assert.equal(handPerformance({...input,carrying:true,action:'point'}).pose,'grip');
+ assert.equal(handPerformance({...input,side:'left',action:'point'}).pose,'relaxed');
 });
 test('physical travel starts/stops at zero speed and progresses monotonically with no jumps',()=>{
  assert.equal(travelProgress(0),0);

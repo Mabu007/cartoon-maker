@@ -3,6 +3,7 @@ import { Copy, Maximize2, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-re
 import { armBuilds, bodyFrames, legBuilds } from '../engine/bodyBuild.ts';
 import { createRenderer } from '../engine/renderer.ts';
 import { animations } from '../engine/animation.ts';
+import { conversationAudition } from '../engine/dialogueGestures.ts';
 import { resolvePersonality, traitDefaults, type Trait } from '../engine/livingCharacter.ts';
 import { fitCharacterPreview } from '../engine/previewLayout.ts';
 import { CharacterChoices } from './CharacterChoices.tsx';
@@ -79,8 +80,8 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           }
           if (face.track === 'face') face.expression = expression;
           if (action === 'talk') {
-            scene.clips[2] = { id: 'example-speech', track: 'dialogue', actor: 'preview', text: 'Hello there! Let us create a cartoon. Watch my mouth moving!', asset: 'builtin:sbu-food',
-              start: 0, length: 8, muted: false, volume: 1, offset: 0 };
+            scene.clips[2] = { id: 'example-speech', track: 'dialogue', actor: 'preview', text: conversationAudition.text, asset: 'builtin:sbu-food',
+              start: conversationAudition.start, length: conversationAudition.duration, muted: false, volume: 1, offset: 0 };
           } else if (action==='stand') {
             scene.clips[2]={id:'rise',track:'body',layer:'body',actor:'preview',action:'stand',start:1.8,length:animations.stand.duration};
           } else scene.clips.length = 2;

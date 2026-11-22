@@ -4,14 +4,14 @@ import { gaitProfiles, isSleep, type GaitStyle } from './performanceCatalog.ts';
 import { Graphics, type Container } from 'pixi.js';
 import { armIK, gaitLeg, mix, rig, seatedLeg, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
-import { drawIllustratedHair, drawIllustratedHand, shade, type HandPose } from './illustration.ts';
+import { drawIllustratedHair, drawIllustratedHand, shade } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
 import { at, drawBag, drawHandheld, drawShoe, drawTop, drawWatch, sleeveCoverage, vector, type CostumeTexture } from './wardrobeArt.ts';
 import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
-import { performanceHandPose } from './handPerformance.ts';
-import { gestureAt, gestureHand } from './livingCharacter.ts';
-import { handRotation } from './handRig.ts';
+import { handPerformance } from './handPerformance.ts';
+import type { GestureSample } from './livingCharacter.ts';
+import { handRotation, handSize, handWidthScale, sampleHandRig } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
@@ -41,7 +41,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
   appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose},
-  actingPhrase?:{start:number;duration:number;text:string}) {
+  handGesture?: GestureSample) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
   const art = viewArt[view];
@@ -82,24 +82,20 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     }
     const costumeHand = c.wardrobe?.hand ?? 'right';
     const holdsCostume = side===costumeHand && !carrying && Boolean(c.wardrobe?.handheld && c.wardrobe.handheld!=='none');
-    const handMode:HandPose = performanceHandPose({
-      action,locomotion,side,carrying:carrying||holdsCostume||(action==='drive'&&!!held),time,expression,
-      speechWeight:speaking?(viseme?.weight??(action==='talk'?.55:0)):0,
-      character:c,actorId,speaking,listening,phrase:actingPhrase
+    const performance = handPerformance({
+      action, locomotion, side, carrying: carrying || holdsCostume || (action === 'drive' && !!held),
+      gesture: handGesture, actionWeight: appearance?.actionWeight
     });
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
     if(holdsCostume) drawHandheld(g,c,hand);
-    const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
-    const wristDegrees=pose[side+'Wrist' as keyof JointPose]??0;
-    // A pointing index, waving palm and resting fingers all extend away from the cuff.
-    const rotation=handRotation(forearm,wristDegrees,handMode);
-    const facing=art.profile?1:(side==='right'?1:-1)*(art.rear?-1:1);
-    g.context.save().setTransform(at(hand.x,hand.y,art.profile&&handMode==='relaxed'?.73:1,1,rotation*180/Math.PI));
-    const gestureContext={time,actorId,action,locomotion,expression,speaking,
-      speechWeight:speaking?(viseme?.weight??(action==='talk'?.55:0)):0,listening,carrying:carrying||holdsCostume,phrase:actingPhrase};
-    const naturalHand=gestureHand(c,gestureContext,side);
-    const blendHand=naturalHand===handMode?gestureAt(c,gestureContext).weight:1;
-    drawIllustratedHand(g,0,0,limbWidth*(art.profile&&side==='left'?.78:.91),c.skin,handMode,facing<0?-1:1,blendHand);
+    const geometry = sampleHandRig(performance.pose, performance.blend);
+    const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
+    const wristDegrees = pose[`${side}Wrist`] ?? 0;
+    const rotation = handRotation(forearm, wristDegrees, performance.pose, performance.blend, side);
+    const scale = handSize(c.thickness);
+    const width = handWidthScale(view, side, geometry.params.wristTwist);
+    g.context.save().setTransform(at(hand.x, hand.y, scale * width, scale, rotation * 180 / Math.PI));
+    drawIllustratedHand(g, c.skin, geometry);
     g.context.restore();
     const watchSide=c.wardrobe?.watchSide??costumeHand;
     if(watchSide==='both'||side===watchSide)drawWatch(g,c,hand,elbow);

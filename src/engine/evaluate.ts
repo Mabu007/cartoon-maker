@@ -7,14 +7,15 @@ import { anchorFor, compatibleObject } from './interactions.ts';
 import { audibleAudioTrack } from './audioMix.ts';
 import { effectiveCues } from './dspLipSync.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
-import { livingPose } from './livingCharacter.ts';
+import { gestureAt, livingPose, type ActingContext, type GestureSample } from './livingCharacter.ts';
+import { occupiedHands } from './handPerformance.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
   speaking: boolean; actionTime: number; actionWeight:number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string;
-  actingPhrase?: {start:number;duration:number;text:string} };
+  handGesture?: GestureSample };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -89,10 +90,14 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     }
     return object;
   }
+  function visibleAt(clips: Clip[]) {
+    const toggle = latest(clips.filter(clip => clip.track === 'actors' && clip.visible !== undefined && clip.start <= t));
+    if (toggle?.track === 'actors' && toggle.visible !== undefined) return toggle.visible;
+    const spans = clips.filter(clip => clip.track === 'actors' && clip.visible === undefined);
+    return !spans.length || spans.some(clip => active(clip, t));
+  }
   const actors = scene.actors.map((actor): CharacterState => {
     const clips = byActor.get(actor.id)??[];
-    const presence = clips.filter(clip => clip.track === 'actors' && clip.visible === undefined);
-    const entrance = latest(clips.filter(clip => clip.track === 'actors' && clip.visible !== undefined && clip.start <= t));
     const propCue = latest(clips.filter(clip => clip.track==='props' &&
       (clip.interaction==='equip'||clip.interaction==='release')&&clip.start<=t));
     let ownership=propCue ? {at:propCue.start,target:propCue.track==='props'&&propCue.interaction==='equip'?propCue.target:undefined} : undefined;
@@ -219,7 +224,6 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     // sceneTime is derived from Web Audio's currentTime in preview or the frame
     // timestamp in export. A dialogue offset shifts source *audio* time only.
     const audioTime = spoken ? t - spoken.start + spoken.offset : -1;
-    const actingPhrase=spoken?{start:spoken.start,duration:spoken.length,text:spoken.text}:undefined;
     const viseme = spoken?.visemes?.length
       ? sampleTimedViseme(spoken.manualVisemes?.length ? effectiveCues(spoken.visemes, spoken.manualVisemes) : spoken.visemes,audioTime)
       : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
@@ -227,23 +231,46 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       const latestForProp=propEvents.get(ownership.target);
       if(!latestForProp||latestForProp.at<=ownership.at)held=objectsById.get(ownership.target);
     }
-    // Personality is a deterministic low-priority additive layer. Explicit
-    // actor/gesture clips and prop constraints retain control of the rig.
-    const character=characters?.get(actor.characterId);
-    if(character){
-      pose=livingPose(character,{
-        time:t,actorId:actor.id,action,locomotion,expression,
-        speaking:Boolean(spoken)||action==='talk',speechWeight:viseme?.weight??(action==='talk'?.55:0),
-        listening:!spoken&&sounds.some(clip=>clip.track==='dialogue'&&clip.actor!==actor.id),
-        manualGesture:Boolean(gesture),carrying:Boolean(held),phrase:actingPhrase
-      },pose);
+    const character = characters?.get(actor.characterId);
+    let handGesture: GestureSample | undefined;
+    const speaking = Boolean(spoken) || action === 'talk';
+    if (character) {
+      // An authored gaze target can give a directional phrase a real point.
+      // The conversation partner inferred for eye contact is not an aim target.
+      const targetId = gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget;
+      const targetProp = speaking && targetId ? objectsById.get(targetId) : undefined;
+      const targetActor = speaking && targetId && !targetProp ? scene.actors.find(other => other.id === targetId && other.id !== actor.id && visibleAt(byActor.get(other.id) ?? [])) : undefined;
+      const targetMove = targetActor && latest((byActor.get(targetActor.id) ?? []).filter(
+        (clip): clip is Extract<Clip, {track:'movement'}> => clip.track === 'movement' && clip.start <= t));
+      const targetPosition = targetMove ? movementPosition(targetMove, (t - targetMove.start) / targetMove.length) : targetActor;
+      const target = targetProp ? { x: targetProp.x, y: targetProp.y - (targetProp.imageHeight ?? 50) * targetProp.scale * .55 } :
+        targetPosition && targetActor ? { x: targetPosition.x, y: targetPosition.y - 153 * targetActor.scale } : undefined;
+      let pointToward: ActingContext['pointToward'];
+      if (target) {
+        const dx = target.x - x, dy = target.y - y;
+        const radians = -actor.rotation * Math.PI / 180, cos = Math.cos(radians), sin = Math.sin(radians);
+        const localX = (dx * cos - dy * sin) * (flip ? -1 : 1) / actor.scale;
+        const localY = (dx * sin + dy * cos) / actor.scale + lift + 120 * character.height;
+        if (Math.abs(localX) > 12) pointToward = { x: localX, y: localY };
+      }
+      const acting: ActingContext = {
+        time: t, actorId: actor.id, action, locomotion, expression, speaking, pointToward,
+        listening: !speaking && (action === 'listen' || sounds.some(clip => clip.track === 'dialogue' && clip.actor !== actor.id)),
+        manualGesture: Boolean(gesture), occupiedHands: occupiedHands(character, Boolean(held), action),
+        phrase: spoken ? {
+          start: spoken.start, duration: spoken.length, text: spoken.text, offset: spoken.offset,
+          sourceDuration: spoken.lipSync?.analyzedDuration, cues: spoken.visemes
+        } : undefined
+      };
+      handGesture = gestureAt(character, acting);
+      pose = livingPose(character, acting, pose, handGesture);
     }
     const performance=action===gesture?.action?gesture:body;
     const actionTime=performance?t-performance.start:0;
     const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking: Boolean(spoken)||action==='talk',actingPhrase, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held,propPose,sitting,seat };
+      speaking, handGesture, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
