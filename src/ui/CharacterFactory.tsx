@@ -63,7 +63,8 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         const { draft, action, expression, view, flip, scale, look, mouthTest } = frame.current;
         if (lastAction !== action) { lastAction = action; reset = now; }
         const performance=animations[action];
-        const span=performance.loop?8:Math.min(8,performance.duration+.75);
+        // A full Sit -> hold -> Stand audition reveals weight transfer.
+        const span=action==='stand'?4:performance.loop||action==='sit'?8:Math.min(8,performance.duration+.75);
         const time = ((now - reset) / 1000) % span;
         if (!document.hidden && Math.floor(time * 24) !== previous) {
           previous = Math.floor(time * 24);
@@ -72,11 +73,16 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           actor.characterId = draft.id; actor.x = layout.x; actor.y = layout.y; actor.scale = layout.scale;
           actor.view = view; actor.flip = flip; actor.expression = expression;
           const body = scene.clips[0], face = scene.clips[1];
-          if (body.track === 'body'){body.action=action;body.length=performance.loop?8:performance.duration+.22;}
+          if (body.track === 'body'){
+            body.action=action==='stand'?'sit':action;
+            body.length=action==='stand'?1.8:action==='sit'||performance.loop?8:performance.duration+.22;
+          }
           if (face.track === 'face') face.expression = expression;
           if (action === 'talk') {
             scene.clips[2] = { id: 'example-speech', track: 'dialogue', actor: 'preview', text: 'Hello there! Let us create a cartoon. Watch my mouth moving!', asset: 'builtin:sbu-food',
               start: 0, length: 8, muted: false, volume: 1, offset: 0 };
+          } else if (action==='stand') {
+            scene.clips[2]={id:'rise',track:'body',layer:'body',actor:'preview',action:'stand',start:1.8,length:animations.stand.duration};
           } else scene.clips.length = 2;
           if(face.track==='face')face.start=expression==='neutral'?8:0;
           const gaze = look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } :
