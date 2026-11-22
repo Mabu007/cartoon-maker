@@ -149,6 +149,18 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
         clips.push({id:uid(),track:'body',actor:opponent,action:'surprise',layer:'body',
           start:recoilStart,length:Math.min(.8,180-recoilStart),
           performance:makeRecoilKeys(),performanceOrigin:'choreography'});
+        // A cinematic beat, not a claim of physical collision. All VFX and
+        // audio remain individually editable and can be removed by the creator.
+        const impactActor=scene.actors.find(a=>a.id===opponent);
+        if(impactActor) {
+          const hitY=clamp(impactActor.y-135*impactActor.scale,-2000,3000);
+          clips.push({id:uid(),track:'vfx',effect:'impact-stars',start:recoilStart,
+            length:Math.min(.35,180-recoilStart),x:impactActor.x,y:hitY,strength:1.1});
+          clips.push({id:uid(),track:'vfx',effect:'camera-shake',start:recoilStart,
+            length:Math.min(.2,180-recoilStart),x:impactActor.x,y:hitY,strength:.55});
+          clips.push({id:uid(),track:'audio',name:'Cartoon impact',asset:'builtin:punch-pop',
+            volume:.6,muted:false,offset:0,start:recoilStart,length:Math.min(.22,180-recoilStart)});
+        }
       }
       await commit(clips);
       dismiss();
