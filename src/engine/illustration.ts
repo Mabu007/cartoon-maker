@@ -139,66 +139,66 @@ export function drawIllustratedHair(g: Graphics, c: Character, art: IllustratedV
   if (back) detail(g, 'M ' + (-w*.60) + ' -8 Q 0 1 ' + (w*.60) + ' -8', mid, 1.2);
 }
 
-export type HandPose = 'relaxed' | 'open' | 'point' | 'grip' | 'fist';
+export type HandPose = 'relaxed'|'open'|'point'|'grip'|'fist'|'pinch'|'palm-up'|'thumbs-up'|'count';
 
 /**
- * Articulated cartoon hand silhouettes: five visible digits at gesturing scale,
- * finger separation, thumb fold, and an extended index for pointing.
+ * Five independent articulated fingers with two phalanges each.
+ * Finger silhouettes are built from reusable rounded vector strokes, then
+ * the palm covers their roots. Curl blends from a neutral hand to the desired
+ * pose, so automatic gestures grow and recover rather than popping on/off.
+ * This is a screen-readable cartoon rig, not an anatomical simulation.
  */
-export function drawIllustratedHand(g: Graphics, x: number, y: number, width: number, color: string, pose: HandPose = 'relaxed', facing: -1 | 1 = 1) {
-  const u = width / 10, sign = facing;
-  const fx = (a: number) => x + a * u * sign;
-  const fy = (a: number) => y + a * u;
-  const outline = (d: string, weight = 2) => part(g, d, color, INK, weight);
-  const seam = (d: string, weight = 1.2) => detail(g, d, shade(color, -.24), weight);
-  if (pose === 'point') {
-    // Index finger is one clearly extended finger; the remaining three curl
-    // into the palm, with the thumb wrapping over the knuckles.
-    outline('M ' + fx(-6) + ' ' + fy(-4) + ' Q ' + fx(-8) + ' ' + fy(1) + ' ' + fx(-5) + ' ' + fy(6) +
-      ' Q ' + fx(0) + ' ' + fy(9) + ' ' + fx(7) + ' ' + fy(4) +
-      ' L ' + fx(9) + ' ' + fy(1) + ' Q ' + fx(12) + ' ' + fy(-1) + ' ' + fx(10) + ' ' + fy(-4) +
-      ' L ' + fx(7) + ' ' + fy(-5) + ' L ' + fx(25) + ' ' + fy(-7) +
-      ' Q ' + fx(29) + ' ' + fy(-9) + ' ' + fx(26) + ' ' + fy(-12) +
-      ' Q ' + fx(24) + ' ' + fy(-13) + ' ' + fx(21) + ' ' + fy(-12) +
-      ' L ' + fx(4) + ' ' + fy(-11) + ' Q ' + fx(-2) + ' ' + fy(-13) + ' ' + fx(-6) + ' ' + fy(-4) + ' Z', 2.35);
-    seam('M ' + fx(-4) + ' ' + fy(2) + ' q ' + (8*u*sign) + ' ' + (-3*u) + ' ' + (13*u*sign) + ' ' + (2*u), 1.35);
-    for (const [sx,sy] of [[2,5],[6,3],[9,1]] as const) seam('M ' + fx(sx) + ' ' + fy(sy) + ' l ' + (2*u*sign) + ' ' + (-2*u), 1.05);
-    return;
+export function drawIllustratedHand(g:Graphics,x:number,y:number,width:number,color:string,
+  pose:HandPose='relaxed',facing:-1|1=1,blend=1) {
+  const u=Math.max(.35,width/10),fraction=Math.max(0,Math.min(1,blend));
+  const sx=(v:number)=>x+facing*v*u,sy=(v:number)=>y+v*u;
+  const handOutline=INK,shadow=shade(color,-.21),highlight=shade(color,.16);
+  const path=(points:[number,number][])=>'M '+points.map(([px,py])=>sx(px)+' '+sy(py)).join(' L ');
+  const finger=(points:[number,number][],thickness=3.35)=>{
+    const d=path(points);
+    part(g,d,'none',handOutline,(thickness+2.15)*u);
+    part(g,d,'none',color,thickness*u);
+  };
+  const styles:Record<HandPose,{curl:[number,number,number,number];thumb:number;spread:number}>={
+    relaxed:{curl:[.46,.43,.49,.56],thumb:.45,spread:.10},
+    open:{curl:[0,0,0,0],thumb:0,spread:.29},
+    'palm-up':{curl:[.07,.03,.05,.08],thumb:0,spread:.29},
+    point:{curl:[.02,.97,.97,.96],thumb:.68,spread:.05},
+    grip:{curl:[.8,.84,.85,.83],thumb:.78,spread:.03},
+    fist:{curl:[1,1,1,1],thumb:.95,spread:0},
+    pinch:{curl:[.24,.78,.8,.81],thumb:.28,spread:0},
+    'thumbs-up':{curl:[.96,.98,.98,.95],thumb:-.55,spread:0},
+    count:{curl:[.02,.02,.97,.97],thumb:.74,spread:.12}
+  };
+  const rest=styles.relaxed,target=styles[pose]??rest;
+  const selected=[0,1,2,3] as const;
+  // Draw far fingers first and thumb last for coherent overlap.
+  for(const i of selected){
+    const curl=rest.curl[i]+(target.curl[i]-rest.curl[i])*fraction;
+    const spread=rest.spread+(target.spread-rest.spread)*fraction;
+    const initial=(-1.5+i)*spread;
+    const length=[13.5,16.5,16.1,12.7][i];
+    const rootX=-5.6+i*3.85,rootY=-6+Math.abs(i-1.5)*.5;
+    const a1=initial+curl*.85;
+    const bend=initial+curl*2.15;
+    const mid:[number,number]=[rootX+Math.sin(a1)*length*.57,rootY-Math.cos(a1)*length*.57];
+    const tip:[number,number]=[mid[0]+Math.sin(bend)*length*.43,mid[1]-Math.cos(bend)*length*.43];
+    finger([[rootX,rootY],mid,tip],i===3?2.9:3.35);
+    if(curl<.72)part(g,path([[mid[0]-1,mid[1]+.1],[mid[0]+.9,mid[1]+.6]]),'none',shadow,.72*u);
   }
-  if (pose === 'open') {
-    // Open hand has four separated fingers and a distinct thumb.
-    outline('M ' + fx(-7) + ' ' + fy(4) + ' Q ' + fx(-11) + ' ' + fy(0) + ' ' + fx(-10) + ' ' + fy(-3) +
-      ' L ' + fx(-12) + ' ' + fy(-13) + ' Q ' + fx(-12) + ' ' + fy(-18) + ' ' + fx(-8) + ' ' + fy(-18) +
-      ' Q ' + fx(-5) + ' ' + fy(-18) + ' ' + fx(-4) + ' ' + fy(-12) +
-      ' L ' + fx(-3) + ' ' + fy(-22) + ' Q ' + fx(-2) + ' ' + fy(-26) + ' ' + fx(1) + ' ' + fy(-25) +
-      ' Q ' + fx(4) + ' ' + fy(-24) + ' ' + fx(3) + ' ' + fy(-15) +
-      ' L ' + fx(6) + ' ' + fy(-20) + ' Q ' + fx(9) + ' ' + fy(-24) + ' ' + fx(12) + ' ' + fy(-21) +
-      ' Q ' + fx(14) + ' ' + fy(-18) + ' ' + fx(10) + ' ' + fy(-11) +
-      ' L ' + fx(14) + ' ' + fy(-13) + ' Q ' + fx(17) + ' ' + fy(-13) + ' ' + fx(17) + ' ' + fy(-9) +
-      ' Q ' + fx(15) + ' ' + fy(-4) + ' ' + fx(8) + ' ' + fy(3) +
-      ' Q ' + fx(1) + ' ' + fy(9) + ' ' + fx(-7) + ' ' + fy(4) + ' Z');
-    seam('M ' + fx(-3) + ' ' + fy(-10) + ' L ' + fx(-2) + ' ' + fy(-3));
-    seam('M ' + fx(4) + ' ' + fy(-11) + ' L ' + fx(3) + ' ' + fy(-2));
-    seam('M ' + fx(10) + ' ' + fy(-7) + ' L ' + fx(6) + ' ' + fy(0));
-    return;
+  part(g,`M ${sx(-8.5)} ${sy(-7)} Q ${sx(-9.7)} ${sy(-1)} ${sx(-7.4)} ${sy(5.5)}
+    Q ${sx(-3.3)} ${sy(10)} ${sx(4.5)} ${sy(7.6)}
+    Q ${sx(10.5)} ${sy(4.7)} ${sx(9)} ${sy(-5.7)}
+    Q ${sx(3.9)} ${sy(-9.7)} ${sx(-8.5)} ${sy(-7)} Z`,color,handOutline,2.1*u);
+  const thumbCurl=rest.thumb+(target.thumb-rest.thumb)*fraction;
+  const thumbStart:[number,number]=[-7.8,2.1];
+  const thumbMid:[number,number]=[-11.5+thumbCurl*7,-2.7-thumbCurl*1.3];
+  const thumbTip:[number,number]=thumbCurl<0?[-8.7,-19]:[-14+thumbCurl*15,-8+thumbCurl*6];
+  finger([thumbStart,thumbMid,thumbTip],4.1);
+  // Separate the knuckles without introducing distracting line clutter.
+  for(let i=0;i<3;i++){
+    const kx=-4.8+i*3.9;
+    part(g,path([[kx,-5.6],[kx+.8,-4.8]]),'none',shadow,.85*u);
   }
-  if (pose === 'grip' || pose === 'fist') {
-    outline('M ' + fx(-9) + ' ' + fy(-4) + ' Q ' + fx(-9) + ' ' + fy(-10) + ' ' + fx(-3) + ' ' + fy(-11) +
-      ' L ' + fx(10) + ' ' + fy(-10) + ' Q ' + fx(16) + ' ' + fy(-7) + ' ' + fx(13) + ' ' + fy(-2) +
-      ' Q ' + fx(15) + ' ' + fy(5) + ' ' + fx(7) + ' ' + fy(9) +
-      ' Q ' + fx(-4) + ' ' + fy(11) + ' ' + fx(-9) + ' ' + fy(3) + ' Z', 2.2);
-    for (let n = 0; n < 3; n++) seam('M ' + fx(-1+n*4.2) + ' ' + fy(-8) + ' q ' + (2*u*sign) + ' ' + (5*u) + ' 0 ' + (7*u), 1.25);
-    if (pose === 'grip') seam('M ' + fx(-8) + ' ' + fy(-1) + ' Q ' + fx(1) + ' ' + fy(5) + ' ' + fx(7) + ' ' + fy(1), 1.6);
-    return;
-  }
-  // Calm relaxed hand: palm and separated finger tips, even at thumbnail size.
-  outline('M ' + fx(-7) + ' ' + fy(-4) + ' Q ' + fx(-9) + ' ' + fy(0) + ' ' + fx(-6) + ' ' + fy(7) +
-    ' Q ' + fx(-2) + ' ' + fy(10) + ' ' + fx(3) + ' ' + fy(8) +
-    ' L ' + fx(12) + ' ' + fy(0) + ' Q ' + fx(15) + ' ' + fy(-5) + ' ' + fx(12) + ' ' + fy(-7) +
-    ' Q ' + fx(10) + ' ' + fy(-10) + ' ' + fx(7) + ' ' + fy(-7) +
-    ' Q ' + fx(6) + ' ' + fy(-11) + ' ' + fx(3) + ' ' + fy(-10) +
-    ' Q ' + fx(1) + ' ' + fy(-11) + ' ' + fx(-2) + ' ' + fy(-9) +
-    ' Q ' + fx(-5) + ' ' + fy(-9) + ' ' + fx(-7) + ' ' + fy(-4) + ' Z', 2.1);
-  seam('M ' + fx(2) + ' ' + fy(-1) + ' Q ' + fx(6) + ' ' + fy(1) + ' ' + fx(9) + ' ' + fy(-2));
-  seam('M ' + fx(-2) + ' ' + fy(3) + ' Q ' + fx(1) + ' ' + fy(6) + ' ' + fx(4) + ' ' + fy(3));
+  part(g,path([[-5.3,3],[-2.3,4.1],[1.3,3.7]]),'none',highlight,1.15*u);
 }
