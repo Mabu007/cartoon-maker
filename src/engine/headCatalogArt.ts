@@ -178,8 +178,8 @@ export function drawEye(g:Graphics,layer:EyeLayer,c:Character,m:FacialPerformanc
   } else vector(g,'M-7 0Q0 2 7 0','none',INK,2,at(x,y));
   if((w?.undereye??0)>0) g.moveTo(x-6*sx,y+6*sy+1).quadraticCurveTo(x,y+9*sy+2,x+6*sx,y+6*sy+1)
     .stroke({color:'#78576d',alpha:w?.undereye,width:1.4,cap:'round'});
-  const tilt=m.expression==='angry'?-4:m.expression==='sad'?3.8:m.expression==='smug'?side*2:0;
-  const ox=x+side*(w?.browSpacing??0), oy=y-12+(w?.browOffset??0)-(attitude-1)*6;
+  const tilt=m.expression==='angry'?-4:m.expression==='sad'?3.8:m.expression==='nervous'?(side<0?-6.5:4.5):m.expression==='smug'?side*2:0;
+  const ox=x+side*(w?.browSpacing??0), oy=y-12+(w?.browOffset??0)-(attitude-1)*6-(m.expression==='nervous'?3.7:0);
   const iy=tilt+Math.tan((w?.browInner??0)*Math.PI/180)*5;
   const ey=-tilt+Math.tan((w?.browOuter??0)*Math.PI/180)*5;
   const bend=(w?.browBend??0)*6;
