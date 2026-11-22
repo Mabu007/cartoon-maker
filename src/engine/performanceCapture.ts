@@ -99,7 +99,13 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
   for(const joint of tracked) {
     const left=a.pose[joint],right=b.pose[joint];
     if(left===undefined&&right===undefined)continue;
-    pose[joint]=mix(left??right??0,right??left??0,ease(fraction));
+    // Animator-style overlap: the shoulder initiates a gesture, the elbow
+    // follows, and the wrist settles last. The lag is an intra-key interval,
+    // not a delayed timestamp, so each authored pose is hit exactly.
+    const lag=joint.endsWith('Wrist')?.15:
+      joint.endsWith('Elbow')?.075:joint==='head'?.045:0;
+    const phase=clamp((fraction-lag)/Math.max(.01,1-lag));
+    pose[joint]=mix(left??right??0,right??left??0,ease(phase));
   }
   return {time:at,pose,
     hands: fraction<.5 ? a.hands??b.hands : b.hands??a.hands,
