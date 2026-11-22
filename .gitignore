@@ -8,3 +8,6 @@ dist/
 .codex/
 *-debug.log
 __pycache__/
+
+# Downloaded on-demand by npm run assets:performance
+public/mediapipe/
