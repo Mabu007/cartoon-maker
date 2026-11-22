@@ -124,7 +124,7 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
       const startAt=clamp(start,0,180-result.duration);
       const length=clamp(result.duration,.1,180-startAt);
       const motion:Extract<Clip,{track:'body'}>={
-        id:uid(),track:'body',actor,action:'talk',layer:'gesture',
+        id:uid(),track:'body',actor,action:'idle',layer:'gesture',
         start:startAt,length,performance:result.keys,performanceOrigin:'mocap'
       };
       const clips:Clip[]=[motion];
