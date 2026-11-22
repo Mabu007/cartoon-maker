@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { bodyProportions } from '../engine/bodyBuild.ts';
-import { animations, gaitLeg, rig, sample, viewForward } from '../engine/animation.ts';
+import { animations, gaitLeg, rig, sample, seatedLeg, viewForward } from '../engine/animation.ts';
+import { handRotation, sampleHandRig } from '../engine/handRig.ts';
 import { livingPose } from '../engine/livingCharacter.ts';
 import { performanceHandPose } from '../engine/handPerformance.ts';
 import { sampleViseme, type Viseme } from '../engine/visemes.ts';
@@ -69,13 +70,15 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const animated = ['wave', 'jump', 'celebrate', 'talk', 'laugh'].includes(action);
   const moving = action === 'walk' || action === 'run';
   const forward = viewForward(view);
-  const lift = moving ? sample(animations[action], elapsed).lift : 0;
+  const lift = moving || action==='sit' || action==='stand' ? base.lift : 0;
   const legs = (['left', 'right'] as const).map((side, index) => {
     const upper = { x: (index ? 15 : -15) * width*build.hip, y: shirtBottom };
     const scale = -shirtBottom / 76;
     const [knee, foot] = moving
       ? gaitLeg(upper, scale, elapsed, action, side, forward, lift)
-      : [{ x: upper.x + (index ? 6 : -5), y: -29 }, { x: upper.x + (index ? 3 : -3), y: -3 }];
+      : action==='sit'||action==='stand'
+        ? seatedLeg(upper,scale,lift,side)
+        : [{ x: upper.x + (index ? 6 : -5), y: -29 }, { x: upper.x + (index ? 3 : -3), y: -3 }];
     const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
     return { side, foot, shoe, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
@@ -92,7 +95,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     <path d="M 0 443 H 540" stroke="#b99ac7" strokeWidth="3"/>
     <ellipse cx="270" cy="443" rx={37 * scale} ry="7" fill="#382d45" opacity=".4"/>
     <g transform={'translate(270 443) scale(' + (flip ? -scale : scale) + ' ' + scale + ')'}>
-      <g className={animated ? 'native-actor native-actor-' + action : ''} transform={moving ? `translate(0 ${-lift})` : undefined}>
+      <g className={animated ? 'native-actor native-actor-' + action : ''} transform={lift ? `translate(0 ${-lift})` : undefined}>
         {legs.map(({ side, path, foot, shoe }) => <g key={side}>
           <path d={path} stroke="#211e33" strokeWidth={13 * c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           <path d={path} stroke={swim?c.skin:c.pants} strokeWidth={9 * c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
@@ -115,26 +118,19 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         {armParts.map(({side,hand,elbow,handPose})=>{
           const sign=side==='right'?1:-1;
           const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
-          const rotation=(handPose==='open'||handPose==='palm-up'?forearm+Math.PI/2:forearm-Math.PI/2)*180/Math.PI;
-          const straighten=(i:number)=>handPose==='open'||handPose==='palm-up'||
-            (handPose==='point'&&i===0)||(handPose==='count'&&i<2);
-          const fingerBases=[-6,-2,2,6];
+          const rotation=handRotation(forearm,live[side+'Wrist']??0,handPose)*180/Math.PI;
+          const handRig=sampleHandRig(handPose);
+          const path=(points:readonly (readonly [number,number])[])=>
+            points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
           return <g key={side} transform={`translate(${hand.x} ${hand.y}) rotate(${rotation}) scale(${sign} 1)`}>
-            {fingerBases.map((finger,i)=>{
-              const long=straighten(i),length=long?18+(i===1?4:0):7;
-              return <path key={i} d={`M ${finger} -6 l ${long?(i-1)*2:5} ${-length}`}
-                stroke="#242037" strokeWidth="6.2" strokeLinecap="round" fill="none"/>;
-            })}
-            {fingerBases.map((finger,i)=>{
-              const long=straighten(i),length=long?18+(i===1?4:0):7;
-              return <path key={'skin'+i} d={`M ${finger} -6 l ${long?(i-1)*2:5} ${-length}`}
-                stroke={c.skin} strokeWidth="3.8" strokeLinecap="round" fill="none"/>;
-            })}
-            <path d="M -9 -7 Q -12 4 -4 8 Q 9 11 10 -4 Q 3 -11 -9 -7Z" fill={c.skin} stroke="#242037" strokeWidth="2.2"/>
-            <path d={handPose==='fist'||handPose==='grip'?"M -7 0 Q 4 6 8 1":"M -7 1 Q -16 -4 -14 -11"}
-              stroke="#242037" strokeWidth="5.5" strokeLinecap="round" fill="none"/>
-            <path d={handPose==='fist'||handPose==='grip'?"M -7 0 Q 4 6 8 1":"M -7 1 Q -16 -4 -14 -11"}
-              stroke={c.skin} strokeWidth="3.2" strokeLinecap="round" fill="none"/>
+            {handRig.fingers.map((finger,i)=><g key={i}>
+              <path d={path(finger)} stroke="#242037" strokeWidth={i===3?5.1:5.5} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              <path d={path(finger)} stroke={c.skin} strokeWidth={i===3?2.9:3.35} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </g>)}
+            <path d="M -8.5 -7 Q -9.7 -1 -7.4 5.5 Q -3.3 10 4.5 7.6 Q 10.5 4.7 9 -5.7 Q 3.9 -9.7 -8.5 -7Z"
+              fill={c.skin} stroke="#242037" strokeWidth="2.1"/>
+            <path d={path(handRig.thumb)} stroke="#242037" strokeWidth="6.1" strokeLinecap="round" fill="none"/>
+            <path d={path(handRig.thumb)} stroke={c.skin} strokeWidth="4.1" strokeLinecap="round" fill="none"/>
           </g>;
         })}
         {(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
