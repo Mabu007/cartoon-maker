@@ -74,12 +74,14 @@ export function gestureAt(character:Character,input:ActingContext):GestureSample
   const talking=input.speaking&&input.speechWeight>.055;
   const activity=talking?1:input.listening?.32:.18;
   const frequency=traits.gestureFrequency/100;
-  const interval=mix(3.0,.86,frequency)*mix(1.24,.83,traits.energy/100);
+  const interval=mix(3.0,.86,frequency)*mix(1.24,.83,traits.energy/100)*
+    mix(1.2,.8,traits.movementSpeed/100)*mix(.88,1.17,traits.patience/100);
   const seed=hash(character.id);
   const slot=Math.floor(t/interval);
   const phase=(t-slot*interval)/interval;
   // A few full periods of restraint are essential for believable conversation.
-  const threshold=talking?mix(.2,.87,frequency):mix(.03,.28,traits.restlessness/100);
+  const threshold=talking?mix(.2,.87,frequency)*mix(.8,1.15,traits.sociability/100):
+    mix(.03,.28,traits.restlessness/100)*mix(1.1,.75,traits.patience/100);
   if(chance(seed,slot,1)>threshold)return none;
   const kindChoice=chance(seed,slot,2),side: 'left'|'right'=chance(seed,slot,3)<.29?'left':'right';
   const choices:GestureKind[]=talking
@@ -87,6 +89,7 @@ export function gestureAt(character:Character,input:ActingContext):GestureSample
     : ['fidget','chin','rest','rub','fidget','rest','shrug','rest'];
   let kind=choices[Math.min(choices.length-1,Math.floor(kindChoice*choices.length))];
   if(talking&&traits.nervousness>70&&kind==='point')kind='fidget';
+  if(talking&&traits.playfulness>75&&kind==='beat')kind=chance(seed,slot,5)>.5?'question':'explain';
   if(talking&&traits.confidence<28&&kind==='point')kind='question';
   if(input.expression==='angry'&&talking&&kind==='question')kind='point';
   if(input.expression==='sad'&&kind==='point')kind='chin';
@@ -97,10 +100,11 @@ export function gestureAt(character:Character,input:ActingContext):GestureSample
   if((kind==='point'||kind==='rub')&&chance(seed,slot-1,2)>.72)kind='beat';
   const anticipation=ease(clamp(phase/.24));
   const recovery=ease(clamp((.94-phase)/.28));
-  const stroke=Math.min(anticipation,recovery);
+  const stroke=Math.pow(Math.min(anticipation,recovery),mix(1.4,.78,traits.movementSmoothness/100));
   const amplitude=mix(.25,1.15,traits.gestureAmplitude/100);
   const context=talking?mix(.48,1,clamp(input.speechWeight)):activity;
-  const expressive=mix(.6,1.22,traits.expressiveness/100);
+  const emotion=input.expression==='neutral'?1:mix(.86,1.3,traits.emotionalReactivity/100);
+  const expressive=mix(.6,1.22,traits.expressiveness/100)*emotion;
   const gentle=traits.autoActing==='subtle'?.4:1;
   const weight=clamp(stroke*amplitude*context*expressive*gentle);
   return {kind,side,weight,phase};
@@ -123,19 +127,21 @@ export function livingPose(character:Character,input:ActingContext,base:JointPos
   const breath=Math.sin(t*2.05+hash(character.id)*.00001);
   const sway=Math.sin(t*.75+hash(character.id)*.000009);
   const posture=(p.postureOpenness-50)/50;
+  const emotionMultiplier=input.expression==='neutral'?1:mix(.7,1.65,p.reactionIntensity/100);
+  const proximity=input.listening?mix(-1,1,p.personalSpace/100):0;
   const anxious=p.nervousness/100;
   // Preserve strong authored poses: secondary animation is kept small.
   const secondary=quiet?1:.24;
-  result.torso=(result.torso??0)+(posture*-3.8+breath*1.1+sway*anxious*1.8)*secondary*subtle;
+  result.torso=(result.torso??0)+(posture*-3.8+breath*1.1+sway*anxious*1.8+proximity*2.2)*secondary*subtle;
   result.neck=(result.neck??0)+(breath*.55-sway*.8)*secondary*subtle;
-  result.head=(result.head??0)+(sway*(.8+anxious*2.7)+(p.signature==='tilt-head'?3:0))*secondary*subtle;
+  result.head=(result.head??0)+(sway*(.8+anxious*2.7)*emotionMultiplier+(p.signature==='tilt-head'?3:0))*secondary*subtle;
   if(!motion&&quiet&&!input.manualGesture){
     const stillness=1-p.restlessness/150;
     result.leftShoulder=(result.leftShoulder??0)+(posture*-4+breath*.4)*stillness*subtle;
     result.rightShoulder=(result.rightShoulder??0)+(posture*4-breath*.4)*stillness*subtle;
   }
   if(motion) {
-    const gaitEnergy=mix(.7,1.32,p.energy/100);
+    const gaitEnergy=mix(.7,1.32,p.energy/100)*mix(.9,1.15,p.movementSpeed/100);
     result.leftShoulder=(result.leftShoulder??0)*gaitEnergy;
     result.rightShoulder=(result.rightShoulder??0)*gaitEnergy;
     result.leftElbow=(result.leftElbow??0)+p.confidence/100*4*subtle;
@@ -146,7 +152,7 @@ export function livingPose(character:Character,input:ActingContext,base:JointPos
     const [shoulder,elbow,wrist]=gesturalAngles[gesture.kind as Exclude<GestureKind,'rest'>];
     const side=gesture.side==='right'&&input.carrying?'left':gesture.side;
     const sign=side==='right'?1:-1;
-    const w=gesture.weight*(motion?.48:1);
+    const w=gesture.weight*(motion?.48:1)*emotionMultiplier;
     const s=(side+'Shoulder') as 'rightShoulder'|'leftShoulder';
     const e=(side+'Elbow') as 'rightElbow'|'leftElbow';
     const r=(side+'Wrist') as 'rightWrist'|'leftWrist';
