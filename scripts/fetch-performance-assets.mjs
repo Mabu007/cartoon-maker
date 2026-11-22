@@ -13,7 +13,7 @@ const cdn='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3';
 const models='https://storage.googleapis.com/mediapipe-models';
 const entries=[
   ['vision_bundle.mjs',cdn+'/vision_bundle.mjs'],
-  ...['vision_wasm_internal.js','vision_wasm_internal.wasm','vision_wasm_nosimd_internal.js','vision_wasm_nosimd_internal.wasm']
+  ...['vision_wasm_internal.js','vision_wasm_internal.wasm','vision_wasm_module_internal.js','vision_wasm_module_internal.wasm']
     .map(file=>['wasm/'+file,cdn+'/wasm/'+file]),
   ['models/pose_landmarker_lite.task',models+'/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task'],
   ['models/hand_landmarker.task',models+'/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'],
