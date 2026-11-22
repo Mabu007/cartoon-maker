@@ -11,9 +11,9 @@ expressions, and DSP voice-driven lip synchronization.
 3. Select the actor, choose smoothing/exaggeration, then **Enable camera**.
 4. Stand where your upper body and arms are visible. Click **Record acting**.
    A recording lasts up to 18 seconds, and can be stopped early.
-5. Choose whether to apply the observed movement style to the character, add
-   optional spoken transcript, and optionally assign a staged recoil to another
-   character when a rapid punch-like gesture is detected.
+5. Optionally apply the observed movement style to the character and add the
+   words you spoke as a transcript. This workflow focuses on expressive human
+   conversation, not stunt or fight choreography.
 6. Click **Add performance to timeline**. The pose keys, captured voice and DSP
    mouth cues appear as separate editable body and dialogue clips. Preview
    playback and export evaluate identical timestamped data.
@@ -23,8 +23,16 @@ using the existing timeline tools. Pose frames are immutable scene data,
 not a second ephemeral state store.
 
 ## Capture implementation
-- Pose Landmarker maps shoulder, elbow, wrist, torso and visible leg landmarks
-  to the current parametric cartoon rig.
+- Pose Landmarker exposes normalized camera points **and** hip-relative 3D
+  world landmarks (metres). A torso-oriented X/Z basis maps world shoulder,
+  elbow and wrist angles into the existing 2D skeleton; confidence gates and
+  a 2D fallback avoid unsafe flips when 3D tracking is unreliable.
+- A deterministic adaptive low-pass filter suppresses tracking jitter without
+  flattening fast gestures. Error-bounded key reduction discards redundant
+  static frames while retaining changes in hands, poses and expressions.
+- Shoulder-led pose blending and five-finger geometry interpolation keep
+  transitions fluid. Tiny time-based breathing/listening movements are
+  layered on recorded poses using the existing character's personality.
 - Hand Landmarker categorizes safe cartoon finger shapes. Hands are associated
   by wrist position rather than handedness labels, which can be wrong in
   mirrored camera previews.
@@ -38,10 +46,10 @@ not a second ephemeral state store.
   user's voice recording using the existing local DSP analyzer.
 - Motion DNA summarizes observed gesture amplitude, energy, and dominant
   movement side. It is *not* personality inference.
-- Fight choreography currently offers a manually selected opposite actor's
-  cartoon recoil when a punch-like arm extension is observed. It does NOT
-  claim impact detection, contact physics, collision solving, or professional
-  martial-arts choreography.
+- Captured motion never overrides a manually authored gesture or movement
+  action; seated lower-body poses, locomotion, prop grips, authored expressions
+  and dialogue lip sync remain in charge. The existing optional cartoon-fight
+  action library remains separate from the performance-capture experience.
 
 ## Camera/device constraints
 - Requires secure HTTPS origin or localhost, camera permission and browser
@@ -85,9 +93,10 @@ the default CDN fallback is not an offline installation.
 ## Validation
 - `npm run build` executes the automated test suite, TypeScript and Vite
   checks.
-- `tests/performanceCapture.test.ts` covers deterministic capture, low
-  confidence rejection, schema persistence, trim/split, recoil, strike
-  suggestions and invalid key validation.
+- `tests/performanceCapture.test.ts` covers deterministic compilation, world
+  landmarks, 2D fallback, key compression, finger blending, personality micro
+  movement, preservation of existing actions/visemes, schema persistence,
+  trim/split and invalid data rejection.
 - Real-camera QA is still required on representative Android and desktop
   devices. Confirm camera permissions, mouth timing, gesture hand correctness
   and performance under multiple actors before promoting to production.
@@ -95,8 +104,8 @@ the default CDN fallback is not an offline installation.
 ## Next fidelity milestones
 - Curated pose vocabulary and user-editable sparse pose beats, with IK
   corrections and dynamic anticipation/follow-through.
-- Recording a complete actor-to-actor interaction using alignment constraints,
-  separate reaction recordings, impact foley and camera staging.
-- Feet/ground contact constraints, body turn/view transitions and handling
-  occlusions for dancing, close grapples and complicated fights.
+- Stronger visible-capture feedback, adjustable performance keys, and
+  better handling of occluded hands and head turns.
+- Feet/ground contact constraints and view transitions for dance and complex
+  full-body movement, outside the current conversational-capture focus.
 - Video-file import and exportable/copyable Acting DNA profiles.
