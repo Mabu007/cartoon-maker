@@ -72,8 +72,12 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
   return {features:{pose:true,hands:!!hands,face:!!face},warnings,close,
     detect(video,atMs) {
       if(video.readyState<2||!video.videoWidth)return undefined;
-      const pose=posePoints(poseDetector(video,atMs));
+      const output=poseDetector(video,atMs);
+      const pose=posePoints(output);
       if(!pose)return undefined;
+      // MediaPipe worldLandmarks are 3D metre-scale points around the hip
+      // origin. Keep them for retargeting only, never in persisted clip JSON.
+      const world=output?.worldLandmarks?.[0] as Landmark[]|undefined;
       tick++;
       if(hands&&tick%2===1){
         const result=hands.detectForVideo(video,atMs);
@@ -113,7 +117,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
           acc[c.categoryName]=c.score;return acc;
         },{});
       }
-      return {t:atMs/1000,pose,leftHand:previousLeft,rightHand:previousRight,face:previousFace};
+      return {t:atMs/1000,pose,world,leftHand:previousLeft,rightHand:previousRight,face:previousFace};
     }
   };
   function poseDetector(video:HTMLVideoElement,t:number){return pose.detectForVideo(video,t);}
