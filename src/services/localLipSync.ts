@@ -7,7 +7,7 @@ function db() {
   return database ??= new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open('toonroom-dsp', 1);
     request.onupgradeneeded = () => request.result.createObjectStore('analysis');
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {request.result.onversionchange=()=>{request.result.close();database=undefined;};resolve(request.result);};
     request.onerror = () => { database = undefined; reject(request.error); };
   });
 }

@@ -19,7 +19,7 @@ export function Welcome(props: Props){
       <button className="home-wordmark" onClick={props.openLanding}><img className="sv-project-logo" src="/sirvibe-logo.png" alt="" onError={event=>{event.currentTarget.hidden=true;}}/>SIRVIBE<span>.</span></button>
       <div className="home-tools">
         <span className="sv-project-account">{props.account?.displayName||props.account?.email||'Saved on this device'}</span>
-        <button className="quiet" onClick={props.openProjects}><FolderOpen size={17}/>My cartoons</button>
+        <button className="quiet" onClick={props.openProjects}><FolderOpen size={17}/>Backups & recovery</button>
         {props.account&&<button className="quiet" onClick={()=>void props.logout().catch(err=>setError(err instanceof Error?err.message:'Could not log out.'))}><LogOut size={16}/>Sign out</button>}
         <button className="icon-button" aria-label="Toggle theme" onClick={props.toggleTheme}>{props.theme==='dark'?<Sun size={18}/>:<Moon size={18}/>}</button>
       </div>

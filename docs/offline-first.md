@@ -30,9 +30,9 @@ Exports use local WebCodecs with Mediabunny where supported, or local MediaRecor
 
 ## Verification — 2026-11-22
 
-`npm run build`: all **216 tests passed**, TypeScript passed, production build passed.
+`npm run build`: all **227 tests passed**, TypeScript passed, production build passed.
 
-`npm run verify:offline`: all **32 emitted shell/asset files** verified in the precache, approximately **2.72 MiB**. It checks the DSP worker, both video export paths, manifest and HTML entry resources.
+`npm run verify:offline`: all **32 emitted shell/asset files** verified in the precache, approximately **2.73 MiB**. It checks the DSP worker, both video export paths, manifest and HTML entry resources.
 
 Real Chromium QA used the built production preview. After initial caching, the source server was stopped. With that origin unavailable, the app was reloaded and used for:
 
@@ -47,6 +47,22 @@ Real Chromium QA used the built production preview. After initial caching, the s
 - 338 CSS-pixel layout: Assets/Stage/Inspector navigation, visible save status, no horizontal page overflow. This was a narrow-layout test using browser zoom, not Android-device emulation.
 
 Automated regressions include legacy migration, cloud-copy isolation, ordered autosaves, previous-save preservation, stale-tab conflicts, deletion after queued autosave, IndexedDB fallback, OPFS failure/missing-file behavior, offline worker cache/navigation/lazy chunks, interrupted install cleanup, API exclusion, explicit update activation, backup truncation/corruption rejection and old-format import.
+
+## Follow-up system audit
+
+The release audit also fixed:
+
+- Previously unreachable recovery controls and a missing confirmation for project deletion. Project options and Backups & recovery now expose the existing tools on desktop and mobile.
+- Full-library IndexedDB reads after every autosave. Successful saves now return the committed row and update the in-memory library directly. Legacy migration reads keys first and fetches only unmigrated documents.
+- Deleted-project resurrection by delayed saves/other tabs. Version tracking now retains deletion tombstones. Explicitly opening a project reads and acknowledges its latest committed snapshot without relaxing conflict checks during background listings.
+- One malformed project or legacy preference blocking the whole project library. Damaged originals remain stored; healthy projects are listed, and an earlier valid save is recovered once as a separate copy when available. Blocked preferences fall back to session defaults.
+- Failed imports leaving unreferenced audio. The full import is validated before any media writes; storage failures roll back only newly allocated import IDs. Archived production-event audio versions are remapped along with active clips.
+- Offline retries failing to repair an evicted asset when the worker script had not changed. The active worker now repairs missing files without deleting usable cached files. Retry/update listeners are registered once.
+- Worker-only changes reusing the active cache identity. The build now hashes worker source as well as assets, keeping an interrupted worker update from removing an active version's cache.
+- Cloud re-downloads failing immediately on missing local media. Explicit connected cloud access can now replace a missing local file; offline usage still presents the missing-file error.
+- A transitive Firebase Node dependency with a high-severity certificate-validation advisory. `@grpc/grpc-js` is overridden to 1.14.7, preserving Firebase's existing public API. The complete `npm audit` result reports **zero known vulnerabilities** after the update.
+
+Added regression checks cover corruption isolation, reopening newer versions, external deletion, preference blocking, cache repair, worker-only cache identities, and partial-import cleanup. Real browser checks also confirm recovery opens a separate cartoon and deletion displays a cancellable confirmation.
 
 ## Verification limits
 

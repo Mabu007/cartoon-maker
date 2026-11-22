@@ -28,3 +28,30 @@ test('legacy JSON backups still import without reusing asset identities',async()
   assert.notEqual(projectAssets(restored)[0],id);
   assert.equal(await (await getAudio(projectAssets(restored)[0]))?.text(),'older recording');
 });
+test('an invalid later asset cannot leak earlier import files into device storage',async()=>{
+  const p=makeProject(false),a=uid(),b=uid();
+  await putAudio(a,new Blob(['first audio'],{type:'audio/wav'}));
+  await putAudio(b,new Blob(['second audio'],{type:'audio/wav'}));
+  p.scenes[0].clips.push(...[a,b].map((id,i)=>({id:uid(),track:'music' as const,start:i,length:1,asset:'asset:'+id,name:'clip',volume:1,offset:0,muted:false})));
+  const blob=await createMovieBackup(p);
+  async function assetCount(){return new Promise<number>((resolve,reject)=>{const r=indexedDB.open('sirvibe-media',1);r.onsuccess=()=>{const db=r.result,q=db.transaction('files').objectStore('files').count();q.onsuccess=()=>{db.close();resolve(q.result);};q.onerror=()=>reject(q.error);};});}
+  const before=await assetCount(),bytes=new Uint8Array(await blob.arrayBuffer());bytes[bytes.length-1]^=1;
+  await assert.rejects(restoreMovie(new File([bytes],'corrupt.sirvibe')),/damaged/);
+  assert.equal(await assetCount(),before);
+});
+test('storage failure halfway through a valid import rolls back its newly allocated assets',async()=>{
+  const p=makeProject(false),a=uid(),b=uid();
+  for(const id of [a,b])await putAudio(id,new Blob(['valid audio '+id],{type:'audio/wav'}));
+  p.scenes[0].clips.push(...[a,b].map((id,i)=>({id:uid(),track:'music' as const,start:i,length:1,asset:'asset:'+id,name:'clip',volume:1,offset:0,muted:false})));
+  const blob=await createMovieBackup(p);
+  async function count(){return new Promise<number>((resolve,reject)=>{const r=indexedDB.open('sirvibe-media',1);r.onsuccess=()=>{const db=r.result,q=db.transaction('files').objectStore('files').count();q.onsuccess=()=>{db.close();resolve(q.result);};q.onerror=()=>reject(q.error);};});}
+  const before=await count(),original=IDBObjectStore.prototype.put;let writes=0;
+  IDBObjectStore.prototype.put=function(value:any,key?:IDBValidKey){
+    if(this.name==='files'&&++writes===2)throw new DOMException('Storage full','QuotaExceededError');
+    return original.call(this,value,key);
+  };
+  try {await assert.rejects(restoreMovie(new File([blob],'valid.sirvibe')),/Storage full/);}
+  finally {IDBObjectStore.prototype.put=original;}
+  assert.equal(await count(),before);
+  assert(await getAudio(a));assert(await getAudio(b));
+});

@@ -22,8 +22,15 @@ self.addEventListener('activate', event => {
 });
 self.addEventListener('message', event => {
   if(event.data?.type==='ACTIVATE_UPDATE') self.skipWaiting();
-  if(event.data?.type==='OFFLINE_STATUS') event.waitUntil((async()=>{
+  if(['OFFLINE_STATUS','REPAIR_OFFLINE'].includes(event.data?.type)) event.waitUntil((async()=>{
     const cache=await caches.open(CACHE);
+    if(event.data.type==='REPAIR_OFFLINE'){
+      try {
+        const missing=[];
+        for(const url of PRECACHE)if(!await cache.match(url))missing.push(new Request(url,{cache:'reload'}));
+        for(let i=0;i<missing.length;i+=6)await cache.addAll(missing.slice(i,i+6));
+      } catch { /* Keep every still-usable cached file; never delete the active cache. */ }
+    }
     const ready=(await Promise.all(PRECACHE.map(url=>cache.match(url)))).every(Boolean);
     event.ports[0]?.postMessage({ready,version:VERSION});
   })());

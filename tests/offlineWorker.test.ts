@@ -31,3 +31,23 @@ test('cloud APIs are never intercepted; update requires explicit activation mess
   assert.equal(await h.dispatch('fetch',{request:{method:'GET',url:'https://studio.test/api/media',mode:'cors'}}),undefined);
   assert.equal(h.skipped,0);await h.dispatch('message',{data:{type:'ACTIVATE_UPDATE'}});assert.equal(h.skipped,1);
 });
+test('retry repairs evicted files even when the installed worker version has not changed',async()=>{
+  const h=harness();await h.dispatch('install');
+  const cache=h.rows.get('sirvibe-shell-test')!;cache.delete('/assets/dsp.js');
+  let reply:any;
+  await h.dispatch('message',{data:{type:'OFFLINE_STATUS'},ports:[{postMessage:(value:any)=>reply=value}]});
+  assert.equal(reply.ready,false);
+  await h.dispatch('message',{data:{type:'REPAIR_OFFLINE'},ports:[{postMessage:(value:any)=>reply=value}]});
+  assert.equal(reply.ready,true);assert(cache.has('/assets/dsp.js'));
+  assert.equal(h.skipped,0);assert.deepEqual(h.deleted,[]);
+});
+test('cache repair never deletes still-usable files when its network download fails',async()=>{
+  const h=harness();await h.dispatch('install');
+  const cache=h.rows.get('sirvibe-shell-test')!;cache.delete('/assets/dsp.js');
+  cache.set('/index.html',{body:'retained shell'});
+  // Simulate addAll failure with a missing file plus a failing cache writer.
+  const isolated=harness(true);isolated.rows.set('sirvibe-shell-test',cache);
+  let reply:any;
+  await isolated.dispatch('message',{data:{type:'REPAIR_OFFLINE'},ports:[{postMessage:(value:any)=>reply=value}]});
+  assert.equal(reply.ready,false);assert.equal(cache.get('/index.html').body,'retained shell');assert.deepEqual(isolated.deleted,[]);
+});

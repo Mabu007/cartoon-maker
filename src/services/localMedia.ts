@@ -1,5 +1,6 @@
 /** Immutable OPFS files with an IndexedDB commit record. A failed write never
  * replaces the previous asset. IndexedDB blobs are the cross-browser fallback. */
+export class MissingLocalMedia extends Error {}
 type Entry = { blob?: Blob; path?: string; type: string; size: number };
 let database: Promise<IDBDatabase> | undefined;
 function db() {
@@ -50,7 +51,7 @@ export async function getLocalMedia(key:string):Promise<Blob|undefined>{
       const file=await (await dir.getFileHandle(row.path)).getFile();
       if(file.size!==row.size)throw Error('Incomplete file');
       return file.type===row.type?file:new Blob([file],{type:row.type});
-    } catch {throw Error('A saved media file is missing. Restore a project backup or reattach the original file.');}
+    } catch {throw new MissingLocalMedia('A saved media file is missing. Restore a project backup or reattach the original file.');}
   }
 }
 export function storageError(error:unknown):string {
@@ -60,4 +61,19 @@ export function storageError(error:unknown):string {
 export async function requestDurableStorage(){
   // Persistence reduces eviction. Browsers may decline; backups remain portable.
   try {return await navigator.storage?.persist?.()??false;}catch{return false;}
+}
+
+/** Used only to roll back newly allocated import IDs. Existing project assets
+ * are never removed by failed imports or ordinary project autosaves. */
+export async function removeLocalMedia(key:string){
+  const row=await entry(key);if(!row)return;
+  const storage=await db();
+  await new Promise<void>((resolve,reject)=>{
+    const tx=storage.transaction('files','readwrite');tx.objectStore('files').delete(key);
+    tx.oncomplete=()=>resolve();tx.onabort=tx.onerror=()=>reject(tx.error);
+  });
+  if(row.path&&typeof navigator.storage?.getDirectory==='function'){
+    const root=await navigator.storage.getDirectory();
+    await (await root.getDirectoryHandle('sirvibe-media')).removeEntry(row.path).catch(()=>{});
+  }
 }

@@ -17,8 +17,8 @@ import { formatLabel, type Format } from './engine/videoFormats.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, uploadProject, listenAccount, login, logout, type Account } from './services/cloud.ts';
 import { audioLength, getOrFetchAudio, createAudioMixer, stopSoundPreview, setRemoteAudio, type Mixer } from './services/audio.ts';
 import { type Recognizer } from './services/lipSync.ts';
-import { duplicateProject, lastEditorSession, editorSessionFor, rememberEditorSession, type SavedProject, type ProjectCollection } from './services/projects.ts';
-import { listDeviceProjects, mergeDeviceProjects, organizeDeviceProject, removeDeviceProject, renameDeviceProject, saveDeviceProject, migrateDeviceLibrary, previousDeviceProject } from './services/deviceProjects.ts';
+import { duplicateProject, readPreference, lastEditorSession, editorSessionFor, rememberEditorSession, type SavedProject, type ProjectCollection } from './services/projects.ts';
+import { listDeviceProjects, mergeDeviceProjects, organizeDeviceProject, removeDeviceProject, renameDeviceProject, saveDeviceProject, migrateDeviceLibrary, previousDeviceProject, getDeviceProject, observeDeviceProject, takeDeviceWarnings } from './services/deviceProjects.ts';
 import { characterUsage, removeCharacterFromProject, propUsage } from './engine/assetSafety.ts';
 import { addMovieScene, duplicateMovieScene, renameMovieScene, reorderMovieScene, removeMovieScene } from './engine/sceneWorkflow.ts';
 
@@ -99,7 +99,7 @@ export default function App() {
   const [timelineTall,setTimelineTall]=useState(false);
   const arrowHold=useRef<{key:string;since:number}|undefined>(undefined);
   const [assetWidth, setAssetWidth] = useState(326), [inspectorWidth, setInspectorWidth] = useState(288);
-  const [theme, setTheme] = useState(() => localStorage.getItem('toonroom.theme') === 'dark' ? 'dark' : 'light');
+  const [theme, setTheme] = useState(() => readPreference('toonroom.theme') === 'dark' ? 'dark' : 'light');
   const importFile = useRef<HTMLInputElement>(null);
   const session = useStudio(state => state.session);
   const sceneTarget = { session, sceneId: scene.id };
@@ -134,7 +134,7 @@ export default function App() {
   const tell = useCallback((message: string, error = false) => setNotice({ message, error }), []);
   const toggleTheme = () => setTheme(current => {
     const value = current === 'dark' ? 'light' : 'dark';
-    localStorage.setItem('toonroom.theme', value);
+    try {localStorage.setItem('toonroom.theme', value);} catch {tell('Theme changed for this session. Browser preferences could not be saved.');}
     return value;
   });
   const close = () => setDialog(null);
@@ -204,6 +204,7 @@ export default function App() {
         if(!alive)return;
         if(local.length)loadProject(local[0].project);
         setLoadedScope(scope);setItems(local);setWorlds(worldPresets(scope));
+        const warnings=takeDeviceWarnings();if(warnings.length)tell(warnings.join(' '),true);
       } catch(error){if(alive){setLoadedScope(scope);setSaveStatus('Save failed');tell(storageError(error),true);}}
     })();
     return()=>{alive=false;};
@@ -240,7 +241,7 @@ export default function App() {
   async function recoverPrevious(){
     const prior=await previousDeviceProject(scope,useStudio.getState().project.id);
     if(!prior){tell('No earlier saved version is available yet.');return;}
-    await openProject({...prior,id:uid(),name:prior.name.slice(0,80)+' · recovered'},true);
+    if(!await openProject({...prior,id:uid(),name:prior.name.slice(0,80)+' · recovered'},true))return;
     tell('Earlier saved version opened as a separate cartoon.');
   }
 
@@ -248,10 +249,10 @@ export default function App() {
     const saveScope=originalScope.current;
     try {
       if(localDeletes.current.has(saveScope+'/'+document.id))throw new Error('This project is being deleted.');
-      await saveDeviceProject(saveScope,document);
+      const saved=await saveDeviceProject(saveScope,document);
       if(originalScope.current===saveScope)useStudio.getState().markSaved(document);
       if(originalScope.current===saveScope) {
-        setItems(await listDeviceProjects(saveScope));
+        setItems(current=>[saved,...current.filter(row=>row.project.id!==saved.project.id)].sort((a,b)=>b.updated-a.updated));
         if(useStudio.getState().project===document)setSaveStatus('Saved on device');
       }
       if(manual)tell('Project saved on this device.');
@@ -271,7 +272,7 @@ export default function App() {
     const flush = () => {
       const current = useStudio.getState();
       if (!current.dirty || localDeletes.current.has(originalScope.current + '/' + current.project.id)) return;
-      void saveDeviceProject(originalScope.current,current.project).catch(error=>{setSaveStatus('Save failed');tell(storageError(error),true);});
+      void persist(current.project);
     };
     const background=()=>{if(document.visibilityState==='hidden')flush();};
     document.addEventListener('visibilitychange',background);
@@ -974,14 +975,11 @@ export default function App() {
     next.name = 'Untitled cartoon';
     next.scenes[0] = { ...next.scenes[0], name: 'Scene 1', duration: 30, actors: [], clips: [], objects: [] };
     if(!await openProject(next,true))return;
-    localStorage.setItem('toonroom.started', '1');
+    try {localStorage.setItem('toonroom.started', '1');} catch { /* Optional onboarding preference. */ }
      setArrange(true); setMobilePanel('stage');
     useStudio.getState().setLibrary('Worlds');
   }
-  function deleteHomeProject(item: Project) {
-    // The dedicated Projects UI displays the destructive confirmation.
-    void deleteSavedProject(item);
-  }
+  function deleteHomeProject(item: Project) { deleteProject(item); }
   async function organizeHomeProject(id:string,changes:{favorite?:boolean;collection?:ProjectCollection}){
     try{await organizeDeviceProject(scope,id,changes);setItems(await listDeviceProjects(scope));}
     catch(error){showError(error);}
@@ -1004,7 +1002,15 @@ export default function App() {
     }catch(error){showError(error);}
   }
   async function openLibraryProject(value:Project){
-    if(!await openProject(value))return;
+    try {
+      if(useStudio.getState().dirty&&!await persist())return;
+      const before=useStudio.getState();
+      const latest=await getDeviceProject(scope,value.id);
+      if(useStudio.getState().session!==before.session||useStudio.getState().project!==before.project){tell('The cartoon changed while opening. Try again.');return;}
+      value=latest.project;
+      if(!await openProject(value))return;
+      observeDeviceProject(scope,latest);
+    } catch(error){showError(error);return;}
     const previous=editorSessionFor(scope,value.id)??(
       lastEditorSession(scope)?.projectId===value.id?lastEditorSession(scope):undefined);
 
@@ -1165,7 +1171,7 @@ export default function App() {
     if (clip?.track === 'dialogue' && character) content = <PrecisionLipSyncEditor key={clip.id} clip={clip} character={character} change={patchClip} close={close} regenerate={() => alignVoiceClip(clip,'phonetic')} undo={() => useStudio.getState().undo()} redo={() => useStudio.getState().redo()} canUndo={hasUndo} canRedo={hasRedo}/>;
   }
   if (dialog === 'export') content = <ExportDialog project={project} initialFormat={format} initialSubtitles={subtitles} close={close}/>;
-  if (dialog === 'projects') content = <ProjectsDialog recover={()=>void recoverPrevious().catch(showError)} items={items} current={project.id} close={close} create={newMovie} open={value=>void openProject(value)} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
+  if (dialog === 'projects') content = <ProjectsDialog recover={()=>void recoverPrevious().catch(showError)} items={items} current={project.id} close={close} create={newMovie} open={value=>void openLibraryProject(value)} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
   if (dialog === 'scenes') content = <ScenesDialog scenes={project.scenes} active={scene.id}
     close={close} open={switchScene} rename={renameDirectScene} savePreset={saveWorld}
     add={createDirectScene} copy={duplicateDirectScene}
@@ -1187,7 +1193,7 @@ export default function App() {
       account={account} authAvailable={cloudEnabled} login={loginCreator}
       logout={async()=>{await logout();setHome('landing');}}
       enter={()=>{void requestDurableStorage();setHome('projects');}}
-      openProjects={()=>setHome('projects')}
+      openProjects={()=>showDialog('projects')}
       openLanding={()=>setHome('landing')} openProject={openLibraryProject}
       createManual={startManualMovie}
       duplicate={duplicateHomeProject} rename={(value,name)=>renameHomeProject(value,name).catch(showError)}
@@ -1197,11 +1203,12 @@ export default function App() {
     {backupInput}
     <OfflineStatus status={saveStatus} save={()=>useStudio.getState().dirty?persist():Promise.resolve(true)}/>
     {noticeToast}
+    {content}
   </div>;
   return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''} ${timelineTall?'timeline-tall':''}`}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
-      <div className="project-controls"><button className="quiet project-button" onClick={async()=>{pause();if(useStudio.getState().dirty&&!await persist())return;close();setHome('projects');}}><House size={17}/><span>Home</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/><ChevronDown size={11}/></label>{saveStatus==='Save failed'&&<button className="quiet" onClick={()=>void backupMovie(project).catch(showError)}>Download recovery backup</button>}<span className="save-state" role="status"><Check size={14}/> {headerStatus}</span></div>
+      <div className="project-controls"><button className="quiet project-button" onClick={async()=>{pause();if(useStudio.getState().dirty&&!await persist())return;close();setHome('projects');}}><House size={17}/><span>Home</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/></label><IconButton title="Project options" onClick={()=>showDialog('projects')}><ChevronDown size={15}/></IconButton>{saveStatus==='Save failed'&&<button className="quiet" onClick={()=>void backupMovie(project).catch(showError)}>Download recovery backup</button>}<span className="save-state" role="status"><Check size={14}/> {headerStatus}</span></div>
       <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title={playing?'Pause preview':'Play preview'} onClick={() => void play()}>{playing?<Pause size={17}/>:<Play size={17}/>}</IconButton><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
     </header>
     {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button><IconButton title="Undo" disabled={!hasUndo} onClick={() => run(() => useStudio.getState().undo())}><Undo2 size={17}/></IconButton><IconButton title="Redo" disabled={!hasRedo} onClick={() => run(() => useStudio.getState().redo())}><Redo2 size={17}/></IconButton></nav>

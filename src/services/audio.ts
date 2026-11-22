@@ -1,4 +1,4 @@
-import { getLocalMedia, putLocalMedia } from './localMedia.ts';
+import { getLocalMedia, putLocalMedia, MissingLocalMedia } from './localMedia.ts';
 import { shiftVoice } from '../engine/voiceEffects.ts';
 import { soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
 import { clamp } from '../engine/animation.ts';
@@ -12,7 +12,7 @@ function audioDatabase() {
   database ??= new Promise((resolve, reject) => {
     const open = indexedDB.open('toonroom-audio', 1);
     open.onupgradeneeded = () => open.result.createObjectStore('sounds');
-    open.onsuccess = () => resolve(open.result);
+    open.onsuccess = () => {open.result.onversionchange=()=>{open.result.close();database=undefined;};resolve(open.result);};
     open.onerror = () => { database = undefined; reject(open.error); };
   });
   return database;
@@ -77,7 +77,9 @@ let decoderContext: OfflineAudioContext | undefined;
 let remoteAudio: ((id: string) => Promise<Blob | undefined>) | undefined;
 export function setRemoteAudio(loader?: (id: string) => Promise<Blob | undefined>) { remoteAudio = loader; }
 export async function getOrFetchAudio(id: string) {
-  const local = await getAudio(id);
+  let local:Blob|undefined;
+  try {local=await getAudio(id);}
+  catch(error){if(!(error instanceof MissingLocalMedia)||!remoteAudio||!navigator.onLine)throw error;}
   if (local || !remoteAudio || !navigator.onLine) return local;
   const remote = await remoteAudio(id);
   if (remote) await putAudio(id, remote);

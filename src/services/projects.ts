@@ -7,6 +7,7 @@ export type EditorSession = { projectId: string; sceneId: string; workspace: 'cr
 const key = (scope: string) => `toonroom.projects.v1.${scope}`;
 const sessionKey=(scope:string)=>`toonroom.last-session.v1.${scope}`;
 const projectSessionKey=(scope:string,id:string)=>`toonroom.editor-session.v1.${scope}.${id}`;
+export function readPreference(key:string):string|null {try{return localStorage.getItem(key);}catch{return null;}}
 const collections:readonly ProjectCollection[]=['ideas','in-production','finished'];
 
 function readLocal(scope: string): unknown[] {
@@ -119,10 +120,10 @@ function parseEditorSession(raw:string|null):EditorSession|undefined {
   }catch{return;}
 }
 export function lastEditorSession(scope:string):EditorSession|undefined{
-  return parseEditorSession(localStorage.getItem(sessionKey(scope)));
+  return parseEditorSession(readPreference(sessionKey(scope)));
 }
 export function editorSessionFor(scope:string,projectId:string):EditorSession|undefined{
-  const record=parseEditorSession(localStorage.getItem(projectSessionKey(scope,projectId)));
+  const record=parseEditorSession(readPreference(projectSessionKey(scope,projectId)));
   return record?.projectId===projectId?record:undefined;
 }
 export function rememberEditorSession(scope:string,value:EditorSession){

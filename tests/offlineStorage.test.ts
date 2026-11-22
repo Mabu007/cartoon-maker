@@ -91,3 +91,60 @@ test('deleting after a queued autosave cannot resurrect a project',async()=>{
   assert.equal((await listDeviceProjects('deletion')).length,0);
   assert.equal(await previousDeviceProject('deletion',p.id),undefined);
 });
+test('deleted projects cannot be recreated by a stale tab or delayed save',async()=>{
+  const {removeDeviceProject}=await import('../src/services/deviceProjects.ts');
+  const p=movie();await saveDeviceProject('tombstone',p);
+  await removeDeviceProject('tombstone',p.id);
+  await assert.rejects(saveDeviceProject('tombstone',{...p,name:'stale'}),/deleted/);
+  assert.equal((await listDeviceProjects('tombstone')).length,0);
+});
+test('external deletion is detected even when this tab never performed the delete',async()=>{
+  const p=movie();await saveDeviceProject('external-delete',p);
+  await new Promise<void>((resolve,reject)=>{const r=indexedDB.open('sirvibe-projects',2);r.onsuccess=()=>{const db=r.result,tx=db.transaction('projects','readwrite');tx.objectStore('projects').delete(['external-delete',p.id]);tx.oncomplete=()=>{db.close();resolve();};tx.onabort=()=>reject(tx.error);};});
+  await assert.rejects(saveDeviceProject('external-delete',p),/deleted/);
+});
+test('explicitly opening the latest saved version releases a stale-tab conflict safely',async()=>{
+  const {getDeviceProject,observeDeviceProject}=await import('../src/services/deviceProjects.ts');
+  const p=movie();await saveDeviceProject('reopen',p);
+  await externalChange('reopen',{...p,name:'newer version'});
+  await listDeviceProjects('reopen');
+  await assert.rejects(saveDeviceProject('reopen',p),/another tab/); // A background list must not acknowledge the new version.
+  const latest=await getDeviceProject('reopen',p.id);
+  assert.equal(latest.project.name,'newer version');
+  observeDeviceProject('reopen',latest);
+  const saved=await saveDeviceProject('reopen',{...latest.project,name:'edited after reopen'});
+  assert.equal(saved.project.name,'edited after reopen');
+});
+test('a damaged project is retained and recovered once without hiding healthy movies',async()=>{
+  const {takeDeviceWarnings}=await import('../src/services/deviceProjects.ts');
+  takeDeviceWarnings();
+  const p=movie(),healthy=movie();
+  await saveDeviceProject('damaged',p);
+  await saveDeviceProject('damaged',{...p,name:'second revision'});
+  await saveDeviceProject('damaged',healthy);
+  await externalChange('damaged',{id:p.id,name:'incomplete record'} as any);
+  const rows=await listDeviceProjects('damaged');
+  assert.equal(rows.length,2);
+  assert(rows.some(row=>row.project.id===healthy.id));
+  assert(rows.some(row=>row.project.name===p.name+' · recovered'&&row.project.id!==p.id));
+  assert(takeDeviceWarnings().some(message=>message.includes('damaged')));
+  assert.equal((await listDeviceProjects('damaged')).length,2);
+  const {getDeviceProject}=await import('../src/services/deviceProjects.ts');
+  await assert.rejects(getDeviceProject('damaged',p.id)); // The damaged original was not silently replaced.
+});
+test('unreadable legacy JSON cannot block healthy IndexedDB projects',async()=>{
+  const p=movie();await saveDeviceProject('legacy-broken',p);
+  storage.set('toonroom.projects.v1.legacy-broken','{broken json');
+  assert.equal((await listDeviceProjects('legacy-broken'))[0].project.id,p.id);
+  assert.equal(storage.get('toonroom.projects.v1.legacy-broken'),'{broken json');
+});
+test('blocked browser preferences do not break session recovery or theme defaults',async()=>{
+  const {lastEditorSession,editorSessionFor,readPreference}=await import('../src/services/projects.ts');
+  const previous=localStorage.getItem;
+  try {
+    localStorage.getItem=()=>{throw new DOMException('Storage blocked','SecurityError');};
+    assert.equal(readPreference('toonroom.theme'),null);
+    assert.equal(lastEditorSession('guest'),undefined);
+    assert.equal(editorSessionFor('guest','project'),undefined);
+  } finally {localStorage.getItem=previous;}
+});

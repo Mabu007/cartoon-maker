@@ -1,3 +1,4 @@
+import { removeLocalMedia } from './localMedia.ts';
 import { z } from 'zod';
 import { ProjectDocument, parseStoredProject, uid, type Project } from '../engine/schema.ts';
 import { getOrFetchAudio, projectAssets, putAudio } from './audio.ts';
@@ -73,6 +74,7 @@ export async function restoreMovie(file: File) {
   if(file.size>2_000_000_000)throw Error('This backup is larger than the supported 2 GB limit.');
   const mapping=new Map<string,string>();
   let project:Project;
+  const audioFiles=new Map<string,Blob>();
   if(await file.slice(0,MAGIC.length).text()===MAGIC){
     if(file.size<MAGIC.length+4)throw Error('The backup header is incomplete.');
     const size=new DataView(await file.slice(MAGIC.length,MAGIC.length+4).arrayBuffer()).getUint32(0,true);
@@ -92,7 +94,7 @@ export async function restoreMovie(file: File) {
     for(const id of assets){
       const blob=files.get(id)!;
       if(await checksum(blob)!==document.audio[id].sha256)throw Error('A backup audio file is damaged. No existing cartoon has been changed.');
-      const fresh=uid();await putAudio(fresh,blob);mapping.set(id,fresh);
+      mapping.set(id,uid());audioFiles.set(id,blob);
     }
   } else {
     // Read all earlier JSON backups; source IDs are never reused on import.
@@ -104,18 +106,29 @@ export async function restoreMovie(file: File) {
       const {type,data}=document.audio[id];
       const bytes=Uint8Array.from(atob(data),value=>value.charCodeAt(0));
       if(!bytes.length||bytes.length>20*1024*1024)throw Error('A backup audio file is empty or exceeds 20 MB.');
-      const fresh=uid();await putAudio(fresh,new Blob([bytes],{type}));mapping.set(id,fresh);
+      mapping.set(id,uid());audioFiles.set(id,new Blob([bytes],{type}));
     }
   }
   const remap = (asset: string) => mapping.has(asset.slice(6)) && asset.startsWith('asset:') ? `asset:${mapping.get(asset.slice(6))}` : asset;
-  return ProjectDocument.parse({ ...project, id: uid(), scenes: project.scenes.map(scene => ({ ...scene,
+  const remapClip=(clip:Record<string,unknown>):Record<string,unknown>=>{
+    if(typeof clip.asset!=='string')return clip;
+    return {...clip,asset:remap(clip.asset),...(Array.isArray(clip.versions)?{versions:clip.versions.map(version=>remapClip(version))}:{})};
+  };
+  const restored=ProjectDocument.parse({ ...project, id: uid(), scenes: project.scenes.map(scene => ({ ...scene,
     clips: scene.clips.map(clip => 'asset' in clip ? { ...clip, asset: remap(clip.asset),
       ...(clip.track === 'dialogue' && clip.versions ? { versions: clip.versions.map(version => ({...version,asset:remap(version.asset)})) } : {})
     } : clip) })),
     ...(project.production ? { production: { ...project.production, graph: project.production.graph.map(record => ({ ...record,
       events: Object.fromEntries(Object.entries(record.events).map(([id, event]) => {
         const clip = JSON.parse(event.signature);
-        if (typeof clip.asset === 'string') clip.asset = remap(clip.asset);
-        return [id, { ...event, signature: JSON.stringify(clip) }];
+        return [id, { ...event, signature: JSON.stringify(remapClip(clip)) }];
       })) })) } } : {}) });
+  const written:string[]=[];
+  try {
+    for(const [old,blob] of audioFiles){const fresh=mapping.get(old)!;await putAudio(fresh,blob);written.push(fresh);}
+  } catch(error){
+    await Promise.allSettled(written.map(id=>removeLocalMedia('audio:'+id)));
+    throw error;
+  }
+  return restored;
 }
