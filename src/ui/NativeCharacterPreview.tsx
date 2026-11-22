@@ -82,7 +82,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
     return { side, foot, shoe, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
-  const eyeH = (emotion === 'surprised' || emotion === 'excited' ? 11 : emotion === 'sleepy' ? 3 : emotion === 'angry' || emotion === 'smug' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
+  const eyeH = (emotion === 'surprised' || emotion === 'excited' ? 11 : emotion==='nervous'?10 : emotion === 'sleepy' ? 3 : emotion === 'angry' || emotion === 'smug' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
   const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
   const silhouette = c.shape === 'square'
     ? 'M ' + (-headW + 14) + ' ' + (headY - headH) + ' Q ' + (-headW - 5) + ' ' + (headY - headH) + ' ' + (-headW) + ' ' + (headY - 9) + ' Q ' + (-headW - 4) + ' ' + (headY + headH) + ' 0 ' + (headY + headH) + ' Q ' + headW + ' ' + (headY + headH) + ' ' + headW + ' ' + (headY - 9) + ' Q ' + headW + ' ' + (headY - headH) + ' ' + (headW - 15) + ' ' + (headY - headH) + ' Z'
@@ -166,7 +166,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
           {(emotion === 'happy' || emotion === 'excited' || emotion === 'sad') && !profile && [-24,24].map(offset => <ellipse key={offset} cx={Math.max(-headW+12,Math.min(headW-12,faceCenter+offset))} cy={headY+15} rx="6.5" ry="3.5" fill={emotion === 'happy' || emotion === 'excited' ? '#dc8877' : '#897195'} opacity=".22"/>)}
           {[profile ? faceShift : faceShift - 15 * c.eyeSpacing, ...(!profile ? [faceShift + 15 * c.eyeSpacing] : [])].map((x, i) => <g key={i}>
             {eyeH < 1.4 ? <path d={'M ' + (x-7) + ' ' + eyeY + ' q 7 3 14 0'} stroke="#27213a" strokeWidth="2.5" fill="none"/> : <><ellipse cx={x} cy={eyeY} rx="7" ry={eyeH} fill="#fff5e7" stroke="#27213a" strokeWidth="2"/><circle cx={x+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY+Math.max(-eyeH+2, Math.min(eyeH-2, mood.gazeY))} r="3" fill="#27213a"/>{eyeH > 3 && <circle cx={x-1+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY-1.5+mood.gazeY} r="1.3" fill="white"/>}</>}
-            <path d={'M ' + (x-7) + ' ' + (eyeY-eyeH-5) + ' Q ' + x + ' ' + (eyeY-eyeH-(c.brows==='arched'?11:5)) + ' ' + (x+7) + ' ' + (eyeY-eyeH-(emotion==='angry'?2:5))} stroke="#242036" strokeWidth={c.brows==='bold'?4:2.5} fill="none" strokeLinecap="round"/>
+            <path d={'M ' + (x-7) + ' ' + (eyeY-eyeH-5) + ' Q ' + x + ' ' + (eyeY-eyeH-(c.brows==='arched'?11:5)) + ' ' + (x+7) + ' ' + (eyeY-eyeH-(emotion==='angry'?2:emotion==='nervous'?(i===0?10:1):5))} stroke="#242036" strokeWidth={c.brows==='bold'?4:2.5} fill="none" strokeLinecap="round"/>
           </g>)}
           <ellipse cx={noseX} cy={headY + 11} rx={c.nose === 'long' ? 7 : 5} ry={c.nose === 'long' ? 6 : 3.5} fill={c.skin} stroke="#2a2339" strokeWidth="2"/>
           {c.beard !== 'none' && <g fill={c.hairColor}>
