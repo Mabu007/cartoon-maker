@@ -6,7 +6,7 @@ import { movieTicks, type MovieTiming, type MovieCursor } from '../engine/movieT
 import { TimelineResize } from './TimelineResize.tsx';
 import { soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
 import { actions, tracks, trackNames, uid, type Character, type Clip, type Scene, type Track } from '../engine/schema.ts';
-import { selectClipRange, snapGuides, snapTime, snapMoveDelta, moveTimelineClips, trimTimelineClip, trackIsLocked } from '../engine/timelineEditing.ts';
+import { selectClipRange, snapGuides, snapTime, snapMoveDelta, moveTimelineClips, splitTimelineClips, trimTimelineClip, trackIsLocked } from '../engine/timelineEditing.ts';
 import { type Selection } from '../studio.ts';
 import { clipLabel, clock, IconButton, trackIcon } from './shared.tsx';
 
@@ -15,7 +15,7 @@ type DragSession = {
   sceneId: string; ids: string[]; clip: Clip; startX: number; edge: 'move'|'in'|'out';
   moved: boolean; preview: Scene; base: Scene; collapseOnClick: boolean; guides: number[]; lastDelta: number;
 };
-type ContextMenu = {x:number;y:number;id:string}|null;
+type ContextMenu = {x:number;y:number;id:string;at:number}|null;
 
 const standardTracks = new Set<Track>(['actors','movement','body','face','dialogue','audio','music','camera','transition','vfx','text']);
 function sceneTracks(scene: Scene) {
@@ -312,12 +312,23 @@ export function Timeline({
             className={`clip clip-${track} ${selected?'clip-selected':''} ${tiny?'clip-tiny':''} ${drag.current?.sceneId===source.id&&drag.current.ids.includes(clip.id)?'clip-preview':''} ${clip.track==='camera'?'cinematic-shot':''}`}
             style={{left:clip.start/source.duration*100+'%',width:clip.length/source.duration*100+'%',top:4+row*27}}
             onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();seekScene(source.id,clip.start);selectionFor(source,clip.id,event);}}}
-            onContextMenu={event=>{event.preventDefault();if(!active)seekScene(source.id,clip.start);if(!selected)selectClips([clip.id]);setMenu({x:Math.min(event.clientX,window.innerWidth-204),y:Math.min(event.clientY,window.innerHeight-266),id:clip.id});}}
+            onContextMenu={event=>{
+              event.preventDefault();
+              const at=clamp(timeAt(event)-span.start,clip.start,clip.start+clip.length);
+              if(!active)seekScene(source.id,at);
+              if(!selected)selectClips([clip.id]);
+              const maxHeight='offset' in clip?360:266;
+              setMenu({x:Math.max(6,Math.min(event.clientX,window.innerWidth-204)),y:Math.max(6,Math.min(event.clientY,window.innerHeight-maxHeight)),id:clip.id,at});
+            }}
             onPointerDown={event=>pointerDown(event,source,clip)}
             onPointerMove={pointerMove}
             onPointerUp={pointerUp}
             onPointerCancel={()=>{drag.current=null;setPreview(null);}}
             onLostPointerCapture={()=>{drag.current=null;setPreview(null);}}>
+            {!tiny&&'offset' in clip&&<span aria-hidden="true" className="clip-fade-zones">
+              {clip.fadeIn? <i className="fade-in" style={{width:Math.min(100,clip.fadeIn/clip.length*100)+'%'}}/>:null}
+              {clip.fadeOut? <i className="fade-out" style={{width:Math.min(100,clip.fadeOut/clip.length*100)+'%'}}/>:null}
+            </span>}
             {!locked&&<span className="clip-handle" data-edge="in" title="Trim start"/>}
             {!tiny&&(clip.track==='dialogue'||((clip.track==='audio'||clip.track==='music')&&clip.asset.startsWith('asset:')))&&<AudioWaveform asset={clip.asset} offset={clip.offset} length={clip.length}/>}<Icon size={11}/><span className="clip-label-text">{clipLabel(clip,names)}{clip.track==='camera'&&<small className="camera-clip-mode"> {clip.transition === 'glide' ? '↝' : '│'}</small>}</span>
             {clip.track==='movement'&&clip.keyframes?.map((key,index)=><span key={index} role="button" tabIndex={0}
@@ -335,6 +346,9 @@ export function Timeline({
       </div>
     </div>;
   };
+  const menuClip=scene.clips.find(clip=>clip.id===menu?.id);
+  const menuAudio=menuClip&&'offset' in menuClip?menuClip:undefined;
+  const canEditAudio=menuAudio&&!trackIsLocked(scene,menuAudio.track);
   return <section className={`timeline-panel professional-timeline ${compact?'timeline-compact':''}`} aria-label="Timeline">
     {!compact&&<TimelineResize/>}
     <header>
@@ -428,6 +442,14 @@ export function Timeline({
       </div>
     </div>}
     {menu&&<div className="timeline-context-menu" role="menu" style={{left:menu.x,top:menu.y}}>
+      {menuAudio&&<>
+        <button role="menuitem" disabled={!canEditAudio||menu.at<menuAudio.start+.1||menu.at>menuAudio.start+menuAudio.length-.1}
+          onClick={()=>{const result=splitTimelineClips(scene,[menuAudio.id],menu.at);apply(result.scene,result.added);setMenu(null);}}>Split audio here</button>
+        {(['fadeIn','fadeOut'] as const).map(edge=><button key={edge} role="menuitem" disabled={!canEditAudio} onClick={()=>{
+          const length=menuAudio[edge]?0:Math.min(menuAudio.track==='music'?1:.25,menuAudio.length/2);
+          apply({...scene,clips:scene.clips.map(clip=>clip.id===menuAudio.id?{...menuAudio,[edge]:length}:clip)},[menuAudio.id]);setMenu(null);
+        }}>{menuAudio[edge]?'Remove':'Add'} fade {edge==='fadeIn'?'in':'out'}</button>)}
+      </>}
       <button role="menuitem" onClick={()=>{copy();setMenu(null);}}>Copy <small>Ctrl+C</small></button>
       <button role="menuitem" onClick={()=>{cut();setMenu(null);}}>Cut <small>Ctrl+X</small></button>
       <button role="menuitem" onClick={()=>{paste();setMenu(null);}}>Paste <small>Ctrl+V</small></button>

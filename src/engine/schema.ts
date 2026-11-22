@@ -1,3 +1,4 @@
+import { bodyFrames,armBuilds,legBuilds } from './bodyBuild.ts';
 import { extraActions, gaitStyles, transitionNames, vfxNames, soundDurations, type SoundName } from './performanceCatalog.ts';
 import { z } from 'zod';
 import { characterStyles, seatingStyles, wardrobeStyles } from './characterCatalog.ts';
@@ -32,6 +33,10 @@ export const CharacterDefinition = z.strictObject({
   nose: z.enum(characterStyles.nose), mouth: z.enum(characterStyles.mouth), ears: z.enum(characterStyles.ears),
   hair: z.enum(characterStyles.hair), beard: z.enum(characterStyles.beard), hat: z.enum(characterStyles.hat),
   glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(characterStyles.outfit), accessory: z.enum(characterStyles.accessory),
+  bodyBuild:z.strictObject({
+    frame:z.enum(bodyFrames), arms:z.enum(armBuilds),
+    legs:z.enum(legBuilds), chest:num(0,1), hips:num(0,1), abs:z.boolean()
+  }).partial().optional(),
   goldTeeth: z.array(z.number().int().min(0).max(5)).max(6).optional(),
   wardrobe: z.strictObject({
     bottoms:z.enum(wardrobeStyles.bottoms), footwear:z.enum(wardrobeStyles.footwear), watch:z.enum(wardrobeStyles.watch),
@@ -91,6 +96,7 @@ export const LipSyncMetadata = z.strictObject({
 export const DialogueVersion = z.strictObject({ asset: audioAsset, text: z.string().max(1000),
   length: num(.1,180), offset: num(0,180), voicePreset: VoicePreset.optional(), visemes: mouthCues.optional(), manualVisemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
 export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal('dialogue'), actor: id, text: z.string().max(1000),
+  voiceEffect:z.strictObject({pitch:num(-9,9),bass:num(-9,9),clarity:num(-9,9)}).optional(),
   voicePreset: VoicePreset.optional(), versions: z.array(DialogueVersion).max(5).optional(), visemes: mouthCues.optional(), manualVisemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
 const AudioClip = z.strictObject({ ...time, ...sound, track: z.literal('audio'), name: z.string().min(1).max(80) });
 const MusicClip = z.strictObject({ ...time, ...sound, track: z.literal('music'), name: z.string().min(1).max(80) });

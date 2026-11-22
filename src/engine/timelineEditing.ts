@@ -78,7 +78,16 @@ function splitOne(clip: Clip, at: number): [Clip,Clip] {
   const leftLength = rounding(at - clip.start), rightLength = rounding(clip.start + clip.length - at);
   const left: Clip = { ...clip, length: leftLength };
   let right: Clip = { ...clip, id: uid(), start: rounding(at), length: rightLength };
-  if ('offset' in right) right = { ...right, offset: Math.min(180, rounding(right.offset + leftLength)) };
+  if ('offset' in clip && 'offset' in left && 'offset' in right) {
+    // Preserve the original source alignment, and keep fades on the outer edges.
+    const {fadeOut:_leftFade, ...head}=left;
+    const {fadeIn:_rightFade, ...tail}=right;
+    return [
+      {...head,...(clip.fadeIn?{fadeIn:Math.min(clip.fadeIn,leftLength)}:{})},
+      {...tail,offset:Math.min(180,rounding(clip.offset+leftLength)),
+        ...(clip.fadeOut?{fadeOut:Math.min(clip.fadeOut,rightLength)}:{})}
+    ];
+  }
   if (clip.track === 'movement' && right.track === 'movement') {
     const alpha = leftLength / clip.length;
     const middle = movementPosition(clip, alpha);

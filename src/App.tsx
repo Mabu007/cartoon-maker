@@ -1,5 +1,5 @@
 import { gaitStyleNames, gaitStyles, soundDurations, type GaitStyle } from './engine/performanceCatalog.ts';
-import { stagePath, type MoveClip, type PathMode, type TravelGait } from './engine/stagePath.ts';
+import { insertWaypoint, stagePath, type MoveClip, type PathMode, type TravelGait } from './engine/stagePath.ts';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { missingRentMovie } from './engine/production.ts';
@@ -11,7 +11,7 @@ import { compatibleObjects, objectDependencies, removeObjectWithDecisions, repai
 import { label, shotLabel, SceneDefinition, props as propKinds, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import { formatLabel, type Format } from './engine/videoFormats.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, listenAccount, login, logout, type Account } from './services/cloud.ts';
-import { audioLength, getOrFetchAudio, createAudioMixer, setRemoteAudio, type Mixer } from './services/audio.ts';
+import { audioLength, getOrFetchAudio, createAudioMixer, stopSoundPreview, setRemoteAudio, type Mixer } from './services/audio.ts';
 import { type Recognizer } from './services/lipSync.ts';
 import { duplicateProject, lastEditorSession, editorSessionFor, rememberEditorSession, type SavedProject, type ProjectCollection } from './services/projects.ts';
 import { listDeviceProjects, mergeDeviceProjects, organizeDeviceProject, removeDeviceProject, renameDeviceProject, saveDeviceProject } from './services/deviceProjects.ts';
@@ -274,6 +274,7 @@ export default function App() {
 
   async function play(rangeOverride?:{start:number;end:number}) {
     if (livePlaying.current || livePreparing.current) { pause(); return; }
+    stopSoundPreview();
     const token = ++animationToken.current;
     livePreparing.current = true; setPreparing(true); setArrange(false);
     const state = useStudio.getState(), current = currentScene(state);
@@ -397,6 +398,7 @@ export default function App() {
   function patchObject(value: Prop) { editScene(current => repairOrphanedObjectActions({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
   function patchClip(value: Clip, original?: Clip) {
     if (scene.trackSettings?.[value.track]?.locked) { tell('Unlock the track before editing this clip.',true); return; }
+    if('offset' in value&&(livePlaying.current||livePreparing.current))pause();
     let updated: Clip = value;
     // Moving or repositioning a keyed clip in the visual inspector should not
     // leave invisible keyframes overriding the coordinates the user just set.
@@ -455,33 +457,47 @@ export default function App() {
   function beginPath(gait:TravelGait, actor?:string, mode:PathMode='move', character?:string, start=time.current.local, editing?:MoveClip) {
     const current=currentScene(useStudio.getState());
     if(!actor&&!character){tell('Add a character to this scene first.',true);return;}
-    beginPlacement({kind:'path',sceneId:current.id,start,points:[],gait,style:editing?.style??'natural',mode,actor,character,editing:editing?.id});
+    if(editing&&current.trackSettings?.movement?.locked){tell('Unlock Movement to edit the path.',true);return;}
+    if(editing)seek(editing.start);
+    const points=editing?(editing.keyframes??[{x:editing.fromX,y:editing.fromY},{x:editing.toX,y:editing.toY}]).map(({x,y})=>({x,y})):[];
+    beginPlacement({kind:'path',sceneId:current.id,start,points,gait,style:editing?.style??'natural',mode,actor,character,editing:editing?.id});
+  }
+  function commitPath(draft:Extract<Placement,{kind:'path'}>, current:Scene) {
+    const at=clamp(draft.start,0,current.duration-(draft.character ? .12 : .1));
+    const created=draft.character?addSceneActor(current,draft.character,at,'place'):undefined;
+    const base=created?.scene??current, actor=created?.actorId??draft.actor!;
+    const existing=base.clips.find((clip):clip is MoveClip=>clip.id===draft.editing&&clip.track==='movement');
+    if(draft.editing&&!existing)throw Error('This path was removed.');
+    let mode=draft.mode;
+    if(!existing&&mode==='move'&&!evaluate(base,at).actors.find(item=>item.id===actor)?.visible)mode='enter';
+    const result=stagePath(base,actor,at,draft.points,draft.gait,draft.style,mode,existing);
+    commitScene(()=>result.scene);
+    select({kind:'clip',id:result.clip.id});
+    const cursor=mode==='enter'?result.clip.start+result.clip.length:result.clip.start;
+    seek(Math.min(current.duration-.001,cursor));
+    setPlacement(undefined);
+    tell(draft.editing?'Path updated.':'Path added. Use Preview path in the inspector to watch it.');
   }
   function stagePlacement(point:Point, waypoint=false) {
     if(!placement)return;
     const current=currentScene(useStudio.getState());
     if(current.id!==placement.sceneId){setPlacement(undefined);return;}
     try {
-      const needsVisibility=placement.kind==='recover'||(placement.kind==='path'&&!!placement.character);
+      const needsVisibility=placement.kind==='recover';
       const at=clamp(placement.start,0,current.duration-(needsVisibility?.12:.1));
       if(placement.kind==='path') {
+        if(placement.editing){
+          if(!waypoint&&!placement.waypoint)return;
+          if(placement.points.length>=32)throw Error('You can add up to 30 waypoints.');
+          setPlacement({...placement,waypoint:false,points:insertWaypoint(placement.points,point)});
+          return;
+        }
         if(!placement.points.length||waypoint||placement.waypoint){
           if(placement.points.length>=31)throw Error('You can add up to 30 waypoints.');
           setPlacement({...placement,waypoint:false,points:[...placement.points,point]});
           return;
         }
-        const created=placement.character ? addSceneActor(current,placement.character,at,'place') : undefined;
-        const base=created?.scene??current, actor=created?.actorId??placement.actor!;
-        const existing=base.clips.find((clip):clip is MoveClip=>clip.id===placement.editing&&clip.track==='movement');
-        if(placement.editing&&!existing)throw Error('This path was removed.');
-        let mode=placement.mode;
-        if(!existing&&mode==='move'&&!evaluate(base,at).actors.find(item=>item.id===actor)?.visible)mode='enter';
-        const result=stagePath(base,actor,at,[...placement.points,point],placement.gait,placement.style,mode,existing);
-        commitScene(()=>result.scene);
-        select({kind:'clip',id:result.clip.id});
-        const time=mode==='enter' ? result.clip.start+result.clip.length : result.clip.start;
-        seek(Math.min(current.duration-.001,time));
-        tell('Path added. Use Preview path in the inspector to watch it.');
+        commitPath({...placement,points:[...placement.points,point]},current);
       } else if(placement.kind==='point') {
         const action=placement.action??'point';
         addClip({id:uid(),track:'body',actor:placement.id,action,layer:'gesture',pointAt:point,start:at,length:Math.min(1.2,current.duration-at)});
@@ -735,6 +751,7 @@ export default function App() {
       if (state.session !== session || state.sceneId !== next.id) throw new Error('Scene changed during timeline edit.');
       const previous = currentScene(state);
       if (previous === next) return;
+      if(livePlaying.current||livePreparing.current)pause();
       state.editScene(() => next, { session, sceneId: next.id });
       if (ids) useStudio.getState().selectClips(ids);
       const updated = currentScene(useStudio.getState());
@@ -1055,7 +1072,7 @@ export default function App() {
     const prior = scene.clips.find(c=>c.id===requestedAudio.replaceId);
     if(prior?.track==='dialogue' && clip.track==='dialogue') {
       const version={asset:prior.asset,text:prior.text,length:prior.length,offset:prior.offset,visemes:prior.visemes,manualVisemes:prior.manualVisemes,lipSync:prior.lipSync};
-      patchClip({...clip,id:prior.id,versions:[version,...(prior.versions??[])].slice(0,5)});close();
+      patchClip({...clip,id:prior.id,volume:prior.volume,fadeIn:prior.fadeIn,fadeOut:prior.fadeOut,voiceEffect:prior.voiceEffect,versions:[version,...(prior.versions??[])].slice(0,5)});close();
     } else addClip(clip);
   }} close={close}/>;
   if (dialog === 'lipsync') {
@@ -1143,7 +1160,9 @@ export default function App() {
           </div>
         </div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats} render={formatLabel}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
         {placement&&<div className="stage-placement-tools" role="group" aria-label="Stage placement">
-          <strong>{placement.kind==='path' ? placement.points.length ? placement.waypoint?'Click the waypoint':'Click the finish · Shift-click to add a waypoint' : 'Click the starting point'
+          <strong>{placement.kind==='path' ? placement.editing
+            ? placement.waypoint?'Click to place a waypoint':'Drag the path handles · Double-click to add a waypoint'
+            : placement.points.length ? placement.waypoint?'Click the waypoint':'Click the finish · Shift-click to add a waypoint' : 'Click the starting point'
             : placement.kind==='point' ? 'Click where the character should '+(placement.action??'point')
             : placement.kind==='recover' ? 'Click where to bring the character on stage' : 'Click where to place this clip'}</strong>
           {placement.kind==='path'&&<><Select aria="Movement pace" value={placement.gait} options={['walk','run']} onChange={gait=>setPlacement({...placement,gait})}/>
@@ -1155,7 +1174,8 @@ export default function App() {
               }}>Use current position</button>}
             {placement.points.length>0&&<>
               <button type="button" className="quiet" aria-pressed={!!placement.waypoint} onClick={()=>setPlacement({...placement,waypoint:!placement.waypoint})}>Add waypoint</button>
-              <button type="button" className="quiet" onClick={()=>setPlacement({...placement,waypoint:false,points:placement.points.slice(0,-1)})}>Back</button>
+              {!placement.editing&&<button type="button" className="quiet" onClick={()=>setPlacement({...placement,waypoint:false,points:placement.points.slice(0,-1)})}>Back</button>}
+              {placement.editing&&<button type="button" className="primary" onClick={()=>run(()=>commitPath(placement,currentScene(useStudio.getState())))}>Save path</button>}
             </>}
           </>}
           <button type="button" className="quiet" onClick={()=>setPlacement(undefined)}>Cancel</button>
@@ -1164,6 +1184,12 @@ export default function App() {
 
           <Stage key={session} project={project} scene={scene} time={time}
           playing={playing} onDestination={placement ? stagePlacement:undefined}
+          editPath={placement?.kind==='path'&&!!placement.editing}
+          smoothGuide={placement?.kind==='path'||!!pathClip?.style}
+          movePathPoint={(index,point)=>setPlacement(draft=>draft?.kind==='path'&&draft.editing?{...draft,
+            points:draft.points.map((item,at)=>at===index?point:item)}:draft)}
+          removePathPoint={index=>setPlacement(draft=>draft?.kind==='path'&&draft.editing&&index>0&&index<draft.points.length-1
+            ?{...draft,points:draft.points.filter((_,at)=>at!==index)}:draft)}
           pathPoints={placement ? placement.kind==='path'?placement.points:undefined : selectedPath}
           edgePlacement={placement?.kind==='path'&&((placement.mode==='enter'&&!placement.points.length)||(placement.mode==='exit'&&placement.points.length>0))} edit={true} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot}
          flipEntity={id=>{const actor=scene.actors.find(item=>item.id===id);if(actor)patchActor({...actor,flip:!actor.flip});else{const object=scene.objects.find(item=>item.id===id);if(object)patchObject({...object,flip:!object.flip});}}}

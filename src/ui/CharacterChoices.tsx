@@ -55,8 +55,9 @@ function glyph(field:Core|Addon,value:string,c:Character):ReactNode {
   }
   if(field==='shape')return svg('-60 -60 120 120',headOutline({...c,shape:value as Character['shape'],wardrobe:undefined},{width:1,face:0,far:true,rear:false,profile:false}),c.skin);
   if(field==='outfit'){
+    if(value==='bikini')return svg('-32 -8 64 94','M-21 19Q-14 5 0 16Q14 5 21 19L19 28Q0 34 -19 28Z M-19 53Q0 60 19 53Q11 66 5 68H-5Q-11 66 -19 53Z',c.shirt);
     const [a,b,h]=topShapes[value as Character['outfit']];
-    return svg('-32 -8 64 94',`M-9 -4L${-a} 7L${-a} 20L${-b} ${49+h}Q0 ${52+h} ${b} ${49+h}L${a} 20V7L9 -4Q0 4 -9 -4Z`,c.shirt);
+    return svg('-32 -8 64 94',`M-9 -4L${-a} 7L${-a} 20L${-b} ${49+h}Q0 ${52+h} ${b} ${49+h}L${a} 20V7L9 -4Q0 4 -9 -4Z`,value==='shirtless'?c.skin:c.shirt);
   }
   return null;
 }

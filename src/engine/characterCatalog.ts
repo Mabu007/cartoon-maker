@@ -8,7 +8,7 @@ export const characterStyles = {
   hair: ['bald','fade','buzz','pompadour','spiky-crop','man-bun','slicked-back','curtain-bangs','locs','mullet','side-part','bob','ponytail','space-buns','pixie','waves','afro-puffs','braids','wolf-cut','hime','top-knot','afro','puff','curls'],
   beard: ['none','stubble','full','goatee','van-dyke','circle-beard','mutton-chops','chin-strap','handlebar','soul-patch','braided-beard'],
   hat: ['none','cap','beanie','fedora','bucket','cowboy','flat-cap','top-hat','snapback','ushanka','visor','sun-hat','beret','cloche','sun-visor','pillbox','witch','boater','headwrap','fascinator','slouch-beanie'],
-  outfit: ['tee','oversized-tee','polo','dress-shirt','hoodie','tracksuit','blazer','biker','tank','sweater','jacket','uniform','fitted-tee','blouse','camisole','cropped-hoodie','cardigan','slip-dress','sundress','athleisure','fitted-turtleneck'],
+  outfit: ['tee','oversized-tee','polo','dress-shirt','hoodie','tracksuit','blazer','biker','tank','sweater','jacket','uniform','fitted-tee','blouse','camisole','cropped-hoodie','cardigan','slip-dress','sundress','athleisure','fitted-turtleneck','bikini','shirtless'],
   accessory: ['none','chain','scarf']
 } as const;
 

@@ -2,6 +2,7 @@ import { FillPattern, GraphicsPath, Matrix, Texture, type Graphics } from 'pixi.
 import { ellipse, INK, rect, segment } from './art.ts';
 import { illustratedPath, shade, type IllustratedView } from './illustration.ts';
 import type { Point } from './animation.ts';
+import { bodyProportions } from './bodyBuild.ts';
 import type { Character } from './schema.ts';
 
 type Closet = NonNullable<Character['wardrobe']>;
@@ -99,7 +100,7 @@ export const topShapes = {
   hoodie:[27,23,5], tracksuit:[25,19,1], blazer:[27,20,5], biker:[27,21,3], tank:[17,18,0],
   sweater:[24,19,2], jacket:[25,22,3], uniform:[25,20,2], 'fitted-tee':[21,15,-5],
   blouse:[24,17,-1], camisole:[15,15,-6], 'cropped-hoodie':[26,21,-14], cardigan:[25,19,4],
-  'slip-dress':[16,16,22], sundress:[20,16,28], athleisure:[18,17,-18], 'fitted-turtleneck':[21,15,0]
+  'slip-dress':[16,16,22], sundress:[20,16,28], athleisure:[18,17,-18], 'fitted-turtleneck':[21,15,0], bikini:[23,16,0], shirtless:[24,18,0]
 } satisfies Record<Character['outfit'], [number,number,number]>;
 
 export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Point,hip: Point,texture?: CostumeTexture) {
@@ -108,10 +109,45 @@ export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Poi
   const dress=kind==='slip-dress'||kind==='sundress';
   const fit=w?.hem??0;
   const bottom=mid+hem+fit*(dress?(fit>0?-hip.y*.58:16):11)-(w?.tucked?5:0);
-  const a=shoulders*view.width*c.thickness, b=waist*view.width*c.thickness*(w?.waist??1);
-  const end=dress ? b*(kind==='sundress'?1.77:1.12) : b;
+  const build=bodyProportions(c);
+  const a=shoulders*view.width*c.thickness*build.shoulder, waistBase=waist*view.width*c.thickness*(w?.waist??1);
+  const b=waistBase*build.waist, end=waistBase*build.hip*(dress?(kind==='sundress'?1.77:1.12):1);
   const shoulderLine=kind==='camisole'?8:12;
-  const path=`M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} L ${bx-b} ${mid-15+Math.min(0,hem)} L ${bx-end} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} L ${bx+b} ${mid-15+Math.min(0,hem)} L ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
+  const chestY=top+24, bellyY=mid-13+Math.min(0,hem), chest=a*build.chest*.32;
+  const front= view.rear ? -1 : 1, profile=view.profile||Math.abs(view.face)>0;
+  const leftChest=x-a-(profile?0:chest), rightChest=x+a+(view.rear?0:chest);
+  const leftHip=bx-end-(view.rear||view.profile?end*(build.hip-1)*.46:0);
+  const legacyPath=`M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} L ${bx-b} ${mid-15+Math.min(0,hem)} L ${bx-end} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} L ${bx+b} ${mid-15+Math.min(0,hem)} L ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
+  const path=build.shoulder===1 && build.waist===1 && build.hip===1 && build.chest===0 ? legacyPath : `M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} Q ${leftChest} ${chestY} ${bx-b} ${bellyY} Q ${bx-b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${leftHip} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} Q ${bx+b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${bx+b} ${bellyY} Q ${rightChest+(profile?front*chest:0)} ${chestY} ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
+  const bare=kind==='shirtless'||kind==='bikini';
+  if(bare){
+    vector(g,path,c.skin,INK,2.35);
+    const contour=shade(c.skin,-.24);
+    if(kind==='shirtless'){
+      if(view.rear)vector(g,`M ${x} ${top+13} Q ${x-4} ${top+27} ${bx} ${mid-6}`,'none',contour,1.3);
+      else if(c.bodyBuild?.abs){
+        const center=x+(view.profile?a*.26:view.face*.16), scale=Math.min(1,a/22);
+        vector(g,`M ${center-9*scale} ${top+18} Q ${center} ${top+24} ${center+10*scale} ${top+18} M ${center} ${top+25} L ${bx+(center-x)} ${mid-6}`,'none',contour,1.35);
+        for(let row=0;row<3;row++){
+          const y=top+26+row*Math.max(3,(mid-top-31)/3);
+          const px=center+(bx-x)*row/4, radius=(8-row)*scale;
+          vector(g,`M ${px-radius} ${y} q ${radius*.45} 4 ${radius*.75} 3 M ${px+radius} ${y} q ${-radius*.45} 4 ${-radius*.75} 3`,'none',contour,1.35);
+        }
+      }
+    }else{
+      const trim=w?.trim??shade(c.shirt,.22);
+      const band=a*(view.rear?.86:.8)+chest*.52;
+      const y=top+16, cx=x+(view.profile?a*.18:0);
+      const swimTop=view.rear?
+        `M ${cx-band} ${y} Q ${cx} ${y+6} ${cx+band} ${y} L ${cx+band} ${y+8} Q ${cx} ${y+13} ${cx-band} ${y+8}Z`:
+        `M ${cx-band} ${y+1} Q ${cx-band*.55} ${y-11} ${cx} ${y+1} Q ${cx+band*.55} ${y-11} ${cx+band} ${y+1} L ${cx+band} ${y+11} Q ${cx} ${y+17} ${cx-band} ${y+11}Z`;
+      for(const side of view.profile?[1]:[-1,1])segment(g,cx+side*band*.46,top,cx+side*band*.63,y+1,trim,2.2);
+      drawFabric(g,swimTop,c.shirt,w,texture);
+      const bottomWidth=Math.max(11,end*1.06), y2=mid-5;
+      drawFabric(g,`M ${bx-bottomWidth} ${y2} Q ${bx} ${y2+4} ${bx+bottomWidth} ${y2} Q ${bx+bottomWidth*.8} ${y2+8} ${bx+bottomWidth*.41} ${y2+14} Q ${bx} ${y2+18} ${bx-bottomWidth*.41} ${y2+14} Q ${bx-bottomWidth*.8} ${y2+8} ${bx-bottomWidth} ${y2}Z`,c.pants,w,texture);
+    }
+    return;
+  }
   const trim=w?.trim??shade(c.shirt,.4), dark=shade(c.shirt,-.31);
   const inside=(d:string,fill:string,stroke=dark,sw=1.4)=>vector(g,d,fill,stroke,sw);
   const seam=(d:string,color=dark,sw=1.45)=>inside(d,'none',color,sw);
@@ -158,7 +194,7 @@ export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Poi
 }
 
 export function sleeveCoverage(c: Character) {
-  if (['tank','camisole','slip-dress','sundress','athleisure'].includes(c.outfit)) return 0;
+  if (['tank','camisole','slip-dress','sundress','athleisure','shirtless','bikini'].includes(c.outfit)) return 0;
   if(c.wardrobe?.sleeve==='long')return 1.8;
   if(c.wardrobe?.sleeve==='rolled')return 1;
   return ['hoodie','cropped-hoodie','dress-shirt','tracksuit','blazer','biker','sweater','jacket','uniform','cardigan','blouse','fitted-turtleneck'].includes(c.outfit)?1.85:c.outfit==='oversized-tee'?.85:.56;
