@@ -33,7 +33,7 @@ test('unreliable body tracking is not converted into a fabricated pose',()=>{
   assert.throws(()=>compilePerformance([missing,missing]),/Capture at least two/);
 });
 test('captured clips survive schema validation and editing',()=>{
-  const project=makeProject(false);
+  const project=makeProject(true);
   const scene=project.scenes[0];
   const actor=scene.actors[0];
   assert.ok(actor);
@@ -76,7 +76,7 @@ test('strike suggestions require a fist and quick extension',()=>{
   assert.ok(dna.energy>=0&&dna.energy<=100);
 });
 test('invalid performance keys are rejected rather than silently clamped',()=>{
-  const project=makeProject(false),scene=project.scenes[0];
+  const project=makeProject(true),scene=project.scenes[0];
   const wrong={
     id:'wrong-performance',track:'body',actor:scene.actors[0].id,action:'idle',layer:'gesture',start:0,length:1,
     performance:[{time:.8,pose:{leftWrist:9999}},{time:.4,pose:{rightShoulder:30}}]
