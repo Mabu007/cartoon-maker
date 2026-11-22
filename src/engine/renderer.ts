@@ -6,7 +6,7 @@ import { isSeating, seats } from './seatingCatalog.ts';
 import { costumeImages } from './wardrobeArt.ts';
 import { rig, viewForward } from './animation.ts';
 import { Application, Container, Graphics, Text, Sprite, Texture } from 'pixi.js';
-import { drawActor, heldGripPoint } from './actorArt.ts';
+import { drawActor, heldPropPose } from './actorArt.ts';
 import { cameraViewport, screenToWorld, worldToScreen, worldEntityBounds, pointHitsEntity, renderDepth, type WorldEntityRect } from './cameraTransform.ts';
 import { drawProp, drawWorld, ellipse, propSize, rect } from './art.ts';
 import { evaluate } from './evaluate.ts';
@@ -20,7 +20,7 @@ export const dimensions = (format: Format, scale = 1): [number, number] => {
 };
 
 type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; gestureArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
-  foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; imageData?: string };
+  foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; heldArt?:Graphics; heldArtKey?:string; imageData?: string };
 export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: number; y: number };
   previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
@@ -198,7 +198,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         const front=entity.foreground, seat=seats[prop.kind];
         front.visible=entity.group.visible;
         front.position.copyFrom(entity.group.position);front.scale.copyFrom(entity.group.scale);front.angle=prop.rotation;
-        const seated=options.edit?undefined:actors.find(actor=>actor.visible&&actor.action==='sit'&&
+        const seated=options.edit||scene.layersManual?undefined:actors.find(actor=>actor.visible&&actor.sitting&&(!actor.seat||actor.seat===prop.id)&&
           Math.abs(actor.x-point.x)<seat.size[0]*prop.scale*.44&&Math.abs(actor.y-point.y)<70*prop.scale);
         if(seated) {
           const depth=renderDepth(seated.depth,seated.y);
@@ -270,34 +270,49 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         options.characterPreview ? options.previewFocus : targetFocus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight});
+        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,propPose:actor.propPose});
       entity.face!.y -= lift;
-      if (actor.held?.imageData && !options.edit) {
-        const url = actor.held.imageData;
-        if (!entity.heldSprite) {
-          entity.heldSprite = new Sprite(Texture.EMPTY);
-          entity.heldSprite.anchor.set(.22, .78);
-          entity.group.addChild(entity.heldSprite);
+      if(actor.held&&!options.edit){
+        const prop=actor.held;
+        const grip=heldPropPose(character,view,actor.pose,prop,actor.propPose??{action:actor.action,time:actor.actionTime,weight:1});
+        if(prop.imageData){
+          const url=prop.imageData;
+          if(entity.heldArt)entity.heldArt.visible=false;
+          if(!entity.heldSprite){
+            entity.heldSprite=new Sprite(Texture.EMPTY);
+            entity.heldSprite.anchor.set(.28,.74);
+            entity.group.addChild(entity.heldSprite);
+          }
+          const holder=entity.heldSprite, texture=textures.get(url);
+          if(texture){
+            holder.texture=texture;
+            const ratio=(prop.imageWidth??80)/Math.max(1,prop.imageHeight??80);
+            holder.width=Math.min(62,52*ratio)*grip.scale;
+            holder.height=holder.width/ratio;
+            holder.position.set(grip.x,grip.y-lift);
+            holder.angle=grip.angle;
+            holder.visible=true;
+          }else{
+            holder.visible=false;
+            const waitingFrame=lastFrame;
+            void loadImage(url).then(()=>{
+              if(!destroyed&&lastFrame===waitingFrame)draw(scene,characters,time,options);
+            }).catch(error=>console.warn('Could not render held prop:',error));
+          }
+        }else{
+          if(entity.heldSprite)entity.heldSprite.visible=false;
+          if(!entity.heldArt){entity.heldArt=new Graphics();entity.group.addChild(entity.heldArt);}
+          const key=prop.kind+'/'+prop.color;
+          if(entity.heldArtKey!==key){drawProp(entity.heldArt.clear(),prop);entity.heldArtKey=key;}
+          entity.heldArt.position.set(grip.x,grip.y-lift);
+          entity.heldArt.angle=grip.angle;
+          entity.heldArt.scale.set(grip.scale);
+          entity.heldArt.visible=true;
         }
-        const holder = entity.heldSprite;
-        const place = textures.get(url);
-        if (place) {
-          holder.texture = place;
-          const ratio = (actor.held.imageWidth ?? 80) / Math.max(1, actor.held.imageHeight ?? 80);
-          holder.width = Math.min(76, 58 * ratio) * actor.held.scale;
-          holder.height = Math.min(76, holder.width / ratio);
-          const grip = heldGripPoint(character, view, options.edit ? {} : actor.pose);
-          holder.position.set(grip.x, grip.y - lift);
-          holder.angle = actor.held.rotation;
-          holder.visible = true;
-        } else {
-          holder.visible = false;
-          const waitingFrame = lastFrame;
-          void loadImage(url).then(() => {
-            if (!destroyed && lastFrame === waitingFrame) draw(scene, characters, time, options);
-          }).catch(error => console.warn('Could not render held prop:', error));
-        }
-      } else if (entity.heldSprite) entity.heldSprite.visible = false;
+      }else{
+        if(entity.heldSprite)entity.heldSprite.visible=false;
+        if(entity.heldArt)entity.heldArt.visible=false;
+      }
       const rect: WorldEntityRect = { x: point.x, y: point.y, scaleX: (directionFlip ? -1 : 1) * actor.scale,
         scaleY: actor.scale, angle: actor.rotation, left: -55, right: 64,
         top: -(172 * character.height + 49 * character.head) - lift / actor.scale, bottom: 10 / actor.scale };

@@ -1,5 +1,6 @@
+import { propArm, propPlacement, type PropPose } from './propMotion.ts';
 import { bodyProportions } from './bodyBuild.ts';
-import { gaitProfiles, type GaitStyle } from './performanceCatalog.ts';
+import { gaitProfiles, isSleep, type GaitStyle } from './performanceCatalog.ts';
 import { Graphics, type Container } from 'pixi.js';
 import { armIK, gaitLeg, mix, rig, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
@@ -24,16 +25,20 @@ function stroke(g: Graphics, joints: Point[], width: number, color: string) {
   line(g, joints, color, width);
 }
 /** Identical arm IK used to draw the gripping hand; shared with attached image props. */
-export function heldGripPoint(character: Character, view: View, pose: JointPose): Point {
-  const art=viewArt[view], r=rig(character,pose,art.width);
-  const [, hand]=armIK(r.right.shoulder,{x:r.head.x+(art.rear?-26:45),y:r.head.y+43},28*character.arms,28*character.arms,1);
+export function heldGripPoint(character:Character,view:View,pose:JointPose):Point {
+  const art=viewArt[view];
+  const [,hand]=propArm(character,rig(character,pose,art.width),'right',{action:'idle',time:0,weight:1},true,art.rear);
   return {x:hand.x+7,y:hand.y+9};
+}
+export function heldPropPose(character:Character, view:View, pose:JointPose, prop:Prop, action:PropPose) {
+  const art=viewArt[view];
+  return propPlacement(character,rig(character,pose,art.width),action,prop,art.rear);
 }
 export function drawActor(g:Graphics,face:Container,c:Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number}) {
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose}) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
   const art = viewArt[view];
@@ -47,7 +52,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const cryHand=(side:'left'|'right')=>crying&&freeHand(side);
   const arm = (side: 'left' | 'right', carrying = false, g:Graphics=bodyArt) => {
     const joint = r[side];
-    let [elbow, hand] = carrying ? armIK(joint.shoulder, { x: r.head.x + (art.rear ? -26 : 45), y: r.head.y + 43 }, 28 * c.arms, 28 * c.arms, 1) : [joint.elbow, joint.hand];
+    const propPose=appearance?.propPose??{action,time:actionTime,weight:appearance?.actionWeight??1};
+    let [elbow, hand]=propArm(c,r,side,propPose,carrying,art.rear);
     const reachesFace=cryHand(side);
     if(reachesFace){
       const sign=side==='right'?1:-1, weight=appearance?.actionWeight??1;
@@ -74,7 +80,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const costumeHand = c.wardrobe?.hand ?? 'right';
     const holdsCostume = side===costumeHand && !carrying && Boolean(c.wardrobe?.handheld && c.wardrobe.handheld!=='none');
     const handMode:HandPose = performanceHandPose({
-      action,locomotion,side,carrying:carrying||holdsCostume,time,expression,
+      action,locomotion,side,carrying:carrying||holdsCostume||(action==='drive'&&!!held),time,expression,
       speechWeight:speaking?(viseme?.weight??0):0
     });
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
@@ -87,16 +93,6 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     g.context.restore();
     const watchSide=c.wardrobe?.watchSide??costumeHand;
     if(watchSide==='both'||side===watchSide)drawWatch(g,c,hand,elbow);
-    if (carrying && held) {
-      const x = hand.x + 7, y = hand.y + 9;
-      if (held.kind === 'cup') {
-        ellipse(g, x + 8, y - 11, 6, 5, held.color, 2);
-        rect(g, x - 8, y - 17, 16, 17, held.color, 3, 2);
-        ellipse(g, x, y - 16, 6, 2, '#875746');
-      } else if (held.kind !== 'image') {
-        rect(g, x - 8, y - 19, 16, 19, held.color, 3, 2);
-      }
-    }
   };
   const leg = (side: 'left' | 'right') => {
     const joint = r[side];
@@ -128,7 +124,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     drawShoe(g,c,foot,toe,costume,view==='back');
   };
   leg(art.rear?'right':'left'); leg(art.rear?'left':'right');
-  if(!cryHand(art.rear?'right':'left'))arm(art.rear?'right':'left',art.rear&&Boolean(held));
+  if(!cryHand(art.rear?'right':'left'))arm(art.rear?'right':'left',art.rear&&!!held);
   if(c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
     const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
@@ -138,7 +134,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   drawTop(g,c,art,r.neck,r.hip,costume);
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
-  if(!cryHand(art.rear?'left':'right'))arm(art.rear?'left':'right',!art.rear&&Boolean(held));
+  if(!cryHand(art.rear?'left':'right'))arm(art.rear?'left':'right',!art.rear&&!!held);
   if(cryHand('left'))arm('left',false,appearance?.gestureArt??g);
   if(cryHand('right'))arm('right',false,appearance?.gestureArt??g);
   face.position.set(r.head.x, r.head.y);
@@ -146,6 +142,11 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   face.scale.set(c.head*turnScale,c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
   const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus);
+  if(isSleep(action)&&!speaking){
+    const p=actionTime*.54%1;
+    const x=r.head.x+27+p*16, y=r.head.y-22-p*39, size=4+p*4;
+    line(g,[{x:x-size,y:y-size},{x:x+size,y:y-size},{x:x-size,y:y+size},{x:x+size,y:y+size}],'#e2d3ef',2.2);
+  }
   if (action === 'blink' && actionTime < .22) mood.blink = Math.max(mood.blink, 1 - Math.abs(actionTime - .11) / .11);
   const headView = lookAtCamera && (art.profile || art.rear)
     ? view === 'back' ? 'back' : 'three-quarter' : view;

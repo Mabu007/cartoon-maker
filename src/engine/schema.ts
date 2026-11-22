@@ -1,5 +1,5 @@
 import { bodyFrames,armBuilds,legBuilds } from './bodyBuild.ts';
-import { extraActions, gaitStyles, transitionNames, vfxNames, soundDurations, type SoundName } from './performanceCatalog.ts';
+import { dailyProps, extraActions, gaitStyles, transitionNames, vfxNames, soundDurations, type SoundName } from './performanceCatalog.ts';
 import { z } from 'zod';
 import { characterStyles, seatingStyles, wardrobeStyles } from './characterCatalog.ts';
 import { cameraConflicts, normalizeCameraTimeline } from './cameraTimeline.ts';
@@ -11,7 +11,7 @@ export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', '
 export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think', 'lean', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away', ...extraActions] as const;
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow', 'extreme-close-up', 'over-shoulder', 'establishing', 'reaction', 'pan', 'tilt', 'zoom', 'hold'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
-export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image', ...seatingStyles] as const;
+export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image', ...dailyProps, ...seatingStyles] as const;
 export const tracks = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue', 'audio', 'music', 'camera', 'transition', 'vfx', 'text'] as const;
 export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'SFX', music: 'Music', camera: 'Camera', transition: 'Transitions', vfx: 'VFX', text: 'Text' };
 const id = z.string().min(1).max(100);
@@ -110,6 +110,7 @@ export const TimelineTrack = z.enum(tracks);
 export const TimelineMarker = z.strictObject({ id, name: z.string().trim().min(1).max(60), time: num(0, 180) });
 export const TimelineTrackSettings = z.strictObject({ muted: z.boolean().optional(), solo: z.boolean().optional(), locked: z.boolean().optional(), collapsed: z.boolean().optional() });
 export const SceneDefinition = z.strictObject({ id, name: z.string().trim().min(1).max(70), environment: z.enum(environments),
+  layersManual:z.boolean().optional(),
   markers: z.array(TimelineMarker).max(60).optional(), trackSettings: z.partialRecord(TimelineTrack, TimelineTrackSettings).optional(),
   backgroundImage: imageData.optional(), backgroundTransform: z.strictObject({x:num(-2000,3000),y:num(-2000,3000),scale:num(.2,4)}).optional(), duration: num(1, 180),
   actors: z.array(Actor).max(24), objects: z.array(SceneObject).max(100), clips: z.array(TimelineClip).max(600) });
@@ -259,7 +260,7 @@ export type JointPose = Partial<Record<JointName, number>>;
 export type Animation = z.infer<typeof AnimationClip>;
 export type SoundClip = Extract<Clip, { track: 'audio' | 'music' | 'dialogue' }>;
 export const uid = () => crypto.randomUUID();
-export const label = (value: string) => ({ 'close-up': 'Close-up', 'two-shot': 'Two-shot', 'three-quarter': 'Front three-quarter', 'back-quarter': 'Back three-quarter', stand: 'Stand up', shake: 'Shake head', talk: 'Talking idle', listen: 'Listening', think: 'Thinking', angry: 'Angry', surprise: 'Surprised' })[value] ?? value.replaceAll('-', ' ').replace(/^./, first => first.toUpperCase());
+export const label = (value: string) => ({ 'close-up': 'Close-up', 'two-shot': 'Two-shot', 'three-quarter': 'Front three-quarter', 'back-quarter': 'Back three-quarter', stand: 'Stand up', shake: 'Shake head', talk: 'Talking idle', listen: 'Listening', think: 'Thinking', angry: 'Angry', surprise: 'Surprised', 'sleep-seated':'Sleep seated', sleep:'Sleep lying down', 'throw-prop':'Throw prop', 'phone-call':'Phone call', 'cartoon-stab':'Cartoon stab', 'foam-dagger':'Foam dagger' })[value] ?? value.replaceAll('-', ' ').replace(/^./, first => first.toUpperCase());
 export const shotLabel = (shot: string) => shot === 'close-up' || shot === 'two-shot' ? label(shot) : `${label(shot)} shot`;
 
 /** Accept historical unversioned/v0 project data without modifying the stored original. */

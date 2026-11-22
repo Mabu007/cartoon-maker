@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react';
-import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2 } from 'lucide-react';
+import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2, ArrowUpToLine, ArrowDownToLine } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
 import { type Project, type Scene } from '../engine/schema.ts';
 import { pathNodes,smoothPath } from '../engine/stagePath.ts';
 import { evaluate } from '../engine/evaluate.ts';
 import { clamp } from '../engine/animation.ts';
 import { prepareDialoguePreview, type Mixer } from '../services/audio.ts';
+import type { LayerMove } from '../engine/sceneLayers.ts';
 import type { Selection } from '../studio.ts';
 
 type Position = { x: number; y: number };
 type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
 export type PreviewTime = { scene: Scene; local: number; movie: number };
-export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, editPath, smoothGuide, movePathPoint, removePathPoint, edgePlacement, flipEntity, duplicateEntity, removeEntity }: {
+export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, editPath, smoothGuide, movePathPoint, removePathPoint, edgePlacement, flipEntity, duplicateEntity, removeEntity, reorderEntity }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
   selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
   onDestination?: (position: Position, waypoint?: boolean) => void; pathPoints?: Position[]; editPath?:boolean; smoothGuide?:boolean; movePathPoint?:(index:number,point:Position)=>void; removePathPoint?:(index:number)=>void; edgePlacement?: boolean; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
+  reorderEntity?:(id:string,move:LayerMove)=>void;
   flipEntity?: (id: string) => void; duplicateEntity?: (id: string) => void; removeEntity?: (id: string) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), hover = useRef<string | undefined>(undefined), repaint = useRef<() => void>(() => {});
@@ -230,6 +232,8 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     {selectedName && !playing && !onDestination && selection && <div className="stage-context-toolbar" role="toolbar" aria-label={selectedName+' scene tools'}>
        <span className="stage-context-selection"><MousePointer2 size={15}/><strong>{selectedName}</strong><small>Drag to move</small></span>
        <button type="button" title="Flip horizontally" aria-label={'Flip '+selectedName+' horizontally'} onClick={()=>flipEntity?.(selection.id)}><FlipHorizontal size={16}/><span>Flip</span></button>
+       <button type="button" title="Bring selected item to front" aria-label={'Bring '+selectedName+' to front'} onClick={()=>reorderEntity?.(selection.id,'front')}><ArrowUpToLine size={16}/></button>
+       <button type="button" title="Send selected item to back" aria-label={'Send '+selectedName+' to back'} onClick={()=>reorderEntity?.(selection.id,'back')}><ArrowDownToLine size={16}/></button>
        <button type="button" title="Duplicate selected item" aria-label={'Duplicate '+selectedName} onClick={()=>duplicateEntity?.(selection.id)}><Copy size={15}/></button>
        <button type="button" title="Remove selected item" aria-label={'Delete '+selectedName} onClick={()=>removeEntity?.(selection.id)}><Trash2 size={15}/></button>
      </div>}

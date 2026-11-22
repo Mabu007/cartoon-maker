@@ -15,15 +15,29 @@ export const gaitProfiles = {
   sprint:{speed:1.25,step:.88,lift:1.15,arm:1.25,lean:9,reach:0}
 } satisfies Record<GaitStyle,{speed:number;step:number;lift:number;arm:number;lean:number;reach:number}>;
 
+export const dailyActions = ['sleep-seated','sleep','eat','drink','write','read','phone-call','drive','pick-up','put-down','throw-prop','cartoon-stab'] as const;
+export const dailyProps = ['snack','pencil','steering-wheel','ball','foam-dagger'] as const;
+export const propActions = {
+  eat:['snack'],drink:['cup'],write:['pencil'],read:['book'],'phone-call':['phone'],
+  drive:['steering-wheel'],'pick-up':[],'put-down':[],'throw-prop':[],'cartoon-stab':['foam-dagger']
+} as const;
+export const actionUsesProp = (action:string):action is keyof typeof propActions => Object.hasOwn(propActions,action);
+export const isSleep = (action:string) => action==='sleep'||action==='sleep-seated';
+export const usesSeat = (action:string) => action==='sit'||action==='sleep-seated';
+const gestureActions=['wave','point','reach','nod','shake','shrug','clap','laugh','cry','talk','fist','open-hand','blink','look-away',
+  'hand-on-hip','hand-to-face','hand-to-pocket','eat','drink','write','read','phone-call','throw-prop','cartoon-stab'];
+export const actionLayer = (action:string) => gestureActions.includes(action)?'gesture' as const:'body' as const;
+export const propRelease = {'pick-up':.50,'put-down':.69,'throw-prop':.46} as const;
 export const extraActions = [
   'idle-relaxed','idle-alert','idle-bored','idle-nervous',
   'cartoon-guard','cartoon-jab','cartoon-hook','cartoon-kick','cartoon-block','cartoon-dodge','cartoon-recoil','cartoon-fall',
-  'dance-bounce','dance-side-step','dance-shuffle','dance-arm-wave','dance-celebration','clap','crouch','reach','stumble'
+  'dance-bounce','dance-side-step','dance-shuffle','dance-arm-wave','dance-celebration','clap','crouch','reach','stumble', ...dailyActions
 ] as const;
 export const actionGroups = {
   'Idle & movement':['idle','idle-relaxed','idle-alert','idle-bored','idle-nervous','walk','run','stop','turn','jump','sit','stand','lean','crouch','stumble'],
   Acting:['wave','point','reach','nod','shake','shrug','laugh','cry','angry','surprise','celebrate','talk','listen','think','hand-on-hip','hand-to-face','hand-to-pocket','fist','open-hand','blink','look-away','clap'],
-  'Cartoon fight':['cartoon-guard','cartoon-jab','cartoon-hook','cartoon-kick','cartoon-block','cartoon-dodge','cartoon-recoil','cartoon-fall'],
+  'Daily life':['sleep-seated','sleep','eat','drink','write','read','phone-call','drive','pick-up','put-down','throw-prop'],
+  'Cartoon fight':['cartoon-guard','cartoon-jab','cartoon-hook','cartoon-kick','cartoon-block','cartoon-dodge','cartoon-recoil','cartoon-fall','cartoon-stab'],
   Dance:['dance-bounce','dance-side-step','dance-shuffle','dance-arm-wave','dance-celebration']
 } as const;
 export const vfxNames = ['camera-shake','impact-boom','impact-stars','speed-lines','dust-puff','comic-sweat','sparkles','confetti','shock-ring','comedy-flash'] as const;

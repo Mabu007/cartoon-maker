@@ -4,8 +4,8 @@ import { AudioWaveform } from './AudioWaveform.tsx';
 import { animations, clamp } from '../engine/animation.ts';
 import { movieTicks, type MovieTiming, type MovieCursor } from '../engine/movieTime.ts';
 import { TimelineResize } from './TimelineResize.tsx';
-import { soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
-import { actions, tracks, trackNames, uid, type Character, type Clip, type Scene, type Track } from '../engine/schema.ts';
+import { actionLayer, actionUsesProp, soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
+import { actions, tracks, trackNames, uid, type Action, type Character, type Clip, type Scene, type Track } from '../engine/schema.ts';
 import { selectClipRange, snapGuides, snapTime, snapMoveDelta, moveTimelineClips, splitTimelineClips, trimTimelineClip, trackIsLocked } from '../engine/timelineEditing.ts';
 import { type Selection } from '../studio.ts';
 import { clipLabel, clock, IconButton, trackIcon } from './shared.tsx';
@@ -48,7 +48,7 @@ function packedTracks(scene: Scene) {
 
 export function Timeline({
   scene, movie, characters, selection, selectedClipIds, selectedKeyframe, selectClips, selectKeyframe,
-  seek, seekMovie, seekScene, addScene, manageScenes, tall, onTall, onPath, onPoint, add, remove, duplicate, copy, cut, paste, split,
+  seek, seekMovie, seekScene, addScene, manageScenes, tall, onTall, onPath, onPoint, onPropAction, add, remove, duplicate, copy, cut, paste, split,
   apply, compact, playing, onCompact, onResizeScene, playhead
 }: {
   scene: Scene; movie: MovieTiming; characters: Character[]; selection: Selection;
@@ -57,6 +57,7 @@ export function Timeline({
   seek: (t:number) => void; seekMovie:(time:number)=>void; seekScene:(id:string,time:number)=>void;
   tall:boolean;onTall:()=>void;
   onPath:(actor:string,gait:'walk'|'run',start:number)=>void;
+  onPropAction:(actor:string,action:Action,start:number)=>void;
   onPoint:(actor:string,action:'point'|'reach',start:number)=>void;
   addScene:()=>void; manageScenes:()=>void; add: (track?:Track) => void;
   remove: () => void; duplicate: () => void; copy: () => void; cut: () => void; paste: () => void; split: () => void;
@@ -246,9 +247,14 @@ export function Timeline({
           onPoint(actor.id,action,start);
           return;
         }
+        if(actionUsesProp(action)||action==='sleep-seated'){
+          seekScene(source.id,start);
+          onPropAction(actor.id,action,start);
+          return;
+        }
         const animation=animations[action];
         const length=Math.min(animation.loop?Math.max(1.5,animation.duration):animation.duration,source.duration-start);
-        const layer=['wave','nod','shake','shrug','clap','laugh','cry','talk','fist','open-hand','blink','look-away','hand-on-hip','hand-to-face','hand-to-pocket'].includes(action)?'gesture':'body';
+        const layer=actionLayer(action);
         insert({id:uid(),track:'body',actor:actor.id,start,length,action,layer});
       }
     }

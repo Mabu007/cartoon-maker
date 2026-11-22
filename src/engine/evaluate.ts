@@ -1,8 +1,9 @@
 import { smoothPath } from './stagePath.ts';
-import { gaitProfiles, type GaitStyle } from './performanceCatalog.ts';
+import { propPlacement, throwArc, transferFraction, type PropPose } from './propMotion.ts';
+import { gaitProfiles, usesSeat, type GaitStyle } from './performanceCatalog.ts';
 import { animations, armIK, blend, clamp, ease, mix, rig, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
 import { actorWorldPoint, eyeWorldPoint, aimEyes } from './gaze.ts';
-import { anchorFor } from './interactions.ts';
+import { anchorFor, compatibleObject } from './interactions.ts';
 import { audibleAudioTrack } from './audioMix.ts';
 import { effectiveCues } from './dspLipSync.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
@@ -11,7 +12,7 @@ import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
   speaking: boolean; actionTime: number; actionWeight:number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
-  focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop };
+  focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -44,11 +45,61 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(group)group.push(clip);else byActor.set(clip.actor,[clip]);
   }
   const objectsById=new Map(scene.objects.map(object=>[object.id,object]));
+  type BodyClip=Extract<Clip,{track:'body'}>;
+  type PropEvent={clip:BodyClip;at:number};
+  const propEvents=new Map<string,PropEvent>();
+  const propDrops=new Map<string,PropEvent>();
+  const transfersByActor=new Map<string,PropEvent[]>();
+  for(const clip of timelineClips){
+    if(clip.track!=='body'||!clip.target)continue;
+    const fraction=transferFraction(clip.action);
+    const object=objectsById.get(clip.target);
+    if(fraction===undefined||!object||!compatibleObject(object,clip.action))continue;
+    const at=clip.start+clip.length*fraction;
+    if(at>t)continue;
+    const event={clip,at}, prior=propEvents.get(clip.target);
+    if(!prior||at>=prior.at)propEvents.set(clip.target,event);
+    if(clip.action!=='pick-up'&&at>=(propDrops.get(clip.target)?.at??-1))propDrops.set(clip.target,event);
+    const transfers=transfersByActor.get(clip.actor)??[];
+    transfers.push(event);
+    transfersByActor.set(clip.actor,transfers);
+  }
+  const byId=new Map(scene.actors.map(actor=>[actor.id,actor]));
+  function placedProp(object:Prop,event:PropEvent){
+    const {clip,at}=event;
+    const owner=byId.get(clip.actor);
+    if(owner){
+      const motion=latest((byActor.get(owner.id)??[]).filter((item):item is Extract<Clip,{track:'movement'}>=>item.track==='movement'&&item.start<=at));
+      const position=motion?movementPosition(motion,(at-motion.start)/motion.length):owner;
+      const facing=viewForward(owner.view)*(owner.flip?-1:1);
+      if(clip.action==='put-down')return {...object,x:position.x+28*facing*owner.scale,y:position.y};
+      if(clip.action!=='throw-prop')return object;
+      const time=animations['throw-prop'].duration*transferFraction('throw-prop')!;
+      const character=characters?.get(owner.characterId);
+      const release=sample(animations['throw-prop'],time);
+      const forward=Math.sign((clip.pointAt?.x??position.x+facing*140)-position.x)||1;
+      const flip=clip.pointAt?forward!==viewForward(owner.view):owner.flip;
+      const heldPos=character?propPlacement(character,rig(character,release.pose,owner.view==='side'?.57:owner.view==='three-quarter'?.88:owner.view==='back-quarter'?.81:1),{action:'throw-prop',time,weight:1},object,false):{x:51,y:-135};
+      const from=actorWorldPoint({...owner,...position,pose:release.pose,lift:release.lift,flip},heldPos);
+      const to=clip.pointAt??{x:clamp(position.x+forward*210,0,WIDTH),y:position.y};
+      const p=clamp((t-at)/Math.max(.06,clip.start+clip.length-at));
+      return {...object,...throwArc(from,to,p),rotation:object.rotation+forward*300*p};
+    }
+    return object;
+  }
   const actors = scene.actors.map((actor): CharacterState => {
     const clips = byActor.get(actor.id)??[];
     const presence = clips.filter(clip => clip.track === 'actors' && clip.visible === undefined);
     const entrance = latest(clips.filter(clip => clip.track === 'actors' && clip.visible !== undefined && clip.start <= t));
-    const propCue = latest(clips.filter(clip => clip.track === 'props' && clip.start <= t));
+    const propCue = latest(clips.filter(clip => clip.track==='props' &&
+      (clip.interaction==='equip'||clip.interaction==='release')&&clip.start<=t));
+    let ownership=propCue ? {at:propCue.start,target:propCue.track==='props'&&propCue.interaction==='equip'?propCue.target:undefined} : undefined;
+    for(const event of (transfersByActor.get(actor.id)??[]).sort((a,b)=>a.at-b.at)){
+      if(event.at<(ownership?.at??-1))continue;
+      // Placing one prop down only clears custody of that prop.
+      if(event.clip.action==='pick-up'||!ownership?.target||ownership.target===event.clip.target)
+        ownership={at:event.at,target:event.clip.action==='pick-up'?event.clip.target:undefined};
+    }
     const gaze = latest(clips.filter(clip => clip.track === 'gaze' && active(clip, t)));
     const movement = latest(clips.filter((clip): clip is Extract<Clip, { track: 'movement' }> => clip.track === 'movement' && clip.start <= t));
     const progress = movement ? clamp((t - movement.start) / movement.length) : 0;
@@ -67,7 +118,9 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const idle = sample(animations.idle, t);
     let { pose, lift } = idle;
     let expression = actor.expression;
-    let held: Prop | undefined;
+    let held: Prop | undefined, propPose:PropPose|undefined;
+    const sitting=Boolean(body&&(usesSeat(body.action)||body.action==='drive'));
+    const seat=body&&usesSeat(body.action)?body.target:undefined;
     const locomotion: Action = body?.action ?? travelling?.gait ?? (travelling ? 'walk' : 'idle');
     let action: Action = locomotion;
     const gaitStyle=travelling?.style??'natural';
@@ -112,9 +165,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         previous.start + previous.length <= clip.start + .05);
       // A replacement Stand action must immediately put the feet on the floor,
       // not replay the seated opening pose for the first 0.8 seconds.
+      const transfer=transferFraction(activeAction);
       const offsets = (activeAction === 'sit' && clip.start === 0) ||
         (activeAction === 'stand' && !supportedSitBefore) ? definition.duration : 0;
-      const next = sample(definition, !isGesture && (activeAction === 'walk' || activeAction === 'run') ? gaitTime : t - clip.start + offsets);
+      const next = sample(definition, !isGesture && (activeAction === 'walk' || activeAction === 'run') ? gaitTime : transfer===undefined?t-clip.start+offsets:(t-clip.start)/clip.length*definition.duration);
       if ((activeAction==='point'||activeAction==='reach')&&clip.pointAt) {
         const dx=clip.pointAt.x-x, dy=clip.pointAt.y-(y-116*actor.scale);
         flip=Math.abs(dx)>5 ? dx<0 : flip;
@@ -122,7 +176,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         const angle=Math.atan2(Math.abs(dx),dy)*180/Math.PI;
         next.pose={...next.pose,rightShoulder:angle-13-(pose.torso??0)-(pose.hips??0),rightElbow:5};
       }
-      const weight = activeAction === 'sit' || activeAction === 'stand' ? 1 : frameWeight(clip, t);
+      const weight = activeAction==='sit'||activeAction==='stand'||activeAction==='sleep-seated'||activeAction==='sleep'||activeAction==='drive'
+        ? 1 : frameWeight(clip,t);
       pose = blend(pose, next.pose, weight, isGesture);
       if (!isGesture) lift = mix(lift, next.lift, weight);
       if (definition.expression) expression = definition.expression;
@@ -131,15 +186,29 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         view = progression > .66 ? actor.view : progression > .33 ? 'side' : views[Math.max(0, views.indexOf(actor.view) - 1)];
         flip = progression > .66 ? !flip : flip;
       }
-      const object = target;
-      const anchor = object && anchorFor(object);
-      // Never teleport / slide actors to a seating prop as the pose begins.
-      // Position remains the authored actor/movement position; this is crucial
-      // when a chair is placed far away or a creator sits on the ground.
-      if (object && anchor?.action === 'sit' && activeAction === 'sit') {
-        view = anchor.facing ?? view;
+      if(target&&usesSeat(activeAction))view=anchorFor(target)?.facing??view;
+      if(target&&compatibleObject(target,activeAction)&&!usesSeat(activeAction)){
+        const elapsed=t-clip.start, phase=elapsed/clip.length;
+        const attaches=activeAction==='pick-up'?phase>=transfer!:
+          activeAction==='throw-prop'||activeAction==='put-down'?phase<transfer!:true;
+        held=attaches?target:undefined;
+        let gripTarget:PropPose['target'];
+        if(activeAction==='pick-up'||activeAction==='put-down'){
+          const approach=clamp(1-Math.abs(phase-transfer!)/.42);
+          const placing=activeAction==='put-down';
+          const drop=propDrops.get(target.id);
+          const source=drop&&drop.clip.id!==clip.id?placedProp(target,drop):target;
+          const dx=placing?(flip?-1:1)*28*actor.scale:source.x-x,dy=placing?0:source.y-y;
+          if(!placing&&Math.abs(dx)>7)flip=dx*viewForward(view)<0;
+          const angle=-actor.rotation*Math.PI/180;
+          gripTarget={x:(dx*Math.cos(angle)-dy*Math.sin(angle))*(flip?-1:1)/actor.scale,
+            y:(dx*Math.sin(angle)+dy*Math.cos(angle))/actor.scale+lift-(target.kind==='ball'?14:6)};
+          propPose={action:activeAction,time:elapsed,weight:weight*ease(approach),target:gripTarget};
+        }else {
+          if(activeAction==='throw-prop'&&clip.pointAt&&Math.abs(clip.pointAt.x-x)>7)flip=Math.sign(clip.pointAt.x-x)!==viewForward(view);
+          propPose={action:activeAction,time:transfer===undefined?elapsed:phase*definition.duration,weight};
+        }
       }
-      if (object && anchor?.action === 'hold') held = object;
     }
     const face = latest(clips.filter((clip): clip is Extract<Clip, { track: 'face' }> => clip.track === 'face' && active(clip, t)));
     if (face) expression = face.expression;
@@ -151,13 +220,16 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const viseme = spoken?.visemes?.length
       ? sampleTimedViseme(spoken.manualVisemes?.length ? effectiveCues(spoken.visemes, spoken.manualVisemes) : spoken.visemes,audioTime)
       : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
-    if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? objectsById.get(propCue.target) : undefined;
+    if(!held&&ownership?.target&&!propPose){
+      const latestForProp=propEvents.get(ownership.target);
+      if(!latestForProp||latestForProp.at<=ownership.at)held=objectsById.get(ownership.target);
+    }
     const performance=action===gesture?.action?gesture:body;
     const actionTime=performance?t-performance.start:0;
     const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking: Boolean(spoken), actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held };
+      speaking: Boolean(spoken), actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
@@ -254,6 +326,9 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   const fade = transition ? clamp((t - transition.start) / transition.length) : 0;
   const objects = scene.objects.map(object => {
     const cue = latest(timelineClips.filter(clip => clip.track === 'props' && clip.target === object.id && clip.start <= t));
+    const lastDrop=propDrops.get(object.id);
+    if(lastDrop&&lastDrop.at>=(cue?.start??-1))
+      return placedProp(object,lastDrop);
     if(cue?.track==='props' && (cue.interaction==='open'||cue.interaction==='close')) {const progress=ease(clamp((t-cue.start)/Math.min(.7,cue.length)));return {...object,doorOpen:cue.interaction==='open'?progress:1-progress};}
     if (cue?.track !== 'props' || cue.interaction !== 'release') return object;
     const owner = scene.actors.find(actor => actor.id === cue.actor);
