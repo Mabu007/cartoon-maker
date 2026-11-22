@@ -18,7 +18,7 @@ const allowedClipPatch:Readonly<Record<Clip['track'],readonly string[]>>={
   face:['start','length','expression'],
   gaze:['start','length','target'],
   props:['start','length','target','interaction'],
-  dialogue:['start','length','offset','volume','muted','fadeIn','fadeOut','voicePreset'],
+  dialogue:['start','length','offset','volume','muted','fadeIn','fadeOut','voicePreset','voiceEffect'],
   audio:['start','length','offset','volume','muted','fadeIn','fadeOut','name','loop','asset'],
   music:['start','length','offset','volume','muted','fadeIn','fadeOut','name','loop','asset'],
   camera:['start','length','shot','focus','transition'],

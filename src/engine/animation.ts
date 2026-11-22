@@ -1,3 +1,4 @@
+import { bodyProportions } from './bodyBuild.ts';
 import type { Action, Animation, Character, JointName, JointPose } from './schema.ts';
 
 export const skeleton: Record<JointName, JointName | null> = {
@@ -116,9 +117,9 @@ export const animations: Record<Action, Animation> = {
   shake: make('shake', .63, true, [key(0, { head: -12 }), key(.5, { head: 12, neck: -6 }), key(1, { head: -12 })]),
   shrug: make('shrug', .84, false, [key(0), key(.42, { leftShoulder: -56, leftElbow: -45, rightShoulder: 55, rightElbow: 52, head: -8 }, 4), key(1, { leftShoulder: -43, leftElbow: -31, rightShoulder: 40, rightElbow: 42 })], 'thinking'),
   laugh: make('laugh', .58, true, [key(0, { head: -12, torso: -6, leftElbow: -44, rightElbow: 48 }), key(.48, { head: 4, torso: 8, leftElbow: -50, rightElbow: 61 }, 5), key(1, { head: -12, torso: -6, leftElbow: -44, rightElbow: 48 })], 'happy'),
-  cry: make('cry', .75, true, [key(0, { head: 15, leftShoulder: 46, leftElbow: 116, rightShoulder: -44, rightElbow: -118 }), key(.5, { head: 19, torso: 5 }, -3), key(1, { head: 15, leftShoulder: 46, leftElbow: 116, rightShoulder: -44, rightElbow: -118 })], 'sad'),
+  cry: make('cry', .72, true, [key(0,{torso:7,neck:-5,head:11}),key(.32,{torso:12,neck:-3,head:15},-3),key(.63,{torso:8,neck:-5,head:9},1),key(1,{torso:7,neck:-5,head:11})],'sad'),
   angry: make('angry', .6, false, [key(0), key(.38, { head: -9, torso: -11, rightElbow: 48, leftElbow: -48 }, -2), key(1, { head: 10, torso: 10, rightShoulder: 24, leftShoulder: -23, rightElbow: 57, leftElbow: -58 })], 'angry'),
-  surprise: make('surprise', .55, false, [key(0), key(.3, { head: -14, torso: -13, leftShoulder: -58, rightShoulder: 56 }, 9), key(1, { head: -5, torso: -5, leftShoulder: -21, rightShoulder: 21 })], 'surprised'),
+  surprise: make('surprise', .55, false, [key(0), key(.24, { head: -12, torso: -15, leftShoulder: -96, rightShoulder: 92, leftElbow:-39,rightElbow:38 }, 12),key(.68,{head:-8,torso:-9,leftShoulder:-78,rightShoulder:79,leftElbow:-24,rightElbow:24},2),key(1, { head: -5, torso: -5, leftShoulder: -40, rightShoulder: 41 })], 'surprised'),
   celebrate: make('celebrate', .7, true, [key(0, { leftShoulder: -113, rightShoulder: 112, leftKnee: -20, rightKnee: -20 }), key(.5, { leftShoulder: -152, rightShoulder: 153, leftHip: 21, rightHip: -20 }, 22), key(1, { leftShoulder: -113, rightShoulder: 112, leftKnee: -20, rightKnee: -20 })], 'happy'),
   talk: make('talk', 1.5, true, [key(0, { head: -3, rightElbow: 15 }), key(.43, { head: 5, rightShoulder: 28, rightElbow: 42 }), key(1, { head: -3, rightElbow: 15 })]),
   listen: make('listen', 2.4, true, [key(0, { head: -8 }), key(.6, { head: -3, torso: 3 }), key(1, { head: -8 })]),
@@ -180,17 +181,18 @@ export function gaitLeg(upper: Point, legScale: number, time: number, action: Ga
   return armIK(upper, goal, length, length * 1.09, -forward);
 }
 export function rig(c: Character, pose: JointPose, width: number) {
+  const build=bodyProportions(c);
   const p = (joint: JointName) => pose[joint] ?? 0;
   const hip = { x: 0, y: -76 * c.legs * c.height };
   const torso = p('torso') + p('hips');
   const neck = along(hip, 180 - torso, 54 * c.torso * c.height);
   const head = along(neck, 180 - torso - p('neck'), 36 * c.head);
   const limb = (side: 'left' | 'right', sign: number) => {
-    const shoulder = { x: neck.x + sign * 24 * width, y: neck.y + 10 };
+    const shoulder = { x: neck.x + sign * 24 * width * build.shoulder, y: neck.y + 10 };
     const armAngle = sign * 13 + p(`${side}Shoulder`) + torso;
     const elbow = along(shoulder, armAngle, 28 * c.arms);
     const hand = along(elbow, armAngle + p(`${side}Elbow`), 28 * c.arms);
-    const upper = { x: hip.x + sign * 12 * width, y: hip.y };
+    const upper = { x: hip.x + sign * 12 * width * build.hip, y: hip.y };
     const legAngle = p(`${side}Hip`) + sign * 5;
     const knee = along(upper, legAngle, 38 * c.legs * c.height);
     const foot = along(knee, legAngle + p(`${side}Knee`), 38 * c.legs * c.height);

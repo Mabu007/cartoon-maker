@@ -19,7 +19,7 @@ export const dimensions = (format: Format, scale = 1): [number, number] => {
   return [Math.round(width * scale), Math.round(height * scale)];
 };
 
-type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
+type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; gestureArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
   foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; imageData?: string };
 export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: number; y: number };
   previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
@@ -108,9 +108,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       const group = new Container();
       entity = { group, art };
       if (isActor) {
-        entity.shadow = new Graphics(); entity.face = new Container(); entity.facialArt=new Graphics();
+        entity.shadow = new Graphics(); entity.face = new Container(); entity.facialArt=new Graphics();entity.gestureArt=new Graphics();
         entity.face.addChild(entity.facialArt);
-        group.addChild(entity.shadow, art, entity.face);
+        group.addChild(entity.shadow, art, entity.face, entity.gestureArt);
       } else {
         const sprite = new Sprite(Texture.EMPTY);
         sprite.anchor.set(.5, 1);
@@ -257,6 +257,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.scale.set((directionFlip ? -1 : 1) * actor.scale, actor.scale);
       entity.group.zIndex = renderDepth(actor.depth, point.y);
       entity.art.position.y = -lift;
+      entity.gestureArt!.position.y=-lift;
       ellipse(entity.shadow!.clear(), 0, 3, 39 - Math.min(10, Math.max(0, lift / 5)), 7, '#816a61');
       const cameraGaze=options.characterPreview?Boolean(options.previewCamera):actor.gazeTarget==='camera'&&actor.action!=='look-away';
       const projectedEyes=actor.gazePoint?eyeWorldPoint({...actor,...point,flip:directionFlip},character):undefined;
@@ -269,7 +270,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         options.characterPreview ? options.previewFocus : targetFocus, options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle});
+        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight});
       entity.face!.y -= lift;
       if (actor.held?.imageData && !options.edit) {
         const url = actor.held.imageData;

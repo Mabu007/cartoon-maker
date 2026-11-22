@@ -1,3 +1,4 @@
+import { smoothPath } from './stagePath.ts';
 import { gaitProfiles, type GaitStyle } from './performanceCatalog.ts';
 import { animations, armIK, blend, clamp, ease, mix, rig, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
 import { actorWorldPoint, eyeWorldPoint, aimEyes } from './gaze.ts';
@@ -8,7 +9,7 @@ import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
-  speaking: boolean; actionTime: number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
+  speaking: boolean; actionTime: number; actionWeight:number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
@@ -23,6 +24,7 @@ export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, pro
     const weight = clip.gait ? travelProgress(t) : ease(t);
     return { x: mix(clip.fromX, clip.toX, weight), y: mix(clip.fromY, clip.toY, weight) };
   }
+  if(clip.style)return smoothPath(keys,t);
   const rightIndex = keys.findIndex(key => key.time >= t);
   const right = keys[Math.max(1, rightIndex < 0 ? keys.length - 1 : rightIndex)];
   const left = keys[Math.max(0, (rightIndex < 0 ? keys.length - 1 : rightIndex) - 1)];
@@ -104,8 +106,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       const activeAction: Action = clip.action;
       const definition = animations[activeAction];
       if (!isGesture) action = activeAction;
-      else if (['talk', 'laugh', 'cry', 'point', 'wave', 'celebrate', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away'].includes(activeAction)) action = activeAction;
-      const supportedSitBefore = clips.some(previous =>
+      else if (!['walk','run','sit','stand','turn'].includes(activeAction)) action = activeAction;
+      const supportedSitBefore = activeAction==='stand'&&clips.some(previous =>
         previous.track === 'body' && previous.action === 'sit' && previous.layer === 'body' &&
         previous.start + previous.length <= clip.start + .05);
       // A replacement Stand action must immediately put the feet on the floor,
@@ -150,9 +152,12 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       ? sampleTimedViseme(spoken.manualVisemes?.length ? effectiveCues(spoken.visemes, spoken.manualVisemes) : spoken.visemes,audioTime)
       : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
     if (propCue?.track === 'props') held = propCue.interaction === 'equip' ? objectsById.get(propCue.target) : undefined;
+    const performance=action===gesture?.action?gesture:body;
+    const actionTime=performance?t-performance.start:0;
+    const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking: Boolean(spoken), actionTime: action === gesture?.action ? t - gesture.start : t - (body?.start ?? t), locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held };
+      speaking: Boolean(spoken), actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.

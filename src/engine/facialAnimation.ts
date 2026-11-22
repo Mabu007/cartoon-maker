@@ -30,7 +30,7 @@ export function facialPerformance(
   const phase = ((t + seed*period) % period) / period;
   const baseBlink = clamp(1-Math.abs(phase-.72)/.045);
   const anxiousDouble = expression === 'nervous' ? clamp(1-Math.abs(phase-.83)/.035)*.88:0;
-  const blink = Math.max(baseBlink,anxiousDouble);
+  const blink = action==='cry'?1:Math.max(baseBlink,anxiousDouble,action==='laugh'?.84:0);
   // Deterministic pupil microsaccades; explicit look targets always dominate.
   const micro=Math.sin(t*1.12+seed*11)*.14;
   const gazeX=focus ? clamp(focus.x,-1,1)*3.45+micro*.25 :
@@ -44,7 +44,7 @@ export function facialPerformance(
   const resolved: Expression = expression === 'neutral' ? expressive[action] ?? 'neutral' : expression;
   // Dialogue mouth movement is audio-driven; the Talk gesture does not flap
   // a silent character's jaw. Nonverbal Laugh may still animate expressively.
-  const animationSpeech = action === 'laugh' ? .22 + .32 * (Math.sin(t * 10.2) ** 2) : 0;
+  const animationSpeech = action === 'laugh' ? .22 + .32 * (Math.sin(t * 10.2) ** 2) : action==='cry'?.28+.37*Math.sin(t*10.5)**2:0;
   const speaking = Boolean(speechCue && speechCue.weight > 0);
   const envelope = clamp(Number.isFinite(audioAmplitude) ? audioAmplitude : 0);
   // Text supplies the viseme. Audio drives emphasis; silence closes the jaw.

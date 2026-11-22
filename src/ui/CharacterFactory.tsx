@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Maximize2, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { armBuilds, bodyFrames, legBuilds } from '../engine/bodyBuild.ts';
 import { createRenderer } from '../engine/renderer.ts';
+import { animations } from '../engine/animation.ts';
 import { fitCharacterPreview } from '../engine/previewLayout.ts';
 import { CharacterChoices } from './CharacterChoices.tsx';
 import { NativeCharacterPreview } from './NativeCharacterPreview.tsx';
@@ -56,7 +58,9 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       const animate = (now: number) => {
         const { draft, action, expression, view, flip, scale, look, mouthTest } = frame.current;
         if (lastAction !== action) { lastAction = action; reset = now; }
-        const time = ((now - reset) / 1000) % 8;
+        const performance=animations[action];
+        const span=performance.loop?8:Math.min(8,performance.duration+.75);
+        const time = ((now - reset) / 1000) % span;
         if (!document.hidden && Math.floor(time * 24) !== previous) {
           previous = Math.floor(time * 24);
           const layout = fitCharacterPreview(draft, scale, action);
@@ -64,12 +68,13 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           actor.characterId = draft.id; actor.x = layout.x; actor.y = layout.y; actor.scale = layout.scale;
           actor.view = view; actor.flip = flip; actor.expression = expression;
           const body = scene.clips[0], face = scene.clips[1];
-          if (body.track === 'body') body.action = action;
+          if (body.track === 'body'){body.action=action;body.length=performance.loop?8:performance.duration+.22;}
           if (face.track === 'face') face.expression = expression;
           if (action === 'talk') {
             scene.clips[2] = { id: 'example-speech', track: 'dialogue', actor: 'preview', text: 'Hello there! Let us create a cartoon. Watch my mouth moving!', asset: 'builtin:sbu-food',
               start: 0, length: 8, muted: false, volume: 1, offset: 0 };
           } else scene.clips.length = 2;
+          if(face.track==='face')face.start=expression==='neutral'?8:0;
           const gaze = look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } :
             look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 };
           try {
@@ -89,6 +94,8 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   const update = <K extends keyof Character>(key: K, value: Character[K]) => setDraft(item => ({ ...item, [key]: value }));
   type Closet = NonNullable<Character['wardrobe']>;
   const updateCloset=<K extends keyof Closet>(key:K,value:Closet[K])=>setDraft(item=>({...item,wardrobe:{...item.wardrobe,[key]:value}}));
+  const updateBuild=<K extends keyof NonNullable<Character['bodyBuild']>>(key:K,value:NonNullable<Character['bodyBuild']>[K])=>
+    setDraft(item=>({...item,bodyBuild:{...item.bodyBuild,[key]:value}}));
   const toothColors=Array.from({length:6},(_,index)=>draft.toothColors?.[index]??(draft.goldTeeth?.includes(index)?'#eac05c':'#fff4de'));
 
   return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
@@ -109,10 +116,25 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         setDraft(current => ({ ...item, id: current.id, name: current.name }));
       }}>Surprise me ✨</button></div>
       <div className="preset-row" aria-label="Character presets">{characters.map(item => <button key={item.id} type="button" title={item.name} aria-label={`Use ${item.name} preset`} onClick={() => setDraft({ ...item, id: draft.id, name: draft.name })}><Avatar character={item}/><span>{item.name}</span></button>)}</div>
-      <div className="segmented factory-categories">{sections.map(item => <button key={item} type="button" onClick={() => setSection(item)} className={item === section ? 'active' : ''}>{item}</button>)}</div>
+      <div className="segmented factory-categories" role="group" aria-label="Character sections">{sections.map(item => <button key={item} type="button" onClick={() => setSection(item)} aria-pressed={item===section} className={item === section ? 'active' : ''}>{item}</button>)}</div>
       <div className="factory-fields">
         {section!=='Body'&&<CharacterChoices key={section} section={section} character={draft} change={update} changeCloset={updateCloset}/>}
-        {section === 'Body' && <><p className="factory-helper">Start with three simple proportions. Your character stays rigged at every size.</p>{(['height', 'head', 'thickness'] as const).map(id => <label className="field slider" key={id}>{sliders[id]}<input type="range" min={id === 'thickness' ? .65 : .75} max={id === 'head' ? 1.35 : id === 'thickness' ? 1.45 : 1.3} step={.01} value={draft[id]} onChange={e => update(id, Number(e.target.value))}/></label>)}</>}
+        {section === 'Body' && <>
+          {([
+            ['frame','Body type',bodyFrames],['arms','Arms / biceps',armBuilds],['legs','Leg build',legBuilds]
+          ] as const).map(([id,label,options])=><div className="factory-build-field" key={id}>
+            <strong>{label}</strong><div className="choice-pills" role="group" aria-label={label}>
+              {options.map(value=><button type="button" key={value} aria-pressed={(draft.bodyBuild?.[id]??'regular')===value}
+                className={(draft.bodyBuild?.[id]??'regular')===value?'selected':''}
+                onClick={()=>updateBuild(id,value)}>{value[0].toUpperCase()+value.slice(1)}</button>)}
+            </div>
+          </div>)}
+          {([['chest','Chest fullness'],['hips','Hip and seat fullness']] as const).map(([id,label])=><label className="field slider" key={id}>{label}
+            <input type="range" min={0} max={1} step={.01} value={draft.bodyBuild?.[id]??0} onChange={event=>updateBuild(id,Number(event.currentTarget.value))}/>
+          </label>)}
+          <label className="check"><input type="checkbox" checked={draft.bodyBuild?.abs??false} onChange={event=>updateBuild('abs',event.currentTarget.checked)}/> Six-pack definition in shirtless outfits</label>
+          {(['height', 'head', 'thickness'] as const).map(id => <label className="field slider" key={id}>{sliders[id]}<input type="range" min={id === 'thickness' ? .65 : .75} max={id === 'head' ? 1.35 : id === 'thickness' ? 1.45 : 1.3} step={.01} value={draft[id]} onChange={e => update(id, Number(e.target.value))}/></label>)}
+        </>}
         {section === 'Face' && <div className="factory-teeth-editor">
           <strong>Tooth color</strong>
           <div className="factory-teeth-row" role="group" aria-label="Select a tooth">

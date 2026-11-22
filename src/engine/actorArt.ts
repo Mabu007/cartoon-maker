@@ -1,6 +1,7 @@
+import { bodyProportions } from './bodyBuild.ts';
 import { gaitProfiles, type GaitStyle } from './performanceCatalog.ts';
 import { Graphics, type Container } from 'pixi.js';
-import { armIK, gaitLeg, rig, viewForward, type Point } from './animation.ts';
+import { armIK, gaitLeg, mix, rig, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
 import { drawIllustratedHair, drawIllustratedHand, shade, type HandPose } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
@@ -32,23 +33,42 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle}) {
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number}) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
   const art = viewArt[view];
   const r = rig(c, pose, art.width);
   const limbWidth = 10 * c.thickness;
-  const arm = (side: 'left' | 'right', carrying = false) => {
+  const build=bodyProportions(c);
+  const bodyArt=g;
+  const crying=action==='cry'&&!art.rear;
+  const freeHand=(side:'left'|'right')=>!(held&&side==='right')&&
+    !(c.wardrobe?.handheld&&c.wardrobe.handheld!=='none'&&(c.wardrobe.hand??'right')===side);
+  const cryHand=(side:'left'|'right')=>crying&&freeHand(side);
+  const arm = (side: 'left' | 'right', carrying = false, g:Graphics=bodyArt) => {
     const joint = r[side];
-    const [elbow, hand] = carrying ? armIK(joint.shoulder, { x: r.head.x + (art.rear ? -26 : 45), y: r.head.y + 43 }, 28 * c.arms, 28 * c.arms, 1) : [joint.elbow, joint.hand];
+    let [elbow, hand] = carrying ? armIK(joint.shoulder, { x: r.head.x + (art.rear ? -26 : 45), y: r.head.y + 43 }, 28 * c.arms, 28 * c.arms, 1) : [joint.elbow, joint.hand];
+    const reachesFace=cryHand(side);
+    if(reachesFace){
+      const sign=side==='right'?1:-1, weight=appearance?.actionWeight??1;
+      const eyeX=r.head.x+(art.profile?15:art.face*.38+sign*12)*c.head;
+      const rub=Math.sin(actionTime*17+sign*.5)*2.5;
+      [elbow,hand]=armIK(joint.shoulder,{ x:mix(hand.x,eyeX+sign*1.6,weight),
+        y:mix(hand.y,r.head.y+(-3+rub)*c.head,weight) },28*c.arms,28*c.arms,sign);
+    }
     const coverage=sleeveCoverage(c);
     const upper=coverage<=1;
     const cuffStart=upper?joint.shoulder:elbow, cuffEnd=upper?elbow:hand;
     const cover=upper?coverage:coverage-1;
     const cuff={x:cuffStart.x+(cuffEnd.x-cuffStart.x)*cover,y:cuffStart.y+(cuffEnd.y-cuffStart.y)*cover};
-    stroke(g,[joint.shoulder,elbow,hand],limbWidth,c.skin);
+    if(build.arm===1)stroke(g,[joint.shoulder,elbow,hand],limbWidth,c.skin);
+    else{
+      stroke(g,[joint.shoulder,elbow],limbWidth*build.arm,c.skin);
+      stroke(g,[elbow,hand],limbWidth*(.63+.37*build.arm),c.skin);
+      if(build.arm>1)segment(g,(joint.shoulder.x+elbow.x)/2,(joint.shoulder.y+elbow.y)/2,elbow.x,elbow.y,shade(c.skin,-.18),1.2);
+    }
     if(coverage>0) {
-      stroke(g,upper?[joint.shoulder,cuff]:[joint.shoulder,elbow,cuff],limbWidth+4,c.shirt);
+      stroke(g,upper?[joint.shoulder,cuff]:[joint.shoulder,elbow,cuff],limbWidth*build.arm+4,c.shirt);
       segment(g,cuff.x-3,cuff.y,cuff.x+3,cuff.y+1,c.wardrobe?.trim??shade(c.shirt,-.27),1.45);
     }
     const costumeHand = c.wardrobe?.hand ?? 'right';
@@ -60,7 +80,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
     if(holdsCostume) drawHandheld(g,c,hand);
     const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
-    const rotation=handMode==='relaxed'?forearm-Math.PI/2:handMode==='open'?forearm+Math.PI/2:0;
+    const rotation=reachesFace?(side==='right'?-.7:.7):handMode==='relaxed'?forearm-Math.PI/2:handMode==='open'?forearm+Math.PI/2:0;
     const facing=art.profile?1:(side==='right'?1:-1)*(art.rear?-1:1);
     g.context.save().setTransform(at(hand.x,hand.y,art.profile&&handMode==='relaxed'?.73:1,1,rotation*180/Math.PI));
     drawIllustratedHand(g,0,0,limbWidth*(art.profile&&side==='left'?.78:.91),c.skin,handMode,facing<0?-1:1);
@@ -91,13 +111,15 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         y:joint.foot.y+(walkingFoot.y-joint.foot.y)*gaitWeight};
     }
     const bottom=c.wardrobe?.bottoms??(c.outfit==='athleisure'?'leggings':'straight');
+    const swim=c.outfit==='bikini';
     const shorts=bottom==='shorts'||bottom==='biker-shorts';
-    const width={straight:11,cargo:16,joggers:13,shorts:15,'wide-leg':17,'skinny-jeans':8,skirt:10,'cargo-joggers':15,leggings:8,'biker-shorts':10}[bottom]*c.thickness;
-    if(shorts||bottom==='skirt') {
-      stroke(g,[joint.upper,knee,foot],limbWidth*.82,c.skin);
-      if(shorts)stroke(g,[joint.upper,{x:(joint.upper.x+knee.x)/2,y:(joint.upper.y+knee.y)/2}],width,c.pants);
+    const width={straight:11,cargo:16,joggers:13,shorts:15,'wide-leg':17,'skinny-jeans':8,skirt:10,'cargo-joggers':15,leggings:8,'biker-shorts':10}[bottom]*c.thickness*build.leg;
+    if(swim||shorts||bottom==='skirt') {
+      stroke(g,[joint.upper,knee,foot],limbWidth*.82*build.leg,c.skin);
+      if(shorts&&!swim)stroke(g,[joint.upper,{x:(joint.upper.x+knee.x)/2,y:(joint.upper.y+knee.y)/2}],width,c.pants);
     } else {
       stroke(g,[joint.upper,knee,foot],width,c.pants);
+      if(build.calves>1)stroke(g,[knee,{x:(knee.x+foot.x)/2,y:(knee.y+foot.y)/2}],width*build.calves,c.pants);
       if(bottom==='joggers'||bottom==='cargo-joggers')segment(g,knee.x,knee.y,foot.x,foot.y,c.wardrobe?.trim??shade(c.pants,.22),1.4);
       if(bottom==='cargo'||bottom==='cargo-joggers')rect(g,(joint.upper.x+knee.x)/2-5,(joint.upper.y+knee.y)/2-3,10,9,shade(c.pants,.13),2,1);
       if(bottom==='skinny-jeans'||bottom==='leggings')segment(g,foot.x-3,foot.y-5,foot.x+3,foot.y-5,shade(c.pants,.28),1.4);
@@ -106,9 +128,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     drawShoe(g,c,foot,toe,costume,view==='back');
   };
   leg(art.rear?'right':'left'); leg(art.rear?'left':'right');
-  arm(art.rear?'right':'left',art.rear&&Boolean(held));
-  if(c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
-    const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness;
+  if(!cryHand(art.rear?'right':'left'))arm(art.rear?'right':'left',art.rear&&Boolean(held));
+  if(c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
+    const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
     vector(g,`M ${x-width} ${y-5}H${x+width}L${x+width*1.29} ${y+hem}Q${x} ${y+hem+7} ${x-width*1.29} ${y+hem}Z`,c.pants,INK,2.1);
     for(const offset of [-.57,0,.57]) segment(g,x+offset*width,y+2,x+offset*width*1.15,y+hem,shade(c.pants,-.28),1.1);
@@ -116,7 +138,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   drawTop(g,c,art,r.neck,r.hip,costume);
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
-  arm(art.rear?'left':'right',!art.rear&&Boolean(held));
+  if(!cryHand(art.rear?'left':'right'))arm(art.rear?'left':'right',!art.rear&&Boolean(held));
+  if(cryHand('left'))arm('left',false,appearance?.gestureArt??g);
+  if(cryHand('right'))arm('right',false,appearance?.gestureArt??g);
   face.position.set(r.head.x, r.head.y);
   face.angle = r.angle + (listening ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
   face.scale.set(c.head*turnScale,c.head);
@@ -126,9 +150,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const headView = lookAtCamera && (art.profile || art.rear)
     ? view === 'back' ? 'back' : 'three-quarter' : view;
   const facialArt=appearance?.art??(face instanceof Graphics?face:undefined);
-  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera);
+  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined);
 }
-function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean) {
+function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number) {
   const art=viewArt[view], {rear,profile}=art;
   const layers=resetEyeLayers(face);
   const {w,h}=headMetrics(c,art), q=c.wardrobe;
@@ -161,6 +185,12 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   if(!profile&&['happy','excited','sad'].includes(mood.expression)) {
     for(const x of eyes)g.ellipse(Math.max(-w+9,Math.min(w-9,x+(x<center?-8:8))),14,5,2.7)
       .fill({color:mood.expression==='sad'?'#956a80':'#db887b',alpha:.23});
+  }
+  if(cryTime!==undefined){
+    eyes.forEach((x,index)=>{
+      const fall=(cryTime*2.1+index*.43)%1;
+      g.ellipse(x+(index?3:-3),eyeY+15+fall*25,2.3,3.9+fall*2).fill({color:'#80d8f3',alpha:1-fall*.7});
+    });
   }
   drawEyewear(layers.eyewear,c,art,eyes,eyeY);
   const noseX=profile?w*.94:center;

@@ -1,3 +1,4 @@
+import { shiftVoice } from '../engine/voiceEffects.ts';
 import { soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
 import { clamp } from '../engine/animation.ts';
 import { builtinVoiceNames, soundNames, type Project, type Scene, type SoundClip } from '../engine/schema.ts';
@@ -124,25 +125,64 @@ async function readSound(asset: string) {
   return pending;
 }
 
-let audition: { context: AudioContext; source: AudioBufferSourceNode } | undefined;
+// Cache by decoded source and pitch. EQ remains live and never duplicates PCM.
+const pitched = new WeakMap<AudioBuffer, Map<number,AudioBuffer>>();
+function clipBuffer(context:BaseAudioContext,buffer:AudioBuffer,clip:SoundClip) {
+  const pitch=clip.track==='dialogue'?clip.voiceEffect?.pitch??0:0;
+  if(!pitch)return buffer;
+  let cache=pitched.get(buffer);
+  if(!cache){cache=new Map();pitched.set(buffer,cache);}
+  const entry=cache.get(pitch);
+  if(entry)return entry;
+  const source=Array.from({length:buffer.numberOfChannels},(_,channel)=>buffer.getChannelData(channel));
+  const shifted=shiftVoice(source,buffer.sampleRate,pitch);
+  const result=context.createBuffer(shifted.length,buffer.length,buffer.sampleRate);
+  shifted.forEach((channel,index)=>result.getChannelData(index).set(channel));
+  if(cache.size>=2)cache.delete(cache.keys().next().value!);
+  cache.set(pitch,result);
+  return result;
+}
+function wireClip(context:BaseAudioContext,source:AudioBufferSourceNode,gain:GainNode,clip:SoundClip) {
+  const nodes:AudioNode[]=[source];
+  const voice=clip.track==='dialogue'?clip.voiceEffect:undefined;
+  if(voice){
+    for(const [type,frequency,value] of [['lowshelf',200,voice.bass],['highshelf',2600,voice.clarity]] as const){
+      if(!value)continue;
+      const filter=context.createBiquadFilter();
+      filter.type=type;filter.frequency.value=frequency;filter.gain.value=value;
+      nodes.at(-1)!.connect(filter);nodes.push(filter);
+    }
+  }
+  nodes.at(-1)!.connect(gain);
+  return ()=>[...nodes,gain].forEach(node=>node.disconnect());
+}
+let audition: { stop:()=>void } | undefined;
 let auditionToken=0;
-export async function previewSound(name:SoundName) {
+export function stopSoundPreview(){auditionToken++;audition?.stop();audition=undefined;}
+export function previewSound(name:SoundName) {
+  return auditionClip({ id:'audition',track:'audio',start:0,length:soundDurations[name],name,asset:'builtin:'+name,volume:.45,muted:false,offset:0 });
+}
+export async function auditionClip(clip:SoundClip) {
+  stopSoundPreview();
   const token=++auditionToken;
-  if(audition){audition.source.stop();void audition.context.close().catch(()=>{});audition=undefined;}
   const context=new AudioContext();
   try {
     await context.resume();
-    const {buffer}=await readSound('builtin:'+name);
+    const {buffer}=await readSound(clip.asset);
     if(token!==auditionToken){await context.close();return;}
+    const playback=soundPlayback(clip,0,buffer.duration);
+    if(!playback){await context.close();return;}
     const source=context.createBufferSource(), gain=context.createGain();
-    gain.gain.value=.45;
-    source.buffer=buffer;source.connect(gain);gain.connect(context.destination);
-    audition={context,source};
-    source.onended=()=>{
-      if(audition?.source===source)audition=undefined;
-      if(context.state!=='closed')void context.close().catch(()=>{});
-    };
-    source.start();
+    source.buffer=clipBuffer(context,buffer,clip);
+    source.loop=Boolean(clip.loop);
+    const detach=wireClip(context,source,gain,clip);
+    gain.connect(context.destination);
+    const when=context.currentTime+.025;
+    applyGainEnvelope(gain,clip,0,0,playback.duration,when,0);
+    const close=()=>{detach();if(context.state!=='closed')void context.close().catch(()=>{});};
+    audition={stop:()=>{source.onended=null;source.stop();close();}};
+    source.onended=()=>{if(auditionToken===token)audition=undefined;close();};
+    source.start(when,playback.offset,playback.duration);
   } catch(error) {
     if(context.state!=='closed')void context.close().catch(()=>{});
     throw error;
@@ -191,13 +231,23 @@ export function createAudioMixer() {
   const limiter = context.createDynamicsCompressor();
   master.connect(limiter);
   const prepared = new Map<string, DecodedSound>();
-  let sources: AudioBufferSourceNode[] = [];
+  const voiceBuffers=new Map<string,AudioBuffer>();
+  let sources: {source:AudioBufferSourceNode;detach:()=>void}[] = [];
   let monitoring = false;
   function monitor() { if (!monitoring) { limiter.connect(context.destination); monitoring = true; } }
-  function stop() { for (const source of sources) { try { source.stop(); } catch { /* already ended */ } source.disconnect(); } sources = []; }
+  function stop() { for (const {source,detach} of sources) { source.onended=null;try { source.stop(); } catch { /* already ended */ } detach(); } sources = []; }
   async function prepare(scenes: Scene[]) {
-    const assets = new Set(soundEvents(scenes).map(event=>event.clip.asset));
+    const events=soundEvents(scenes);
+    const assets=new Set(events.map(event=>event.clip.asset));
     await Promise.all([...assets].map(async asset => { prepared.set(asset, await readSound(asset)); }));
+    voiceBuffers.clear();
+    for(const {clip} of events){
+      if(clip.track!=='dialogue'||!clip.voiceEffect?.pitch)continue;
+      const key=clip.asset+'/'+clip.voiceEffect.pitch;
+      const audio=prepared.get(clip.asset);
+      if(audio&&!voiceBuffers.has(key))voiceBuffers.set(key,clipBuffer(context,audio.buffer,clip));
+    }
+    for(const asset of prepared.keys())if(!assets.has(asset))prepared.delete(asset);
   }
   function schedule(scenes: Scene[], offset: number, when = context.currentTime) {
     stop();
@@ -210,14 +260,15 @@ export function createAudioMixer() {
       const playback = soundPlayback(clip, position, audio.buffer.duration, offset);
       if (!playback) continue;
       const source = context.createBufferSource(), gain = context.createGain();
-      source.buffer = audio.buffer;
+      const voiceKey=clip.track==='dialogue'?clip.asset+'/'+(clip.voiceEffect?.pitch??0):'';
+      source.buffer = voiceBuffers.get(voiceKey)??audio.buffer;
       if(clip.loop){source.loop=true;source.loopStart=0;source.loopEnd=audio.buffer.duration;}
-      source.connect(gain); gain.connect(master);
+      const detach=wireClip(context,source,gain,clip);gain.connect(master);
       const start=Math.max(position,offset), end=start+playback.duration;
       applyGainEnvelope(gain,clip,position,start,end,when,offset,dialogue);
-      source.onended = () => { source.disconnect(); gain.disconnect(); };
+      source.onended = () => { detach(); sources=sources.filter(item=>item.source!==source); };
       source.start(when + playback.delay, playback.offset, playback.duration);
-      sources.push(source);
+      sources.push({source,detach});
     }
   }
   function amplitude(scene: Scene, actor: string, time: number) {
@@ -246,9 +297,9 @@ export async function mixOffline(scenes: Scene[], duration: number, signal: Abor
     if (!playback) return;
     const source = context.createBufferSource();
     const gain = context.createGain();
-    source.buffer = buffer;
+    source.buffer = clipBuffer(context,buffer,clip);
     if(clip.loop){source.loop=true;source.loopStart=0;source.loopEnd=buffer.duration;}
-    source.connect(gain).connect(master);
+    wireClip(context,source,gain,clip);gain.connect(master);
     applyGainEnvelope(gain,clip,position,position,position+playback.duration,0,0,dialogue);
     source.start(playback.delay, playback.offset, playback.duration);
   }));

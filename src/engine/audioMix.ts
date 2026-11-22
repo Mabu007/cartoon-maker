@@ -40,6 +40,11 @@ export function gainAt(clip: SoundClip, position: number, time: number, dialogue
 export function gainKeyframes(clip: SoundClip, position: number, start: number, end: number, dialogue: SoundWindow[]=[]): SoundWindow[] {
   const knots=[start,end,position,position+clip.length,
     position+(clip.fadeIn??0),position+clip.length-(clip.fadeOut??0)];
+  const fadeIn=Math.min(clip.length,clip.fadeIn??0), fadeOut=Math.min(clip.length,clip.fadeOut??0);
+  if(fadeIn+fadeOut>clip.length){
+    const from=Math.max(start,position+clip.length-fadeOut), to=Math.min(end,position+fadeIn);
+    for(let i=1;i<16;i++)knots.push(from+(to-from)*i/16);
+  }
   if(clip.track==='music') for (const item of dialogue)
     knots.push(item.start-DUCK_ATTACK,item.start,item.end,item.end+DUCK_RELEASE);
   const unique=[...new Set(knots.filter(t=>t>=start-1e-7 && t<=end+1e-7).map(t=>Math.max(start,Math.min(end,t))))].sort((a,b)=>a-b);

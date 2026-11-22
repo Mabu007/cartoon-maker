@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent }
 import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2 } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
 import { type Project, type Scene } from '../engine/schema.ts';
+import { pathNodes,smoothPath } from '../engine/stagePath.ts';
 import { evaluate } from '../engine/evaluate.ts';
 import { clamp } from '../engine/animation.ts';
 import { prepareDialoguePreview, type Mixer } from '../services/audio.ts';
@@ -10,16 +11,17 @@ import type { Selection } from '../studio.ts';
 type Position = { x: number; y: number };
 type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
 export type PreviewTime = { scene: Scene; local: number; movie: number };
-export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, edgePlacement, flipEntity, duplicateEntity, removeEntity }: {
+export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, editPath, smoothGuide, movePathPoint, removePathPoint, edgePlacement, flipEntity, duplicateEntity, removeEntity }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
   selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
-  onDestination?: (position: Position, waypoint?: boolean) => void; pathPoints?: Position[]; edgePlacement?: boolean; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
+  onDestination?: (position: Position, waypoint?: boolean) => void; pathPoints?: Position[]; editPath?:boolean; smoothGuide?:boolean; movePathPoint?:(index:number,point:Position)=>void; removePathPoint?:(index:number)=>void; edgePlacement?: boolean; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
   flipEntity?: (id: string) => void; duplicateEntity?: (id: string) => void; removeEntity?: (id: string) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), hover = useRef<string | undefined>(undefined), repaint = useRef<() => void>(() => {});
+  const nodeDrag=useRef<{index:number;pointerId:number;offset:Position}|undefined>(undefined);
   const guide=useRef<SVGSVGElement>(null);
-  const currentPath=useRef(pathPoints);
-  currentPath.current=pathPoints;
+  const currentPath=useRef({points:pathPoints,smooth:smoothGuide});
+  currentPath.current={points:pathPoints,smooth:smoothGuide};
   const renderedFrame=useRef<ReturnType<typeof evaluate> | undefined>(undefined);
   const dialogue = useRef<{ scene: Scene; amplitude: Awaited<ReturnType<typeof prepareDialoguePreview>> } | null>(null);
   useEffect(() => {
@@ -84,16 +86,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
             : p.mixer.current?.amplitude(scene, id, t) ?? 0
         });
         renderedFrame.current=frame;
-        const overlay=guide.current;
-        if(overlay && currentPath.current?.length){
-          overlay.setAttribute('viewBox',`0 0 ${renderer.width} ${renderer.height}`);
-          const points=currentPath.current.map(renderer.projectPoint);
-          overlay.querySelector('polyline')?.setAttribute('points',points.map(({x,y})=>x+','+y).join(' '));
-          overlay.querySelectorAll('circle').forEach((dot,index)=>{
-            const point=points[index];
-            if(point){dot.setAttribute('cx',String(point.x));dot.setAttribute('cy',String(point.y));}
-          });
-        }
+        drawGuide(renderer);
         if (frame.shot !== lastShot) { lastShot = frame.shot; p.onFrame?.(frame.shot); }
         } catch (error) { fail(error); }
       };
@@ -123,19 +116,39 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       }
     };
   }, [format, quality, restart]);
-  useEffect(() => { if (!playing) repaint.current(); }, [project, scene, playing, edit, selection, subtitles, pathPoints]);
+  function drawGuide(renderer:Renderer){
+    const overlay=guide.current, {points:path,smooth}=currentPath.current;
+    if(!overlay||!path?.length)return;
+    overlay.setAttribute('viewBox',`0 0 ${renderer.width} ${renderer.height}`);
+    const points=path.map(renderer.projectPoint);
+    const keys=pathNodes(path);
+    const line=smooth&&keys.length>2?Array.from({length:65},(_,index)=>renderer.projectPoint(smoothPath(keys,index/64))):points;
+    overlay.querySelector('polyline')?.setAttribute('points',line.map(({x,y})=>x+','+y).join(' '));
+    overlay.querySelectorAll('circle').forEach((dot,index)=>{
+      if(points[index]){
+        dot.setAttribute('cx',String(points[index].x));
+        dot.setAttribute('cy',String(points[index].y));
+      }
+    });
+  }
+  useEffect(()=>{if(engine.current)drawGuide(engine.current);},[pathPoints,editPath,smoothGuide,playing]);
+  useEffect(() => { if (!playing) repaint.current(); }, [project, scene, playing, edit, selection, subtitles]);
   useEffect(() => { const refresh = () => repaint.current(); window.addEventListener('toonroom-seek', refresh); return () => window.removeEventListener('toonroom-seek', refresh); }, []);
   const selectedActor = selection?.kind === 'actor' ? scene.actors.find(item=>item.id===selection.id) : undefined;
   const selectedObject = selection?.kind === 'object' ? scene.objects.find(item=>item.id===selection.id) : undefined;
   const selectedName = selectedActor ? (project.characters.find(item=>item.id===selectedActor.characterId)?.name ?? 'Character') : selectedObject?.name;
-  function pointer(event: PointerEvent) {
+  function pointer(event: Pick<PointerEvent,'clientX'|'clientY'>) {
     const renderer = engine.current;
     if (!renderer) return;
     const box = renderer.canvas.getBoundingClientRect();
     if (!box.width || !box.height) return;
     return renderer.pick((event.clientX - box.left) * renderer.width / box.width, (event.clientY - box.top) * renderer.height / box.height);
   }
-  return <div className={`stage-format format-${format.replace(':', '-')}`}>
+  return <div className={`stage-format format-${format.replace(':', '-')}`} onDoubleClick={event=>{
+    if(!editPath||(event.target as Element).closest('.stage-path-handle,button'))return;
+    const hit=pointer(event);
+    if(hit)onDestination?.({x:hit.x,y:hit.y},true);
+  }}>
     <div className={`canvas-mount ${edit ? 'place-mode' : ''} ${onDestination?'stage-destination':''}`} ref={mount}
       onPointerDown={event => {
         if (playing || event.button !== 0) return;
@@ -171,8 +184,40 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       onPointerLeave={event => { if (!drag.current) { hover.current = undefined; event.currentTarget.dataset.hoverEntity = 'false'; repaint.current(); } }}
        onPointerCancel={() => { drag.current = null; repaint.current(); }}
       onLostPointerCapture={() => { drag.current = null; repaint.current(); }} />
-    {!playing && !!pathPoints?.length && <svg className="stage-path-guide" ref={guide} aria-hidden="true">
-      <polyline/><g>{pathPoints.map((_,index)=><circle key={index} r={index===0 || index===pathPoints.length-1?7:4}/>)}</g>
+    {!playing && !!pathPoints?.length && <svg className="stage-path-guide" ref={guide} aria-hidden={editPath?undefined:true}>
+      <polyline/><g>{pathPoints.map((point,index)=>{
+        const removable=index>0&&index<pathPoints.length-1;
+        const label=index===0?'Start of path':removable?'Waypoint '+index:'End of path';
+        return <circle key={index} r={editPath?12:removable?4:7}
+          className={editPath?'stage-path-handle':undefined} role={editPath?'button':undefined} tabIndex={editPath?0:undefined}
+          aria-label={editPath?label:undefined}
+          onPointerDown={editPath?event=>{
+            if(event.button!==0)return;
+            event.preventDefault();
+            const hit=pointer(event);
+            if(!hit)return;
+            nodeDrag.current={index,pointerId:event.pointerId,offset:{x:point.x-hit.x,y:point.y-hit.y}};
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }:undefined}
+          onPointerMove={editPath?event=>{
+            const drag=nodeDrag.current;
+            if(drag?.pointerId!==event.pointerId||drag.index!==index)return;
+            const hit=pointer(event);
+            if(hit)movePathPoint?.(index,{x:hit.x+drag.offset.x,y:hit.y+drag.offset.y});
+          }:undefined}
+          onLostPointerCapture={()=>{nodeDrag.current=undefined;}}
+          onContextMenu={editPath&&removable?event=>{event.preventDefault();removePathPoint?.(index);}:undefined}
+          onKeyDown={editPath?event=>{
+            if(removable&&(event.key==='Delete'||event.key==='Backspace')){
+              event.preventDefault();event.stopPropagation();removePathPoint?.(index);return;
+            }
+            const delta=event.shiftKey?15:3;
+            const directions:Record<string,Position>={ArrowLeft:{x:-delta,y:0},ArrowRight:{x:delta,y:0},ArrowUp:{x:0,y:-delta},ArrowDown:{x:0,y:delta}};
+            const offset=directions[event.key];
+            if(!offset)return;
+            event.preventDefault();event.stopPropagation();movePathPoint?.(index,{x:point.x+offset.x,y:point.y+offset.y});
+          }:undefined}>{editPath&&<title>{label}{removable?' · Right-click to remove':''}</title>}</circle>;
+      })}</g>
     </svg>}
     {edgePlacement&&!status&&<div className="stage-edge-tools" role="group" aria-label="Place offstage">
       {(['left','right'] as const).map(side=><button key={side} className="quiet" type="button" onClick={()=>{
