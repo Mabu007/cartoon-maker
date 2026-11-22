@@ -166,6 +166,46 @@
 .mode-direct .professional-timeline .timeline-tools .icon-button { border-radius:9px; color:var(--studio-secondary); }
 .mode-direct .professional-timeline .timeline-tools .icon-button:hover { background:var(--studio-hover); color:var(--studio-accent); }
 .mode-direct .professional-timeline .timeline-tools .icon-button.active { color:var(--studio-accent); background:var(--studio-hover); }
+.mode-direct .professional-timeline .timeline-scene-delete {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+  gap:7px;
+  min-height:32px;
+  padding:0 12px;
+  border:1px solid #e6b5c0;
+  border-radius:10px;
+  background:#fff3f5;
+  color:#9b304b;
+  font-size:11px;
+  font-weight:750;
+  line-height:1.2;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;
+}
+.mode-direct .professional-timeline .timeline-scene-delete:hover {
+  background:#ffe3e8;
+  border-color:#cd788b;
+  box-shadow:0 2px 8px #a3294620;
+}
+.mode-direct[data-theme="dark"] .professional-timeline .timeline-scene-delete {
+  background:#402832;
+  border-color:#80515d;
+  color:#ffc1cc;
+}
+.mode-direct[data-theme="dark"] .professional-timeline .timeline-scene-delete:hover {
+  background:#56313e;
+  border-color:#ba7a89;
+}
+@media (max-width:1190px) {
+  .mode-direct .professional-timeline .timeline-tools {width:auto;flex:1 1 0;}
+  .mode-direct .professional-timeline .timeline-scene-delete {margin-left:auto;}
+}
+@media (max-width:790px) {
+  .mode-direct .professional-timeline .timeline-scene-delete {min-height:29px;padding:0 9px;gap:5px;}
+}
 .mode-direct .professional-timeline :is(.timeline-scroll,.timeline-sheet,.ruler-points,.lane) { background:transparent; }
 .mode-direct .professional-timeline .ruler { background:var(--studio-panel); border-color:var(--studio-timeline-line); }
 .mode-direct .professional-timeline .ruler-label,.mode-direct .professional-timeline .track-name { background:var(--studio-panel); border-color:var(--studio-timeline-line); color:var(--studio-secondary); }
