@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "npm test && tsc --noEmit && vite build",
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "preview": "vite preview",
+    "verify:offline": "node scripts/verify-offline.mjs"
   },
   "dependencies": {
     "@echogarden/flite-wasi": "^0.1.1",
@@ -35,7 +37,11 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.0",
+    "fake-indexeddb": "^6.2.8",
     "typescript": "^5.9.3",
     "vite": "^7.2.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.7"
   }
 }

@@ -1,3 +1,4 @@
+import { getLocalMedia, putLocalMedia, MissingLocalMedia } from './localMedia.ts';
 import { shiftVoice } from '../engine/voiceEffects.ts';
 import { soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
 import { clamp } from '../engine/animation.ts';
@@ -11,23 +12,20 @@ function audioDatabase() {
   database ??= new Promise((resolve, reject) => {
     const open = indexedDB.open('toonroom-audio', 1);
     open.onupgradeneeded = () => open.result.createObjectStore('sounds');
-    open.onsuccess = () => resolve(open.result);
+    open.onsuccess = () => {open.result.onversionchange=()=>{open.result.close();database=undefined;};resolve(open.result);};
     open.onerror = () => { database = undefined; reject(open.error); };
   });
   return database;
 }
 export async function putAudio(id: string, file: Blob) {
-  const db = await audioDatabase();
-  return new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction('sounds', 'readwrite');
-    transaction.objectStore('sounds').put(file, id);
-    transaction.oncomplete = () => resolve();
-    transaction.onabort = transaction.onerror = () => reject(transaction.error ?? new Error('Could not save audio'));
-  });
+  await putLocalMedia('audio:'+id,file);
 }
-export async function getAudio(id: string) {
+export async function getAudio(id: string):Promise<Blob|undefined> {
+  const local=await getLocalMedia('audio:'+id);
+  if(local)return local;
+  // Read older releases without deleting their original IndexedDB blobs.
   const db = await audioDatabase();
-  return new Promise<Blob | undefined>((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const request = db.transaction('sounds').objectStore('sounds').get(id);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -74,14 +72,17 @@ function effect(context: BaseAudioContext, name: SoundName) {
 }
 type DecodedSound = { buffer: AudioBuffer; envelope: Float32Array };
 const decoders = new Map<string, Promise<DecodedSound>>();
+const decodedBytes=new Map<string,number>();
 let decoderContext: OfflineAudioContext | undefined;
 let remoteAudio: ((id: string) => Promise<Blob | undefined>) | undefined;
 export function setRemoteAudio(loader?: (id: string) => Promise<Blob | undefined>) { remoteAudio = loader; }
 export async function getOrFetchAudio(id: string) {
-  const local = await getAudio(id);
-  if (local || !remoteAudio) return local;
+  let local:Blob|undefined;
+  try {local=await getAudio(id);}
+  catch(error){if(!(error instanceof MissingLocalMedia)||!remoteAudio||!navigator.onLine)throw error;}
+  if (local || !remoteAudio || !navigator.onLine) return local;
   const remote = await remoteAudio(id);
-  if (remote) await putAudio(id, remote).catch(() => {});
+  if (remote) await putAudio(id, remote);
   return remote;
 }
 function envelope(buffer: AudioBuffer) {
@@ -116,10 +117,18 @@ async function readSound(asset: string) {
         if (!blob) throw new Error(`Audio file is missing (${name}). Reattach the original file.`);
         buffer = await context.decodeAudioData(await blob.arrayBuffer());
       }
+      decodedBytes.set(asset,buffer.length*buffer.numberOfChannels*4);
+      const budget=(((navigator as Navigator & {deviceMemory?:number}).deviceMemory??4)<=4?24:64)*1024*1024;
+      let used=[...decodedBytes.values()].reduce((sum,bytes)=>sum+bytes,0);
+      for(const [old,bytes] of decodedBytes){
+        if(used<=budget)break;
+        if(old===asset)continue;
+        decoders.delete(old);decodedBytes.delete(old);used-=bytes;
+      }
       return { buffer, envelope: envelope(buffer) };
     })();
     decoders.set(asset, pending);
-    if (decoders.size > 48) decoders.delete(decoders.keys().next().value!);
+    if (decoders.size > (((navigator as Navigator & {deviceMemory?:number}).deviceMemory??4)<=2 ? 6 : 16)) {const oldest=decoders.keys().next().value!;decoders.delete(oldest);decodedBytes.delete(oldest);}
     pending.catch(() => { if (decoders.get(asset) === pending) decoders.delete(asset); });
   }
   return pending;
@@ -239,7 +248,9 @@ export function createAudioMixer() {
   async function prepare(scenes: Scene[]) {
     const events=soundEvents(scenes);
     const assets=new Set(events.map(event=>event.clip.asset));
-    await Promise.all([...assets].map(async asset => { prepared.set(asset, await readSound(asset)); }));
+    for(const asset of prepared.keys())if(!assets.has(asset))prepared.delete(asset);
+    const queue=[...assets];
+    for(let i=0;i<queue.length;i+=2)await Promise.all(queue.slice(i,i+2).map(async asset=>{prepared.set(asset,await readSound(asset));}));
     voiceBuffers.clear();
     for(const {clip} of events){
       if(clip.track!=='dialogue'||!clip.voiceEffect?.pitch)continue;
@@ -274,7 +285,7 @@ export function createAudioMixer() {
   function amplitude(scene: Scene, actor: string, time: number) {
     return dialogueAmplitude(scene, actor, time, asset => prepared.get(asset)?.envelope);
   }
-  return { context, master, output: limiter, monitor, prepare, schedule, amplitude, stop, close: () => { stop(); if (context.state !== 'closed') void context.close(); } };
+  return { context, master, output: limiter, monitor, prepare, schedule, amplitude, stop, close: () => { stop(); prepared.clear();voiceBuffers.clear(); if (context.state !== 'closed') void context.close(); } };
 }
 export type Mixer = ReturnType<typeof createAudioMixer>;
 export async function audioLength(blob: Blob) {

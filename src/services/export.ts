@@ -1,3 +1,5 @@
+import { outputSize } from '../engine/exportQuality.ts';
+import { videoFormats } from '../engine/videoFormats.ts';
 import { createRenderer } from '../engine/renderer.ts';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from '../engine/evaluate.ts';
 import type { Project } from '../engine/schema.ts';
@@ -14,7 +16,7 @@ const recorderCodec = (container: VideoContainer) =>
     ? undefined : mimeTypes[container].find(codec => MediaRecorder.isTypeSupported(codec));
 export const canExportVideo = () => hasFrameEncoder() || Boolean(recorderCodec('mp4') || recorderCodec('webm'));
 const recorderExporter = (mimeType: string): VideoExporter => ({
-  async run(project, format, subtitles, signal, progress) {
+  async run(project, format, subtitles, signal, progress, quality) {
     const mixer = createAudioMixer();
     let renderer: Awaited<ReturnType<typeof createRenderer>> | undefined;
     let stream: MediaStream | undefined;
@@ -23,7 +25,7 @@ const recorderExporter = (mimeType: string): VideoExporter => ({
       await mixer.context.resume();
       await mixer.prepare(project.scenes);
       signal.throwIfAborted();
-      renderer = await createRenderer(format, exportScale(format), true);
+      renderer = await createRenderer(format, outputSize(format,quality)[1]/videoFormats[format].viewport[1], true);
       await renderer.prepareImages(project.scenes,project.characters);
       signal.throwIfAborted();
       const renderAt = (time: number) => {
@@ -79,16 +81,16 @@ const recorderExporter = (mimeType: string): VideoExporter => ({
 });
 
 export const browserExporter: VideoExporter = {
-  async run(project, format, subtitles, signal, progress) {
+  async run(project, format, subtitles, signal, progress, quality) {
     const frame = hasFrameEncoder() ? await import('./frameExport.ts') : undefined;
     for (const container of ['mp4', 'webm'] as const) {
       signal.throwIfAborted();
-      if (frame) {
-        try { return await frame.frameExporter(container).run(project, format, subtitles, signal, progress); }
+      if (frame && !(((navigator as Navigator & {deviceMemory?:number}).deviceMemory??4)<=4 && projectDuration(project.scenes)>45 && recorderCodec(container))) {
+        try { return await frame.frameExporter(container).run(project, format, subtitles, signal, progress, quality); }
         catch (error) { if (!(error instanceof frame.UnsupportedFrameEncoder)) throw error; }
       }
       const codec = recorderCodec(container);
-      if (codec) return recorderExporter(codec).run(project, format, subtitles, signal, progress);
+      if (codec) return recorderExporter(codec).run(project, format, subtitles, signal, progress, quality);
     }
     throw new Error('This browser cannot export video with audio. Try opening the studio in a current Chrome, Edge or Firefox browser.');
   }
