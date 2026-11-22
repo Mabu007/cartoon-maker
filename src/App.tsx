@@ -4,7 +4,7 @@ import { projectAssets } from './services/audio.ts';
 import { actionLayer, actionUsesProp, propActions, usesSeat, gaitStyleNames, gaitStyles, soundDurations, type GaitStyle } from './engine/performanceCatalog.ts';
 import { insertWaypoint, stagePath, type MoveClip, type PathMode, type TravelGait } from './engine/stagePath.ts';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, Trash2, X } from 'lucide-react';
+import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, Trash2, X, Camera } from 'lucide-react';
 import { missingRentMovie } from './engine/production.ts';
 import { animations, clamp, type Point } from './engine/animation.ts';
 import { moveLayer, nextLayerDepth, type LayerMove } from './engine/sceneLayers.ts';
@@ -25,6 +25,9 @@ import { addMovieScene, duplicateMovieScene, renameMovieScene, reorderMovieScene
 
 import { backupMovie, restoreMovie, portableProject } from './services/projectExchange.ts';
 import { PrecisionLipSyncEditor } from './ui/PrecisionLipSyncEditor.tsx';
+import { PerformanceStudio } from './ui/PerformanceStudio.tsx';
+import type { MotionDNA } from './engine/performanceCapture.ts';
+import './performance.css';
 import { analyzeLocalLipSync } from './services/localLipSync.ts';
 import { prepareArtwork } from './services/artwork.ts';
 import { setMediaUser } from './services/media.ts';
@@ -74,7 +77,7 @@ type Placement =
       mode:PathMode; actor?:string; character?:string; editing?:string}
   | {kind:'point'|'recover'|'overlay';sceneId:string; start:number; id:string; action?:'point'|'reach'}
   | {kind:'prop-landing';sceneId:string;start:number;clip:Extract<Clip,{track:'body'}>;createProp?:Prop['kind'];editing?:boolean};
-type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | 'code' | 'lipsync' | null;
+type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | 'code' | 'lipsync' | 'performance' | null;
 type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[]; backgroundImage?: string };
 const worldKey = (scope: string) => `toonroom.worlds.v1.${scope}`;
 function worldPresets(scope: string): WorldPreset[] {
@@ -1170,6 +1173,33 @@ export default function App() {
     const character = actor && project.characters.find(item => item.id === actor.characterId);
     if (clip?.track === 'dialogue' && character) content = <PrecisionLipSyncEditor key={clip.id} clip={clip} character={character} change={patchClip} close={close} regenerate={() => alignVoiceClip(clip,'phonetic')} undo={() => useStudio.getState().undo()} redo={() => useStudio.getState().redo()} canUndo={hasUndo} canRedo={hasRedo}/>;
   }
+  if (dialog === 'performance') content = <PerformanceStudio key={session + scene.id} scene={scene}
+    selectedActor={selection?.kind==='actor'?selection.id:scene.actors[0]?.id}
+    start={time.current.local} close={close}
+    commit={async clips=>{
+      const expected=sceneTarget;
+      const state=useStudio.getState();
+      if(state.session!==expected.session||state.sceneId!==expected.sceneId)
+        throw Error('Scene changed while recording. Reopen Performance Studio.');
+      if(clips.some(clip=>scene.trackSettings?.[clip.track]?.locked))
+        throw Error('Unlock the Actions and Dialogue timeline tracks before importing a performance.');
+      const latest=Math.max(...clips.map(clip=>clip.start+clip.length));
+      if(latest>180)throw Error('This performance exceeds the 180-second scene limit.');
+      state.editScene(current=>({...current,duration:Math.max(current.duration,Math.ceil(latest*100)/100),
+        clips:[...current.clips,...clips]}),expected);
+      state.selectClips(clips.map(clip=>clip.id));
+      tell('Performance added to the timeline. Drag or split the clips to edit.');
+    }}
+    saveActingDNA={(actorId,style:MotionDNA)=>{
+      const candidate=scene.actors.find(item=>item.id===actorId);
+      if(!candidate)return;
+      edit(project=>({...project,characters:project.characters.map(character=>character.id===candidate.characterId
+        ?{...character,personality:{...character.personality,autoActing:'subtle',
+          energy:style.energy,gestureAmplitude:style.gestureAmplitude,movementSmoothness:style.movementSmoothness,
+          movementSpeed:clamp(25+style.energy*.7,0,100)}}
+        :character)}));
+      tell('Observed motion style applied to the character. You can adjust it in Character Studio.');
+    }}/>;
   if (dialog === 'export') content = <ExportDialog project={project} initialFormat={format} initialSubtitles={subtitles} close={close}/>;
   if (dialog === 'projects') content = <ProjectsDialog recover={()=>void recoverPrevious().catch(showError)} items={items} current={project.id} close={close} create={newMovie} open={value=>void openLibraryProject(value)} duplicate={value => openProject(duplicateProject(value), true)} remove={deleteProject} demo={openRentExample} backup={() => { void backupMovie(project).then(() => tell('Project backup downloaded.'), showError); }} restore={() => importFile.current?.click()}/>;
   if (dialog === 'scenes') content = <ScenesDialog scenes={project.scenes} active={scene.id}
@@ -1209,7 +1239,7 @@ export default function App() {
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
       <div className="project-controls"><button className="quiet project-button" onClick={async()=>{pause();if(useStudio.getState().dirty&&!await persist())return;close();setHome('projects');}}><House size={17}/><span>Home</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/></label><IconButton title="Project options" onClick={()=>showDialog('projects')}><ChevronDown size={15}/></IconButton>{saveStatus==='Save failed'&&<button className="quiet" onClick={()=>void backupMovie(project).catch(showError)}>Download recovery backup</button>}<span className="save-state" role="status"><Check size={14}/> {headerStatus}</span></div>
-      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><IconButton title={playing?'Pause preview':'Play preview'} onClick={() => void play()}>{playing?<Pause size={17}/>:<Play size={17}/>}</IconButton><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
+      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><button className="quiet performance-launch" title="Record actor performance using camera" onClick={()=>{pause();showDialog('performance');}}><Camera size={16}/><span>Perform</span></button><IconButton title={playing?'Pause preview':'Play preview'} onClick={() => void play()}>{playing?<Pause size={17}/>:<Play size={17}/>}</IconButton><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
     </header>
     {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button><IconButton title="Undo" disabled={!hasUndo} onClick={() => run(() => useStudio.getState().undo())}><Undo2 size={17}/></IconButton><IconButton title="Redo" disabled={!hasRedo} onClick={() => run(() => useStudio.getState().redo())}><Redo2 size={17}/></IconButton></nav>
     <main className={`workspace mobile-${mobilePanel}`} style={{ '--asset-width': `${assetWidth}px`, '--inspector-width': `${inspectorWidth}px` } as CSSProperties}>
