@@ -3,17 +3,20 @@ import { Copy, Maximize2, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-re
 import { armBuilds, bodyFrames, legBuilds } from '../engine/bodyBuild.ts';
 import { createRenderer } from '../engine/renderer.ts';
 import { animations } from '../engine/animation.ts';
+import { resolvePersonality, traitDefaults, type Trait } from '../engine/livingCharacter.ts';
 import { fitCharacterPreview } from '../engine/previewLayout.ts';
 import { CharacterChoices } from './CharacterChoices.tsx';
 import { NativeCharacterPreview } from './NativeCharacterPreview.tsx';
-import { actions, expressions, label, uid, views, type Action, type Character, type Expression, type Scene, type View } from '../engine/schema.ts';
+import { actions, expressions, label, uid, views, personalityPresets, signatureMannerisms, type Action, type Character, type Expression, type Scene, type View } from '../engine/schema.ts';
 import { characters } from '../engine/presets.ts';
 import { visemeNames, type Viseme } from '../engine/visemes.ts';
 import { Avatar, IconButton, Modal, Select } from './shared.tsx';
 
 const sliders = { height: 'Height', head: 'Head size', thickness: 'Build', torso: 'Torso length', arms: 'Arm length', legs: 'Leg length', eyeSpacing: 'Eye spacing' } as const;
 const skinTones = ['#f2c49b', '#d89b70', '#b97550', '#925b40', '#76452f', '#503123'];
-const sections = ['Hair','Face','Outfit','Accessories','Body'] as const;
+const sections = ['Hair','Face','Outfit','Accessories','Body','Personality'] as const;
+const personalityLabels:Record<Trait,string>={confidence:'Confidence',expressiveness:'Expressiveness',energy:'Energy',sociability:'Sociability',nervousness:'Nervousness',aggressiveness:'Aggressiveness',playfulness:'Playfulness',patience:'Patience',restlessness:'Restlessness',emotionalReactivity:'Emotional reactivity',gestureFrequency:'Gesture frequency',gestureAmplitude:'Gesture size',movementSpeed:'Movement speed',postureOpenness:'Posture openness',eyeContact:'Eye contact',personalSpace:'Personal space',reactionIntensity:'Reaction intensity',movementSmoothness:'Movement smoothness'};
+const highImpactTraits:Trait[]=['confidence','expressiveness','energy','nervousness','gestureFrequency','gestureAmplitude','postureOpenness','eyeContact'];
 const viewLabels: Record<View, string> = { front: 'Front', 'three-quarter': '¾ Front', side: 'Side', 'back-quarter': '¾ Back', back: 'Back' };
 export function CharacterFactory({ source, save, close, remove }: { source?: Character; save: (value: Character) => void; close: () => void; remove: (id: string) => void }) {
   const [draft, setDraft] = useState<Character>(() => source ?? { ...characters[0], id: uid(), name: 'New character' });
@@ -23,6 +26,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   const [mouthTest,setMouthTest]=useState<'auto'|Viseme>('auto');
   const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.4), [fallback, setFallback] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const [advancedPersonality,setAdvancedPersonality]=useState(false);
   const [tooth,setTooth]=useState(0);
   const canvas = useRef<HTMLDivElement>(null);
   const frame = useRef({ draft, action, expression, view, flip, scale, look, mouthTest });
@@ -96,6 +100,9 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   const updateCloset=<K extends keyof Closet>(key:K,value:Closet[K])=>setDraft(item=>({...item,wardrobe:{...item.wardrobe,[key]:value}}));
   const updateBuild=<K extends keyof NonNullable<Character['bodyBuild']>>(key:K,value:NonNullable<Character['bodyBuild']>[K])=>
     setDraft(item=>({...item,bodyBuild:{...item.bodyBuild,[key]:value}}));
+  const updatePersonality = <K extends keyof NonNullable<Character['personality']>>(key:K,value:NonNullable<Character['personality']>[K])=>
+    setDraft(current=>({...current,personality:{...current.personality,[key]:value}}));
+  const activePersonality=resolvePersonality(draft.personality);
   const toothColors=Array.from({length:6},(_,index)=>draft.toothColors?.[index]??(draft.goldTeeth?.includes(index)?'#eac05c':'#fff4de'));
 
   return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
@@ -119,6 +126,35 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       <div className="segmented factory-categories" role="group" aria-label="Character sections">{sections.map(item => <button key={item} type="button" onClick={() => setSection(item)} aria-pressed={item===section} className={item === section ? 'active' : ''}>{item}</button>)}</div>
       <div className="factory-fields">
         {section!=='Body'&&<CharacterChoices key={section} section={section} character={draft} change={update} changeCloset={updateCloset}/>}
+        {section === 'Personality' && <div className="factory-personality">
+          <div className="factory-build-field"><strong>Personality preset</strong>
+            <Select aria="Personality preset" value={activePersonality.preset} options={personalityPresets}
+              onChange={preset=>setDraft(current=>({...current,personality:{
+                preset,autoActing:current.personality?.autoActing??'full',signature:current.personality?.signature??'none'
+              }}))} render={value=>label(value)}/>
+          </div>
+          <p className="small-text">A character's personality affects how they move, gesture and listen. Press Play on the preview to see it.</p>
+          <div className="factory-build-field"><strong>Auto-acting</strong><div className="choice-pills" role="group" aria-label="Auto acting mode">
+            {(['full','subtle','off'] as const).map(mode=><button type="button" key={mode}
+              className={activePersonality.autoActing===mode?'selected':''} aria-pressed={activePersonality.autoActing===mode}
+              onClick={()=>updatePersonality('autoActing',mode)}>{label(mode)}</button>)}
+          </div></div>
+          <label className="field">Signature mannerism
+            <Select aria="Signature mannerism" value={activePersonality.signature} options={signatureMannerisms}
+              onChange={value=>updatePersonality('signature',value)} render={value=>label(value)}/>
+          </label>
+          {(advancedPersonality?(Object.keys(traitDefaults) as Trait[]):highImpactTraits).map(key=>
+            <label className="field slider" key={key}><span>{personalityLabels[key]} <small>{Math.round(activePersonality[key])}%</small></span>
+              <input aria-label={personalityLabels[key]} type="range" min={0} max={100} step={1}
+                value={activePersonality[key]} onChange={event=>updatePersonality(key,Number(event.currentTarget.value))}/>
+            </label>)}
+          <button type="button" className="advanced-toggle" aria-expanded={advancedPersonality}
+            onClick={()=>setAdvancedPersonality(value=>!value)}>{advancedPersonality?'− Fewer personality controls':'+ All personality controls'}</button>
+          <div className="field-row">
+            <button className="quiet" type="button" onClick={()=>{setAction('talk');setExpression('neutral');}}>Preview conversation</button>
+            <button className="quiet" type="button" onClick={()=>{setAction('walk');setExpression('neutral');}}>Preview walk</button>
+          </div>
+        </div>}
         {section === 'Body' && <>
           {([
             ['frame','Body type',bodyFrames],['arms','Arms / biceps',armBuilds],['legs','Leg build',legBuilds]
