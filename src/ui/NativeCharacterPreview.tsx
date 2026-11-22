@@ -49,7 +49,11 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const build=bodyProportions(c), swim=c.outfit==='bikini', bare=swim||c.outfit==='shirtless';
   // Native fallback shares the same deterministic elbow/wrist poses as Pixi.
   const locomotion=action==='walk'||action==='run'?action:'idle';
-  const base=sample(animations[action],elapsed);
+  // Mirror the accelerated creator's full Sit -> hold -> Stand audition.
+  const auditionTime=action==='stand'?elapsed%4:elapsed;
+  const auditionAction=action==='stand'&&auditionTime<1.8?'sit':action;
+  const actionTime=action==='stand'&&auditionTime>=1.8?auditionTime-1.8:auditionTime;
+  const base=sample(animations[auditionAction],actionTime);
   const live=livingPose(c,{time:elapsed,actorId:c.id,action,locomotion,expression,
     speaking:action==='talk',speechWeight:speech?.weight??0,listening:action==='listen'},base.pose);
   const bodyRig=rig(c,live,profile?.65:q?.9:1);
