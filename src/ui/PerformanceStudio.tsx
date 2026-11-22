@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles } from 'lucide-react';
-import { compilePerformance, actingDNA, findStrike, makeRecoilKeys,
+import { compilePerformance, actingDNA,
   type CaptureFrame, type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
 import { startPerformanceTracker, type PerformanceTracker } from '../services/performanceTracker.ts';
 import { putAudio } from '../services/audio.ts';
@@ -19,7 +19,6 @@ type Status='idle'|'loading'|'ready'|'recording'|'processing'|'review';
 const maxDuration=18;
 export function PerformanceStudio({scene,selectedActor,start,close,commit,saveActingDNA}:Props) {
   const [actor,setActor]=useState(selectedActor??scene.actors[0]?.id??'');
-  const [opponent,setOpponent]=useState('');
   const [status,setStatus]=useState<Status>('idle');
   const [message,setMessage]=useState('Nothing leaves your device during tracking. Models may be downloaded on the first use.');
   const [intensity,setIntensity]=useState(100);
@@ -143,33 +142,13 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
         }catch{setMessage('Audio saved; precise audio analysis was unavailable. You can refine lip sync later.');}
         clips.push(spoken);
       }
-      const strike=findStrike(result.keys);
-      if(opponent&&opponent!==actor&&strike!==undefined){
-        const recoilStart=Math.min(179.2,startAt+strike*length);
-        clips.push({id:uid(),track:'body',actor:opponent,action:'surprise',layer:'body',
-          start:recoilStart,length:Math.min(.8,180-recoilStart),
-          performance:makeRecoilKeys(),performanceOrigin:'choreography'});
-        // A cinematic beat, not a claim of physical collision. All VFX and
-        // audio remain individually editable and can be removed by the creator.
-        const impactActor=scene.actors.find(a=>a.id===opponent);
-        if(impactActor) {
-          const hitY=clamp(impactActor.y-135*impactActor.scale,-2000,3000);
-          clips.push({id:uid(),track:'vfx',effect:'impact-stars',start:recoilStart,
-            length:Math.min(.35,180-recoilStart),x:impactActor.x,y:hitY,strength:1.1});
-          clips.push({id:uid(),track:'vfx',effect:'camera-shake',start:recoilStart,
-            length:Math.min(.2,180-recoilStart),x:impactActor.x,y:hitY,strength:.55});
-          clips.push({id:uid(),track:'audio',name:'Cartoon impact',asset:'builtin:punch-pop',
-            volume:.6,muted:false,offset:0,start:recoilStart,length:Math.min(.22,180-recoilStart)});
-        }
-      }
+
       await commit(clips);
       dismiss();
     }catch(error){setStatus('review');setMessage('Could not save performance: '+String(error));}
   }
   const style=result?actingDNA(result.keys):undefined;
-  const strike=result?findStrike(result.keys):undefined;
-  const opponents=scene.actors.filter(a=>a.id!==actor);
-  return <Modal title="Performance Studio" description="Act out a scene. SIRVIBE transforms it into editable 2D pose animation." close={dismiss} wide>
+  return <Modal title="Performance Studio" description="Record natural talking, expressive gestures and personality-driven micro movements." close={dismiss} wide>
     <div className="performance-studio">
       <div className="performance-camera">
         <video ref={camera} autoPlay playsInline muted aria-label="Live camera preview for performance capture"/>
@@ -198,18 +177,11 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
         {status==='review'&&result&&<>
           <div className="performance-summary">
             <strong>{result.duration.toFixed(1)}s performance · {result.keys.length} poses</strong>
-            <span>{strike===undefined?'Conversational movement':'Possible strike gesture near '+Math.round(strike*result.duration*10)/10+'s'}</span>
+            <span>Conversational gestures, hand acting and subtle body language</span>
           </div>
           <label>Spoken dialogue (optional transcript)
             <input type="text" maxLength={1000} value={transcript} onChange={e=>setTranscript(e.target.value)} placeholder="Type the words you spoke for dialogue editing"/>
           </label>
-          {opponents.length>0&&<label>Fight choreography (optional)
-            <select value={opponent} onChange={e=>setOpponent(e.target.value)}>
-              <option value="">No staged reaction</option>
-              {opponents.map(a=><option key={a.id} value={a.id}>Add a recoil to {a.id}</option>)}
-            </select>
-            {opponent&&strike===undefined&&<small>No confident strike found. Record a clear fist extension to generate the paired reaction.</small>}
-          </label>}
           {style&&<div className="performance-dna">
             <strong>Observed Acting DNA</strong>
             <span>Energy {style.energy}% · Gesture size {style.gestureAmplitude}% · Dominant {style.dominantHand} hand</span>
