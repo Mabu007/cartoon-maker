@@ -1,3 +1,4 @@
+import { actionUsesProp, propActions, usesSeat } from './performanceCatalog.ts';
 import { isSeating, seats } from './seatingCatalog.ts';
 import { anchors } from './presets.ts';
 import { actions, type Action, type Anchor, type Clip, type Prop, type Scene } from './schema.ts';
@@ -17,13 +18,18 @@ export function anchorFor(object: Prop): Anchor | undefined {
   if(isSeating(object.kind))return {action:'sit',x:0,y:seats[object.kind].seat};
   return anchors[object.kind];
 }
-const fallbackFor = (clip: DependentAction): Action => clip.action === 'sit' ? 'sit' : 'idle';
+const fallbackFor = (clip: DependentAction): Action => usesSeat(clip.action) ? clip.action : 'idle';
 
+export function compatibleObject(object:Prop, action:Action) {
+  const anchor=anchorFor(object)?.action;
+  if(usesSeat(action))return anchor==='sit';
+  if(anchor!=='hold')return false;
+  if(!actionUsesProp(action)||object.kind==='image')return true;
+  const relevant:readonly Prop['kind'][]=propActions[action];
+  return !relevant.length||relevant.includes(object.kind);
+}
 export function compatibleObjects(scene: Scene, action: Action, excludeId?: string): Prop[] {
-  return scene.objects.filter(object =>
-    object.id !== excludeId && (action === 'sit'
-      ? anchorFor(object)?.action === 'sit'
-      : anchorFor(object)?.action === 'hold'));
+  return scene.objects.filter(object=>object.id!==excludeId&&compatibleObject(object,action));
 }
 export function nearestObject(scene: Scene, actorId: string, action: Action, excludeId?: string): Prop | undefined {
   const actor = scene.actors.find(item => item.id === actorId);
@@ -35,8 +41,7 @@ export function objectDependencies(scene: Scene, objectId: string, actorNames: R
   if (!object) return [];
   return scene.clips.flatMap(clip => {
     if (clip.track !== 'body' || clip.target !== objectId) return [];
-    const kind = anchorFor(object)?.action;
-    const alternatives = scene.objects.filter(item => item.id !== objectId && anchorFor(item)?.action === kind);
+    const alternatives = compatibleObjects(scene,clip.action,objectId);
     return [{ clip, actorName: actorNames[clip.actor] ?? scene.actors.find(item => item.id === clip.actor)?.id ?? 'Actor',
       targetName: object.name, alternatives }];
   });
@@ -56,13 +61,12 @@ function resolvedAction(clip: DependentAction, decision: string | undefined): De
 export function removeObjectWithDecisions(scene: Scene, objectId: string, decisions: ObjectDependencyDecision = {}): Scene {
   const removed = scene.objects.find(item => item.id === objectId);
   if (!removed) return scene;
-  const previousKind = anchorFor(removed)?.action;
   const surviving = scene.objects.filter(item => item.id !== objectId);
   const clips = scene.clips.filter(clip => !((clip.track === 'gaze' || clip.track === 'props') && clip.target === objectId)).map(clip => {
     if (clip.track !== 'body' || clip.target !== objectId) return clip;
     const decision = decisions[clip.id];
     if (decision?.startsWith('object:')) {
-      const alternative = surviving.find(item => item.id === decision.slice(7) && anchorFor(item)?.action === previousKind);
+      const alternative = surviving.find(item => item.id === decision.slice(7) && compatibleObject(item,clip.action));
       if (alternative) return { ...clip, target: alternative.id };
     }
     return resolvedAction(clip, decision);
@@ -80,13 +84,9 @@ export function repairOrphanedObjectActions(scene: Scene): Scene {
   const clips = valid.map(clip => {
     if (clip.track !== 'body') return clip;
     const target = clip.target ? scene.objects.find(item => item.id === clip.target) : undefined;
-    if (clip.action === 'sit' && clip.target && (!target || anchorFor(target)?.action !== 'sit')) {
+    if (clip.target && (!target || ((usesSeat(clip.action)||actionUsesProp(clip.action))?!compatibleObject(target,clip.action):anchorFor(target)?.action==='sit'))) {
       changed = true;
-      return resolvedAction(clip, 'action:sit');
-    }
-    if (clip.target && (!target || (clip.action !== 'sit' && anchorFor(target)?.action === 'sit'))) {
-      changed = true;
-      return resolvedAction(clip, 'action:' + (clip.action === 'sit' ? 'stand' : clip.action));
+      return resolvedAction(clip, 'action:' + clip.action);
     }
     return clip;
   });

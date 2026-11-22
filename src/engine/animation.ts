@@ -78,8 +78,24 @@ const move = (id:Action,duration:number,poses:[number,JointPose,number?][],loop=
   make(id,duration,loop,poses.map(([at,pose,lift])=>key(at,pose,lift)),expression);
 const guard:JointPose={torso:9,leftHip:-17,rightHip:20,leftKnee:-24,rightKnee:-31,leftShoulder:66,rightShoulder:46,leftElbow:67,rightElbow:89};
 const relaxed:JointPose={torso:-5,leftShoulder:-12,rightElbow:12,head:7};
+const dozing:JointPose={...seated,torso:8,neck:-11,head:25,leftShoulder:34,rightShoulder:25,leftElbow:31,rightElbow:34};
+const lying:JointPose={torso:80,neck:-13,head:7,leftHip:-96,rightHip:-83,leftKnee:-30,rightKnee:-27,leftShoulder:-32,rightShoulder:42,leftElbow:82,rightElbow:36};
+const drive:JointPose={...seated,torso:3,neck:-2,head:-3};
+const pickup:JointPose={torso:38,leftHip:-35,rightHip:39,leftKnee:58,rightKnee:-63,rightShoulder:23,rightElbow:-10};
 const bounce:JointPose={leftKnee:-33,rightKnee:-33,leftHip:17,rightHip:17,leftShoulder:-31,rightShoulder:29};
 const additional:Record<ExtraAction,Animation>={
+  'sleep-seated':move('sleep-seated',3.6,[[0,dozing,-49],[.53,{...dozing,head:28,neck:-9},-49],[1,dozing,-49]],true,'sleepy'),
+  sleep:move('sleep',3.3,[[0,lying,-69],[.5,{...lying,head:9,torso:81},-69],[1,lying,-69]],true,'sleepy'),
+  eat:move('eat',2.1,[[0,{}],[.32,{head:9}],[.58,{head:3}],[.83,{head:5}],[1,{}]],true),
+  drink:move('drink',2.2,[[0,{}],[.34,{head:-8,neck:-7}],[.64,{head:-11,neck:-8}],[1,{}]],true),
+  write:move('write',1.55,[[0,{head:8,neck:5}],[.45,{head:11,neck:8}],[1,{head:8,neck:5}]],true),
+  read:move('read',3.1,[[0,{head:12,neck:9}],[.63,{head:18,neck:8}],[1,{head:12,neck:9}]],true),
+  'phone-call':move('phone-call',2.7,[[0,{head:5,leftShoulder:-7}],[.4,{head:13,leftShoulder:-31,leftElbow:-38}],[1,{head:5,leftShoulder:-7}]],true),
+  drive:move('drive',2.45,[[0,drive,-47],[.25,{...drive,head:-6,torso:-4},-47],[.7,{...drive,head:1,torso:7},-47],[1,drive,-47]],true),
+  'pick-up':move('pick-up',1.25,[[0,{}],[.19,{torso:16}],[.5,pickup,-28],[.8,{torso:12,rightElbow:37}],[1,{}]]),
+  'put-down':move('put-down',1.25,[[0,{}],[.31,{torso:15,rightElbow:42}],[.69,pickup,-28],[1,{}]]),
+  'throw-prop':move('throw-prop',1.4,[[0,{rightShoulder:17,rightElbow:24}],[.24,{head:-10,rightShoulder:-99,rightElbow:-83}],[.46,{head:6,rightShoulder:120,rightElbow:3}],[.7,{head:12,rightShoulder:58,rightElbow:15}],[1,{}]]),
+  'cartoon-stab':move('cartoon-stab',.82,[[0,{rightShoulder:15,rightElbow:60}],[.27,{head:-7,rightShoulder:29,rightElbow:100}],[.57,{head:9,rightShoulder:105,rightElbow:9}],[1,{rightShoulder:15,rightElbow:60}]]),
   'idle-relaxed':move('idle-relaxed',2.8,[[0,relaxed],[.5,{...relaxed,head:2,neck:5},2],[1,relaxed]],true),
   'idle-alert':move('idle-alert',1.9,[[0,{torso:7,leftShoulder:-13,rightShoulder:15}],[.5,{torso:9,head:-12,rightElbow:27},2],[1,{torso:7,leftShoulder:-13,rightShoulder:15}]],true),
   'idle-bored':move('idle-bored',3.6,[[0,{torso:-10,head:14}],[.5,{torso:-14,head:19,rightShoulder:10},-3],[1,{torso:-10,head:14}]],true,'sleepy'),

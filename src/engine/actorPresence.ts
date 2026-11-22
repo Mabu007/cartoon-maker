@@ -1,4 +1,5 @@
 import { gaitSpeeds } from './animation.ts';
+import { nextLayerDepth } from './sceneLayers.ts';
 import { evaluate } from './evaluate.ts';
 import { uid, type ActorData, type Clip, type Scene } from './schema.ts';
 
@@ -30,7 +31,7 @@ export function addSceneActor(scene:Scene,characterId:string,time:number,entranc
   validateStart(scene,time);
   const start=timed(scene,time),id=uid();
   const x=Math.min(790,330+(scene.actors.length%5)*95),y=441;
-  const actor:ActorData={id,characterId,x,y,scale:1,rotation:0,depth:0,view:'three-quarter',expression:'neutral',flip:false};
+  const actor:ActorData={id,characterId,x,y,scale:1,rotation:0,depth:nextLayerDepth(scene),view:'three-quarter',expression:'neutral',flip:false};
   const entry:Clip[]=[];
   if(start>.01)entry.push(visibility(id,0,false));
   if(entrance==='place') {

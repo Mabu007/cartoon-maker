@@ -80,7 +80,7 @@ export function drawWorld(g: Graphics, environment: Scene['environment']) {
     for (let i = 0; i < 19; i++) { const bar = 13 + (i * 11 % 49); rect(g, 332 + i * 16, 158 - bar / 2, 6, bar, i % 2 ? '#e9a4aa' : '#bba7ef', 3); }
   }
 }
-export const propSize: Record<Prop['kind'], [number, number]> = { sofa: [326, 126], chair: [104, 126], table: [188, 68], desk: [185, 99], door: [128, 245], window: [215, 120], television: [145, 96], lamp: [103, 200], cup: [33, 28], book: [55, 12], phone: [25, 33], plant: [76, 113], microphone: [36, 71], streetlight: [85, 223], counter: [155, 110], image: [140, 140], ...Object.fromEntries(seatingStyles.map(kind=>[kind,seats[kind].size])) as Record<SeatingKind,[number,number]> };
+export const propSize: Record<Prop['kind'], [number, number]> = { sofa: [326, 126], chair: [104, 126], table: [188, 68], desk: [185, 99], door: [128, 245], window: [215, 120], television: [145, 96], lamp: [103, 200], cup: [33, 28], book: [55, 12], phone: [25, 33], plant: [76, 113], microphone: [36, 71], streetlight: [85, 223], counter: [155, 110], image: [140, 140], snack:[36,22],pencil:[39,13],'steering-wheel':[56,54],ball:[35,35],'foam-dagger':[52,20], ...Object.fromEntries(seatingStyles.map(kind=>[kind,seats[kind].size])) as Record<SeatingKind,[number,number]> };
 export function drawProp(g: Graphics, { kind, color }: Pick<Prop, 'kind' | 'color'>, doorOpen = 0) {
   if(isSeating(kind)){drawSeat(g,kind,color);return;}
   switch (kind) {
@@ -142,6 +142,23 @@ export function drawProp(g: Graphics, { kind, color }: Pick<Prop, 'kind' | 'colo
     case 'cup':
       ellipse(g, 13, -14, 11, 8, '#b38b70', 3); ellipse(g, 12, -14, 5, 4, '#754e4b');
       rect(g, -12, -26, 25, 24, color, 6, 2.5); ellipse(g, .5, -24, 10, 3, '#8f6051'); segment(g, -6, -15, 7, -15, '#cd8b66', 2); break;
+    case 'snack':
+      ellipse(g,0,-10,17,9,color,2);rect(g,-13,-13,26,4,'#675345',2);
+      arc(g,-13,-13,0,-26,13,-13,color,5);segment(g,-8,-16,-4,-16,'#fff1b5',1.8);break;
+    case 'pencil':
+      poly(g,[-19,-7,11,-14,19,-10,13,-6,-17,1],color,2);
+      poly(g,[11,-14,19,-10,13,-6],'#e5cdac',1);segment(g,16,-10,19,-10,INK,2);break;
+    case 'steering-wheel':
+      g.circle(0,-26,21).stroke({width:9,color:INK}).circle(0,-26,21).stroke({width:5,color});
+      for(const x of [-17,17])segment(g,0,-26,x,-32,color,6);
+      segment(g,0,-24,0,-7,color,6);ellipse(g,0,-26,7,7,color,2);break;
+    case 'ball':
+      ellipse(g,0,-17,17,17,color,2.5);arc(g,-12,-26,-3,-8,12,-5,'#ffded1',3);break;
+    case 'foam-dagger':
+      rect(g,-23,-13,15,8,'#4e496d',3,2);
+      rect(g,-9,-18,5,18,'#df994f',2,2);
+      g.moveTo(-4,-15).lineTo(18,-15).quadraticCurveTo(29,-11,22,-7).lineTo(-4,-4).closePath().fill(color).stroke({color:INK,width:2,join:'round'});
+      segment(g,1,-10,17,-10,'#ecdcff',2);break;
     case 'book': rect(g, -26, -13, 53, 12, color, 3, 2.5); segment(g, -18, -6, 23, -6, '#f4d5a5', 3); break;
     case 'phone': rect(g, -12, -33, 24, 33, color, 5, 2.5); rect(g, -8, -28, 16, 21, '#aed5bb', 2); break;
     case 'plant':

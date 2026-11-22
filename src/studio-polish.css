@@ -437,3 +437,12 @@
   fill:#fffac3; stroke:#8271ed; stroke-width:5;
 }
 .stage-path-guide .stage-path-handle:active { cursor:grabbing; }
+
+.scene-layers .layer-row { display:grid; border:1px solid transparent; border-radius:7px; }
+.scene-layers .layer-row.is-selected { border-color:var(--studio-outline); background:var(--studio-hover); }
+.scene-layers .layer-select { display:flex; min-width:0; width:100%; }
+.scene-layers .layer-select span { color:var(--studio-strong); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.scene-layers .layer-order-tools { display:flex; padding:2px 6px 5px; gap:3px; }
+.scene-layers .layer-order-tools button { flex:1; justify-content:center; }
+.scene-layers .layer-list { max-height:220px; overflow:auto; overscroll-behavior:contain; }
+.scene-layers .layer-relative { min-width:0; margin:0 5px 6px; }

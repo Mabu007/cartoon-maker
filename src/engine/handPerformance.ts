@@ -11,6 +11,7 @@ export type HandPerformanceInput = {
 export function performanceHandPose(input:HandPerformanceInput):HandPose {
   const {action,locomotion,side,carrying,time,expression,speechWeight}=input;
   if(carrying)return 'grip';
+  if(action==='throw-prop'&&side==='right')return 'open';
   if(action==='cry'||action==='reach'||action==='surprise'||action==='cartoon-block')return 'open';
   if(['cartoon-guard','cartoon-jab','cartoon-hook','cartoon-kick'].includes(action))return 'fist';
   if(action==='point' && side==='right')return 'point';
