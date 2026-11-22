@@ -125,7 +125,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       <div className="preset-row" aria-label="Character presets">{characters.map(item => <button key={item.id} type="button" title={item.name} aria-label={`Use ${item.name} preset`} onClick={() => setDraft({ ...item, id: draft.id, name: draft.name })}><Avatar character={item}/><span>{item.name}</span></button>)}</div>
       <div className="segmented factory-categories" role="group" aria-label="Character sections">{sections.map(item => <button key={item} type="button" onClick={() => setSection(item)} aria-pressed={item===section} className={item === section ? 'active' : ''}>{item}</button>)}</div>
       <div className="factory-fields">
-        {section!=='Body'&&<CharacterChoices key={section} section={section} character={draft} change={update} changeCloset={updateCloset}/>}
+        {(section==='Hair'||section==='Face'||section==='Outfit'||section==='Accessories')&&<CharacterChoices key={section} section={section} character={draft} change={update} changeCloset={updateCloset}/>}
         {section === 'Personality' && <div className="factory-personality">
           <div className="factory-build-field"><strong>Personality preset</strong>
             <Select aria="Personality preset" value={activePersonality.preset} options={personalityPresets}
