@@ -1,6 +1,7 @@
-import type { Action, Expression } from './schema.ts';
+import type { Action, Character, Expression } from './schema.ts';
+import { resolvePersonality } from './livingCharacter.ts';
 import { isSleep } from './performanceCatalog.ts';
-import { clamp } from './animation.ts';
+import { clamp, mix } from './animation.ts';
 import type { Viseme, VisemeSample } from './visemes.ts';
 
 export type FacialPerformance = {
@@ -22,23 +23,27 @@ export function facialPerformance(
   expression: Expression,
   audioAmplitude = 0,
   speechCue?: VisemeSample,
-  focus?: { x: number; y: number }
+  focus?: { x: number; y: number },
+  personality?: Character['personality']
 ): FacialPerformance {
   const t = Number.isFinite(time) ? Math.max(0, time) : 0;
   const seed = seedFrom(actorId);
+  const traits=resolvePersonality(personality);
+  const nervousness=traits.nervousness/100;
+  const eyeContact=traits.eyeContact/100;
   const period = expression === 'nervous' ? 2.08 + seed*.55 :
-    expression === 'sleepy' ? 4.1 + seed*.5 : 2.75 + seed*1.25;
+    expression === 'sleepy' ? 4.1 + seed*.5 : (2.75 + seed*1.25)*mix(.78,1.12,1-nervousness);
   const phase = ((t + seed*period) % period) / period;
   const baseBlink = clamp(1-Math.abs(phase-.72)/.045);
   const anxiousDouble = expression === 'nervous' ? clamp(1-Math.abs(phase-.83)/.035)*.88:0;
   const sleeping=isSleep(action);
   const blink = action==='cry'||sleeping?1:Math.max(baseBlink,anxiousDouble,action==='laugh'?.84:0);
   // Deterministic pupil microsaccades; explicit look targets always dominate.
-  const micro=Math.sin(t*1.12+seed*11)*.14;
+  const micro=Math.sin(t*1.12+seed*11)*(.1+nervousness*.21);
   const gazeX=focus ? clamp(focus.x,-1,1)*3.45+micro*.25 :
-    Math.sin(t*.83+seed*11)*1.48+Math.sin(t*.3+seed*3)*.36;
+    (Math.sin(t*.83+seed*11)*1.48+Math.sin(t*.3+seed*3)*.36)*mix(1.5,.5,eyeContact);
   const gazeY=focus ? clamp(focus.y,-1,1)*2.45+
-    Math.sin(t*.42+seed)*.09 : Math.sin(t*.6+seed*8)*.84;
+    Math.sin(t*.42+seed)*.09 : Math.sin(t*.6+seed*8)*.84*mix(1.35,.7,eyeContact);
   const expressive: Partial<Record<Action, Expression>> = {
     laugh: 'happy', cry: 'sad', angry: 'angry', surprise: 'surprised',
     think: 'thinking', shrug: 'confused', celebrate: 'excited'
