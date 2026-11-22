@@ -78,10 +78,33 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       if(hands&&tick%2===1){
         const result=hands.detectForVideo(video,atMs);
         previousLeft=undefined;previousRight=undefined;
-        for(let i=0;i<(result.landmarks??[]).length;i++){
-          const handed=result.handednesses?.[i]?.[0]?.categoryName??result.handedness?.[i]?.[0]?.categoryName;
-          if(handed==='Left')previousLeft=result.landmarks[i];
-          if(handed==='Right')previousRight=result.landmarks[i];
+        // A camera preview may be mirrored by CSS while detector coordinates are
+        // not. Associate hands to the tracked body wrists spatially instead of
+        // trusting model handedness labels.
+        const detections=(result.landmarks??[]) as Landmark[][];
+        const leftWrist=pose[15],rightWrist=pose[16];
+        if(leftWrist&&rightWrist){
+          const options=detections.map((landmarks,index)=>({
+            landmarks,index,
+            left:Math.hypot(landmarks[0].x-leftWrist.x,landmarks[0].y-leftWrist.y),
+            right:Math.hypot(landmarks[0].x-rightWrist.x,landmarks[0].y-rightWrist.y)
+          }));
+          if(options.length===1){
+            const best=options[0];
+            if(Math.min(best.left,best.right)<.25){
+              if(best.left<best.right)previousLeft=best.landmarks;
+              else previousRight=best.landmarks;
+            }
+          }else if(options.length>1){
+            const [a,b]=options;
+            if(a.left+b.right<=b.left+a.right){
+              if(a.left<.25)previousLeft=a.landmarks;
+              if(b.right<.25)previousRight=b.landmarks;
+            }else{
+              if(b.left<.25)previousLeft=b.landmarks;
+              if(a.right<.25)previousRight=a.landmarks;
+            }
+          }
         }
       }
       if(face&&tick%3===1){
