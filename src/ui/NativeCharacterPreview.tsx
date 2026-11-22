@@ -1,6 +1,8 @@
 import { useEffect, useId, useState } from 'react';
 import { bodyProportions } from '../engine/bodyBuild.ts';
-import { animations, gaitLeg, sample, viewForward } from '../engine/animation.ts';
+import { animations, gaitLeg, rig, sample, viewForward } from '../engine/animation.ts';
+import { livingPose } from '../engine/livingCharacter.ts';
+import { performanceHandPose } from '../engine/handPerformance.ts';
 import { sampleViseme, type Viseme } from '../engine/visemes.ts';
 import { facialPerformance } from '../engine/facialAnimation.ts';
 import { SvgMouthRig } from './SvgMouthRig.tsx';
@@ -31,7 +33,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const speech = mouthSample ?? (mouthTest ? {shape:mouthTest,weight:mouthTest==='rest'?0:1} :
     action === 'talk'
       ? sampleViseme('Hello there! Let us create a cartoon. Watch my mouth moving!', 8, elapsed % 8) : undefined);
-  const mood = facialPerformance(elapsed, c.id, action, expression, mouthSample?.weight??0, speech, focus);
+  const mood = facialPerformance(elapsed, c.id, action, expression, mouthSample?.weight??0, speech, focus, c.personality);
   const emotion = mood.expression;
   const rear = view === 'back' || view === 'back-quarter';
   const profile = view === 'side';
@@ -44,6 +46,19 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const shoulderY = headY + headH + 17;
   const shirtTop = shoulderY - 5;
   const build=bodyProportions(c), swim=c.outfit==='bikini', bare=swim||c.outfit==='shirtless';
+  // Native fallback shares the same deterministic elbow/wrist poses as Pixi.
+  const locomotion=action==='walk'||action==='run'?action:'idle';
+  const base=sample(animations[action],elapsed);
+  const live=livingPose(c,{time:elapsed,actorId:c.id,action,locomotion,expression,
+    speaking:action==='talk',speechWeight:speech?.weight??0,listening:action==='listen'},base.pose);
+  const bodyRig=rig(c,live,profile?.65:q?.9:1);
+  const armParts=(['left','right'] as const).map(side=>{
+    const joints=bodyRig[side];
+    const handPose=performanceHandPose({character:c,actorId:c.id,action,locomotion,expression,
+      time:elapsed,side,carrying:false,speechWeight:speech?.weight??0,speaking:action==='talk',listening:action==='listen'});
+    return {side,...joints,handPose};
+  });
+
   const left = -24 * width * c.thickness*build.shoulder;
   const right = -left;
   const hips=19*width*build.hip;
@@ -83,24 +98,45 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
           <path d={path} stroke={swim?c.skin:c.pants} strokeWidth={9 * c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           <ellipse cx={foot.x + shoe} cy={foot.y + 1} rx={13 * c.thickness} ry="6.5" fill={c.shoes} stroke="#242037" strokeWidth="3"/>
         </g>)}
-        <path d={'M ' + (left + 2) + ' ' + shoulderY + ' Q ' + (left - 19) + ' ' + (shoulderY + 19) + ' ' + (left - 12) + ' ' + (shoulderY + 44)} stroke={c.skin} strokeWidth={12 * c.thickness*build.arm} fill="none" strokeLinecap="round" className="native-arm-left"/>
-        <path d={'M ' + (right - 2) + ' ' + shoulderY + ' Q ' + (right + 19) + ' ' + (shoulderY + 19) + ' ' + (right + 13) + ' ' + (shoulderY + 44)} stroke={c.skin} strokeWidth={12 * c.thickness*build.arm} fill="none" strokeLinecap="round" className="native-arm-right"/>
-        {!bare&&<><path d={'M ' + (left + 2) + ' ' + shoulderY + ' Q ' + (left - 16) + ' ' + (shoulderY + 17) + ' ' + (left - 15) + ' ' + (shoulderY + 25)} stroke={c.shirt} strokeWidth={15 * c.thickness} fill="none" strokeLinecap="round"/>
-        <path d={'M ' + (right - 2) + ' ' + shoulderY + ' Q ' + (right + 16) + ' ' + (shoulderY + 17) + ' ' + (right + 15) + ' ' + (shoulderY + 25)} stroke={c.shirt} strokeWidth={15 * c.thickness} fill="none" strokeLinecap="round"/></>}
+        {armParts.map(({side,shoulder,elbow,hand})=><g key={side}>
+          <path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`}
+            stroke="#242037" strokeWidth={16*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          <path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`}
+            stroke={c.skin} strokeWidth={11*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          {!bare&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`}
+            stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}
+        </g>)}
         <path d={'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>
         {swim&&<><path d={`M ${left*.8} ${shirtTop+15} Q 0 ${shirtTop+(rear?20:7)} ${right*.8} ${shirtTop+15} v12 Q0 ${shirtTop+34} ${left*.8} ${shirtTop+27}Z`} fill={c.shirt} stroke="#242037" strokeWidth="2"/>
           <path d={`M ${-hips} ${shirtBottom-5} Q0 ${shirtBottom-2} ${hips} ${shirtBottom-5} L7 ${shirtBottom+13} H-7 Z`} fill={c.pants} stroke="#242037" strokeWidth="2"/></>}
         {c.outfit==='shirtless'&&c.bodyBuild?.abs&&!rear&&<path d={`M0 ${shirtTop+24} V${shirtBottom-5} ${[0,1,2].map(offset=>`M-8 ${shirtTop+29+offset*5} q2 4 6 3 m4-3 q4 1 6-3`).join(' ')}`} fill="none" stroke="#754634" opacity=".58" strokeWidth="1.4"/>}
         {c.outfit === 'hoodie' ? <><path d={'M -15 ' + (shirtTop - 4) + ' Q 0 ' + (shirtTop + 26) + ' 15 ' + (shirtTop - 4)} fill="none" stroke="#41334b" strokeWidth="3"/><path d={'M -5 ' + (shirtTop + 15) + ' v 14 M 5 ' + (shirtTop + 15) + ' v 14'} stroke="#ffebcf" strokeWidth="2"/><path d={'M -14 ' + (shirtBottom - 19) + ' Q 0 ' + (shirtBottom - 11) + ' 14 ' + (shirtBottom - 19) + ' L 14 ' + (shirtBottom - 7) + ' L -14 ' + (shirtBottom - 7) + ' Z'} fill="none" stroke="#423248" strokeWidth="1.5"/></> : null}
-        <g stroke="#242037" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" fill={c.skin}>
-          <path d={'M ' + (left-17) + ' ' + (shoulderY+41) + ' q -8 -2 -10 4 q -1 6 4 11 q 7 4 13 -3 q 6 -6 2 -12 Z'}/>
-          <path d={action === 'point'
-            ? 'M ' + (right+8) + ' ' + (shoulderY+40) + ' q 7 -4 13 1 l 24 -4 q 6 0 6 4 q 0 4 -5 5 l -22 4 q 1 7 -7 10 q -11 4 -15 -6 q -1 -10 6 -14 Z'
-            : action === 'wave' || action === 'talk'
-              ? 'M ' + (right+7) + ' ' + (shoulderY+49) + ' q -7 -9 -5 -16 l -4 -17 q 0 -5 4 -5 q 5 0 7 14 l 2 -16 q 1 -5 5 -4 q 3 1 2 6 l 0 14 l 4 -14 q 2 -5 5 -3 q 3 2 1 7 l -3 14 q 5 -8 8 -4 q 3 4 -3 10 l -9 15 q -12 8 -17 -1 Z'
-              : 'M ' + (right+8) + ' ' + (shoulderY+42) + ' q -3 -8 5 -11 q 4 -3 9 0 q 5 -2 8 2 q 5 6 -1 12 q -5 9 -15 9 q -9 -2 -6 -12 Z'}/>
-          <path d={'M ' + (right+15) + ' ' + (shoulderY+40) + ' q 5 -3 7 1 M ' + (left-22) + ' ' + (shoulderY+49) + ' q 7 -3 10 2'} fill="none" stroke="#815544" strokeWidth="1.2"/>
-        </g>
+
+        {armParts.map(({side,hand,elbow,handPose})=>{
+          const sign=side==='right'?1:-1;
+          const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
+          const rotation=(handPose==='open'||handPose==='palm-up'?forearm+Math.PI/2:forearm-Math.PI/2)*180/Math.PI;
+          const straighten=(i:number)=>handPose==='open'||handPose==='palm-up'||
+            (handPose==='point'&&i===0)||(handPose==='count'&&i<2);
+          const fingerBases=[-6,-2,2,6];
+          return <g key={side} transform={`translate(${hand.x} ${hand.y}) rotate(${rotation}) scale(${sign} 1)`}>
+            {fingerBases.map((finger,i)=>{
+              const long=straighten(i),length=long?18+(i===1?4:0):7;
+              return <path key={i} d={`M ${finger} -6 l ${long?(i-1)*2:5} ${-length}`}
+                stroke="#242037" strokeWidth="6.2" strokeLinecap="round" fill="none"/>;
+            })}
+            {fingerBases.map((finger,i)=>{
+              const long=straighten(i),length=long?18+(i===1?4:0):7;
+              return <path key={'skin'+i} d={`M ${finger} -6 l ${long?(i-1)*2:5} ${-length}`}
+                stroke={c.skin} strokeWidth="3.8" strokeLinecap="round" fill="none"/>;
+            })}
+            <path d="M -9 -7 Q -12 4 -4 8 Q 9 11 10 -4 Q 3 -11 -9 -7Z" fill={c.skin} stroke="#242037" strokeWidth="2.2"/>
+            <path d={handPose==='fist'||handPose==='grip'?"M -7 0 Q 4 6 8 1":"M -7 1 Q -16 -4 -14 -11"}
+              stroke="#242037" strokeWidth="5.5" strokeLinecap="round" fill="none"/>
+            <path d={handPose==='fist'||handPose==='grip'?"M -7 0 Q 4 6 8 1":"M -7 1 Q -16 -4 -14 -11"}
+              stroke={c.skin} strokeWidth="3.2" strokeLinecap="round" fill="none"/>
+          </g>;
+        })}
         {(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
         {c.accessory === 'chain' && <path d={'M -13 ' + (shirtTop + 6) + ' Q 0 ' + (shirtTop + 36) + ' 13 ' + (shirtTop + 6)} fill="none" stroke="#f8d06d" strokeWidth="3"/>}
         <ellipse cx={-headW + 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>

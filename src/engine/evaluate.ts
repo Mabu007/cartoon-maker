@@ -7,6 +7,7 @@ import { anchorFor, compatibleObject } from './interactions.ts';
 import { audibleAudioTrack } from './audioMix.ts';
 import { effectiveCues } from './dspLipSync.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
+import { livingPose } from './livingCharacter.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
@@ -223,6 +224,17 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(!held&&ownership?.target&&!propPose){
       const latestForProp=propEvents.get(ownership.target);
       if(!latestForProp||latestForProp.at<=ownership.at)held=objectsById.get(ownership.target);
+    }
+    // Personality is a deterministic low-priority additive layer. Explicit
+    // actor/gesture clips and prop constraints retain control of the rig.
+    const character=characters?.get(actor.characterId);
+    if(character){
+      pose=livingPose(character,{
+        time:t,actorId:actor.id,action,locomotion,expression,
+        speaking:Boolean(spoken)||action==='talk',speechWeight:viseme?.weight??(action==='talk'?.55:0),
+        listening:!spoken&&sounds.some(clip=>clip.track==='dialogue'&&clip.actor!==actor.id),
+        manualGesture:Boolean(gesture),carrying:Boolean(held)
+      },pose);
     }
     const performance=action===gesture?.action?gesture:body;
     const actionTime=performance?t-performance.start:0;

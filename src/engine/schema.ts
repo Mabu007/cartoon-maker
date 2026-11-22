@@ -26,6 +26,17 @@ const position = { x: num(-2000, 3000), y: num(-2000, 3000), scale: num(.2, 4), 
 export const CharacterView = z.enum(views);
 export const VoicePreset = z.enum(['warm','bright','deep']);
 export const HostedVoiceId = z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9_.:-]+$/);
+export const personalityPresets = ['balanced','confident','shy','nervous','relaxed','hyperactive','funny','serious','arrogant','mysterious','dramatic','grumpy','playful'] as const;
+export const signatureMannerisms = ['none','point','touch-chin','rub-hands','shrug','tilt-head','hand-on-hip'] as const;
+export const PersonalityDefinition = z.strictObject({
+  preset:z.enum(personalityPresets), autoActing:z.enum(['full','subtle','off']), signature:z.enum(signatureMannerisms),
+  confidence:num(0,100),expressiveness:num(0,100),energy:num(0,100),sociability:num(0,100),
+  nervousness:num(0,100),aggressiveness:num(0,100),playfulness:num(0,100),patience:num(0,100),
+  restlessness:num(0,100),emotionalReactivity:num(0,100),gestureFrequency:num(0,100),
+  gestureAmplitude:num(0,100),movementSpeed:num(0,100),postureOpenness:num(0,100),
+  eyeContact:num(0,100),personalSpace:num(0,100),reactionIntensity:num(0,100),
+  movementSmoothness:num(0,100)
+}).partial();
 export const CharacterDefinition = z.strictObject({
   id, name: z.string().trim().min(1).max(60), skin: color, shirt: color, pants: color, hairColor: color, shoes: color,
   height: num(.75, 1.3), head: num(.75, 1.35), torso: num(.75, 1.3), arms: num(.75, 1.3), legs: num(.75, 1.3), thickness: num(.65, 1.45), eyeSpacing: num(.65, 1.4),
@@ -60,6 +71,7 @@ export const CharacterDefinition = z.strictObject({
     beardLength:num(.7,1.55), beardWidth:num(.7,1.25), beardFullness:num(.5,1.5), piercingSize:num(.5,1.8), heelHeight:num(.4,1.8),
     hatTilt:num(-45,45), propTilt:num(-90,90), tucked:z.boolean(), socks:z.boolean(), hood:z.boolean(),
   }).partial().optional(),
+  personality: PersonalityDefinition.optional(),
   voicePreset: VoicePreset.optional(), hostedVoiceId: HostedVoiceId.optional(),
   mouthRig: z.strictObject({ width: num(.65,1.5), jawScale: num(.6,1.5),
     roundness: num(0,1), asymmetry: num(-1,1) }).optional(),

@@ -10,6 +10,7 @@ import { at, drawBag, drawHandheld, drawShoe, drawTop, drawWatch, sleeveCoverage
 import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { performanceHandPose } from './handPerformance.ts';
+import { gestureAt, gestureHand } from './livingCharacter.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
@@ -81,15 +82,25 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const holdsCostume = side===costumeHand && !carrying && Boolean(c.wardrobe?.handheld && c.wardrobe.handheld!=='none');
     const handMode:HandPose = performanceHandPose({
       action,locomotion,side,carrying:carrying||holdsCostume||(action==='drive'&&!!held),time,expression,
-      speechWeight:speaking?(viseme?.weight??0):0
+      speechWeight:speaking?(viseme?.weight??0):0,
+      character:c,actorId,speaking,listening
     });
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
     if(holdsCostume) drawHandheld(g,c,hand);
     const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
-    const rotation=reachesFace?(side==='right'?-.7:.7):handMode==='relaxed'?forearm-Math.PI/2:handMode==='open'?forearm+Math.PI/2:0;
+    const wristAngle=(pose[side+'Wrist' as keyof JointPose]??0)*Math.PI/180*.46;
+    const rotation=(reachesFace?(side==='right'?-.7:.7):
+      handMode==='relaxed'?forearm-Math.PI/2:
+      handMode==='open'||handMode==='palm-up'?forearm+Math.PI/2:
+      handMode==='pinch'?forearm-Math.PI/3:
+      handMode==='fist'||handMode==='grip'?forearm-Math.PI/2:forearm)+wristAngle;
     const facing=art.profile?1:(side==='right'?1:-1)*(art.rear?-1:1);
     g.context.save().setTransform(at(hand.x,hand.y,art.profile&&handMode==='relaxed'?.73:1,1,rotation*180/Math.PI));
-    drawIllustratedHand(g,0,0,limbWidth*(art.profile&&side==='left'?.78:.91),c.skin,handMode,facing<0?-1:1);
+    const gestureContext={time,actorId,action,locomotion,expression,speaking,
+      speechWeight:speaking?(viseme?.weight??0):0,listening,carrying:carrying||holdsCostume};
+    const naturalHand=gestureHand(c,gestureContext,side);
+    const blendHand=naturalHand===handMode?gestureAt(c,gestureContext).weight:1;
+    drawIllustratedHand(g,0,0,limbWidth*(art.profile&&side==='left'?.78:.91),c.skin,handMode,facing<0?-1:1,blendHand);
     g.context.restore();
     const watchSide=c.wardrobe?.watchSide??costumeHand;
     if(watchSide==='both'||side===watchSide)drawWatch(g,c,hand,elbow);
@@ -141,7 +152,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   face.angle = r.angle + (listening ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
   face.scale.set(c.head*turnScale,c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
-  const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus);
+  const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus, c.personality);
   if(isSleep(action)&&!speaking){
     const p=actionTime*.54%1;
     const x=r.head.x+27+p*16, y=r.head.y-54-p*34, size=4+p*4;
