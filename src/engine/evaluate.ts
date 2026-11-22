@@ -297,7 +297,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       // listening motion is added; generated gestures never fight the actor.
       if(captured?.performanceOrigin==='mocap' && !authoredGesture){
         pose=capturedMicroMotion(character,pose,{
-          time:t,speaking, listening:acting.listening,
+          time:t,speaking, listening:Boolean(acting.listening),
           authoredGesture, intensity:frameWeight(captured,t)
         });
       }else if(!captured || authoredGesture){
