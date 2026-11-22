@@ -10,6 +10,7 @@ import { at, drawBag, drawHandheld, drawShoe, drawTop, drawWatch, sleeveCoverage
 import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { performanceHandPose } from './handPerformance.ts';
+import { gestureAt, gestureHand } from './livingCharacter.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
@@ -95,7 +96,11 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       handMode==='fist'||handMode==='grip'?forearm-Math.PI/2:forearm)+wristAngle;
     const facing=art.profile?1:(side==='right'?1:-1)*(art.rear?-1:1);
     g.context.save().setTransform(at(hand.x,hand.y,art.profile&&handMode==='relaxed'?.73:1,1,rotation*180/Math.PI));
-    drawIllustratedHand(g,0,0,limbWidth*(art.profile&&side==='left'?.78:.91),c.skin,handMode,facing<0?-1:1);
+    const gestureContext={time,actorId,action,locomotion,expression,speaking,
+      speechWeight:speaking?(viseme?.weight??0):0,listening,carrying:carrying||holdsCostume};
+    const naturalHand=gestureHand(c,gestureContext,side);
+    const blendHand=naturalHand===handMode?gestureAt(c,gestureContext).weight:1;
+    drawIllustratedHand(g,0,0,limbWidth*(art.profile&&side==='left'?.78:.91),c.skin,handMode,facing<0?-1:1,blendHand);
     g.context.restore();
     const watchSide=c.wardrobe?.watchSide??costumeHand;
     if(watchSide==='both'||side===watchSide)drawWatch(g,c,hand,elbow);
