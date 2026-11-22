@@ -84,3 +84,14 @@ test('invalid performance keys are rejected rather than silently clamped',()=>{
   const parsed=ProjectDocument.safeParse({...project,scenes:[{...scene,clips:[...scene.clips,wrong]},...project.scenes.slice(1)]});
   assert.equal(parsed.success,false);
 });
+
+test('pose blender leads from shoulder through elbow to wrist without missing authored endpoints',()=>{
+  const keys:PerformanceKey[]=[
+    {time:0,pose:{rightShoulder:0,rightElbow:0,rightWrist:0}},
+    {time:1,pose:{rightShoulder:80,rightElbow:80,rightWrist:80}}
+  ];
+  const halfway=samplePerformance(keys,.5).pose;
+  assert.ok((halfway.rightShoulder??0)>(halfway.rightElbow??0));
+  assert.ok((halfway.rightElbow??0)>(halfway.rightWrist??0));
+  assert.equal(samplePerformance(keys,1).pose.rightWrist,80);
+});
