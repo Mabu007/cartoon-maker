@@ -444,8 +444,9 @@ export default function App() {
         const actor=evaluate(current,value.start).actors.find(item=>item.id===actorId);
         if(!actor)throw Error('Choose a character in this scene.');
         const side=actor.flip?-1:1;
-        const prop=makeProp(newProp,clamp(actor.x+side*27,-2000,3000),
-          clamp(actor.y-(value.action==='pick-up'?0:45),-2000,3000),{depth:nextLayerDepth(current)});
+        const reach=value.action==='pick-up'?27:63;
+        const prop=makeProp(newProp,clamp(actor.x+side*reach*actor.scale,-2000,3000),
+          clamp(actor.y,-2000,3000),{depth:nextLayerDepth(current)});
         objects=[...objects,prop];
         value={...value,target:prop.id};
       }

@@ -144,7 +144,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus);
   if(isSleep(action)&&!speaking){
     const p=actionTime*.54%1;
-    const x=r.head.x+27+p*16, y=r.head.y-22-p*39, size=4+p*4;
+    const x=r.head.x+27+p*16, y=r.head.y-54-p*34, size=4+p*4;
     line(g,[{x:x-size,y:y-size},{x:x+size,y:y-size},{x:x-size,y:y+size},{x:x+size,y:y+size}],'#e2d3ef',2.2);
   }
   if (action === 'blink' && actionTime < .22) mood.blink = Math.max(mood.blink, 1 - Math.abs(actionTime - .11) / .11);
