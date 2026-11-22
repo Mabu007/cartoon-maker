@@ -30,11 +30,12 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
   const [result,setResult]=useState<Result>();
   const [recordedAudio,setRecordedAudio]=useState<Blob>();
   const camera=useRef<HTMLVideoElement>(null);
-  const stream=useRef<MediaStream>();
-  const tracker=useRef<PerformanceTracker>();
+  const stream=useRef<MediaStream|undefined>(undefined);
+  const tracker=useRef<PerformanceTracker|undefined>(undefined);
   const raf=useRef(0),last=useRef(0),started=useRef(0),alive=useRef(true);
   const frames=useRef<CaptureFrame[]>([]);
-  const recorder=useRef<MediaRecorder>(),chunks=useRef<Blob[]>([]);
+  const recorder=useRef<MediaRecorder|undefined>(undefined),chunks=useRef<Blob[]>([]);
+  const stopping=useRef(false);
   const takeDown=()=>{
     cancelAnimationFrame(raf.current);
     try{if(recorder.current?.state==='recording')recorder.current.stop();}catch{/* cleanup */}
@@ -65,7 +66,7 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
   }
   function begin() {
     if(status!=='ready'||!tracker.current)return;
-    frames.current=[];chunks.current=[];setRecordedAudio(undefined);setResult(undefined);
+    frames.current=[];chunks.current=[];stopping.current=false;setRecordedAudio(undefined);setResult(undefined);
     let writer:MediaRecorder|undefined;
     const audio=stream.current?.getAudioTracks();
     if(audio?.length&&typeof MediaRecorder!=='undefined'){
@@ -96,6 +97,8 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
     raf.current=requestAnimationFrame(step);
   }
   async function stop() {
+    if(stopping.current)return;
+    stopping.current=true;
     cancelAnimationFrame(raf.current);
     setStatus('processing');setMessage('Compiling tracked movement into editable cartoon poses…');
     const writer=recorder.current;recorder.current=undefined;
