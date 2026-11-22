@@ -1,6 +1,8 @@
 import { GraphicsPath, type Graphics } from 'pixi.js';
 import type { Character } from './schema.ts';
 import { INK } from './art.ts';
+import { sampleHandRig, type HandPose } from './handRig.ts';
+export type { HandPose } from './handRig.ts';
 
 /**
  * The illustrated character kit is made of authored SVG paths, rather than
@@ -139,14 +141,9 @@ export function drawIllustratedHair(g: Graphics, c: Character, art: IllustratedV
   if (back) detail(g, 'M ' + (-w*.60) + ' -8 Q 0 1 ' + (w*.60) + ' -8', mid, 1.2);
 }
 
-export type HandPose = 'relaxed'|'open'|'point'|'grip'|'fist'|'pinch'|'palm-up'|'thumbs-up'|'count';
-
 /**
- * Five independent articulated fingers with two phalanges each.
- * Finger silhouettes are built from reusable rounded vector strokes, then
- * the palm covers their roots. Curl blends from a neutral hand to the desired
- * pose, so automatic gestures grow and recover rather than popping on/off.
- * This is a screen-readable cartoon rig, not an anatomical simulation.
+ * The finger segments and wrist anchor are shared with the native SVG preview.
+ * The local hand points -Y away from its cuff; orientation is solved separately.
  */
 export function drawIllustratedHand(g:Graphics,x:number,y:number,width:number,color:string,
   pose:HandPose='relaxed',facing:-1|1=1,blend=1) {
@@ -159,42 +156,20 @@ export function drawIllustratedHand(g:Graphics,x:number,y:number,width:number,co
     part(g,d,'none',handOutline,(thickness+2.15)*u);
     part(g,d,'none',color,thickness*u);
   };
-  const styles:Record<HandPose,{curl:[number,number,number,number];thumb:number;spread:number}>={
-    relaxed:{curl:[.46,.43,.49,.56],thumb:.45,spread:.10},
-    open:{curl:[0,0,0,0],thumb:0,spread:.29},
-    'palm-up':{curl:[.07,.03,.05,.08],thumb:0,spread:.29},
-    point:{curl:[.02,.97,.97,.96],thumb:.68,spread:.05},
-    grip:{curl:[.8,.84,.85,.83],thumb:.78,spread:.03},
-    fist:{curl:[1,1,1,1],thumb:.95,spread:0},
-    pinch:{curl:[.24,.78,.8,.81],thumb:.28,spread:0},
-    'thumbs-up':{curl:[.96,.98,.98,.95],thumb:-.55,spread:0},
-    count:{curl:[.02,.02,.97,.97],thumb:.74,spread:.12}
-  };
-  const rest=styles.relaxed,target=styles[pose]??rest;
-  const selected=[0,1,2,3] as const;
-  // Draw far fingers first and thumb last for coherent overlap.
-  for(const i of selected){
-    const curl=rest.curl[i]+(target.curl[i]-rest.curl[i])*fraction;
-    const spread=rest.spread+(target.spread-rest.spread)*fraction;
-    const initial=(-1.5+i)*spread;
-    const length=[13.5,16.5,16.1,12.7][i];
-    const rootX=-5.6+i*3.85,rootY=-6+Math.abs(i-1.5)*.5;
-    const a1=initial+curl*.85;
-    const bend=initial+curl*2.15;
-    const mid:[number,number]=[rootX+Math.sin(a1)*length*.57,rootY-Math.cos(a1)*length*.57];
-    const tip:[number,number]=[mid[0]+Math.sin(bend)*length*.43,mid[1]-Math.cos(bend)*length*.43];
-    finger([[rootX,rootY],mid,tip],i===3?2.9:3.35);
-    if(curl<.72)part(g,path([[mid[0]-1,mid[1]+.1],[mid[0]+.9,mid[1]+.6]]),'none',shadow,.72*u);
+  const rig=sampleHandRig(pose,fraction);
+  // Draw the far fingers, palm and thumb in the same order in both renderers.
+  for(let i=0;i<rig.fingers.length;i++){
+    const points=rig.fingers[i];
+    finger(points,i===3?2.9:3.35);
+    const [root,mid]=points;
+    if(Math.hypot(mid[0]-root[0],mid[1]-root[1])>5.2)
+      part(g,path([[mid[0]-.7,mid[1]+.15],[mid[0]+.9,mid[1]+.5]]),'none',shadow,.72*u);
   }
   part(g,`M ${sx(-8.5)} ${sy(-7)} Q ${sx(-9.7)} ${sy(-1)} ${sx(-7.4)} ${sy(5.5)}
     Q ${sx(-3.3)} ${sy(10)} ${sx(4.5)} ${sy(7.6)}
     Q ${sx(10.5)} ${sy(4.7)} ${sx(9)} ${sy(-5.7)}
     Q ${sx(3.9)} ${sy(-9.7)} ${sx(-8.5)} ${sy(-7)} Z`,color,handOutline,2.1*u);
-  const thumbCurl=rest.thumb+(target.thumb-rest.thumb)*fraction;
-  const thumbStart:[number,number]=[-7.8,2.1];
-  const thumbMid:[number,number]=[-11.5+thumbCurl*7,-2.7-thumbCurl*1.3];
-  const thumbTip:[number,number]=thumbCurl<0?[-8.7,-19]:[-14+thumbCurl*15,-8+thumbCurl*6];
-  finger([thumbStart,thumbMid,thumbTip],4.1);
+  finger(rig.thumb,4.1);
   // Separate the knuckles without introducing distracting line clutter.
   for(let i=0;i<3;i++){
     const kx=-4.8+i*3.9;
