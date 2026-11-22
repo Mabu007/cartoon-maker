@@ -11,7 +11,7 @@ import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, d
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
-import { handRotation, handSize, handWidthScale, sampleHandRig } from './handRig.ts';
+import { handRotation, handSize, handWidthScale, sampleHandRig, type HandPose } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
@@ -40,7 +40,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose},
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;handOverride?:{left:HandPose;right:HandPose}},
   handGesture?: GestureSample) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
@@ -88,10 +88,13 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     });
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
     if(holdsCostume) drawHandheld(g,c,hand);
-    const geometry = sampleHandRig(performance.pose, performance.blend);
+    const observed=!(carrying||holdsCostume)&&appearance?.handOverride?.[side];
+    const drawnPose=observed||performance.pose;
+    const drawnBlend=observed?1:performance.blend;
+    const geometry = sampleHandRig(drawnPose, drawnBlend);
     const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
     const wristDegrees = pose[`${side}Wrist`] ?? 0;
-    const rotation = handRotation(forearm, wristDegrees, performance.pose, performance.blend, side);
+    const rotation = handRotation(forearm, wristDegrees, drawnPose, drawnBlend, side);
     const scale = handSize(c.thickness);
     const width = handWidthScale(view, side, geometry.params.wristTwist);
     g.context.save().setTransform(at(hand.x, hand.y, scale * width, scale, rotation * 180 / Math.PI));
