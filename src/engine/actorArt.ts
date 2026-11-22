@@ -2,7 +2,7 @@ import { propArm, propPlacement, type PropPose } from './propMotion.ts';
 import { bodyProportions } from './bodyBuild.ts';
 import { gaitProfiles, isSleep, type GaitStyle } from './performanceCatalog.ts';
 import { Graphics, type Container } from 'pixi.js';
-import { armIK, gaitLeg, mix, rig, viewForward, type Point } from './animation.ts';
+import { armIK, gaitLeg, mix, rig, seatedLeg, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
 import { drawIllustratedHair, drawIllustratedHand, shade, type HandPose } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
@@ -114,6 +114,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         y:joint.knee.y+(walkingKnee.y-joint.knee.y)*gaitWeight};
       foot={x:joint.foot.x+(walkingFoot.x-joint.foot.x)*gaitWeight,
         y:joint.foot.y+(walkingFoot.y-joint.foot.y)*gaitWeight};
+    }
+    // Sit and Stand transfer the torso over feet planted at actor-floor y=0.
+    if(!moving&&(action==='sit'||action==='stand')){
+      [knee,foot]=seatedLeg(joint.upper,c.legs*c.height,lift,side);
     }
     const bottom=c.wardrobe?.bottoms??(c.outfit==='athleisure'?'leggings':'straight');
     const swim=c.outfit==='bikini';
