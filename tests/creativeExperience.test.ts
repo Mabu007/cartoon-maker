@@ -154,13 +154,20 @@ test('scene reorder changes sequential movie playback without losing per-scene w
   assert.equal(locate(moved.scenes,12).scene.id,altered.scenes[0].id);
   assert.equal(moved.scenes[1].clips.length,altered.scenes[0].clips.length);
 });
-test('removing a scene removes its script/outline links and prevents deleting the final scene',()=>{
+test('removing a scene cleans script/outline links, and deleting the final scene clears it',()=>{
   const withSecond=addMovieScene(prepared()).project;
   const removed=removeMovieScene(withSecond,withSecond.scenes[0].id);
   assert.equal(removed.scenes.length,1);
   assert.equal(removed.production?.screenplay.scenes.length,1);
   assert.equal(removed.production?.bible.scenes.length,1);
-  assert.throws(()=>removeMovieScene(removed,removed.scenes[0].id),/one movie scene/i);
+  const cleared=removeMovieScene(removed,removed.scenes[0].id);
+  assert.equal(cleared.scenes.length,1);
+  assert.notEqual(cleared.scenes[0].id,removed.scenes[0].id);
+  assert.deepEqual(cleared.scenes[0].clips,[]);
+  assert.deepEqual(cleared.scenes[0].objects,[]);
+  assert.equal(cleared.production?.screenplay.scenes.length,0);
+  assert.equal(cleared.production?.bible.scenes.length,0);
+  assert.equal(cleared.production?.graph.length,0);
   assert.throws(()=>renameMovieScene(removed,removed.scenes[0].id,''),/scene name/i);
 });
 test('character deletion reports dependencies and leaves valid scene/script references',()=>{
