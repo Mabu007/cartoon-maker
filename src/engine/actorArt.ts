@@ -11,6 +11,7 @@ import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, d
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { performanceHandPose } from './handPerformance.ts';
 import { gestureAt, gestureHand } from './livingCharacter.ts';
+import { handRotation } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
@@ -88,12 +89,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
     if(holdsCostume) drawHandheld(g,c,hand);
     const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
-    const wristAngle=(pose[side+'Wrist' as keyof JointPose]??0)*Math.PI/180*.46;
-    const rotation=(reachesFace?(side==='right'?-.7:.7):
-      handMode==='relaxed'?forearm-Math.PI/2:
-      handMode==='open'||handMode==='palm-up'?forearm+Math.PI/2:
-      handMode==='pinch'?forearm-Math.PI/3:
-      handMode==='fist'||handMode==='grip'?forearm-Math.PI/2:forearm)+wristAngle;
+    const wristDegrees=pose[side+'Wrist' as keyof JointPose]??0;
+    // A pointing index, waving palm and resting fingers all extend away from the cuff.
+    const rotation=handRotation(forearm,wristDegrees,handMode);
     const facing=art.profile?1:(side==='right'?1:-1)*(art.rear?-1:1);
     g.context.save().setTransform(at(hand.x,hand.y,art.profile&&handMode==='relaxed'?.73:1,1,rotation*180/Math.PI));
     const gestureContext={time,actorId,action,locomotion,expression,speaking,
