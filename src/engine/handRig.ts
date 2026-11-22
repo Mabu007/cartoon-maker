@@ -94,6 +94,35 @@ export function sampleHandRig(name: HandPose = 'relaxed', blend = 1) {
   return geometry;
 }
 
+/** Blend the actual five-finger geometry between captured hand poses and
+ * the existing hand-performance pose. Prevents the hand from popping to a
+ * totally different silhouette at each tracked keyframe or clip boundary. */
+export function sampleLayeredHandRig(base:HandPose,baseWeight:number,
+  from:HandPose,to:HandPose,progress:number,influence:number) {
+  const start=handPoseParams(base,baseWeight);
+  const first=poses[from],second=poses[to],t=unit(progress),strength=unit(influence);
+  const interpolate=(a:number,b:number)=>lerp(a,b,t);
+  const target:HandPoseParams={
+    curl:first.curl.map((v,i)=>interpolate(v,second.curl[i])) as HandPoseParams['curl'],
+    spread:interpolate(first.spread,second.spread),
+    thumbOpposition:interpolate(first.thumbOpposition,second.thumbOpposition),
+    wristBend:interpolate(first.wristBend,second.wristBend),
+    wristTwist:interpolate(first.wristTwist,second.wristTwist)
+  };
+  return buildHand({
+    curl:start.curl.map((v,i)=>lerp(v,target.curl[i],strength)) as HandPoseParams['curl'],
+    spread:lerp(start.spread,target.spread,strength),
+    thumbOpposition:lerp(start.thumbOpposition,target.thumbOpposition,strength),
+    wristBend:lerp(start.wristBend,target.wristBend,strength),
+    wristTwist:lerp(start.wristTwist,target.wristTwist,strength)
+  });
+}
+export function handRotationParams(forearmRadians:number,wristDegrees:number,
+  bend:number,side:HandSide) {
+  const wrist=Math.max(-65,Math.min(65,wristDegrees))*.46;
+  return forearmRadians+Math.PI/2+(wrist+bend*(side==='left'?-1:1))*Math.PI/180;
+}
+
 export function fingerPath(points: FingerPath) {
   return `M ${points[0].join(' ')} L ${points[1].join(' ')} L ${points[2].join(' ')}`;
 }
