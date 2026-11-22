@@ -87,8 +87,12 @@ export function reorderMovieScene(project:Project,id:string,step:number):Project
   });
 }
 export function removeMovieScene(project:Project,id:string):Project{
-  if(project.scenes.length<=1)throw new Error('Keep at least one movie scene.');
   if(!project.scenes.some(scene=>scene.id===id))throw new Error('The scene no longer exists.');
+  // A movie needs one scene to remain valid. Deleting the final scene leaves a
+  // completely empty replacement rather than trapping the creator in that scene.
+  const scenes=project.scenes.length===1
+    ? [{...makeScene('Living room',false),name:'Scene 01'}]
+    : project.scenes.filter(scene=>scene.id!==id);
   const production=project.production;
   const updated=production?{
     ...reviseScript(production,production.screenplay.scenes.filter(scene=>scene.id!==id)),
@@ -96,7 +100,7 @@ export function removeMovieScene(project:Project,id:string):Project{
     graph:production.graph.filter(record=>record.sceneId!==id)
   }:undefined;
   return ProjectDocument.parse({
-    ...project,scenes:project.scenes.filter(scene=>scene.id!==id),
+    ...project,scenes,
     ...(updated?{production:updated}:{})
   });
 }

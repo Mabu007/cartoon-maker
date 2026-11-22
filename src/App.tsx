@@ -1,7 +1,7 @@
 import { actionLayer, actionUsesProp, propActions, usesSeat, gaitStyleNames, gaitStyles, soundDurations, type GaitStyle } from './engine/performanceCatalog.ts';
 import { insertWaypoint, stagePath, type MoveClip, type PathMode, type TravelGait } from './engine/stagePath.ts';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, Trash2, X } from 'lucide-react';
 import { missingRentMovie } from './engine/production.ts';
 import { animations, clamp, type Point } from './engine/animation.ts';
 import { moveLayer, nextLayerDepth, type LayerMove } from './engine/sceneLayers.ts';
@@ -1034,11 +1034,34 @@ export default function App() {
     });
   }
   function dropDirectScene(value:Scene){
-    const linked=project.production?.screenplay.scenes.some(item=>item.id===value.id);
+    const state=useStudio.getState();
+    const linked=state.project.production?.screenplay.scenes.some(item=>item.id===value.id);
+    const isLast=state.project.scenes.length===1;
     ask(`Delete "${value.name}"?`,
-      linked?'This also removes the corresponding screenplay and story outline scene. Undo will restore everything.':
-        'This removes the scene and its animation timeline. Undo can restore it.',
-      ()=>edit(current=>removeMovieScene(current,value.id)));
+      isLast
+        ? 'This is the only scene. Its contents will be deleted and a new blank scene will replace it. Undo can restore your work.'
+        : linked
+          ? 'This also removes the corresponding screenplay and story outline scene. Undo will restore everything.'
+          : 'This removes the scene and its animation timeline. Undo can restore it.',
+      ()=>{
+        const before=useStudio.getState();
+        const index=before.project.scenes.findIndex(item=>item.id===value.id);
+        if(index<0){showError(new Error('The scene no longer exists.'));return;}
+        edit(current=>removeMovieScene(current,value.id));
+        const after=useStudio.getState();
+        if(after.project===before.project)return;
+        // Keep the playhead and selection on a real scene even when the active
+        // scene or an earlier scene was removed from the movie.
+        const target=after.project.scenes.find(item=>item.id===before.sceneId)
+          ??after.project.scenes[Math.min(index,after.project.scenes.length-1)];
+        if(after.sceneId!==target.id)after.setScene(target.id);
+        const local=target.id===before.sceneId?clamp(time.current.local,0,target.duration):0;
+        const timing=movieTiming(after.project.scenes);
+        setPlaybackRange(undefined);
+        setPlacement(undefined);
+        updateCursor(target,local,true,(timing.byId.get(target.id)?.start??0)+local,true);
+        tell(isLast?'Scene cleared. Undo to restore it.':`"${value.name}" deleted. Undo to restore it.`);
+      });
   }
   function showDialog(value: Dialog) { pause(); setDialog(value); }
   useEffect(() => {
@@ -1201,6 +1224,7 @@ export default function App() {
                 disabled={sceneIndex>=project.scenes.length-1}
                 onClick={()=>switchScene(project.scenes[sceneIndex+1])}><ChevronRight size={16}/></button>
             </div>
+            <IconButton title={project.scenes.length===1?'Clear current scene':'Delete current scene'} onClick={()=>dropDirectScene(scene)}><Trash2 size={15}/></IconButton>
           </div>
         </div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats} render={formatLabel}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
         {placement&&<div className="stage-placement-tools" role="group" aria-label="Stage placement">
@@ -1256,7 +1280,7 @@ export default function App() {
     </main>
     <Timeline key={session} scene={scene} movie={movie} characters={project.characters} selection={selection} selectedClipIds={selectedClipIds} selectedKeyframe={selectedKeyframe}
       selectClips={useStudio.getState().selectClips} selectKeyframe={useStudio.getState().selectKeyframe}
-      seek={seek} seekMovie={seekMovie} seekScene={seekScene} addScene={createDirectScene} tall={timelineTall} onTall={toggleTimelineHeight} onPropAction={(actor,action,start)=>showClip('body',action,undefined,actor,start)} onPath={(actor,gait,start)=>beginPath(gait,actor,'move',undefined,start)} onPoint={(actor,action,start)=>beginPlacement({kind:'point',sceneId:currentScene(useStudio.getState()).id,start,id:actor,action})} manageScenes={()=>showDialog('scenes')} add={showClip} remove={()=>run(deleteTimelineSelection)} duplicate={duplicateTimelineSelection}
+      seek={seek} seekMovie={seekMovie} seekScene={seekScene} addScene={createDirectScene} deleteScene={dropDirectScene} tall={timelineTall} onTall={toggleTimelineHeight} onPropAction={(actor,action,start)=>showClip('body',action,undefined,actor,start)} onPath={(actor,gait,start)=>beginPath(gait,actor,'move',undefined,start)} onPoint={(actor,action,start)=>beginPlacement({kind:'point',sceneId:currentScene(useStudio.getState()).id,start,id:actor,action})} manageScenes={()=>showDialog('scenes')} add={showClip} remove={()=>run(deleteTimelineSelection)} duplicate={duplicateTimelineSelection}
       copy={copyTimelineSelection} cut={()=>run(cutTimelineSelection)} paste={pasteTimelineSelection} split={splitTimelineSelection}
       apply={editTimeline} compact={compact} playing={playing} onResizeScene={duration => { editScene(current => resizeSceneTimeline(current,duration)); const updated=currentScene(useStudio.getState()); if(time.current.local>updated.duration)seek(updated.duration); }} playhead={time.current.movie} onCompact={() => {setTimelineTall(false);setCompact(value => !value);}}/></>}
     {backupInput}

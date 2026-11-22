@@ -251,11 +251,11 @@ export function ScenesDialog({ scenes, active, close, add, open, rename, reorder
           <IconButton title="Move scene later" disabled={index===scenes.length-1} onClick={()=>reorder(scene.id,1)}><ArrowDown size={15}/></IconButton>
           <IconButton title="Save this furnished world" onClick={()=>savePreset(scene)}><Save size={15}/></IconButton>
           <IconButton title="Duplicate scene" disabled={scenes.length>=30} onClick={()=>copy(scene)}><Copy size={15}/></IconButton>
-          <IconButton title="Delete scene" disabled={scenes.length===1} onClick={()=>drop(scene)}><Trash2 size={15}/></IconButton>
+          <IconButton title={scenes.length===1?'Clear only scene':'Delete scene'} onClick={()=>drop(scene)}><Trash2 size={15}/></IconButton>
         </div>
       </article>)}
     </div>{!!error&&<p className="form-error" role="alert">{error}</p>}
-      <p className="small-text">Each scene keeps its own world, actors, camera and clips. The film plays them in this order. Undo restores a deleted or rearranged scene.</p>
+      <p className="small-text">Each scene keeps its own world, actors, camera and clips. Deleting the last scene replaces it with a blank one. Undo restores your scene.</p>
     </div>
     <footer className="modal-footer"><span className="spacer"/>
       <button className="quiet" onClick={close}>Close</button>
