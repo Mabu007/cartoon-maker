@@ -6,6 +6,7 @@ export type HandPerformanceInput = {
   action:Action;locomotion:Action;side:'left'|'right';carrying:boolean;
   time:number;expression:Expression;speechWeight:number;
   character?:Character;actorId?:string;speaking?:boolean;listening?:boolean;
+  phrase?:{start:number;duration:number;text:string};
 };
 /** Explicit acting and prop grips take priority over procedural finger acting. */
 export function performanceHandPose(input:HandPerformanceInput):HandPose {
@@ -15,7 +16,8 @@ export function performanceHandPose(input:HandPerformanceInput):HandPose {
   if(action==='cry'||action==='reach'||action==='surprise'||action==='cartoon-block')return 'open';
   if(['cartoon-guard','cartoon-jab','cartoon-hook','cartoon-kick'].includes(action))return 'fist';
   if(action==='point' && side==='right')return 'point';
-  if(['wave','celebrate','open-hand','shrug'].includes(action))return 'open';
+  if(action==='wave')return side==='right'?'open':'relaxed';
+  if(['celebrate','open-hand','shrug'].includes(action))return 'open';
   if(action==='fist'||action==='angry'||expression==='angry')return 'fist';
   if(action==='hand-to-face'&&side==='right')return 'open';
   if(['hand-on-hip','hand-to-pocket'].includes(action)&&side==='right')return 'fist';
@@ -23,12 +25,12 @@ export function performanceHandPose(input:HandPerformanceInput):HandPose {
     const gesture=gestureHand(input.character,{
       time,actorId:input.actorId??input.character.id,action,locomotion,
       expression,speaking:Boolean(input.speaking),speechWeight,listening:input.listening,
-      carrying
+      carrying,phrase:input.phrase
     },side);
     if(gesture)return gesture;
     // Do not layer the old repeating six-frame hand cycle over personality.
     if(locomotion==='run')return 'fist';
-    if(locomotion==='walk')return side==='right'?'relaxed':'fist';
+    if(locomotion==='walk')return 'relaxed';
     return 'relaxed';
   }
   if(speechWeight>.12) {

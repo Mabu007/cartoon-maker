@@ -59,7 +59,30 @@ export type ActingContext = {
   time:number; actorId:string; action:Action; locomotion:Action; expression:Expression;
   speaking:boolean; speechWeight:number; listening?:boolean;
   manualGesture?:boolean; carrying?:boolean;
+  /** Current authored dialogue clip; controls one coordinated body/finger
+   * accent per phrase, without a model call or mutable timeline state. */
+  phrase?: {start:number;duration:number;text:string};
 };
+/** A sparse accent plan derived from dialogue punctuation and word counts.
+ * Each clause has a single stable beat; seeks and renders are stateless. */
+function phraseBeat(phrase:NonNullable<ActingContext['phrase']>,time:number){
+  const {start,duration,text}=phrase;
+  if(!Number.isFinite(duration)||duration<=0||time<start||time>=start+duration)return undefined;
+  const clauses=(text.match(/[^.!?;,]+[.!?;,]*/g)??[text]).filter(part=>part.trim());
+  if(!clauses.length)return undefined;
+  const weights=clauses.map(part=>Math.max(1,(part.match(/\S+/g)??[]).length));
+  const total=weights.reduce((a,b)=>a+b,0);
+  let before=0;
+  for(let i=0;i<clauses.length;i++){
+    const partTime=duration*weights[i]/total;
+    const peak=start+(before+weights[i]*.61)*duration/total;
+    const window=Math.min(.92,partTime*.7);
+    const phase=(time-(peak-window*.38))/window;
+    if(phase>=0&&phase<=1)return {slot:i,phase};
+    before+=weights[i];
+  }
+  return undefined;
+}
 export type GestureSample = {kind:GestureKind;side:'left'|'right';weight:number;phase:number};
 
 /**
@@ -77,8 +100,14 @@ export function gestureAt(character:Character,input:ActingContext):GestureSample
   const interval=mix(3.0,.86,frequency)*mix(1.24,.83,traits.energy/100)*
     mix(1.2,.8,traits.movementSpeed/100)*mix(.88,1.17,traits.patience/100);
   const seed=hash(character.id);
-  const slot=Math.floor(t/interval);
-  const phase=(t-slot*interval)/interval;
+  let slot=Math.floor(t/interval);
+  let phase=(t-slot*interval)/interval;
+  if(talking&&input.phrase){
+    const beat=phraseBeat(input.phrase,t);
+    if(!beat)return none;
+    slot=beat.slot+(hash(input.phrase.text)%2048);
+    phase=beat.phase;
+  }
   // A few full periods of restraint are essential for believable conversation.
   const threshold=talking?mix(.2,.87,frequency)*mix(.8,1.15,traits.sociability/100):
     mix(.03,.28,traits.restlessness/100)*mix(1.1,.75,traits.patience/100);
@@ -127,18 +156,31 @@ export function livingPose(character:Character,input:ActingContext,base:JointPos
   const breath=Math.sin(t*2.05+hash(character.id)*.00001);
   const sway=Math.sin(t*.75+hash(character.id)*.000009);
   const posture=(p.postureOpenness-50)/50;
+  const confidence=(p.confidence-50)/50;
   const emotionMultiplier=input.expression==='neutral'?1:mix(.7,1.65,p.reactionIntensity/100);
   const proximity=input.listening?mix(-1,1,p.personalSpace/100):0;
   const anxious=p.nervousness/100;
   // Preserve strong authored poses: secondary animation is kept small.
   const secondary=quiet?1:.24;
-  result.torso=(result.torso??0)+(posture*-3.8+breath*1.1+sway*anxious*1.8+proximity*2.2)*secondary*subtle;
-  result.neck=(result.neck??0)+(breath*.55-sway*.8)*secondary*subtle;
-  result.head=(result.head??0)+(sway*(.8+anxious*2.7)*emotionMultiplier+(p.signature==='tilt-head'?3:0))*secondary*subtle;
+  result.torso=(result.torso??0)+(posture*-7.8-confidence*2.1+breath*1.05+sway*anxious*1.9+proximity*2.2)*secondary*subtle;
+  result.neck=(result.neck??0)+(breath*.5-sway*.8+confidence*1.1)*secondary*subtle;
+  result.head=(result.head??0)+(sway*(.7+anxious*2.9)*emotionMultiplier-confidence*2.1+
+    (p.signature==='tilt-head'?3:0))*secondary*subtle;
+  if(input.listening&&!input.manualGesture){
+    // A small acknowledgement and forward attention, separated by long holds.
+    const phase=(t+hash(input.actorId)*.000007)%4.7;
+    const acknowledgement=ease(clamp(1-Math.abs(phase-2.4)/.38));
+    result.head=(result.head??0)+acknowledgement*5*(p.sociability/100)*subtle;
+    result.neck=(result.neck??0)+acknowledgement*2.1*subtle;
+  }
   if(!motion&&quiet&&!input.manualGesture){
     const stillness=1-p.restlessness/150;
-    result.leftShoulder=(result.leftShoulder??0)+(posture*-4+breath*.4)*stillness*subtle;
-    result.rightShoulder=(result.rightShoulder??0)+(posture*4-breath*.4)*stillness*subtle;
+    result.leftShoulder=(result.leftShoulder??0)+(posture*-13-confidence*3+breath*.4)*stillness*subtle;
+    result.rightShoulder=(result.rightShoulder??0)+(posture*13+confidence*3-breath*.4)*stillness*subtle;
+    // Inward elbows make a shy silhouette even in the silent rest frame.
+    const guarded=clamp((48-p.confidence)/48)*p.nervousness/100;
+    result.leftElbow=(result.leftElbow??0)-guarded*12*subtle;
+    result.rightElbow=(result.rightElbow??0)+guarded*12*subtle;
   }
   if(motion) {
     const gaitEnergy=mix(.7,1.32,p.energy/100)*mix(.9,1.15,p.movementSpeed/100);

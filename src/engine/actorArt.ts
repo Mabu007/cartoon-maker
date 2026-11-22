@@ -2,7 +2,7 @@ import { propArm, propPlacement, type PropPose } from './propMotion.ts';
 import { bodyProportions } from './bodyBuild.ts';
 import { gaitProfiles, isSleep, type GaitStyle } from './performanceCatalog.ts';
 import { Graphics, type Container } from 'pixi.js';
-import { armIK, gaitLeg, mix, rig, viewForward, type Point } from './animation.ts';
+import { armIK, gaitLeg, mix, rig, seatedLeg, viewForward, type Point } from './animation.ts';
 import { ellipse, INK, line, rect, segment } from './art.ts';
 import { drawIllustratedHair, drawIllustratedHand, shade, type HandPose } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
@@ -11,6 +11,7 @@ import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, d
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { performanceHandPose } from './handPerformance.ts';
 import { gestureAt, gestureHand } from './livingCharacter.ts';
+import { handRotation } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
 import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
@@ -39,7 +40,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose}) {
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose},
+  actingPhrase?:{start:number;duration:number;text:string}) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
   const art = viewArt[view];
@@ -82,22 +84,19 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const holdsCostume = side===costumeHand && !carrying && Boolean(c.wardrobe?.handheld && c.wardrobe.handheld!=='none');
     const handMode:HandPose = performanceHandPose({
       action,locomotion,side,carrying:carrying||holdsCostume||(action==='drive'&&!!held),time,expression,
-      speechWeight:speaking?(viseme?.weight??0):0,
-      character:c,actorId,speaking,listening
+      speechWeight:speaking?(viseme?.weight??(action==='talk'?.55:0)):0,
+      character:c,actorId,speaking,listening,phrase:actingPhrase
     });
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
     if(holdsCostume) drawHandheld(g,c,hand);
     const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
-    const wristAngle=(pose[side+'Wrist' as keyof JointPose]??0)*Math.PI/180*.46;
-    const rotation=(reachesFace?(side==='right'?-.7:.7):
-      handMode==='relaxed'?forearm-Math.PI/2:
-      handMode==='open'||handMode==='palm-up'?forearm+Math.PI/2:
-      handMode==='pinch'?forearm-Math.PI/3:
-      handMode==='fist'||handMode==='grip'?forearm-Math.PI/2:forearm)+wristAngle;
+    const wristDegrees=pose[side+'Wrist' as keyof JointPose]??0;
+    // A pointing index, waving palm and resting fingers all extend away from the cuff.
+    const rotation=handRotation(forearm,wristDegrees,handMode);
     const facing=art.profile?1:(side==='right'?1:-1)*(art.rear?-1:1);
     g.context.save().setTransform(at(hand.x,hand.y,art.profile&&handMode==='relaxed'?.73:1,1,rotation*180/Math.PI));
     const gestureContext={time,actorId,action,locomotion,expression,speaking,
-      speechWeight:speaking?(viseme?.weight??0):0,listening,carrying:carrying||holdsCostume};
+      speechWeight:speaking?(viseme?.weight??(action==='talk'?.55:0)):0,listening,carrying:carrying||holdsCostume,phrase:actingPhrase};
     const naturalHand=gestureHand(c,gestureContext,side);
     const blendHand=naturalHand===handMode?gestureAt(c,gestureContext).weight:1;
     drawIllustratedHand(g,0,0,limbWidth*(art.profile&&side==='left'?.78:.91),c.skin,handMode,facing<0?-1:1,blendHand);
@@ -116,6 +115,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         y:joint.knee.y+(walkingKnee.y-joint.knee.y)*gaitWeight};
       foot={x:joint.foot.x+(walkingFoot.x-joint.foot.x)*gaitWeight,
         y:joint.foot.y+(walkingFoot.y-joint.foot.y)*gaitWeight};
+    }
+    // Sit and Stand transfer the torso over feet planted at actor-floor y=0.
+    if(!moving&&(action==='sit'||action==='stand')){
+      [knee,foot]=seatedLeg(joint.upper,c.legs*c.height,lift,side);
     }
     const bottom=c.wardrobe?.bottoms??(c.outfit==='athleisure'?'leggings':'straight');
     const swim=c.outfit==='bikini';

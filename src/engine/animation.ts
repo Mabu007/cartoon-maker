@@ -49,7 +49,7 @@ export const viewForward = (view: string) => view === 'back-quarter' ? -1 : 1;
 const gait = (running: boolean) => {
   // Eight-phase walk cycle with opposite arm swing, knee recovery, toe-off
   // and torso/head counter-rotation. Feet are planted by the actor renderer.
-  const stride = running ? 43 : 28, lean = running ? 12 : 3;
+  const stride = running ? 49 : 32, lean = running ? 15 : 3.5;
   const swing = (step: number, leadKnee: number, backKnee: number): JointPose => ({
     leftHip: step, rightHip: -step,
     leftKnee: leadKnee, rightKnee: backKnee,
@@ -62,11 +62,11 @@ const gait = (running: boolean) => {
   return [
     key(0, swing(stride, -5, -38), 0),
     key(.125, swing(stride*.75, -10, -61), 0),
-    key(.25, swing(0, -15, -67), running ? 7 : 0),
+    key(.25, swing(0, running?-24:-17, running?-84:-63), running ? 10 : 1),
     key(.375, swing(-stride*.75, -43, -38), 0),
     key(.5, swing(-stride, -40, -5), 0),
     key(.625, swing(-stride*.75, -61, -10), 0),
-    key(.75, swing(0, -67, -15), running ? 7 : 0),
+    key(.75, swing(0, running?-84:-63, running?-24:-17), running ? 10 : 1),
     key(.875, swing(stride*.75, -38, -43), 0),
     key(1, swing(stride, -5, -38), 0)
   ];
@@ -127,7 +127,7 @@ export const animations: Record<Action, Animation> = {
   jump: make('jump', .85, false, [key(0), key(.18, { leftHip: 23, rightHip: 22, leftKnee: -43, rightKnee: -43 }, -16), key(.53, { leftHip: 36, rightHip: -5, leftKnee: -40, rightKnee: -57, leftShoulder: 130, rightShoulder: -128 }, 69), key(.83, { leftKnee: -33, rightKnee: -32 }, -9), key(1)]),
   sit: make('sit', .85, false, [key(0), key(.52, { ...seated, torso: 18 }, -42), key(1, seated, -49)]),
   stand: make('stand', .8, false, [key(0, seated, -49), key(.48, { leftHip: 30, rightHip: 30, leftKnee: -55, rightKnee: -55, torso: 24 }, -26), key(1)]),
-  wave: make('wave', 1.2, true, [key(0, { rightShoulder: 115, rightElbow: 24 }), key(.28, { rightShoulder: 126, rightElbow: 56 }), key(.68, { rightShoulder: 109, rightElbow: 12 }), key(1, { rightShoulder: 115, rightElbow: 24 })], 'happy'),
+  wave: make('wave', 1.2, true, [key(0, { rightShoulder: 118, rightElbow: 8, rightWrist: -7 }), key(.28, { rightShoulder: 127, rightElbow: -12, rightWrist: 18 }), key(.68, { rightShoulder: 117, rightElbow: 13, rightWrist: -17 }), key(1, { rightShoulder: 118, rightElbow: 8, rightWrist: -7 })], 'happy'),
   point: make('point', .62, false, [key(0), key(.26, { rightShoulder: 42, rightElbow: 45, torso: -7 }), key(1, { rightShoulder: 95, rightElbow: 2, torso: 6 })]),
   nod: make('nod', .7, true, [key(0, { head: -7 }), key(.47, { head: 13, neck: 5 }), key(1, { head: -7 })]),
   shake: make('shake', .63, true, [key(0, { head: -12 }), key(.5, { head: 12, neck: -6 }), key(1, { head: -12 })]),
@@ -184,17 +184,33 @@ export function footContactAt(time: number, action: Gait, side: 'left' | 'right'
   const phase = (((time / duration) + (side === 'right' ? .5 : 0)) % 1) + 1;
   const progress = phase % 1;
   const stance = action === 'run' ? .43 : .57;
-  const stride = velocity === undefined ? (action === 'run' ? 42 : 25) : clamp(velocity * duration * stance, 8, 60);
+  // Match the support-foot sweep to the actor's travel speed: the planted shoe
+  // moves opposite the root while the body advances. No frame-to-frame state.
+  const stride = velocity === undefined
+    ? gaitSpeeds[action] * duration * stance
+    : clamp(Math.abs(velocity) * duration * stance, 10, 60);
   if (progress <= stance) return { x: stride * (.5 - progress / stance), y: 0, planted: true };
   const recovery = (progress - stance) / (1 - stance);
-  return { x: stride * (-.5 + recovery), y: -Math.sin(recovery * Math.PI) * (action === 'run' ? 19 : 10), planted: false };
+  return { x: stride * (-.5 + ease(recovery)), y: -Math.pow(Math.sin(recovery * Math.PI),.85) * (action === 'run' ? 23 : 13), planted: false };
 }
 export function gaitLeg(upper: Point, legScale: number, time: number, action: Gait,
   side: 'left' | 'right', forward: number, lift: number, velocity?: number, liftScale=1) {
   const step = footContactAt(time, action, side, velocity);
-  const length = 38 * legScale;
-  const goal = { x: upper.x + step.x * forward * legScale, y: step.y * legScale * liftScale + (step.planted ? lift : lift * .35) };
-  return armIK(upper, goal, length, length * 1.09, -forward);
+  const length = 40 * legScale, lower = 44 * legScale;
+  // The slight side separation keeps passing shoes legible in 3/4 view.
+  const separation = (side === 'left' ? -3.8 : 3.8) * legScale;
+  const goal = {
+    x: upper.x + step.x * forward * legScale + separation,
+    y: step.y * legScale * liftScale + (step.planted ? lift : lift * .35)
+  };
+  return armIK(upper, goal, length, lower, -forward);
+}
+/** Soles remain on the scene's floor guide during sitting and standing.
+ * Animation supplies the body-height lift; an analytic two-bone leg solves
+ * the knee, with no accumulating physics or contact state. */
+export function seatedLeg(upper:Point,legScale:number,lift:number,side:'left'|'right'):[Point,Point]{
+  const target={x:upper.x+(side==='left'?-17:17)*legScale,y:lift};
+  return armIK(upper,target,38*legScale,42*legScale,side==='left'?-1:1);
 }
 export function rig(c: Character, pose: JointPose, width: number) {
   const build=bodyProportions(c);
