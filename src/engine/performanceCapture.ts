@@ -160,6 +160,42 @@ export function samplePerformanceHands(keys:readonly PerformanceKey[],normalized
 }
 
 const round=(v:number)=>Math.round(v*10)/10;
+/** Error-bounded key reduction. Keep meaningful talk beats, hand shapes and
+ * expressions while collapsing long periods of stillness into two keys.
+ * Measurement uses the SAME interpolator as the rendered animation. */
+export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1.7):PerformanceKey[] {
+  if(keys.length<3)return [...keys];
+  const kept=new Set<number>([0,keys.length-1]);
+  const pending:[[number,number],...[number,number][]]=[[0,keys.length-1]];
+  const watched=tracked;
+  while(pending.length){
+    const [from,to]=pending.pop()!;
+    if(to-from<2)continue;
+    const first=keys[from],last=keys[to];
+    let candidate=-1,largest=tolerance;
+    for(let index=from+1;index<to;index++){
+      const observed=keys[index];
+      const estimated=samplePerformance([first,last],observed.time);
+      let error=0;
+      for(const joint of watched){
+        const value=observed.pose[joint];
+        if(value===undefined)continue;
+        const delta=Math.abs(wrapDegrees(value-(estimated.pose[joint]??value)));
+        const emphasis=joint==='head'||joint==='torso'?1.5:
+          joint.endsWith('Wrist')?.7:1;
+        error=Math.max(error,delta*emphasis);
+      }
+      for(const side of ['left','right'] as const)
+        if(observed.hands?.[side]!==estimated.hands?.[side])error=Math.max(error,20);
+      if(observed.expression!==estimated.expression)error=Math.max(error,20);
+      if(error>largest){largest=error;candidate=index;}
+    }
+    if(candidate<0)continue;
+    kept.add(candidate);
+    pending.push([from,candidate],[candidate,to]);
+  }
+  return [...kept].sort((a,b)=>a-b).map(index=>keys[index]);
+}
 /** Resample by elapsed capture timestamps; reject out-of-order/low-confidence frames.
  * Exponential low-pass smoothing suppresses tracking noise, without changing
  * pose timing. A hard 240-key cap keeps JSON save/export bounded. */
@@ -173,7 +209,6 @@ export function compilePerformance(frames: readonly CaptureFrame[], options:Capt
   const count=Math.min(max,Math.max(2,Math.ceil(duration*12)+1));
   const exaggerated=clamp(options.exaggeration??1,.25,2.5);
   const smoothing=clamp(options.smoothing??.55,0,1);
-  const alpha=1-smoothing*.82;
   const keys:PerformanceKey[]=[];
   let at=0;
   for(let i=0;i<count;i++){
@@ -202,7 +237,8 @@ export function compilePerformance(frames: readonly CaptureFrame[], options:Capt
       ...(source.hands?{hands:source.hands}:{}),...(source.expression?{expression:source.expression}:{})});
   }
   keys[0].time=0;keys[keys.length-1].time=1;
-  return {keys,duration:Math.round(duration*100)/100,framesAccepted:valid.length,framesDropped:frames.length-valid.length};
+  return {keys:reducePerformanceKeys(keys),duration:Math.round(duration*100)/100,
+    framesAccepted:valid.length,framesDropped:frames.length-valid.length};
 }
 export function classifyPerformance(keys: readonly PerformanceKey[],at:number):PerformanceIntent {
   const k=samplePerformance(keys,at),p=k.pose;
