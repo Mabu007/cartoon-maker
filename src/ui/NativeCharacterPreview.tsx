@@ -118,7 +118,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         {armParts.map(({side,hand,elbow,handPose})=>{
           const sign=side==='right'?1:-1;
           const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
-          const rotation=handRotation(forearm,live[side+'Wrist']??0,handPose)*180/Math.PI;
+          const rotation=handRotation(forearm,live[side==='left'?'leftWrist':'rightWrist']??0,handPose)*180/Math.PI;
           const handRig=sampleHandRig(handPose);
           const path=(points:readonly (readonly [number,number])[])=>
             points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
