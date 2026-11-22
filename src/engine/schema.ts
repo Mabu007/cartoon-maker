@@ -93,7 +93,18 @@ const ActorClip = z.strictObject({ ...time, track: z.literal('actors'), actor: i
 const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: id, fromX: position.x, fromY: position.y, toX: position.x, toY: position.y, gait: z.enum(['walk', 'run']).optional(), style: z.enum(gaitStyles).optional(),
   /** Optional normalized spatial keys. When present they drive the evaluated path. */
   keyframes: z.array(z.strictObject({ time: num(0, 1), x: position.x, y: position.y })).min(2).max(32).optional() });
-const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional(), pointAt: z.strictObject({ x: position.x, y: position.y }).optional() });
+/** Sparse sampled performance data shares the existing body timeline lane and actor IDs. */
+const CapturedHand = z.enum(['relaxed','loose-open','open','point','count-one','count-two','count-three','pinch','fist','grip','palm-up','palm-out','shrug','self-reference','thumbs-up','count']);
+export const CapturedPoseKey = z.strictObject({
+  time:num(0,1),pose:z.partialRecord(Joint,num(-180,180)),
+  lift:num(-100,100).optional(),
+  hands:z.strictObject({left:CapturedHand,right:CapturedHand}).optional(),
+  expression:z.enum(expressions).optional()
+});
+const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional(), pointAt: z.strictObject({ x: position.x, y: position.y }).optional(),
+  performance:z.array(CapturedPoseKey).min(2).max(240).optional(),
+  performanceOrigin:z.enum(['mocap','choreography']).optional()
+});
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });
 const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']) });
 const FaceClip = z.strictObject({ ...time, track: z.literal('face'), actor: id, expression: z.enum(expressions) });
@@ -218,6 +229,12 @@ function verifySceneRelationships(scene: Scene, characters: ReadonlySet<string>,
       const keys = clip.keyframes;
       if (keys[0].time !== 0 || keys[keys.length - 1].time !== 1 || keys.some((key, i) => i > 0 && key.time <= keys[i - 1].time))
         ctx.addIssue({ code: 'custom', path: [...clipPath, 'keyframes'], message: 'Movement keyframes must begin at 0, end at 1 and have strictly increasing times' });
+    }
+    if(clip.track==='body' && clip.performance?.length) {
+      const keys=clip.performance;
+      if(keys[0].time!==0||keys[keys.length-1].time!==1||
+         keys.some((key,i)=>i>0&&key.time<=keys[i-1].time))
+        ctx.addIssue({code:'custom',path:[...clipPath,'performance'],message:'Captured pose keys must begin at 0, end at 1 and have strictly increasing times'});
     }
     if(clip.track==='dialogue') for(const cues of [clip.visemes,clip.manualVisemes,...(clip.versions??[]).flatMap(version=>[version.visemes,version.manualVisemes])]) {
       if(cues?.some((cue,index)=>cue.end<=cue.start || index>0&&cue.start<cues[index-1].end-.00001))

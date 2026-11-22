@@ -1,9 +1,18 @@
 import { movementPosition } from './evaluate.ts';
+import { samplePerformance, type PerformanceKey } from './performanceCapture.ts';
 import { insertCameraShot } from './timelineCode.ts';
 import { uid, type Clip, type Scene, type Track } from './schema.ts';
 
 const MIN = .1;
 const rounding = (n: number) => Math.round(n * 1000) / 1000;
+/** Retiming preserves actual poses instead of replaying the entire original
+ * recording after a timeline trim or split. */
+export function segmentedPerformance(keys:readonly PerformanceKey[],from:number,to:number):PerformanceKey[] {
+  const start=Math.max(0,Math.min(1,from)),end=Math.max(start+.000001,Math.min(1,to));
+  const times=[start,...keys.filter(k=>k.time>start&&k.time<end).map(k=>k.time),end];
+  return times.map((t,i)=>({...samplePerformance(keys,t),
+    time:i===0?0:i===times.length-1?1:Math.round(((t-start)/(end-start))*100000)/100000}));
+}
 export const trackIsLocked = (scene: Scene, track: Track) => !!scene.trackSettings?.[track]?.locked;
 export const compatibleTrack = (source: Track, target: Track) => source === target ||
   ((source === 'audio' || source === 'music') && (target === 'audio' || target === 'music'));
@@ -54,6 +63,10 @@ export function resizeSceneTimeline(scene: Scene, duration: number): Scene {
       if (clip.start + clip.length <= length + 1e-8) return [clip];
       const trimmed = Math.min(clip.length, length - clip.start);
       if (trimmed < MIN - 1e-8) return [];
+      if(clip.track==='body'&&clip.performance){
+        return [{...clip,length:rounding(trimmed),
+          performance:segmentedPerformance(clip.performance,0,trimmed/clip.length)}];
+      }
       if (clip.track === 'movement') {
         const fraction = trimmed/clip.length;
         const start = movementPosition(clip,0),end = movementPosition(clip,fraction);
@@ -95,6 +108,13 @@ function splitOne(clip: Clip, at: number): [Clip,Clip] {
     return [
       { ...clip, length: leftLength, fromX: initial.x, fromY: initial.y, toX: middle.x, toY: middle.y, keyframes: segmentedKeys(clip, 0, alpha) },
       { ...right, fromX: middle.x, fromY: middle.y, toX: finish.x, toY: finish.y, keyframes: segmentedKeys(clip, alpha, 1) }
+    ];
+  }
+  if(clip.track==='body'&&clip.performance&&right.track==='body'){
+    const fraction=leftLength/clip.length;
+    return [
+      {...clip,length:leftLength,performance:segmentedPerformance(clip.performance,0,fraction)},
+      {...right,performance:segmentedPerformance(clip.performance,fraction,1)}
     ];
   }
   return [left,right];
@@ -157,6 +177,10 @@ export function trimTimelineClip(scene: Scene, id: string, edge: 'in'|'out', nex
   const start = rounding(beginning);
   let edited: Clip = { ...clip, start, length };
   if ('offset' in edited && edge==='in') edited = {...edited, offset: Math.min(180,rounding(edited.offset+start-clip.start))};
+  if(clip.track==='body'&&clip.performance&&edited.track==='body') {
+    edited={...edited,performance:segmentedPerformance(clip.performance,
+      (start-clip.start)/clip.length,(ending-clip.start)/clip.length)};
+  }
   if (clip.track === 'movement' && edited.track === 'movement') {
     const a=(start-clip.start)/clip.length,b=(ending-clip.start)/clip.length;
     const from=movementPosition(clip,a),to=movementPosition(clip,b);

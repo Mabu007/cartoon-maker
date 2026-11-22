@@ -35,7 +35,7 @@ export const clipLabel = (clip: Clip, names: Record<string, string> = {}) => {
     case 'movement': return `${names[clip.actor] ?? 'Actor'} · ${clip.style&&clip.style!=='natural'?gaitStyleNames[clip.style]:clip.gait?label(clip.gait):'Move'}`;
     case 'gaze': return 'Look at ' + (names[clip.target] ?? clip.target);
     case 'props': return label(clip.interaction) + ' ' + clip.target;
-    case 'body': return (names[clip.actor]?names[clip.actor]+' · ':'')+label(clip.action);
+    case 'body': return (names[clip.actor]?names[clip.actor]+' · ':'')+(clip.performanceOrigin==='mocap'?'Captured acting':clip.performanceOrigin==='choreography'?'Staged reaction':label(clip.action));
     case 'face': return (names[clip.actor]?names[clip.actor]+' · ':'')+label(clip.expression);
     case 'dialogue': return (names[clip.actor]?names[clip.actor]+' · ':'')+(clip.text || 'Voice');
     case 'audio': case 'music': return clip.name;
