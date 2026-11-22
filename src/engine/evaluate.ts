@@ -9,13 +9,15 @@ import { effectiveCues } from './dspLipSync.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
 import { gestureAt, livingPose, type ActingContext, type GestureSample } from './livingCharacter.ts';
 import { occupiedHands } from './handPerformance.ts';
+import { samplePerformance } from './performanceCapture.ts';
+import type { HandPose } from './handRig.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
   speaking: boolean; actionTime: number; actionWeight:number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string;
-  handGesture?: GestureSample };
+  handGesture?: GestureSample; handOverride?: {left:HandPose;right:HandPose} };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -218,6 +220,16 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       }
     }
     const face = latest(clips.filter((clip): clip is Extract<Clip, { track: 'face' }> => clip.track === 'face' && active(clip, t)));
+    const captured = latest(clips.filter((clip):clip is Extract<Clip,{track:'body'}> =>
+      clip.track==='body' && !!clip.performance?.length && active(clip,t)));
+    let handOverride: {left:HandPose;right:HandPose}|undefined;
+    if(captured?.performance){
+      const key=samplePerformance(captured.performance,(t-captured.start)/captured.length);
+      const weight=frameWeight(captured,t);
+      pose=blend(pose,key.pose,weight,false);
+      if(key.hands&&weight>.45)handOverride=key.hands;
+      if(key.expression&&!face&&weight>.45)expression=key.expression;
+    }
     if (face) expression = face.expression;
     const spoken = latest(sounds.filter((clip):clip is Extract<Clip,{track:'dialogue'}> =>
       clip.track==='dialogue' && clip.actor===actor.id && !clip.muted));
@@ -263,14 +275,15 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         } : undefined
       };
       handGesture = gestureAt(character, acting);
-      pose = livingPose(character, acting, pose, handGesture);
+      // Recorded human acting has priority over synthetic speech gestures.
+      if(!captured)pose = livingPose(character, acting, pose, handGesture);
     }
     const performance=action===gesture?.action?gesture:body;
     const actionTime=performance?t-performance.start:0;
     const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking, handGesture, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
+      speaking, handGesture, handOverride, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
