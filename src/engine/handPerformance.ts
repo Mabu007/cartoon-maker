@@ -6,6 +6,7 @@ export type HandPerformanceInput = {
   action:Action;locomotion:Action;side:'left'|'right';carrying:boolean;
   time:number;expression:Expression;speechWeight:number;
   character?:Character;actorId?:string;speaking?:boolean;listening?:boolean;
+  phrase?:{start:number;duration:number;text:string};
 };
 /** Explicit acting and prop grips take priority over procedural finger acting. */
 export function performanceHandPose(input:HandPerformanceInput):HandPose {
@@ -24,7 +25,7 @@ export function performanceHandPose(input:HandPerformanceInput):HandPose {
     const gesture=gestureHand(input.character,{
       time,actorId:input.actorId??input.character.id,action,locomotion,
       expression,speaking:Boolean(input.speaking),speechWeight,listening:input.listening,
-      carrying
+      carrying,phrase:input.phrase
     },side);
     if(gesture)return gesture;
     // Do not layer the old repeating six-frame hand cycle over personality.
