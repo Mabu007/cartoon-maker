@@ -48,7 +48,7 @@ function packedTracks(scene: Scene) {
 
 export function Timeline({
   scene, movie, characters, selection, selectedClipIds, selectedKeyframe, selectClips, selectKeyframe,
-  seek, seekMovie, seekScene, addScene, manageScenes, tall, onTall, onPath, onPoint, onPropAction, add, remove, duplicate, copy, cut, paste, split,
+  seek, seekMovie, seekScene, addScene, deleteScene, manageScenes, tall, onTall, onPath, onPoint, onPropAction, add, remove, duplicate, copy, cut, paste, split,
   apply, compact, playing, onCompact, onResizeScene, playhead
 }: {
   scene: Scene; movie: MovieTiming; characters: Character[]; selection: Selection;
@@ -59,7 +59,7 @@ export function Timeline({
   onPath:(actor:string,gait:'walk'|'run',start:number)=>void;
   onPropAction:(actor:string,action:Action,start:number)=>void;
   onPoint:(actor:string,action:'point'|'reach',start:number)=>void;
-  addScene:()=>void; manageScenes:()=>void; add: (track?:Track) => void;
+  addScene:()=>void; deleteScene:(scene:Scene)=>void; manageScenes:()=>void; add: (track?:Track) => void;
   remove: () => void; duplicate: () => void; copy: () => void; cut: () => void; paste: () => void; split: () => void;
   apply: (next:Scene, ids?:string[]) => void; compact:boolean; playing:boolean; onCompact:()=>void;
   onResizeScene:(duration:number)=>void; playhead:number;
@@ -404,6 +404,9 @@ export function Timeline({
             <div className="ruler-label movie-scenes-label">
               <button type="button" className="quiet" aria-label="Manage movie scenes" onClick={manageScenes}><Clapperboard size={13}/> Scenes</button>
               <IconButton title="Add scene at end of movie" onClick={addScene}><Plus size={15}/></IconButton>
+              <button type="button" className="quiet" title={movie.spans.length===1?'Clear only scene':'Delete current scene'}
+                aria-label={movie.spans.length===1?'Clear only scene':'Delete current scene'}
+                onClick={()=>deleteScene(scene)}><Trash2 size={13}/> Delete</button>
             </div>
             <div className="movie-scenes-strip" aria-label="Movie scenes">
               {visible.map(span=><button type="button" key={span.scene.id} className="movie-scene-block"
