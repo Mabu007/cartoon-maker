@@ -383,6 +383,11 @@ export function Timeline({
         <IconButton title={tall?'Restore timeline height (T)':'Expand timeline height (T)'} active={tall} onClick={onTall}><PanelBottom size={16}/></IconButton>
         <IconButton title="Fit entire movie to timeline width" onClick={()=>{setZoom(1);if(viewportRef.current)viewportRef.current.scrollLeft=0;}}><Maximize2 size={15}/></IconButton>
       </div>
+      <button type="button" className="timeline-scene-delete" onClick={()=>deleteScene(scene)}
+        aria-label={movie.spans.length===1?'Delete current scene and start with a blank scene':`Delete current scene: ${scene.name}`}
+        title={movie.spans.length===1?'Clear this scene and replace it with a blank one (undo available)':`Delete "${scene.name}" (undo available)`}>
+        <Trash2 size={15} aria-hidden="true"/><span>Delete scene</span>
+      </button>
     </header>
     {shortcuts&&<div className="timeline-shortcuts" role="region" aria-label="Timeline keyboard shortcuts">
       <strong>Keyboard shortcuts</strong><span>Space · Play/Pause</span><span>Ctrl/Cmd + Z · Undo</span>
@@ -404,9 +409,6 @@ export function Timeline({
             <div className="ruler-label movie-scenes-label">
               <button type="button" className="quiet" aria-label="Manage movie scenes" onClick={manageScenes}><Clapperboard size={13}/> Scenes</button>
               <IconButton title="Add scene at end of movie" onClick={addScene}><Plus size={15}/></IconButton>
-              <button type="button" className="quiet" title={movie.spans.length===1?'Clear only scene':'Delete current scene'}
-                aria-label={movie.spans.length===1?'Clear only scene':'Delete current scene'}
-                onClick={()=>deleteScene(scene)}><Trash2 size={13}/> Delete</button>
             </div>
             <div className="movie-scenes-strip" aria-label="Movie scenes">
               {visible.map(span=><button type="button" key={span.scene.id} className="movie-scene-block"
