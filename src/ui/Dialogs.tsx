@@ -1,3 +1,6 @@
+import { storageError } from '../services/localMedia.ts';
+import { outputSize, type ExportQuality } from '../engine/exportQuality.ts';
+import { formatLabel } from '../engine/videoFormats.ts';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, AudioLines, Captions, CircleHelp, Clapperboard, Cloud, Copy, Download, FileAudio, FolderOpen, Mic, Plus, Save, Sparkles, Square, Trash2, WandSparkles, Pencil, Check, X } from 'lucide-react';
 import { animations, clamp } from '../engine/animation.ts';
@@ -123,7 +126,7 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
   const alive=useRef(true),stream=useRef<MediaStream | undefined>(undefined),recorder=useRef<MediaRecorder | undefined>(undefined),limit=useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;clearTimeout(limit.current);stream.current?.getTracks().forEach(t=>t.stop());if(recorder.current?.state==='recording')recorder.current.stop();};},[]);
   useEffect(()=>()=>{if(asset)URL.revokeObjectURL(asset.url);},[asset]);
-  async function work(task:()=>Promise<void>){if(busy)return;setBusy(true);setError('');try{await task();}catch(e){if(alive.current)setError(e instanceof Error?e.message:'Could not load recording.');}finally{if(alive.current)setBusy(false);}}
+  async function work(task:()=>Promise<void>){if(busy)return;setBusy(true);setError('');try{await task();}catch(e){if(alive.current)setError(storageError(e));}finally{if(alive.current)setBusy(false);}}
   async function load(blob:Blob,name:string){
     if(!blob.size||blob.size>20*1024*1024)throw Error('Choose an audio file smaller than 20 MB.');
     let length:number;try{length=await audioLength(blob);}catch{throw Error('This audio could not be decoded. Try WAV, MP3, M4A or WebM.');}
@@ -153,10 +156,8 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
     const analysis=isDialogue?await analyzeLocalLipSync(asset.blob):undefined;
     if(!alive.current)return;
     const id=uid();
-    // Always preserve the creator's recording immediately. The project's
-    // autosave uploads this asset to private R2 before its Firestore commit.
-    // If R2 is unavailable, the clip still plays on this device and the
-    // studio's existing cloud-sync error state stays visible.
+    // Commit the recording locally before a timeline can reference it.
+    // Cloud uploads happen only when the creator requests a backup.
     await putAudio(id,asset.blob);if(!alive.current)return;
     const common={id:uid(),start,length:Math.min(asset.length,scene.duration-start),asset:'asset:'+id,offset:0,volume:1,muted:false};
     if(isDialogue&&analysis)add({...common,track:'dialogue',actor,text:'',visemes:analysis.cues,lipSync:{source:'dsp',engine:analysis.engine,cacheKey:analysis.cacheKey,analyzedDuration:analysis.duration}});
@@ -178,6 +179,7 @@ export function AudioDialog({ request, actors, scene, account, add, close }: { r
 export function ExportDialog({ project, initialFormat, initialSubtitles, close }: { project: Project; initialFormat: Format; initialSubtitles: boolean; close: () => void }) {
   const [format, setFormat] = useState(initialFormat), [subtitles, setSubtitles] = useState(initialSubtitles), [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState(''), [download, setDownload] = useState<{ url: string; extension: string }>();
+  const [quality,setQuality]=useState<ExportQuality>('balanced');
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => () => { if (download) URL.revokeObjectURL(download.url); }, [download]);
@@ -185,7 +187,7 @@ export function ExportDialog({ project, initialFormat, initialSubtitles, close }
   const start = async () => {
     const controller = new AbortController(); request.current = controller; setError(''); setProgress(0); setDownload(undefined);
     try {
-      const movie = await browserExporter.run(project, format, subtitles, controller.signal, setProgress);
+      const movie = await browserExporter.run(project, format, subtitles, controller.signal, setProgress, quality);
       if (!controller.signal.aborted) setDownload({ url: URL.createObjectURL(movie.blob), extension: movie.extension });
     } catch (error) { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Export failed.'); }
     finally { if (request.current === controller) { request.current = null; setProgress(null); } }
@@ -193,7 +195,8 @@ export function ExportDialog({ project, initialFormat, initialSubtitles, close }
   const filename = project.name.replace(/[^\w -]/g, '').trim().replaceAll(' ', '-') || 'cartoon';
   return <Modal title="Export video" description="Render every scene in project order, with voices and sound mixed in." close={close}>
     <div className="dialog-fields"><div className="export-summary"><Clapperboard size={25}/><div><strong>{project.name}</strong><small>{project.scenes.length} {project.scenes.length === 1 ? 'scene' : 'scenes'} · {clock(projectDuration(project.scenes))}</small></div></div>
-    <label className="field">Frame size<Select aria="Export frame size" value={format} onChange={value=>{setFormat(value);setDownload(undefined);}} options={formats} render={exportFormatLabel} disabled={progress!==null}/></label>
+    <label className="field">Frame size<Select aria="Export frame size" value={format} onChange={value=>{setFormat(value);setDownload(undefined);}} options={formats} render={formatLabel} disabled={progress!==null}/></label>
+    <label className="field">Export quality<Select aria="Export quality" value={quality} onChange={value=>{setQuality(value);setDownload(undefined);}} options={['balanced','full'] as const} render={value=>(value==='balanced'?'720p · Lower memory':'Full resolution')+' · '+outputSize(format,value).join(' × ')} disabled={progress!==null}/></label>
     <label className="check"><input type="checkbox" checked={subtitles} disabled={progress!==null} onChange={e => {setSubtitles(e.target.checked);setDownload(undefined);}}/><Captions size={16}/> Include subtitles</label>
     <p className="small-text">{exportAvailable ? '30 fps. MP4 when supported by your browser, with WebM as the fallback. Keep this tab visible during export.' : 'This browser cannot export video with audio.'}</p>
     {progress !== null && <div className="export-progress"><span role="status">Rendering video… {Math.round(progress * 100)}%</span><progress value={progress} max={1}/></div>}
@@ -203,11 +206,11 @@ export function ExportDialog({ project, initialFormat, initialSubtitles, close }
   </Modal>;
 }
 
-export function ProjectsDialog({ items, current, close, create, open, duplicate, remove, demo, backup, restore }: { items: SavedProject[]; current: string; close: () => void; create: () => void; open: (project: Project) => void; duplicate: (project: Project) => void; remove: (project: Project) => void; demo: () => void; backup: () => void; restore: () => void }) {
+export function ProjectsDialog({ items, current, close, create, open, duplicate, remove, demo, backup, restore, recover }: { items: SavedProject[]; current: string; close: () => void; create: () => void; open: (project: Project) => void; duplicate: (project: Project) => void; remove: (project: Project) => void; demo: () => void; backup: () => void; restore: () => void; recover?:()=>void }) {
   return <Modal title="Projects" description="Open a saved cartoon or start something new." close={close}>
     <div className="dialog-fields"><div className="project-list">{items.map(({ project, updated }) => <div className="project-row" key={project.id}><button className="project-title" onClick={() => open(project)}><Clapperboard size={19}/><span><strong>{project.name}</strong><small>{project.id === current ? 'Currently open' : new Date(updated).toLocaleDateString()} · {project.scenes.length} scene{project.scenes.length > 1 ? 's' : ''}</small></span></button><IconButton title={`Duplicate ${project.name}`} onClick={() => duplicate(project)}><Copy size={15}/></IconButton><IconButton title={`Delete ${project.name}`} onClick={() => remove(project)}><Trash2 size={15}/></IconButton></div>)}
       {!items.length && <p className="empty-small">Save your first project and it will appear here.</p>}</div><button className="quiet full" onClick={demo}><Clapperboard size={16}/> Open “The Missing Rent Money” example</button></div>
-    <footer className="modal-footer"><button className="quiet" onClick={backup}>Download backup</button><button className="quiet" onClick={restore}>Restore backup</button><span className="spacer"/><button className="primary" onClick={create}><Plus size={16}/> New project</button></footer>
+    <footer className="modal-footer"><button className="quiet" onClick={backup}>Download backup</button><button className="quiet" onClick={restore}>Restore backup</button>{recover&&<button className="quiet" onClick={recover}>Recover previous save</button>}<span className="spacer"/><button className="primary" onClick={create}><Plus size={16}/> New project</button></footer>
   </Modal>;
 }
 export function ScenesDialog({ scenes, active, close, add, open, rename, reorder, copy, drop, savePreset }: {
@@ -263,16 +266,17 @@ export function ScenesDialog({ scenes, active, close, add, open, rename, reorder
     </footer>
   </Modal>;
 }
-export function AccountDialog({ available, account, login, logout, close }: { available: boolean; account: Account | null; login: (email: string, password: string, register: boolean) => Promise<void>; logout: () => Promise<void>; close: () => void }) {
+export function AccountDialog({ available, account, login, logout, close, backup, downloadCloud }: { available: boolean; account: Account | null; login: (email: string, password: string, register: boolean) => Promise<void>; logout: () => Promise<void>; close: () => void; backup?:()=>Promise<void>; downloadCloud?:()=>Promise<void> }) {
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [register, setRegister] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  async function cloudAction(action:()=>Promise<void>){setBusy(true);setError('');try{await action();}catch(error){setError(error instanceof Error?error.message:'Cloud operation failed.');}finally{setBusy(false);}}
   async function submit() { setBusy(true); setError(''); try { if (account) await logout(); else await login(email.trim(), password, register); close(); } catch (error) { setError(error instanceof Error ? error.message : 'Authentication failed.'); } finally { setBusy(false); } }
-  return <Modal title={account ? 'Your account' : register ? 'Create an account' : 'Sign in'} description={available ? 'Keep your private projects available across devices.' : 'This studio currently saves projects on this device.'} close={close}><form onSubmit={event => { event.preventDefault(); void submit(); }}>
-    <div className="dialog-fields">{available && !account && <><label className="field">Email<input type="email" autoComplete="email" value={email} required onChange={e => setEmail(e.target.value)}/></label><label className="field">Password<input type="password" autoComplete={register ? 'new-password' : 'current-password'} minLength={6} required value={password} onChange={e => setPassword(e.target.value)}/></label><button type="button" className="quiet" onClick={() => setRegister(value => !value)}>{register ? 'I already have an account' : 'Create an account'}</button></>}{account && <div className="export-summary"><Cloud size={23}/><strong>{account.email}</strong></div>}{!available && <p className="small-text">Cloud sign-in is available when a Firebase project is connected. You can create, reopen, and export cartoons here in the meantime.</p>}{error && <p className="form-error">{error}</p>}</div>
+  return <Modal title={account ? 'Your account' : register ? 'Create an account' : 'Sign in'} description={available ? 'Projects save on this device. Cloud backup and downloads happen only when you choose.' : 'This studio currently saves projects on this device.'} close={close}><form onSubmit={event => { event.preventDefault(); void submit(); }}>
+    <div className="dialog-fields">{available && !account && <><label className="field">Email<input type="email" autoComplete="email" value={email} required onChange={e => setEmail(e.target.value)}/></label><label className="field">Password<input type="password" autoComplete={register ? 'new-password' : 'current-password'} minLength={6} required value={password} onChange={e => setPassword(e.target.value)}/></label><button type="button" className="quiet" onClick={() => setRegister(value => !value)}>{register ? 'I already have an account' : 'Create an account'}</button></>}{account && <div className="export-summary"><Cloud size={23}/><strong>{account.email}</strong></div>}{account&&<div className="field-row">{backup&&<button type="button" className="quiet" disabled={busy} onClick={()=>void cloudAction(backup)}>Back up current cartoon online</button>}{downloadCloud&&<button type="button" className="quiet" disabled={busy} onClick={()=>void cloudAction(downloadCloud)}>Download cloud cartoons as copies</button>}</div>}{!available && <p className="small-text">Cloud sign-in is available when a Firebase project is connected. You can create, reopen, and export cartoons here in the meantime.</p>}{error && <p className="form-error">{error}</p>}</div>
     <footer className="modal-footer"><span className="spacer"/><button type="button" className="quiet" onClick={close}>{available ? 'Cancel' : 'Continue in this browser'}</button>{available && <button className="primary" disabled={busy}>{busy ? 'Working…' : account ? 'Sign out' : register ? 'Create account' : 'Sign in'}</button>}</footer>
   </form></Modal>;
 }
 export function HelpDialog({ close, demo }: { close: () => void; demo: () => void }) {
-  return <Modal title="Make your first cartoon" description="Start with the editable example and make it your own." close={close}><div className="dialog-fields"><ol className="quick-start"><li><strong>Build your cast.</strong> Pick a character to change their look, or press + to add them to the scene.</li><li><strong>Set the scene.</strong> Pick a world, add props and use Arrange to place them.</li><li><strong>Direct the performance.</strong> Add action, dialogue and camera clips. Drag or trim clips to change their timing.</li><li><strong>Watch and share.</strong> Play with Space, save your project and export the finished video.</li></ol><div className="keyboard-help"><kbd>Space</kbd> Play / pause <kbd>Ctrl + Z</kbd> Undo <kbd>Delete</kbd> Remove</div></div><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Back to studio</button><button className="primary" onClick={demo}><Clapperboard size={16}/> Open example</button></footer></Modal>;
+  return <Modal title="Make your first cartoon" description="Start with the editable example and make it your own." close={close}><div className="dialog-fields"><ol className="quick-start"><li><strong>Build your cast.</strong> Pick a character to change their look, or press + to add them to the scene.</li><li><strong>Set the scene.</strong> Pick a world, add props and use Arrange to place them.</li><li><strong>Direct the performance.</strong> Add action, dialogue and camera clips. Drag or trim clips to change their timing.</li><li><strong>Watch and share.</strong> Play with Space, save your project and export the finished video.</li></ol><p className="small-text">Install SIRVIBE from your browser menu, or use Share → Add to Home Screen in Safari. Wait for “Ready offline” before disconnecting. Keep a downloaded backup of work you want to keep if browser data is cleared.</p><div className="keyboard-help"><kbd>Space</kbd> Play / pause <kbd>Ctrl + Z</kbd> Undo <kbd>Delete</kbd> Remove</div></div><footer className="modal-footer"><span className="spacer"/><button className="quiet" onClick={close}>Back to studio</button><button className="primary" onClick={demo}><Clapperboard size={16}/> Open example</button></footer></Modal>;
 }
 export function DirectorDialog({ generate, example, close }: { generate?: (story: string) => Promise<void>; example: () => void; close: () => void }) {
   const [story, setStory] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');

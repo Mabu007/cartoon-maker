@@ -1,3 +1,4 @@
+import { getLocalMedia, putLocalMedia } from './localMedia.ts';
 import type { Account } from './cloud.ts';
 import { uid } from '../engine/schema.ts';
 
@@ -80,7 +81,8 @@ export async function mediaUrl(value:string):Promise<string>{
   if(prior)return prior;
   const request=(async()=>{
     const {kind,id}=parseRef(value);
-    const blob=await readR2Media(user,kind,id);
+    let blob=await getLocalMedia(key);
+    if(!blob){if(!navigator.onLine)throw Error('This cloud image is not downloaded. Reconnect and download a local copy first.');blob=await readR2Media(user,kind,id);await putLocalMedia(key,blob);}
     if(activeUser?.uid!==user.uid)throw Error('Account changed while loading artwork.');
     const url=URL.createObjectURL(blob);
     urls.set(key,url);

@@ -1,3 +1,4 @@
+import { outputSize, type ExportQuality } from '../engine/exportQuality.ts';
 import { AudioBufferSource, BufferTarget, CanvasSource, canEncodeAudio, canEncodeVideo, Mp4OutputFormat, Output, WebMOutputFormat } from 'mediabunny';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from '../engine/evaluate.ts';
 import { createRenderer } from '../engine/renderer.ts';
@@ -6,8 +7,8 @@ import { createAudioMixer, mixOffline } from './audio.ts';
 import { audioBitrate, videoBitrate, type VideoContainer, type VideoExporter } from './exportTypes.ts';
 
 export class UnsupportedFrameEncoder extends Error {}
-async function encoderCodecs(format: Format, container: VideoContainer) {
-  const [width, height] = videoFormats[format].pixels;
+async function encoderCodecs(format: Format, container: VideoContainer,quality?:ExportQuality) {
+  const [width, height] = outputSize(format,quality);
   const audio = container === 'mp4' ? 'aac' : 'opus';
   const options = { width, height, bitrate: videoBitrate };
   const audioSupported = await canEncodeAudio(audio, { numberOfChannels: 2, sampleRate: 48000, bitrate: audioBitrate });
@@ -18,8 +19,8 @@ async function encoderCodecs(format: Format, container: VideoContainer) {
   }
 }
 export const frameExporter = (container: VideoContainer): VideoExporter => ({
-  async run(project, format, subtitles, signal, progress) {
-    const codecs = await encoderCodecs(format, container);
+  async run(project, format, subtitles, signal, progress, quality) {
+    const codecs = await encoderCodecs(format, container,quality);
     if (!codecs) throw new UnsupportedFrameEncoder(`The browser cannot encode ${container.toUpperCase()} frame by frame.`);
     signal.throwIfAborted();
     const duration = projectDuration(project.scenes);
@@ -31,7 +32,7 @@ export const frameExporter = (container: VideoContainer): VideoExporter => ({
       const audio = await mixOffline(project.scenes, duration, signal);
       await mixer.prepare(project.scenes);
       signal.throwIfAborted();
-      renderer = await createRenderer(format, exportScale(format), true);
+      renderer = await createRenderer(format, outputSize(format,quality)[1]/videoFormats[format].viewport[1], true);
       await renderer.prepareImages(project.scenes,project.characters);
       const video = new CanvasSource(renderer.canvas, { codec: codecs.video, bitrate: videoBitrate, latencyMode: 'quality', keyFrameInterval: 2 });
       const sound = new AudioBufferSource({ codec: codecs.audio, bitrate: audioBitrate });

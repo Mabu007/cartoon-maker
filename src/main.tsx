@@ -10,3 +10,6 @@ import './simplified.css';
 import './studio-polish.css';
 
 import './sirvibe.css';
+
+import { registerOffline } from './services/offline.ts';
+void registerOffline();

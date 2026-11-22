@@ -48,7 +48,7 @@ export function SirvibeLanding({account,available,login,enter}:{
     } catch(e) {setError(authError(e));}
     finally {setBusy(false);}
   }
-  const primary=account?'Open my studio':'Start creating free';
+  const primary='Start Creating — No Account Needed';
   return <div className="sv-landing">
     <header className="sv-nav">
       <div className="sv-nav-inner">
@@ -76,10 +76,10 @@ export function SirvibeLanding({account,available,login,enter}:{
             <h1 id="sv-headline">Your imagination.<br/><span>Your own</span><br/><em>animated universe.</em></h1>
             <p>Some stories are too good to stay in your head. Create characters, give them a voice, direct their every move and turn everyday moments into cartoons worth watching.</p>
             <div className="sv-hero-ctas">
-              <button type="button" className="sv-primary" onClick={()=>start('register')}>{primary}<ArrowRight size={19}/></button>
+              <button type="button" className="sv-primary" onClick={enter}>{primary}<ArrowRight size={19}/></button>
               <a className="sv-secondary" href="#how-it-works"><Play size={16} fill="currentColor"/> See how it works</a>
             </div>
-            <div className="sv-hero-assurance"><Check size={15}/><span>No card required during beta</span><i/><Check size={15}/><span>Make it in your browser</span></div>
+            <div className="sv-hero-assurance"><Check size={15}/><span>No account. No card. Free beta.</span><i/><Check size={15}/><span>Create offline after first download</span></div>
           </div>
           <div className="sv-hero-art" aria-label="Actual customizable SIRVIBE starter characters and editing timeline">
             <div className="sv-art-halo"/>
@@ -119,7 +119,7 @@ export function SirvibeLanding({account,available,login,enter}:{
       </section>
       <section className="sv-cta-section">
         <div className="sv-cta-glow"/>
-        <div className="sv-cta-content"><span className="sv-overline">WELCOME TO THE CREATOR ERA · FREE (BETA)</span><h2>The world doesn't need<br/>another story left untold.</h2><p>Your first scene is waiting. Make something only you could make.</p><button type="button" className="sv-primary sv-cta-large" onClick={()=>start('register')}>{account?'Go to my projects':'Create your free account'}<ArrowRight size={19}/></button><small>Early beta access · No payment details required</small></div>
+        <div className="sv-cta-content"><span className="sv-overline">WELCOME TO THE CREATOR ERA · FREE (BETA)</span><h2>The world doesn't need<br/>another story left untold.</h2><p>Your first scene is waiting. Make something only you could make.</p><button type="button" className="sv-primary sv-cta-large" onClick={enter}>Start Creating — No Account Needed<ArrowRight size={19}/></button><small>Saved on your device · Optional cloud backup</small></div>
       </section>
     </main>
     <footer className="sv-footer"><span className="sv-identity sv-footer-brand"><span className="sv-wordmark">SIRVIBE<span className="sv-mark">.</span></span></span><p>Where imagination becomes animation.</p><span>FREE (BETA) · Made for creators everywhere.</span></footer>
