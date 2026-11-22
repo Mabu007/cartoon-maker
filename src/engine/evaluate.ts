@@ -9,7 +9,8 @@ import { effectiveCues } from './dspLipSync.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
 import { gestureAt, livingPose, type ActingContext, type GestureSample } from './livingCharacter.ts';
 import { occupiedHands } from './handPerformance.ts';
-import { samplePerformance } from './performanceCapture.ts';
+import { samplePerformance, samplePerformanceHands } from './performanceCapture.ts';
+import { capturedMicroMotion } from './performanceMicroMotion.ts';
 import type { HandPose } from './handRig.ts';
 import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
@@ -17,7 +18,11 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
   speaking: boolean; actionTime: number; actionWeight:number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string;
-  handGesture?: GestureSample; handOverride?: {left:HandPose;right:HandPose} };
+  handGesture?: GestureSample; handOverride?: {
+    left:HandPose;right:HandPose;
+    from:{left:HandPose;right:HandPose};
+    progress:number;influence:number
+  } };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -160,7 +165,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       lift=mix(idle.lift,step.lift*profile.lift,gaitWeight);
     }
     for (const clip of [body, gesture]) {
-      if (!clip) continue;
+      // Captured acting is a pure pose layer, not an explicit action.
+      // Do not replace sitting, walking, talking or prop-action state with
+      // the capture placeholder action ('idle').
+      if (!clip || clip.performance?.length) continue;
       const isGesture = clip.layer === 'gesture';
       const target = clip.target ? objectsById.get(clip.target) : undefined;
       // Body actions belong to the actor, not to props. Sit works even with
@@ -222,12 +230,21 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const face = latest(clips.filter((clip): clip is Extract<Clip, { track: 'face' }> => clip.track === 'face' && active(clip, t)));
     const captured = latest(clips.filter((clip):clip is Extract<Clip,{track:'body'}> =>
       clip.track==='body' && !!clip.performance?.length && active(clip,t)));
-    let handOverride: {left:HandPose;right:HandPose}|undefined;
-    if(captured?.performance){
-      const key=samplePerformance(captured.performance,(t-captured.start)/captured.length);
+    let handOverride: CharacterState['handOverride'];
+    const authoredGesture=Boolean(gesture && !gesture.performance && gesture.id!==captured?.id);
+    if(captured?.performance && !authoredGesture){
+      const progress=(t-captured.start)/captured.length;
+      const key=samplePerformance(captured.performance,progress);
       const weight=frameWeight(captured,t);
-      pose=blend(pose,key.pose,weight,false);
-      if(key.hands&&weight>.45)handOverride=key.hands;
+      // Preserve the lower body and its floor contact in an authored sit,
+      // walk, sleep or driving animation. A recording owns only observed
+      // upper-body joints in this case.
+      pose=blend(pose,key.pose,weight,Boolean(body));
+      const transition=samplePerformanceHands(captured.performance,progress);
+      if(transition)handOverride={
+        ...transition.to,from:transition.from,
+        progress:transition.progress,influence:weight
+      };
       if(key.expression&&!face&&weight>.45)expression=key.expression;
     }
     if (face) expression = face.expression;
@@ -275,8 +292,17 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         } : undefined
       };
       handGesture = gestureAt(character, acting);
-      // Recorded human acting has priority over synthetic speech gestures.
-      if(!captured)pose = livingPose(character, acting, pose, handGesture);
+      // The existing authored-action engine is unchanged when no camera
+      // recording is present. During capture, only sub-degree breathing and
+      // listening motion is added; generated gestures never fight the actor.
+      if(captured?.performanceOrigin==='mocap' && !authoredGesture){
+        pose=capturedMicroMotion(character,pose,{
+          time:t,speaking, listening:acting.listening,
+          authoredGesture, intensity:frameWeight(captured,t)
+        });
+      }else if(!captured || authoredGesture){
+        pose=livingPose(character,acting,pose,handGesture);
+      }
     }
     const performance=action===gesture?.action?gesture:body;
     const actionTime=performance?t-performance.start:0;
