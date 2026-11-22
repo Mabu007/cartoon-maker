@@ -40,7 +40,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose}) {
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose},
+  actingPhrase?:{start:number;duration:number;text:string}) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
   const art = viewArt[view];
@@ -83,8 +84,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const holdsCostume = side===costumeHand && !carrying && Boolean(c.wardrobe?.handheld && c.wardrobe.handheld!=='none');
     const handMode:HandPose = performanceHandPose({
       action,locomotion,side,carrying:carrying||holdsCostume||(action==='drive'&&!!held),time,expression,
-      speechWeight:speaking?(viseme?.weight??0):0,
-      character:c,actorId,speaking,listening
+      speechWeight:speaking?(viseme?.weight??(action==='talk'?.55:0)):0,
+      character:c,actorId,speaking,listening,phrase:actingPhrase
     });
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
     if(holdsCostume) drawHandheld(g,c,hand);
@@ -95,7 +96,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const facing=art.profile?1:(side==='right'?1:-1)*(art.rear?-1:1);
     g.context.save().setTransform(at(hand.x,hand.y,art.profile&&handMode==='relaxed'?.73:1,1,rotation*180/Math.PI));
     const gestureContext={time,actorId,action,locomotion,expression,speaking,
-      speechWeight:speaking?(viseme?.weight??0):0,listening,carrying:carrying||holdsCostume};
+      speechWeight:speaking?(viseme?.weight??(action==='talk'?.55:0)):0,listening,carrying:carrying||holdsCostume,phrase:actingPhrase};
     const naturalHand=gestureHand(c,gestureContext,side);
     const blendHand=naturalHand===handMode?gestureAt(c,gestureContext).weight:1;
     drawIllustratedHand(g,0,0,limbWidth*(art.profile&&side==='left'?.78:.91),c.skin,handMode,facing<0?-1:1,blendHand);
