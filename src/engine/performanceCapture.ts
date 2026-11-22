@@ -4,12 +4,13 @@
  * to sparse, editable poses. No personal video is persisted by this module.
  */
 import { clamp, ease, mix } from './animation.ts';
+import { fuseWorldAngle, mixDegrees, worldBodyProjector, wrapDegrees } from './worldRetarget.ts';
 import type { Character, Expression, JointPose } from './schema.ts';
 import type { HandPose } from './handRig.ts';
 
 export type Landmark = { x: number; y: number; z?: number; visibility?: number };
 export type CaptureFrame = {
-  t: number; pose: Landmark[]; leftHand?: Landmark[]; rightHand?: Landmark[];
+  t: number; pose: Landmark[]; world?: Landmark[]; leftHand?: Landmark[]; rightHand?: Landmark[];
   face?: Record<string, number>;
 };
 export type CaptureOptions = { exaggeration?: number; smoothing?: number; maxKeys?: number };
@@ -66,26 +67,42 @@ function facialExpression(face?: Record<string, number>): Expression | undefined
 export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | undefined {
   const p=frame.pose;
   if(p.length<17||![11,12,13,14,15,16,23,24].every(i=>confidence(p[i])))return undefined;
+  const world=worldBodyProjector(frame.world);
+  const angleOf=(from:number,to:number) => {
+    const image=angle(p[from],p[to]);
+    return world?fuseWorldAngle(image,world.angle(from,to),world.frontness):image;
+  };
   const hips=midpoint(p[23],p[24]), shoulders=midpoint(p[11],p[12]);
-  const torso=clamp(degrees(180-angle(hips,shoulders)),-28,28);
+  const screenTorso=degrees(180-angle(hips,shoulders));
+  const worldTorso=world && world.angle(23,11)!==undefined && world.angle(24,12)!==undefined
+    ? degrees(180-mixDegrees(world.angle(23,11)!,world.angle(24,12)!,.5))
+    : undefined;
+  const torso=clamp(worldTorso===undefined?screenTorso:
+    fuseWorldAngle(screenTorso,worldTorso,world!.frontness),-28,28);
   const pose:JointPose={torso};
   for(const side of ['left','right'] as const) {
     const i=side==='left'?11:12, e=side==='left'?13:14, w=side==='left'?15:16;
-    const upper=angle(p[i],p[e]);
+    const upper=angleOf(i,e);
     pose[`${side}Shoulder`]=clamp(degrees(upper-(side==='left'?-13:13)-torso),-165,165);
-    pose[`${side}Elbow`]=clamp(degrees(angle(p[e],p[w])-upper),-160,160);
+    pose[`${side}Elbow`]=clamp(degrees(angleOf(e,w)-upper),-160,160);
     const hand=side==='left'?frame.leftHand:frame.rightHand;
     const palm=hand&&hand.length>9?angle(hand[0],hand[9]):angle(p[e],p[w]);
     pose[`${side}Wrist`]=clamp(degrees(palm-angle(p[e],p[w])),-65,65);
   }
-  if(confidence(p[0]))pose.head=clamp(degrees(180-angle(shoulders,p[0]))-torso,-35,35);
+  if(confidence(p[0])){
+    const screenHead=degrees(180-angle(shoulders,p[0]))-torso;
+    const worldHead=world?.angle(11,0)!==undefined && world?.angle(12,0)!==undefined
+      ? degrees(180-mixDegrees(world.angle(11,0)!,world.angle(12,0)!,.5))-torso : undefined;
+    pose.head=clamp(worldHead===undefined?screenHead:
+      fuseWorldAngle(screenHead,worldHead,world!.frontness),-35,35);
+  }
   // Legs are included only when observed; never fabricate missing knees/feet.
   for(const side of ['left','right'] as const){
     const a=side==='left'?23:24,b=side==='left'?25:26,c=side==='left'?27:28;
     if(confidence(p[a])&&confidence(p[b])){
-      const thigh=angle(p[a],p[b]);
+      const thigh=angleOf(a,b);
       pose[`${side}Hip`]=clamp(degrees(thigh-(side==='left'?-5:5)),-100,100);
-      if(confidence(p[c]))pose[`${side}Knee`]=clamp(degrees(angle(p[b],p[c])-thigh),-135,135);
+      if(confidence(p[c]))pose[`${side}Knee`]=clamp(degrees(angleOf(b,c)-thigh),-135,135);
     }
   }
   const left=handShape(frame.leftHand),right=handShape(frame.rightHand);
@@ -105,7 +122,7 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     const lag=joint.endsWith('Wrist')?.15:
       joint.endsWith('Elbow')?.075:joint==='head'?.045:0;
     const phase=clamp((fraction-lag)/Math.max(.01,1-lag));
-    pose[joint]=mix(left??right??0,right??left??0,ease(phase));
+    pose[joint]=mixDegrees(left??right??0,right??left??0,ease(phase));
   }
   return {time:at,pose,
     hands: fraction<.5 ? a.hands??b.hands : b.hands??a.hands,
@@ -148,7 +165,16 @@ export function compilePerformance(frames: readonly CaptureFrame[], options:Capt
       if(raw===undefined)continue;
       // Pose exaggeration scales relative to the neutral rig, with hard limits.
       const target=clamp(raw*exaggerated,-165,165);
-      pose[joint]=round(prev?.pose[joint]===undefined?target:mix(prev.pose[joint]!,target,alpha));
+      if(prev?.pose[joint]===undefined){pose[joint]=round(target);continue;}
+      const from=prev.pose[joint]!;
+      // One-Euro-inspired adaptive temporal filtering: keep near-still poses
+      // calm without delaying intentional fast conversational gestures.
+      const dt=duration/(count-1);
+      const velocity=Math.abs(wrapDegrees(target-from))/Math.max(.03,dt);
+      const cutoff=1.25+(1-smoothing)*4.2+Math.min(8,velocity*.016);
+      const response=1-Math.exp(-2*Math.PI*cutoff*dt);
+      const deadband=Math.abs(wrapDegrees(target-from))<.48 ? .48 : 1;
+      pose[joint]=round(clamp(mixDegrees(from,target,response*deadband),-165,165));
     }
     keys.push({time:Math.round((elapsed/duration)*10000)/10000,pose,
       ...(source.hands?{hands:source.hands}:{}),...(source.expression?{expression:source.expression}:{})});
