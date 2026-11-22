@@ -137,6 +137,28 @@ export function samplePerformance(keys:readonly PerformanceKey[],normalized:numb
   while(hi-lo>1){const mid=(lo+hi)>>1;if(keys[mid].time<=t)lo=mid;else hi=mid;}
   return interpolate(keys[lo],keys[hi],t);
 }
+export type PerformanceHandTransition={
+  from:{left:HandPose;right:HandPose};
+  to:{left:HandPose;right:HandPose};
+  progress:number;
+};
+/** Sample on-demand; never persist transition metadata in strict scene JSON. */
+export function samplePerformanceHands(keys:readonly PerformanceKey[],normalized:number):PerformanceHandTransition|undefined {
+  if(!keys.length)return undefined;
+  const t=clamp(normalized);
+  let lo=0,hi=keys.length-1;
+  if(t<=keys[0].time)hi=0;
+  else if(t>=keys[hi].time)lo=hi;
+  else while(hi-lo>1){
+    const mid=(lo+hi)>>1;
+    if(keys[mid].time<=t)lo=mid;else hi=mid;
+  }
+  const from=keys[lo].hands??keys[hi].hands;
+  const to=keys[hi].hands??from;
+  if(!from||!to)return undefined;
+  return {from,to,progress:lo===hi?1:ease(clamp((t-keys[lo].time)/Math.max(1e-6,keys[hi].time-keys[lo].time)))};
+}
+
 const round=(v:number)=>Math.round(v*10)/10;
 /** Resample by elapsed capture timestamps; reject out-of-order/low-confidence frames.
  * Exponential low-pass smoothing suppresses tracking noise, without changing
