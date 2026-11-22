@@ -1,45 +1,116 @@
-/**
- * One wrist-anchored, deterministic five-digit geometry for Pixi and SVG.
- * Local +Y points from knuckles back to the cuff; -Y points outward.
- */
-export type HandPose = 'relaxed'|'open'|'point'|'grip'|'fist'|'pinch'|'palm-up'|'thumbs-up'|'count';
-export type HandPoint = [number,number];
-export type FingerPath = [HandPoint,HandPoint,HandPoint];
-type FingerStyle = {curl:[number,number,number,number];thumb:number;spread:number};
-const styles:Record<HandPose,FingerStyle>={
-  relaxed:{curl:[.18,.20,.24,.29],thumb:.25,spread:.14},
-  open:{curl:[0,0,0,0],thumb:0,spread:.31},
-  'palm-up':{curl:[.05,.04,.05,.08],thumb:0,spread:.25},
-  point:{curl:[0,.95,.96,.98],thumb:.65,spread:.045},
-  grip:{curl:[.79,.83,.84,.83],thumb:.75,spread:.02},
-  fist:{curl:[1,1,1,1],thumb:.94,spread:0},
-  pinch:{curl:[.19,.8,.82,.83],thumb:.25,spread:.02},
-  'thumbs-up':{curl:[.96,.98,.98,.95],thumb:-.5,spread:0},
-  count:{curl:[0,0,.97,.97],thumb:.73,spread:.1}
+import type { View } from './schema.ts';
+
+export type HandPose = 'relaxed' | 'loose-open' | 'open' | 'point' |
+  'count-one' | 'count-two' | 'count-three' | 'pinch' | 'fist' | 'grip' |
+  'palm-up' | 'palm-out' | 'shrug' | 'self-reference' | 'thumbs-up' | 'count';
+export type HandSide = 'left' | 'right';
+export type HandPoint = [number, number];
+export type FingerPath = [HandPoint, HandPoint, HandPoint];
+export type HandPoseParams = {
+  /** Thumb, index, middle, ring and pinky, in that order. */
+  curl: [number, number, number, number, number];
+  spread: number;
+  thumbOpposition: number;
+  wristBend: number;
+  wristTwist: number;
 };
-const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
-export function sampleHandRig(pose:HandPose='relaxed',blend=1):{fingers:FingerPath[];thumb:FingerPath}{
-  const t=Math.max(0,Math.min(1,blend)),rest=styles.relaxed,target=styles[pose];
-  const fingers:FingerPath[]=[0,1,2,3].map(i=>{
-    const curl=lerp(rest.curl[i],target.curl[i],t);
-    const spread=lerp(rest.spread,target.spread,t);
-    const direction=i<2?-1:1;
-    const length=[13.5,16.7,15.9,12.6][i];
-    const root:HandPoint=[-5.6+i*3.85,-7+Math.abs(i-1.5)*.45];
-    const a=direction*(Math.abs(i-1.5)*spread*.7+curl*.58);
-    const b=direction*(Math.abs(i-1.5)*spread+curl*2.48);
-    const mid:HandPoint=[root[0]+Math.sin(a)*length*.58,root[1]-Math.cos(a)*length*.58];
-    const tip:HandPoint=[mid[0]+Math.sin(b)*length*.42,mid[1]-Math.cos(b)*length*.42];
-    return [root,mid,tip];
+
+function pose(curl: HandPoseParams['curl'], spread: number, thumbOpposition: number, wristBend = 0, wristTwist = 0): HandPoseParams {
+  return { curl, spread, thumbOpposition, wristBend, wristTwist };
+}
+
+const countTwo = pose([.79, 0, 0, .94, .97], .14, .66);
+const poses: Record<HandPose, HandPoseParams> = {
+  relaxed: pose([.45, .35, .42, .52, .62], .08, .45),
+  'loose-open': pose([.28, .17, .23, .31, .43], .15, .28, 5),
+  open: pose([.06, 0, .04, .09, .16], .30, .03),
+  point: pose([.78, 0, .96, .97, .98], 0, .65),
+  'count-one': pose([.80, 0, .95, .97, 1], .02, .68),
+  'count-two': countTwo,
+  'count-three': pose([.82, 0, .02, .06, .97], .19, .72),
+  count: countTwo,
+  pinch: pose([.52, .56, .86, .91, .95], .04, .93, -5, .18),
+  fist: pose([.94, 1, 1, 1, 1], 0, .88),
+  grip: pose([.76, .84, .89, .91, .93], .02, .74),
+  'palm-up': pose([.24, .12, .17, .24, .33], .18, .19, 8, .12),
+  'palm-out': pose([.08, .01, .03, .09, .14], .26, .08, -7),
+  shrug: pose([.33, .20, .27, .34, .42], .15, .30, 8, .19),
+  'self-reference': pose([.49, .37, .47, .58, .68], .07, .59, -8, .22),
+  'thumbs-up': pose([.02, .96, .98, .98, 1], 0, -.75)
+};
+
+const unit = (value: number) => Math.max(0, Math.min(1, value));
+const lerp = (from: number, to: number, weight: number) => from + (to - from) * weight;
+const wrist: HandPoint = [0, 0];
+const palm = 'M -5.3 3.5 Q -8.1 0.3 -8.1 -5.6 Q -7.8 -8.6 -4.6 -8.1 L 5.7 -7.8 Q 8.4 -7.5 8.2 -4.4 Q 7.9 1.1 4.7 3.6 Q -0.4 4.8 -5.3 3.5 Z';
+const digitWidths = [3.05, 3.2, 3.05, 2.7, 3.75] as const;
+const lengths = [12, 14.7, 13.4, 10.7] as const;
+
+export function handPoseParams(name: HandPose = 'relaxed', blend = 1): HandPoseParams {
+  const rest = poses.relaxed, target = poses[name], weight = unit(blend);
+  return {
+    curl: [
+      lerp(rest.curl[0], target.curl[0], weight), lerp(rest.curl[1], target.curl[1], weight),
+      lerp(rest.curl[2], target.curl[2], weight), lerp(rest.curl[3], target.curl[3], weight),
+      lerp(rest.curl[4], target.curl[4], weight)
+    ],
+    spread: lerp(rest.spread, target.spread, weight),
+    thumbOpposition: lerp(rest.thumbOpposition, target.thumbOpposition, weight),
+    wristBend: lerp(rest.wristBend, target.wristBend, weight),
+    wristTwist: lerp(rest.wristTwist, target.wristTwist, weight)
+  };
+}
+
+/** Flexion folds into the palm plane in projection. Splay is an independent
+ * control, and increasing curl can never turn a fingertip back toward the cuff. */
+function buildHand(params: HandPoseParams) {
+  const fingers: FingerPath[] = lengths.map((length, index) => {
+    const curl = params.curl[index + 1];
+    const root: HandPoint = [(index - 1.5) * 3.7, -7 + Math.abs(index - 1.5) * .4];
+    const splay = (index - 1.5) * params.spread;
+    const mid: HandPoint = [root[0] + splay * 4, root[1] - length * (.55 - .34 * curl)];
+    const tip: HandPoint = [root[0] * (1 - .17 * curl) + splay * 9, mid[1] - length * (.45 - .42 * curl)];
+    return [root, mid, tip];
   });
-  const curl=lerp(rest.thumb,target.thumb,t);
-  const thumb:FingerPath=[[-7.8,2.1],[-11.8+curl*5.8,-2.7-curl*1.2],
-    curl<0?[-8.8,-19]:[-14+curl*13.6,-8+curl*4.8]];
-  return {fingers,thumb};
+  const thumbCurl = params.curl[0], opposition = params.thumbOpposition;
+  const raised = Math.max(0, -opposition);
+  const thumb: FingerPath = [
+    [-5.7, .5],
+    [-10.6 + opposition * 2.5, -4.5 + thumbCurl * 1.5],
+    [-13.2 + opposition * 5.6 + raised * 8, -10.2 + thumbCurl * 5 - raised * 14]
+  ];
+  return { wrist, palm, fingers, thumb, digitWidths, params };
 }
-/** A local fingertip points -Y, so +90 degrees aligns it with the forearm
- * (elbow -> wrist), including horizontal points and downward resting palms. */
-export function handRotation(forearmRadians:number,wristDegrees=0,pose:HandPose='relaxed'){
-  const wrist=Math.max(-65,Math.min(65,wristDegrees))*Math.PI/180*.46;
-  return forearmRadians+Math.PI/2+wrist+(pose==='palm-up'?.12:0);
+
+const staticHands = new Map<HandPose, ReturnType<typeof buildHand>>();
+
+export function sampleHandRig(name: HandPose = 'relaxed', blend = 1) {
+  const pose = blend <= 0 ? 'relaxed' : name;
+  if (pose !== 'relaxed' && blend < 1) return buildHand(handPoseParams(pose, blend));
+  const cached = staticHands.get(pose);
+  if (cached) return cached;
+  const geometry = buildHand(poses[pose]);
+  staticHands.set(pose, geometry);
+  return geometry;
 }
+
+export function fingerPath(points: FingerPath) {
+  return `M ${points[0].join(' ')} L ${points[1].join(' ')} L ${points[2].join(' ')}`;
+}
+
+/** Local -Y points away from the wrist. Apply the blended wrist bend before
+ * reflecting the complete hand for the opposite side or a rear view. */
+export function handRotation(forearmRadians: number, wristDegrees = 0, name: HandPose = 'relaxed', blend = 1, side: HandSide = 'right') {
+  const bend = poses[name].wristBend * unit(blend) * (side === 'left' ? -1 : 1);
+  const wrist = Math.max(-65, Math.min(65, wristDegrees)) * .46;
+  return forearmRadians + Math.PI / 2 + (wrist + bend) * Math.PI / 180;
+}
+
+export function handWidthScale(view: View, side: HandSide, twist: number) {
+  const rear = view === 'back' || view === 'back-quarter';
+  const mirror = (side === 'left' ? -1 : 1) * (rear ? -1 : 1);
+  const projection = view === 'side' ? .77 : 1;
+  return mirror * projection * (1 - .30 * twist);
+}
+
+export const handSize = (thickness: number) => Math.max(.35, .91 * thickness);

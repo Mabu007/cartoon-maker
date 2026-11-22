@@ -1,8 +1,7 @@
 import { GraphicsPath, type Graphics } from 'pixi.js';
 import type { Character } from './schema.ts';
 import { INK } from './art.ts';
-import { sampleHandRig, type HandPose } from './handRig.ts';
-export type { HandPose } from './handRig.ts';
+import { fingerPath, type sampleHandRig } from './handRig.ts';
 
 /**
  * The illustrated character kit is made of authored SVG paths, rather than
@@ -141,39 +140,13 @@ export function drawIllustratedHair(g: Graphics, c: Character, art: IllustratedV
   if (back) detail(g, 'M ' + (-w*.60) + ' -8 Q 0 1 ' + (w*.60) + ' -8', mid, 1.2);
 }
 
-/**
- * The finger segments and wrist anchor are shared with the native SVG preview.
- * The local hand points -Y away from its cuff; orientation is solved separately.
- */
-export function drawIllustratedHand(g:Graphics,x:number,y:number,width:number,color:string,
-  pose:HandPose='relaxed',facing:-1|1=1,blend=1) {
-  const u=Math.max(.35,width/10),fraction=Math.max(0,Math.min(1,blend));
-  const sx=(v:number)=>x+facing*v*u,sy=(v:number)=>y+v*u;
-  const handOutline=INK,shadow=shade(color,-.21),highlight=shade(color,.16);
-  const path=(points:[number,number][])=>'M '+points.map(([px,py])=>sx(px)+' '+sy(py)).join(' L ');
-  const finger=(points:[number,number][],thickness=3.35)=>{
-    const d=path(points);
-    part(g,d,'none',handOutline,(thickness+2.15)*u);
-    part(g,d,'none',color,thickness*u);
-  };
-  const rig=sampleHandRig(pose,fraction);
-  // Draw the far fingers, palm and thumb in the same order in both renderers.
-  for(let i=0;i<rig.fingers.length;i++){
-    const points=rig.fingers[i];
-    finger(points,i===3?2.9:3.35);
-    const [root,mid]=points;
-    if(Math.hypot(mid[0]-root[0],mid[1]-root[1])>5.2)
-      part(g,path([[mid[0]-.7,mid[1]+.15],[mid[0]+.9,mid[1]+.5]]),'none',shadow,.72*u);
-  }
-  part(g,`M ${sx(-8.5)} ${sy(-7)} Q ${sx(-9.7)} ${sy(-1)} ${sx(-7.4)} ${sy(5.5)}
-    Q ${sx(-3.3)} ${sy(10)} ${sx(4.5)} ${sy(7.6)}
-    Q ${sx(10.5)} ${sy(4.7)} ${sx(9)} ${sy(-5.7)}
-    Q ${sx(3.9)} ${sy(-9.7)} ${sx(-8.5)} ${sy(-7)} Z`,color,handOutline,2.1*u);
-  finger(rig.thumb,4.1);
-  // Separate the knuckles without introducing distracting line clutter.
-  for(let i=0;i<3;i++){
-    const kx=-4.8+i*3.9;
-    part(g,path([[kx,-5.6],[kx+.8,-4.8]]),'none',shadow,.85*u);
-  }
-  part(g,path([[-5.3,3],[-2.3,4.1],[1.3,3.7]]),'none',highlight,1.15*u);
+/** Both renderers use the same wrist, palm and digit geometry. */
+export function drawIllustratedHand(g: Graphics, color: string, rig: ReturnType<typeof sampleHandRig>) {
+  const fingers = rig.fingers.map(fingerPath);
+  for (let i = 0; i < fingers.length; i++) part(g, fingers[i], 'none', INK, rig.digitWidths[i] + 1.65);
+  for (let i = 0; i < fingers.length; i++) part(g, fingers[i], 'none', color, rig.digitWidths[i]);
+  part(g, rig.palm, color, INK, 1.7);
+  const thumb = fingerPath(rig.thumb);
+  part(g, thumb, 'none', INK, rig.digitWidths[4] + 1.65);
+  part(g, thumb, 'none', color, rig.digitWidths[4]);
 }

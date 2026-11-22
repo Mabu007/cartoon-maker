@@ -137,7 +137,7 @@ export const animations: Record<Action, Animation> = {
   angry: make('angry', .6, false, [key(0), key(.38, { head: -9, torso: -11, rightElbow: 48, leftElbow: -48 }, -2), key(1, { head: 10, torso: 10, rightShoulder: 24, leftShoulder: -23, rightElbow: 57, leftElbow: -58 })], 'angry'),
   surprise: make('surprise', .55, false, [key(0), key(.24, { head: -12, torso: -15, leftShoulder: -96, rightShoulder: 92, leftElbow:-39,rightElbow:38 }, 12),key(.68,{head:-8,torso:-9,leftShoulder:-78,rightShoulder:79,leftElbow:-24,rightElbow:24},2),key(1, { head: -5, torso: -5, leftShoulder: -40, rightShoulder: 41 })], 'surprised'),
   celebrate: make('celebrate', .7, true, [key(0, { leftShoulder: -113, rightShoulder: 112, leftKnee: -20, rightKnee: -20 }), key(.5, { leftShoulder: -152, rightShoulder: 153, leftHip: 21, rightHip: -20 }, 22), key(1, { leftShoulder: -113, rightShoulder: 112, leftKnee: -20, rightKnee: -20 })], 'happy'),
-  talk: make('talk', 1.5, true, [key(0, { head: -3, rightElbow: 15 }), key(.43, { head: 5, rightShoulder: 28, rightElbow: 42 }), key(1, { head: -3, rightElbow: 15 })]),
+  talk: make('talk', 1.5, true, [key(0, { head: -3 }), key(.43, { head: 3 }), key(1, { head: -3 })]),
   listen: make('listen', 2.4, true, [key(0, { head: -8 }), key(.6, { head: -3, torso: 3 }), key(1, { head: -8 })]),
   think: make('think', 1.2, false, [key(0), key(.45, { head: -12, rightShoulder: 40, rightElbow: 115 }), key(1, { head: -10, rightShoulder: 35, rightElbow: 111 })], 'thinking'),
   lean: make('lean', .7, false, [key(0), key(1, { torso: 16, neck: -6, rightHip: -6 })]),

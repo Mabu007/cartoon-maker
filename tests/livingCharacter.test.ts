@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { makeProject } from '../src/engine/presets.ts';
 import { ProjectDocument, parseStoredProject } from '../src/engine/schema.ts';
-import { gestureAt, gestureHand, livingPose, resolvePersonality } from '../src/engine/livingCharacter.ts';
-import { performanceHandPose } from '../src/engine/handPerformance.ts';
+import { gestureAt, livingPose, resolvePersonality } from '../src/engine/livingCharacter.ts';
+import { handPerformance } from '../src/engine/handPerformance.ts';
 import { armIK } from '../src/engine/animation.ts';
 import { evaluate } from '../src/engine/evaluate.ts';
 
 const project=makeProject(true),base=project.characters[0];
-const perform=(character:typeof base,time:number,speaking=true)=>({
+const perform=(_character:typeof base,time:number,speaking=true)=>({
   time,actorId:'actor-a',action:'idle' as const,locomotion:'idle' as const,
-  expression:'neutral' as const,speaking,speechWeight:speaking?1:0
+  expression:'neutral' as const,speaking,
+  phrase:{start:0,duration:14,text:'First, hear me out. I have an idea. Can you help? Stop! This is how it works.'}
 });
 
 test('personality is optional for historical characters and validates custom traits',()=>{
@@ -37,7 +38,7 @@ test('gesture sampling is deterministic for arbitrary seek order',()=>{
   const first=times.map(t=>gestureAt(expressive,perform(expressive,t)));
   const reversed=[...times].reverse().map(t=>gestureAt(expressive,perform(expressive,t)));
   assert.deepEqual(first,[...reversed].reverse());
-  assert(first.some(item=>item.weight>0));
+  assert(Array.from({length:140},(_,i)=>gestureAt(expressive,perform(expressive,i*.1))).some(item=>item.weight>0));
 });
 test('explicit gestures and disabled auto acting take precedence',()=>{
   const enabled={...base,personality:{preset:'dramatic' as const,gestureFrequency:100}};
@@ -46,17 +47,17 @@ test('explicit gestures and disabled auto acting take precedence',()=>{
   assert.equal(gestureAt(disabled,perform(disabled,time)).kind,'rest');
   assert.deepEqual(livingPose(disabled,perform(disabled,time),{rightShoulder:50}),{rightShoulder:50});
   assert.equal(gestureAt(enabled,{...perform(enabled,time),manualGesture:true}).weight,0);
-  const handInput={action:'point' as const,locomotion:'idle' as const,side:'right' as const,carrying:true,time,expression:'neutral' as const,speechWeight:1,character:enabled,speaking:true};
-  assert.equal(performanceHandPose(handInput),'grip');
-  assert.equal(performanceHandPose({...handInput,carrying:false}),'point');
+  const handInput={action:'point' as const,locomotion:'idle' as const,side:'right' as const,carrying:true};
+  assert.equal(handPerformance(handInput).pose,'grip');
+  assert.equal(handPerformance({...handInput,carrying:false}).pose,'point');
 });
 test('five-finger poses are selected consistently with the body gesture',()=>{
   const excited={...base,personality:{preset:'hyperactive' as const,gestureFrequency:100}};
   for(let n=0;n<150;n++){
     const input=perform(excited,n*.11);
     const gesture=gestureAt(excited,input);
-    const hand=gestureHand(excited,input,gesture.side);
-    if(gesture.weight>=.14&&gesture.kind!=='rest')assert(hand);
+    const hand=handPerformance({action:'idle',locomotion:'idle',side:gesture.side,carrying:false,gesture});
+    if(gesture.kind!=='rest')assert.equal(hand.blend,gesture.weight);
   }
 });
 test('IK clamps out-of-reach hand targets and produces finite elbow positions',()=>{

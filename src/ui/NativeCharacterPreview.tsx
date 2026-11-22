@@ -1,9 +1,10 @@
 import { useEffect, useId, useState } from 'react';
 import { bodyProportions } from '../engine/bodyBuild.ts';
 import { animations, gaitLeg, rig, sample, seatedLeg, viewForward } from '../engine/animation.ts';
-import { handRotation, sampleHandRig } from '../engine/handRig.ts';
-import { livingPose } from '../engine/livingCharacter.ts';
-import { performanceHandPose } from '../engine/handPerformance.ts';
+import { fingerPath, handRotation, handSize, handWidthScale, sampleHandRig } from '../engine/handRig.ts';
+import { conversationAudition } from '../engine/dialogueGestures.ts';
+import { gestureAt, livingPose, type ActingContext } from '../engine/livingCharacter.ts';
+import { handPerformance, occupiedHands } from '../engine/handPerformance.ts';
 import { sampleViseme, type Viseme } from '../engine/visemes.ts';
 import { facialPerformance } from '../engine/facialAnimation.ts';
 import { SvgMouthRig } from './SvgMouthRig.tsx';
@@ -33,7 +34,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const mouthMask = 'toon-mouth-' + useId().replace(/:/g, '');
   const speech = mouthSample ?? (mouthTest ? {shape:mouthTest,weight:mouthTest==='rest'?0:1} :
     action === 'talk'
-      ? sampleViseme('Hello there! Let us create a cartoon. Watch my mouth moving!', 8, elapsed % 8) : undefined);
+      ? sampleViseme(conversationAudition.text, conversationAudition.duration, elapsed % conversationAudition.duration) : undefined);
   const mood = facialPerformance(elapsed, c.id, action, expression, mouthSample?.weight??0, speech, focus, c.personality);
   const emotion = mood.expression;
   const rear = view === 'back' || view === 'back-quarter';
@@ -50,18 +51,22 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   // Native fallback shares the same deterministic elbow/wrist poses as Pixi.
   const locomotion=action==='walk'||action==='run'?action:'idle';
   // Mirror the accelerated creator's full Sit -> hold -> Stand audition.
-  const auditionTime=action==='stand'?elapsed%4:elapsed;
+  const auditionTime=action==='stand'?elapsed%4:action==='talk'?elapsed%conversationAudition.duration:elapsed;
   const auditionAction=action==='stand'&&auditionTime<1.8?'sit':action;
   const actionTime=action==='stand'&&auditionTime>=1.8?auditionTime-1.8:auditionTime;
   const base=sample(animations[auditionAction],actionTime);
-  const live=livingPose(c,{time:elapsed,actorId:c.id,action,locomotion,expression,
-    speaking:action==='talk',speechWeight:speech?.weight??0,listening:action==='listen'},base.pose);
-  const bodyRig=rig(c,live,profile?.65:q?.9:1);
-  const armParts=(['left','right'] as const).map(side=>{
-    const joints=bodyRig[side];
-    const handPose=performanceHandPose({character:c,actorId:c.id,action,locomotion,expression,
-      time:elapsed,side,carrying:false,speechWeight:speech?.weight??0,speaking:action==='talk',listening:action==='listen'});
-    return {side,...joints,handPose};
+  const occupying = occupiedHands(c, false, action);
+  const acting: ActingContext = {
+    time: auditionTime, actorId: 'preview',
+    action, locomotion, expression, speaking: action === 'talk', listening: action === 'listen',
+    occupiedHands: occupying, phrase: action === 'talk' ? conversationAudition : undefined
+  };
+  const gesture = gestureAt(c, acting);
+  const live = livingPose(c, acting, base.pose, gesture);
+  const bodyRig = rig(c, live, profile ? .57 : view === 'back-quarter' ? .81 : q ? .88 : 1);
+  const armParts = (['left', 'right'] as const).map(side => {
+    const hand = handPerformance({ action, locomotion, side, carrying: occupying === side, gesture });
+    return { side, ...bodyRig[side], performance: hand };
   });
 
   const left = -24 * width * c.thickness*build.shoulder;
@@ -119,22 +124,22 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         {c.outfit==='shirtless'&&c.bodyBuild?.abs&&!rear&&<path d={`M0 ${shirtTop+24} V${shirtBottom-5} ${[0,1,2].map(offset=>`M-8 ${shirtTop+29+offset*5} q2 4 6 3 m4-3 q4 1 6-3`).join(' ')}`} fill="none" stroke="#754634" opacity=".58" strokeWidth="1.4"/>}
         {c.outfit === 'hoodie' ? <><path d={'M -15 ' + (shirtTop - 4) + ' Q 0 ' + (shirtTop + 26) + ' 15 ' + (shirtTop - 4)} fill="none" stroke="#41334b" strokeWidth="3"/><path d={'M -5 ' + (shirtTop + 15) + ' v 14 M 5 ' + (shirtTop + 15) + ' v 14'} stroke="#ffebcf" strokeWidth="2"/><path d={'M -14 ' + (shirtBottom - 19) + ' Q 0 ' + (shirtBottom - 11) + ' 14 ' + (shirtBottom - 19) + ' L 14 ' + (shirtBottom - 7) + ' L -14 ' + (shirtBottom - 7) + ' Z'} fill="none" stroke="#423248" strokeWidth="1.5"/></> : null}
 
-        {armParts.map(({side,hand,elbow,handPose})=>{
-          const sign=side==='right'?1:-1;
-          const forearm=Math.atan2(hand.y-elbow.y,hand.x-elbow.x);
-          const rotation=handRotation(forearm,live[side==='left'?'leftWrist':'rightWrist']??0,handPose)*180/Math.PI;
-          const handRig=sampleHandRig(handPose);
-          const path=(points:readonly (readonly [number,number])[])=>
-            points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
-          return <g key={side} transform={`translate(${hand.x} ${hand.y}) rotate(${rotation}) scale(${sign} 1)`}>
-            {handRig.fingers.map((finger,i)=><g key={i}>
-              <path d={path(finger)} stroke="#242037" strokeWidth={i===3?5.1:5.5} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-              <path d={path(finger)} stroke={c.skin} strokeWidth={i===3?2.9:3.35} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            </g>)}
-            <path d="M -8.5 -7 Q -9.7 -1 -7.4 5.5 Q -3.3 10 4.5 7.6 Q 10.5 4.7 9 -5.7 Q 3.9 -9.7 -8.5 -7Z"
-              fill={c.skin} stroke="#242037" strokeWidth="2.1"/>
-            <path d={path(handRig.thumb)} stroke="#242037" strokeWidth="6.1" strokeLinecap="round" fill="none"/>
-            <path d={path(handRig.thumb)} stroke={c.skin} strokeWidth="4.1" strokeLinecap="round" fill="none"/>
+        {armParts.map(({ side, hand, elbow, performance }) => {
+          const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
+          const rotation = handRotation(forearm, live[`${side}Wrist`] ?? 0, performance.pose, performance.blend, side) * 180 / Math.PI;
+          const handRig = sampleHandRig(performance.pose, performance.blend);
+          const size = handSize(c.thickness);
+          const widthScale = handWidthScale(view, side, handRig.params.wristTwist);
+          const fingers = handRig.fingers.map(fingerPath);
+          const thumb = fingerPath(handRig.thumb);
+          return <g key={side} transform={`translate(${hand.x} ${hand.y}) rotate(${rotation}) scale(${size * widthScale} ${size})`}>
+            <g strokeLinecap="round" strokeLinejoin="round" fill="none">
+              {fingers.map((d, i) => <path key={i} d={d} stroke="#242037" strokeWidth={handRig.digitWidths[i] + 1.65}/>)}
+              {fingers.map((d, i) => <path key={i} d={d} stroke={c.skin} strokeWidth={handRig.digitWidths[i]}/>)}
+            </g>
+            <path d={handRig.palm} fill={c.skin} stroke="#242037" strokeWidth="1.7"/>
+            <path d={thumb} stroke="#242037" strokeWidth={handRig.digitWidths[4] + 1.65} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            <path d={thumb} stroke={c.skin} strokeWidth={handRig.digitWidths[4]} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           </g>;
         })}
         {(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}

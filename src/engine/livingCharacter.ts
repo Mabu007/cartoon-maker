@@ -1,4 +1,6 @@
 import { clamp, ease, mix } from './animation.ts';
+import { dialogueBeatAt, type DialoguePhrase } from './dialogueGestures.ts';
+import type { HandPose, HandSide } from './handRig.ts';
 import type { Action, Character, Expression, JointPose } from './schema.ts';
 
 /**
@@ -17,8 +19,9 @@ export const traitDefaults = {
 export type Trait = keyof typeof traitDefaults;
 export type Personality = ReturnType<typeof resolvePersonality>;
 type Preset = NonNullable<NonNullable<Character['personality']>['preset']>;
-export type GestureKind = 'beat'|'explain'|'point'|'question'|'shrug'|'chin'|'rub'|'fidget'|'rest';
-export type HandShape = 'relaxed'|'open'|'point'|'grip'|'fist'|'pinch'|'palm-up'|'thumbs-up'|'count';
+export type GestureKind = 'beat' | 'explain' | 'point' | 'question' | 'shrug' | 'chin' |
+  'rub' | 'fidget' | 'self-reference' | 'count-one' | 'count-two' | 'count-three' | 'rest';
+export type OccupiedHands = HandSide | 'both';
 
 const presets: Record<Preset,Partial<Record<Trait,number>>> = {
   balanced:{}, confident:{confidence:92,postureOpenness:85,eyeContact:88,nervousness:8,gestureAmplitude:64},
@@ -56,96 +59,87 @@ function chance(seed:number,slot:number,salt:number) {
 }
 const spokenActions=new Set<Action>(['idle','talk','listen','walk','run','sit','stand','idle-relaxed','idle-alert','idle-bored','idle-nervous']);
 export type ActingContext = {
-  time:number; actorId:string; action:Action; locomotion:Action; expression:Expression;
-  speaking:boolean; speechWeight:number; listening?:boolean;
-  manualGesture?:boolean; carrying?:boolean;
-  /** Current authored dialogue clip; controls one coordinated body/finger
-   * accent per phrase, without a model call or mutable timeline state. */
-  phrase?: {start:number;duration:number;text:string};
+  time: number; actorId: string; action: Action; locomotion: Action; expression: Expression;
+  speaking: boolean; listening?: boolean; manualGesture?: boolean;
+  occupiedHands?: OccupiedHands; phrase?: DialoguePhrase;
+  /** Authored target in actor-local coordinates, relative to the upper body. */
+  pointToward?: { x: number; y: number };
 };
-/** A sparse accent plan derived from dialogue punctuation and word counts.
- * Each clause has a single stable beat; seeks and renders are stateless. */
-function phraseBeat(phrase:NonNullable<ActingContext['phrase']>,time:number){
-  const {start,duration,text}=phrase;
-  if(!Number.isFinite(duration)||duration<=0||time<start||time>=start+duration)return undefined;
-  const clauses=(text.match(/[^.!?;,]+[.!?;,]*/g)??[text]).filter(part=>part.trim());
-  if(!clauses.length)return undefined;
-  const weights=clauses.map(part=>Math.max(1,(part.match(/\S+/g)??[]).length));
-  const total=weights.reduce((a,b)=>a+b,0);
-  let before=0;
-  for(let i=0;i<clauses.length;i++){
-    const partTime=duration*weights[i]/total;
-    const peak=start+(before+weights[i]*.61)*duration/total;
-    const window=Math.min(.92,partTime*.7);
-    const phase=(time-(peak-window*.38))/window;
-    if(phase>=0&&phase<=1)return {slot:i,phase};
-    before+=weights[i];
-  }
-  return undefined;
-}
-export type GestureSample = {kind:GestureKind;side:'left'|'right';weight:number;phase:number};
 
-/**
- * Gesture slots have independent seeded choices, an anticipation/stroke/recovery
- * envelope, pauses, and a cooldown for the more emphatic gestures.
- */
-export function gestureAt(character:Character,input:ActingContext):GestureSample {
-  const traits=resolvePersonality(character.personality);
-  const none:GestureSample={kind:'rest',side:'right',weight:0,phase:0};
-  if(traits.autoActing==='off'||input.manualGesture||!spokenActions.has(input.action))return none;
-  const t=Math.max(0,Number.isFinite(input.time)?input.time:0);
-  const talking=input.speaking&&input.speechWeight>.055;
-  const activity=talking?1:input.listening?.32:.18;
-  const frequency=traits.gestureFrequency/100;
-  const interval=mix(3.0,.86,frequency)*mix(1.24,.83,traits.energy/100)*
-    mix(1.2,.8,traits.movementSpeed/100)*mix(.88,1.17,traits.patience/100);
-  const seed=hash(character.id);
-  let slot=Math.floor(t/interval);
-  let phase=(t-slot*interval)/interval;
-  if(talking&&input.phrase){
-    const beat=phraseBeat(input.phrase,t);
-    if(!beat)return none;
-    slot=beat.slot+(hash(input.phrase.text)%2048);
-    phase=beat.phase;
-  }
-  // A few full periods of restraint are essential for believable conversation.
-  const threshold=talking?mix(.2,.87,frequency)*mix(.8,1.15,traits.sociability/100):
-    mix(.03,.28,traits.restlessness/100)*mix(1.1,.75,traits.patience/100);
-  if(chance(seed,slot,1)>threshold)return none;
-  const kindChoice=chance(seed,slot,2),side: 'left'|'right'=chance(seed,slot,3)<.29?'left':'right';
-  const choices:GestureKind[]=talking
-    ? ['beat','explain','question','beat','point','shrug','explain','beat']
-    : ['fidget','chin','rest','rub','fidget','rest','shrug','rest'];
-  let kind=choices[Math.min(choices.length-1,Math.floor(kindChoice*choices.length))];
-  if(talking&&traits.nervousness>70&&kind==='point')kind='fidget';
-  if(talking&&traits.playfulness>75&&kind==='beat')kind=chance(seed,slot,5)>.5?'question':'explain';
-  if(talking&&traits.confidence<28&&kind==='point')kind='question';
-  if(input.expression==='angry'&&talking&&kind==='question')kind='point';
-  if(input.expression==='sad'&&kind==='point')kind='chin';
-  if((traits.signature==='point'||traits.signature==='touch-chin'||traits.signature==='rub-hands'||traits.signature==='shrug')&&chance(seed,slot,4)<.36){
-    kind=traits.signature==='touch-chin'?'chin':traits.signature==='rub-hands'?'rub':traits.signature;
-  }
-  // Suppress adjacent strongly distinctive gestures, without relying on previous frames.
-  if((kind==='point'||kind==='rub')&&chance(seed,slot-1,2)>.72)kind='beat';
-  const anticipation=ease(clamp(phase/.24));
-  const recovery=ease(clamp((.94-phase)/.28));
-  const stroke=Math.pow(Math.min(anticipation,recovery),mix(1.4,.78,traits.movementSmoothness/100));
-  const amplitude=mix(.25,1.15,traits.gestureAmplitude/100);
-  const context=talking?mix(.48,1,clamp(input.speechWeight)):activity;
-  const emotion=input.expression==='neutral'?1:mix(.86,1.3,traits.emotionalReactivity/100);
-  const expressive=mix(.6,1.22,traits.expressiveness/100)*emotion;
-  const gentle=traits.autoActing==='subtle'?.4:1;
-  const weight=clamp(stroke*amplitude*context*expressive*gentle);
-  return {kind,side,weight,phase};
+export type GestureSample = { kind: GestureKind; side: HandSide; weight: number; phase: number; pointAngle?: number };
+
+const rest: GestureSample = { kind: 'rest', side: 'right', weight: 0, phase: 0 };
+
+function gestureEnvelope(phase: number, traits: Personality) {
+  const prepare = .25, strike = .46;
+  const release = mix(.56, .69, traits.confidence / 100);
+  if (phase < prepare) return ease(clamp(phase / prepare)) * .24;
+  if (phase < strike) return mix(.24, 1, ease(clamp((phase - prepare) / (strike - prepare))));
+  return 1 - ease(clamp((phase - release) / (1 - release)));
 }
 
-const gesturalAngles: Record<Exclude<GestureKind,'rest'>,[number,number,number]> = {
-  beat:[44,49,12],explain:[50,75,20],point:[83,17,0],question:[34,87,26],
-  shrug:[-42,-48,15],chin:[38,111,-12],rub:[36,92,24],fidget:[16,64,9]
+export function gestureAt(character: Character, input: ActingContext): GestureSample {
+  const traits = resolvePersonality(character.personality);
+  if (traits.autoActing === 'off' || input.manualGesture || !spokenActions.has(input.action) || input.occupiedHands === 'both') return rest;
+  const time = Math.max(0, Number.isFinite(input.time) ? input.time : 0);
+  const seed = hash(character.id);
+  const primary = chance(seed, 0, 3) < .24 ? 'left' : 'right';
+  let side: HandSide = input.occupiedHands === primary ? (primary === 'right' ? 'left' : 'right') : primary;
+  const frequency = traits.gestureFrequency / 100;
+  const spacing = 1.53 + (1 - frequency) * 1.1;
+  const speech = input.speaking && input.phrase ? dialogueBeatAt(input.phrase, time, spacing) : undefined;
+  let kind: GestureKind, phase: number, pointAngle: number | undefined;
+  let strength = 1;
+
+  if (speech) {
+    phase = speech.phase;
+    const generic = speech.intent === 'beat' || speech.intent === 'explain';
+    if (generic && speech.slot !== 0 && chance(seed, speech.slot, 1) > mix(.24, .88, frequency)) return rest;
+    if (speech.intent === 'direction') {
+      const target = input.pointToward;
+      const targetSide = target && (target.x < 0 ? 'left' : 'right');
+      if (target && targetSide && targetSide !== input.occupiedHands && traits.confidence >= 30) {
+        side = targetSide;
+        kind = 'point';
+        pointAngle = Math.atan2(target.x, target.y) * 180 / Math.PI;
+      } else kind = 'beat';
+    } else {
+      kind = speech.intent;
+    }
+    if (kind === 'explain' && traits.confidence < 33) kind = 'beat';
+    if (kind === 'beat' && traits.nervousness > 75 && !speech.audioOnly && chance(seed, speech.slot, 2) < .3) {
+      kind = traits.signature === 'touch-chin' ? 'chin' : 'fidget';
+    }
+    if (kind === 'beat' && !speech.audioOnly && traits.signature === 'shrug') kind = 'shrug';
+    if (kind === 'beat' && !speech.audioOnly && traits.signature === 'rub-hands' && !input.occupiedHands) kind = 'rub';
+    strength = speech.audioOnly ? .48 : 1;
+  } else {
+    // Listening fidgets are rare and need a visibly restless personality.
+    if (input.speaking || !input.listening || traits.restlessness < 74) return rest;
+    const interval = 6.5, slot = Math.floor(time / interval);
+    const start = 2 + chance(seed, slot, 5) * 2.5;
+    phase = (time - slot * interval - start) / .54;
+    if (phase <= 0 || phase >= 1 || chance(seed, slot, 1) > .36) return rest;
+    kind = traits.signature === 'touch-chin' ? 'chin' : 'fidget';
+    strength = .42;
+  }
+  const amplitude = mix(.26, 1.00, traits.gestureAmplitude / 100);
+  const openness = mix(.70, 1.20, traits.confidence / 100);
+  const energy = mix(.60, 1.20, traits.energy / 100);
+  const restraint = traits.autoActing === 'subtle' ? .42 : 1;
+  const weight = clamp(gestureEnvelope(phase, traits) * amplitude * openness * energy * strength * restraint);
+  return { kind, side, weight, phase, pointAngle };
+}
+
+const gesturalAngles: Record<Exclude<GestureKind, 'rest'>, [number, number, number]> = {
+  beat: [34, 45, 4], explain: [49, 57, 9], point: [83, 8, 0], question: [28, 72, 10],
+  shrug: [20, 62, 9], chin: [23, -131, -6], rub: [-14, -55, 1], fidget: [9, 24, 5],
+  'self-reference': [21, -128, -6],
+  'count-one': [42, 65, 1], 'count-two': [42, 65, 1], 'count-three': [42, 65, 1]
 };
 
 /** Joint-safe additive layer. Explicit gestures and prop interactions retain authority. */
-export function livingPose(character:Character,input:ActingContext,base:JointPose):JointPose {
+export function livingPose(character: Character, input: ActingContext, base: JointPose, gesture = gestureAt(character, input)): JointPose {
   const p=resolvePersonality(character.personality);
   if(p.autoActing==='off')return base;
   const t=Math.max(0,Number.isFinite(input.time)?input.time:0);
@@ -189,38 +183,34 @@ export function livingPose(character:Character,input:ActingContext,base:JointPos
     result.leftElbow=(result.leftElbow??0)+p.confidence/100*4*subtle;
     result.rightElbow=(result.rightElbow??0)+p.confidence/100*4*subtle;
   }
-  const gesture=gestureAt(character,input);
-  if(gesture.weight>.001&&!input.manualGesture){
-    const [shoulder,elbow,wrist]=gesturalAngles[gesture.kind as Exclude<GestureKind,'rest'>];
-    const side=gesture.side==='right'&&input.carrying?'left':gesture.side;
-    const sign=side==='right'?1:-1;
-    const w=gesture.weight*(motion?.48:1)*emotionMultiplier;
-    const s=(side+'Shoulder') as 'rightShoulder'|'leftShoulder';
-    const e=(side+'Elbow') as 'rightElbow'|'leftElbow';
-    const r=(side+'Wrist') as 'rightWrist'|'leftWrist';
-    result[s]=mix(result[s]??0,shoulder*sign,w);
-    result[e]=mix(result[e]??0,elbow*sign,w);
-    result[r]=mix(result[r]??0,wrist*sign,w);
-    // A gesture is a body action, not a disembodied hand.
-    result.head=(result.head??0)+Math.sin(Math.PI*gesture.phase)*w*2;
-    result.torso=(result.torso??0)+w*sign*1.9;
+  if (gesture.kind !== 'rest' && gesture.weight > 0) {
+    const [shoulder, elbow, wrist] = gesturalAngles[gesture.kind];
+    const weight = gesture.weight * (motion ? .48 : 1);
+    const sides: HandSide[] = gesture.kind === 'rub' ? ['left', 'right'] : [gesture.side];
+    for (const side of sides) {
+      const sign = side === 'right' ? 1 : -1;
+      const shoulderJoint = `${side}Shoulder` as const;
+      const elbowJoint = `${side}Elbow` as const;
+      const wristJoint = `${side}Wrist` as const;
+      const aimedShoulder = gesture.pointAngle === undefined ? shoulder * sign :
+        gesture.pointAngle - (13 + elbow) * sign - (result.torso ?? 0) - (result.hips ?? 0);
+      result[shoulderJoint] = mix(result[shoulderJoint] ?? 0, aimedShoulder, weight);
+      result[elbowJoint] = mix(result[elbowJoint] ?? 0, elbow * sign, weight);
+      result[wristJoint] = mix(result[wristJoint] ?? 0, wrist * sign, weight);
+    }
+    result.head = (result.head ?? 0) + Math.sin(Math.PI * gesture.phase) * weight * 2;
+    if (gesture.pointAngle === undefined) result.torso = (result.torso ?? 0) + weight * (gesture.side === 'right' ? 1.9 : -1.9);
   }
   return result;
 }
-export function gestureHand(character:Character,input:ActingContext,side:'left'|'right'):HandShape|undefined {
-  const sample=gestureAt(character,input);
-  if(sample.weight<.14)return undefined;
-  const gesturingSide=sample.side==='right'&&input.carrying?'left':sample.side;
-  if(gesturingSide!==side&&sample.kind!=='rub'&&sample.kind!=='shrug')return undefined;
-  switch(sample.kind){
-    case 'point':return 'point';
-    case 'explain':return 'open';
-    case 'question':return 'palm-up';
-    case 'chin':return 'pinch';
-    case 'rub':return 'open';
-    case 'shrug':return 'palm-up';
-    case 'beat':return 'open';
-    case 'fidget':return 'pinch';
-    default:return undefined;
-  }
+
+const gestureHands: Record<Exclude<GestureKind, 'rest'>, HandPose> = {
+  beat: 'loose-open', explain: 'palm-out', point: 'point', question: 'palm-up',
+  shrug: 'shrug', chin: 'pinch', rub: 'loose-open', fidget: 'pinch',
+  'self-reference': 'self-reference', 'count-one': 'count-one', 'count-two': 'count-two', 'count-three': 'count-three'
+};
+
+export function gestureHand(sample: GestureSample, side: HandSide): HandPose | undefined {
+  if (sample.kind === 'rest' || (sample.side !== side && sample.kind !== 'rub')) return undefined;
+  return gestureHands[sample.kind];
 }
