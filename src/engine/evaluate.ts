@@ -13,7 +13,8 @@ import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
   speaking: boolean; actionTime: number; actionWeight:number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
-  focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string };
+  focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string;
+  actingPhrase?: {start:number;duration:number;text:string} };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
@@ -218,6 +219,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     // sceneTime is derived from Web Audio's currentTime in preview or the frame
     // timestamp in export. A dialogue offset shifts source *audio* time only.
     const audioTime = spoken ? t - spoken.start + spoken.offset : -1;
+    const actingPhrase=spoken?{start:spoken.start,duration:spoken.length,text:spoken.text}:undefined;
     const viseme = spoken?.visemes?.length
       ? sampleTimedViseme(spoken.manualVisemes?.length ? effectiveCues(spoken.visemes, spoken.manualVisemes) : spoken.visemes,audioTime)
       : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
@@ -233,7 +235,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         time:t,actorId:actor.id,action,locomotion,expression,
         speaking:Boolean(spoken)||action==='talk',speechWeight:viseme?.weight??(action==='talk'?.55:0),
         listening:!spoken&&sounds.some(clip=>clip.track==='dialogue'&&clip.actor!==actor.id),
-        manualGesture:Boolean(gesture),carrying:Boolean(held)
+        manualGesture:Boolean(gesture),carrying:Boolean(held),phrase:actingPhrase
       },pose);
     }
     const performance=action===gesture?.action?gesture:body;
@@ -241,7 +243,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking: Boolean(spoken), actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held,propPose,sitting,seat };
+      speaking: Boolean(spoken)||action==='talk',actingPhrase, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: (entrance?.track === 'actors' ? entrance.visible : undefined) ?? (!presence.length || presence.some(clip => active(clip, t))), held,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
