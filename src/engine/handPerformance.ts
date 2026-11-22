@@ -15,7 +15,8 @@ export function performanceHandPose(input:HandPerformanceInput):HandPose {
   if(action==='cry'||action==='reach'||action==='surprise'||action==='cartoon-block')return 'open';
   if(['cartoon-guard','cartoon-jab','cartoon-hook','cartoon-kick'].includes(action))return 'fist';
   if(action==='point' && side==='right')return 'point';
-  if(['wave','celebrate','open-hand','shrug'].includes(action))return 'open';
+  if(action==='wave')return side==='right'?'open':'relaxed';
+  if(['celebrate','open-hand','shrug'].includes(action))return 'open';
   if(action==='fist'||action==='angry'||expression==='angry')return 'fist';
   if(action==='hand-to-face'&&side==='right')return 'open';
   if(['hand-on-hip','hand-to-pocket'].includes(action)&&side==='right')return 'fist';
@@ -28,7 +29,7 @@ export function performanceHandPose(input:HandPerformanceInput):HandPose {
     if(gesture)return gesture;
     // Do not layer the old repeating six-frame hand cycle over personality.
     if(locomotion==='run')return 'fist';
-    if(locomotion==='walk')return side==='right'?'relaxed':'fist';
+    if(locomotion==='walk')return 'relaxed';
     return 'relaxed';
   }
   if(speechWeight>.12) {
