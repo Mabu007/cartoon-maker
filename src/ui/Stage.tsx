@@ -167,10 +167,9 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   };
   const displayPath=pathPoints?.map((point,index)=>
     draggedPath&&draggedPath.index===index?draggedPath.position:point);
-  const hiddenSelected=selectedActor&&(()=>{
-    const frame=renderedFrame.current?.actors.find(actor=>actor.id===selectedActor.id);
-    return !frame?.visible || frame.x < 0 || frame.x>960 || frame.y<0 || frame.y>540;
-  })();
+  const offstageActors=!playing?evaluate(scene,time.current.local).actors.filter(actor=>
+    !actor.visible||actor.x<0||actor.x>960||actor.y<0||actor.y>540):[];
+  const hiddenSelected=selectedActor&&offstageActors.some(actor=>actor.id===selectedActor.id);
   return <div ref={stage} className={`stage-format format-${format.replace(':', '-')}`}
     onWheel={event=>{if(!playing){event.preventDefault();zoom(event.deltaY<0?1.14:1/1.14,event.clientX,event.clientY);}}}
     onDoubleClick={event=>{
@@ -288,6 +287,16 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       <button type="button" title="Reset stage zoom and pan" aria-label="Reset stage zoom" onClick={()=>setViewport(defaultStageViewport)}><Scan size={16}/></button>
       <small>Wheel: zoom · Alt-drag: pan</small>
     </div>
+    {!playing&&offstageActors.length>0&&<details className="stage-hidden-actors">
+      <summary><Eye size={14}/> Offstage actors · {offstageActors.length}</summary>
+      <div>{offstageActors.map(actor=>{
+        const name=project.characters.find(character=>character.id===actor.characterId)?.name??'Actor';
+        return <button type="button" key={actor.id} onClick={()=>{
+          selected({kind:'actor',id:actor.id});
+          recoverActor?.(actor.id,{x:480,y:450});
+        }}>Show {name} on canvas</button>;
+      })}</div>
+    </details>}
     {hiddenSelected && selectedActor && !playing && <button type="button" className="stage-recover-actor"
       onClick={()=>recoverActor?.(selectedActor.id,{x:480,y:450})}><Eye size={15}/> Show {selectedName} in view</button>}
     {edgePlacement&&!status&&<div className="stage-edge-tools" role="group" aria-label="Place offstage">
