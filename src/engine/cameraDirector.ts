@@ -165,3 +165,22 @@ export function directCamera(
   }
   return result;
 }
+
+/** UI language must distinguish visual framing from physical 3D optics. */
+export function cameraDirectionHint(shot:DirectedCameraClip['shot'],angle:string,movement:string){
+  if(['birds-eye','worms-eye','aerial'].includes(angle))
+    return 'Stylized 2D framing only: a true overhead or upward camera requires perspective-specific background and character artwork.';
+  if(angle==='high-angle'||angle==='low-angle')
+    return 'Simulated high/low angle uses 2D reframing, not a newly rendered 3D viewpoint.';
+  if(movement==='dolly-zoom')
+    return '2D dolly-zoom approximation: reframing and zoom only, without optical perspective or background parallax.';
+  if(['point-of-view','over-shoulder'].includes(shot))
+    return '2D perspective approximation. Use actor or prop focus and arrange foreground characters on stage for a convincing result.';
+  if(['truck-left','truck-right','crane-up','crane-down'].includes(movement))
+    return '2D camera translation. True depth parallax is not available in the flat scene.';
+  if(movement==='handheld')
+    return 'Subtle deterministic handheld motion, previewed and exported identically.';
+  if(movement.startsWith('whip-pan'))
+    return 'A fast horizontal camera sweep without computationally expensive motion blur.';
+  return 'Camera framing is non-destructive. One camera clip is active at a time and is export-ready.';
+}
