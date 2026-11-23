@@ -395,15 +395,24 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       focusY = eyes?.y??other.y - 150 * other.scale;
     } else if (actor.held&&(!targetId||targetId===actor.held.id)&&(!actor.speaking||targetProp)) {
       const character=characters?.get(actor.characterId);
-      if(character) {
-        const pose=rig(character,actor.pose,1), rear=actor.view==='back'||actor.view==='back-quarter';
-        const [,hand]=armIK(pose.right.shoulder,{x:pose.head.x+(rear?-26:45),y:pose.head.y+43},28*character.arms,28*character.arms,1);
-        const point=actorWorldPoint(actor,{x:hand.x+7,y:hand.y});
+      if(character){
+        const rear=actor.view==='back'||actor.view==='back-quarter';
+        const width=actor.view==='side'?.57:actor.view==='three-quarter'?.88:actor.view==='back-quarter'?.81:1;
+        const local=propPlacement(character,rig(character,actor.pose,width),
+          actor.propPose??{action:'idle',time:0,weight:1},
+          actor.held,rear,actor.heldHand??'right');
+        const point=actorWorldPoint(actor,local);
         focusX=point.x;focusY=point.y;
-      } else {focusX=actor.held.x;focusY=actor.held.y;}
+      }else{focusX=actor.held.x;focusY=actor.held.y;}
     } else if (targetProp) {
-      focusX = targetProp.x;
-      focusY = targetProp.y - (targetProp.imageHeight ?? 50) * targetProp.scale * .55;
+      const dropped=propDrops.get(targetProp.id);
+      const seen=dropped?placedProp(targetProp,dropped):targetProp;
+      // Aim at the actual interaction anchor or object's visible center.
+      // This makes pupils naturally look down at a floor object and to the
+      // side at an object elsewhere, while retaining the existing gaze math.
+      const anchor=anchorFor(seen);
+      focusX=seen.x+(anchor?.x??0)*seen.scale;
+      focusY=seen.y+(anchor?.y??-(seen.imageHeight??50)*.55)*seen.scale;
     }
     if (focusX !== undefined && focusY !== undefined) {
       actor.gazePoint={x:focusX,y:focusY};
