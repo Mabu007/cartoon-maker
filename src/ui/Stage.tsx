@@ -234,7 +234,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       onLostPointerCapture={() => { drag.current = null;pan.current=undefined; repaint.current(); }} />
     {!playing && !!displayPath?.length && <svg className="stage-path-guide" style={screenTransform} ref={guide} aria-hidden={editPath?undefined:true}>
       <polyline/><g>{displayPath!.map((point,index)=>{
-        const removable=index>0&&index<pathPoints.length-1;
+        const removable=index>0&&index<displayPath!.length-1;
         const label=index===0?'Start of path':removable?'Waypoint '+index:'End of path';
         return <circle key={index} r={editPath?17:removable?4:7}
           className={editPath?'stage-path-handle':undefined} role={editPath?'button':undefined} tabIndex={editPath?0:undefined}
