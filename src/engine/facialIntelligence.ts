@@ -5,7 +5,7 @@
  * *directions*, not frame-based sprites. This module is pure: previews, reverse
  * timeline scrubbing, and exports produce identical facial controls.
  */
-import type { Expression, Character } from './schema.ts';
+import type { Expression, Character, ActingIntent } from './schema.ts';
 import { clamp, mix } from './animation.ts';
 import { resolvePersonality } from './livingCharacter.ts';
 
@@ -41,6 +41,31 @@ const expressions:Record<Expression,PartialFace> = {
   thinking:{browLeft:.35,browRight:-.13,browTiltLeft:.11,eyeNarrowLeft:.19,eyeNarrowRight:.34,lipPress:.27,lipRound:.18},
   nervous:{browLeft:.51,browRight:.63,browTiltLeft:-.14,browTiltRight:.19,eyeWideLeft:.30,eyeWideRight:.38,smileLeft:.27,smileRight:.44,lipPress:.43,jawTension:.37}
 };
+/** Directable acting objectives may deliberately combine contradictory facial cues.
+ * This is where SIRVIBE distinguishes a forced smile from genuine happiness. */
+const intentions: Record<ActingIntent,PartialFace> = {
+  none:{},
+  suspicious:{browLeft:.51,browRight:-.40,browTiltLeft:.28,browTiltRight:-.3,eyeNarrowLeft:.48,eyeNarrowRight:.55,lipPress:.45},
+  skeptical:{browLeft:.67,browRight:-.48,eyeNarrowRight:.5,smileLeft:.14,lipPress:.24},
+  'forced-smile':{browLeft:.16,browRight:.20,eyeWideLeft:.12,eyeWideRight:.15,smileLeft:.67,smileRight:.64,cheekLeft:.12,cheekRight:.08,lipPress:.34,jawTension:.26},
+  'suppress-laugh':{browLeft:.20,browRight:.20,eyeNarrowLeft:.42,eyeNarrowRight:.40,cheekLeft:.7,cheekRight:.65,smileLeft:.67,smileRight:.53,lipPress:.75},
+  'hide-anger':{browLeft:-.53,browRight:-.42,eyeNarrowLeft:.37,eyeNarrowRight:.34,smileLeft:.58,smileRight:.49,lipPress:.63,jawTension:.88},
+  'holding-back-tears':{browLeft:.54,browRight:.56,browTiltLeft:.38,browTiltRight:-.35,eyeNarrowLeft:.28,eyeNarrowRight:.29,frownLeft:.58,frownRight:.64,lipPress:.83},
+  'awkward-silence':{browLeft:.38,browRight:.55,eyeWideLeft:.26,eyeWideRight:.18,smileLeft:.23,smileRight:.38,lipPress:.62},
+  'silent-judgment':{browLeft:.5,browRight:-.3,eyeNarrowLeft:.52,eyeNarrowRight:.60,lipPress:.64},
+  'dramatic-realization':{browLeft:.95,browRight:.94,eyeWideLeft:.89,eyeWideRight:.89,lipRound:.82},
+  sarcastic:{browLeft:.64,browRight:-.19,browTiltLeft:.38,browTiltRight:-.18,eyeNarrowLeft:.25,eyeNarrowRight:.52,smileLeft:.61,smileRight:.20},
+  embarrassed:{browLeft:.56,browRight:.48,eyeNarrowLeft:.31,eyeNarrowRight:.32,smileLeft:.19,smileRight:.26,lipPress:.67,cheekLeft:.34,cheekRight:.32},
+  intimidate:{browLeft:-.78,browRight:-.76,eyeNarrowLeft:.68,eyeNarrowRight:.67,lipPress:.64,jawTension:.82},
+  reassure:{browLeft:.27,browRight:.28,eyeNarrowLeft:.12,eyeNarrowRight:.14,cheekLeft:.47,cheekRight:.46,smileLeft:.55,smileRight:.53},
+  'lying-nervously':{browLeft:.62,browRight:.51,eyeWideLeft:.36,eyeWideRight:.25,smileLeft:.34,smileRight:.60,lipPress:.52,jawTension:.46},
+  disbelieving:{browLeft:.75,browRight:-.30,eyeNarrowRight:.6,eyeWideLeft:.28,lipPress:.32,lipRound:.15},
+  curious:{browLeft:.53,browRight:.67,eyeWideLeft:.18,eyeWideRight:.27,lipRound:.08},
+  'excited-announcement':{browLeft:.8,browRight:.8,eyeWideLeft:.52,eyeWideRight:.54,cheekLeft:.75,cheekRight:.73,smileLeft:.97,smileRight:.94},
+  'quiet-disappointment':{browLeft:.3,browRight:.30,eyeNarrowLeft:.30,eyeNarrowRight:.29,frownLeft:.62,frownRight:.61,lipPress:.30},
+  'confident-explanation':{browLeft:.18,browRight:.12,eyeNarrowLeft:.11,eyeNarrowRight:.1,smileLeft:.28,smileRight:.26},
+  uncomfortable:{browLeft:.48,browRight:.55,eyeWideLeft:.15,eyeWideRight:.16,smileLeft:.23,smileRight:.30,lipPress:.67,jawTension:.54}
+};
 const channels = Object.keys(neutralFacialControls) as (keyof FacialControls)[];
 const signed = new Set<keyof FacialControls>(['browLeft','browRight','browTiltLeft','browTiltRight']);
 const limit=(key:keyof FacialControls,value:number)=>clamp(value,signed.has(key)?-1:0,1);
@@ -69,14 +94,19 @@ function pulse(time:number,seed:number,period:number) {
 /** Character-aware acting controls, with a restrained asymmetric micro-beat. */
 export function actingFacialControls(
   time:number, actorId:string, expression:Expression,
-  personality?:Character['personality'], intensity=1
+  personality?:Character['personality'], intensity=1, intention:ActingIntent='none'
 ):FacialControls {
   const traits=resolvePersonality(personality);
   const expressiveness=traits.expressiveness/100;
   const nervousness=traits.nervousness/100;
   const strength=clamp(intensity,0,1.5)*mix(.78,1.15,expressiveness);
   const face=facialExpressionControls(expression,strength);
-  if(traits.autoActing==='off')return facialExpressionControls(expression,clamp(intensity,0,1.5));
+  if(intention!=='none'){
+    const direction=intentions[intention];
+    for(const key of Object.keys(direction) as (keyof FacialControls)[])
+      face[key]=limit(key,(direction[key]??0)*strength);
+  }
+  if(traits.autoActing==='off')return face;
   const subtle=traits.autoActing==='subtle'?.4:1;
   // Temperament modifies the *same* authored emotion, not just idle motion.
   // An anxious actor holds more lip tension and opens their eyes slightly more.
