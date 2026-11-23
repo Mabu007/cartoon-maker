@@ -334,12 +334,12 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
               onClick={()=>setFacing('front')}><UserRound size={15}/> Front</button>
             <button type="button" className={facing==='left'?'active':''} aria-pressed={facing==='left'}
               disabled={status==='recording'||status==='processing'}
-              onClick={()=>setFacing('left')}><ArrowLeft size={15}/> Face left</button>
+              onClick={()=>setFacing('left')}><ArrowLeft size={15}/> ¾ Front Left</button>
             <button type="button" className={facing==='right'?'active':''} aria-pressed={facing==='right'}
               disabled={status==='recording'||status==='processing'}
-              onClick={()=>setFacing('right')}><ArrowRight size={15}/> Face right</button>
+              onClick={()=>setFacing('right')}><ArrowRight size={15}/> ¾ Front Right</button>
           </div>
-          <small>Choose a front or side profile for this take. The live character and saved timeline use the same direction. You can change it later in the Inspector.</small>
+          <small>Choose straight ahead or a slight three-quarter turn for dialogue — never a full side profile. Preview, recording and timeline playback use the same angle. You can change it later in the Inspector.</small>
         </div>
         <div className="performance-values">
           <label>Exaggeration {intensity}%<input type="range" min="50" max="180" step="10" value={intensity} disabled={status==='recording'} onChange={e=>setIntensity(Number(e.target.value))}/></label>

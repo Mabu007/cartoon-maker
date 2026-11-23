@@ -90,7 +90,7 @@ dialog.modal-wide:has(.performance-studio){width:min(1090px,calc(100vw - 28px));
   border-radius:9px;background:rgba(130,102,160,.09);
   color:inherit;font:inherit;font-size:12px;font-weight:650;
   display:flex;align-items:center;justify-content:center;gap:6px;
-  padding:7px 5px;cursor:pointer;white-space:nowrap
+  padding:7px 5px;cursor:pointer;white-space:normal;text-align:center;line-height:1.25
 }
 .performance-facing-picker button:hover:not(:disabled){border-color:rgba(191,154,255,.68);background:rgba(148,102,205,.18)}
 .performance-facing-picker button.active{background:rgba(151,93,230,.24);border-color:#ab79ed;color:#f4eaff}
