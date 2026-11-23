@@ -8,6 +8,12 @@ export const WIDTH = 960;
 export const HEIGHT = 540;
 export const views = ['front', 'three-quarter', 'side', 'back-quarter', 'back'] as const;
 export const expressions = ['neutral', 'happy', 'excited', 'smug', 'confused', 'sleepy', 'angry', 'surprised', 'sad', 'thinking', 'nervous'] as const;
+/** High-level performance intentions overlay emotions while keeping the base expression editable. */
+export const actingIntents = ['none','suspicious','skeptical','forced-smile','suppress-laugh','hide-anger',
+  'holding-back-tears','awkward-silence','silent-judgment','dramatic-realization','sarcastic',
+  'embarrassed','intimidate','reassure','lying-nervously','disbelieving','curious',
+  'excited-announcement','quiet-disappointment','confident-explanation','uncomfortable'] as const;
+export type ActingIntent = typeof actingIntents[number];
 export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think', 'lean', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away', ...extraActions] as const;
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow', 'extreme-close-up', 'over-shoulder', 'establishing', 'reaction', 'pan', 'tilt', 'zoom', 'hold'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
@@ -121,7 +127,9 @@ const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, 
 const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']) });
 const FaceClip = z.strictObject({ ...time, track: z.literal('face'), actor: id, expression: z.enum(expressions),
   /** Relative facial acting intensity. Optional to preserve legacy projects. */
-  intensity: num(0,1.5).optional() });
+  intensity: num(0,1.5).optional(),
+  /** Optional direction: keeps legacy expression-only clips unchanged. */
+  intent:z.enum(actingIntents).optional() });
 export const audioAsset = z.string().regex(/^(?:builtin:[a-z0-9-]+|asset:[a-zA-Z0-9-]+)$/);
 const sound = { asset: audioAsset, volume: num(0, 2), muted: z.boolean(), offset: num(0, 180).default(0),
   fadeIn: num(0, 180).optional(), fadeOut: num(0, 180).optional(), loop: z.boolean().optional() };
