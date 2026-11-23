@@ -38,7 +38,6 @@ const tracked = ['torso','neck','head','leftShoulder','leftElbow','leftWrist','r
   'leftHip','leftKnee','rightHip','rightKnee'] as const;
 const confidence = (p?: Landmark) => p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility ?? 1) >= .55;
 const midpoint = (a: Landmark, b: Landmark): Landmark => ({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
-const distance = (a: Landmark,b:Landmark) => Math.hypot(a.x-b.x,a.y-b.y);
 const angle = (a: Landmark,b:Landmark) => Math.atan2(b.x-a.x,b.y-a.y)*180/Math.PI;
 function degrees(value:number) {
   return ((value+180)%360+360)%360-180;
@@ -59,7 +58,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const leftCurls=measuredFingerCurls(frame.leftHand),rightCurls=measuredFingerCurls(frame.rightHand);
   const left=leftCurls?observedHandPose(leftCurls):undefined;
   const right=rightCurls?observedHandPose(rightCurls):undefined;
-  const contact=detectedHandContact(p,frame.leftHand,frame.rightHand);
+  const contact=detectedHandContact(p,frame.leftHand,frame.rightHand,leftCurls,rightCurls);
   // A webcam can show just a face, one arm, or the full body. Do not reject
   // legitimate facial movement because the performer's hips or shoulders
   // were cropped. Never invent joints the camera cannot see.
@@ -135,12 +134,13 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
       if(confidence(p[c]))pose[`${side}Knee`]=clamp(degrees(angleOf(b,c)-thigh),-135,135);
     }
   }
+  const emotion=facialExpression(frame.face);
   return {time:frame.t,pose,...(focus?{focus}:{}),
     ...(left||right?{hands:{left:left??'relaxed',right:right??'relaxed'}}:{}),
     ...(leftCurls||rightCurls?{fingerCurls:{...(leftCurls?{left:leftCurls}:{}),
       ...(rightCurls?{right:rightCurls}:{})}}:{}),
     ...(contact?{contact}:{}),
-    ...(facialExpression(frame.face)?{expression:facialExpression(frame.face)}:{}),
+    ...(emotion?{expression:emotion}:{}),
     ...(frame.face?{facial:facialFromBlendshapes(frame.face)}:{})};
 }
 function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey {
