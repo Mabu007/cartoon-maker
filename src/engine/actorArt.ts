@@ -31,14 +31,14 @@ function stroke(g: Graphics, joints: Point[], width: number, color: string) {
   line(g, joints, color, width);
 }
 /** Identical arm IK used to draw the gripping hand; shared with attached image props. */
-export function heldGripPoint(character:Character,view:View,pose:JointPose):Point {
+export function heldGripPoint(character:Character,view:View,pose:JointPose,side:'left'|'right'='right'):Point {
   const art=viewArt[view];
-  const [,hand]=propArm(character,rig(character,pose,art.width),'right',{action:'idle',time:0,weight:1},true,art.rear);
+  const [,hand]=propArm(character,rig(character,pose,art.width),side,{action:'idle',time:0,weight:1},true,art.rear);
   return {x:hand.x+7,y:hand.y+9};
 }
-export function heldPropPose(character:Character, view:View, pose:JointPose, prop:Prop, action:PropPose) {
+export function heldPropPose(character:Character, view:View, pose:JointPose, prop:Prop, action:PropPose,side:'left'|'right'='right') {
   const art=viewArt[view];
-  return propPlacement(character,rig(character,pose,art.width),action,prop,art.rear);
+  return propPlacement(character,rig(character,pose,art.width),action,prop,art.rear,side);
 }
 export function drawActor(g:Graphics,face:Container,c:Character, view: View, pose: JointPose, expression: Expression, amplitude: number, held?: Prop, time = 0, action: Action = 'idle', actorId = c.id, speaking = false,
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
@@ -48,7 +48,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
     capturedRig?:{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
     capturedHeadFacing?:PerformanceFacing;
-    capturedContact?:{type:CapturedContact;influence:number};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number;observed?:{left:boolean;right:boolean}}},
+    capturedContact?:{type:CapturedContact;influence:number};heldItems?:{left?:Prop;right?:Prop};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number;observed?:{left:boolean;right:boolean}}},
   handGesture?: GestureSample) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
@@ -61,7 +61,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   // Captured hands must remain *in front* of clothing and faces whenever
   // they are raised. The old fixed back/front arm order buried one wrist
   // behind the shirt and made open-hand gestures disappear.
-  const freeHand=(side:'left'|'right')=>!(held&&side==='right')&&
+  const carryingHand=(side:'left'|'right')=>!!(appearance?.heldItems?.[side]??(side==='right'?held:undefined));
+  const freeHand=(side:'left'|'right')=>!carryingHand(side)&&
     !(c.wardrobe?.handheld&&c.wardrobe.handheld!=='none'&&(c.wardrobe.hand??'right')===side);
   const mocapFront=(side:'left'|'right')=>Boolean(!art.rear&&freeHand(side)&&appearance?.capturedArms?.[side]);
   const cryHand=(side:'left'|'right')=>crying&&freeHand(side);
@@ -225,7 +226,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   };
   leg(art.rear?'right':'left'); leg(art.rear?'left':'right');
   const rearArm=art.rear?'right':'left';
-  if(!cryHand(rearArm)&&!mocapFront(rearArm))arm(rearArm,art.rear&&!!held);
+  if(!cryHand(rearArm)&&!mocapFront(rearArm))arm(rearArm,carryingHand(rearArm));
   const frontArm=art.rear?'left':'right';
   const nearest=appearance?.capturedRig?.near??decideFrontArm(
     appearance?.capturedRig?.depths??{},undefined,frontArm
@@ -247,7 +248,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   drawTop(g,c,art,r.neck,r.hip,costume);
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
-  if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,!art.rear&&!!held);
+  if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,carryingHand(frontArm));
   for(const side of capturedOrder)
     arm(side,false,appearance?.gestureArt??g,'all');
   if(cryHand('left'))arm('left',false,appearance?.gestureArt??g);
