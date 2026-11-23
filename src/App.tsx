@@ -11,6 +11,7 @@ import { moveLayer, nextLayerDepth, type LayerMove } from './engine/sceneLayers.
 import { movieTiming, nextClipEdge, type MovieCursor } from './engine/movieTime.ts';
 import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
+import { makeActingDemoProject } from './engine/actingDemo.ts';
 import { compatibleObject, compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
 import { label, shotLabel, SceneDefinition, props as propKinds, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import { formatLabel, type Format } from './engine/videoFormats.ts';
@@ -1229,6 +1230,7 @@ export default function App() {
       duplicate={duplicateHomeProject} rename={(value,name)=>renameHomeProject(value,name).catch(showError)}
       backup={value=>void backupMovie(value).catch(showError)} restore={()=>importFile.current?.click()}
       organize={organizeHomeProject} remove={deleteHomeProject} openExample={openRentExample}
+      openActingDemo={()=>{void openProject(makeActingDemoProject(),true);}}
       theme={theme==='dark'?'dark':'light'} toggleTheme={toggleTheme}/>
     {backupInput}
     <OfflineStatus status={saveStatus} save={()=>useStudio.getState().dirty?persist():Promise.resolve(true)}/>
