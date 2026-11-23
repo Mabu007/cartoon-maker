@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles } from 'lucide-react';
-import { compilePerformance, actingDNA, retargetCaptureFrame, samplePerformance,
-  type CaptureFrame, type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
+import { actingDNA, retargetCaptureFrame, samplePerformance,
+  type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
+import { compileResolvedPerformance, type ResolvedObservation } from '../engine/resolvedPerformance.ts';
 import { startPerformanceTracker, type PerformanceTracker } from '../services/performanceTracker.ts';
 import { putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
@@ -50,7 +51,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const stream=useRef<MediaStream|undefined>(undefined);
   const tracker=useRef<PerformanceTracker|undefined>(undefined);
   const raf=useRef(0),last=useRef(0),started=useRef(0),alive=useRef(true);
-  const frames=useRef<CaptureFrame[]>([]);
+  const frames=useRef<ResolvedObservation[]>([]);
   const recorder=useRef<MediaRecorder|undefined>(undefined),chunks=useRef<Blob[]>([]);
   const stopping=useRef(false),recording=useRef(false);
   const lastSeen=useRef(0),lastUi=useRef(0),lastPreview=useRef<PerformanceKey|undefined>(undefined);
@@ -110,9 +111,6 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         const key=observed&&retargetCaptureFrame(observed);
         if(key){
           lastSeen.current=at;
-          if(recording.current&&observed){
-            frames.current.push(observed);
-          }
           const factor=intensityRef.current/100;
           const pose={...key.pose};
           for(const joint of Object.keys(pose) as Array<keyof typeof pose>){
@@ -120,13 +118,28 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             if(value!==undefined)pose[joint]=clamp(value*factor,-165,165);
           }
           lastPreview.current=smoothLivePerformance(lastPreview.current,{...key,pose},smoothingRef.current/100);
+          // The exact filtered frame shown to the actor is what we save.
+          // The shared Record clock also includes periods when tracking fails.
+          if(recording.current)frames.current.push({
+            elapsed:Math.max(0,(at-started.current)/1000),sample:lastPreview.current
+          });
           drawPose(lastPreview.current);
           if(at-lastUi.current>350){
             setTracking('live');setTrackedFrames(frames.current.length);lastUi.current=at;
           }
-        }else if(at-lastUi.current>700){
-          setTracking(lastSeen.current&&at-lastSeen.current>2200?'lost':'searching');
-          lastUi.current=at;
+        }else{
+          if(recording.current)frames.current.push({elapsed:Math.max(0,(at-started.current)/1000)});
+          // An unavailable frame must not keep the actor permanently in its
+          // last hand or face pose. Return to the native rig while tracking
+          // is lost; reacquisition starts a new filtered segment.
+          if(!lastSeen.current||at-lastSeen.current>180){
+            lastPreview.current=undefined;
+            drawPose();
+          }
+          if(at-lastUi.current>700){
+            setTracking(lastSeen.current&&at-lastSeen.current>2200?'lost':'searching');
+            lastUi.current=at;
+          }
         }
       }catch(error){
         if(at-lastUi.current>1400){
@@ -158,6 +171,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       stream.current=media;tracker.current=vision;
       if(camera.current){camera.current.srcObject=media;await camera.current.play();}
       last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=70;
+      lastPreview.current=undefined;
       updateStatus('ready');
       setMessage(vision.warnings.length?vision.warnings.join(' ') :
         'Live puppeteering is active. Move your head, shoulders and hands; the character responds alongside you. Record up to 18 seconds.');
@@ -189,12 +203,24 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       }catch{setMessage('Video motion will record without voice on this browser.');}
     }
     recorder.current=writer;started.current=performance.now();
+    // Preserve a leading tracking gap or the currently displayed pose at
+    // time zero. Audio starts against this same clock, not first detection.
+    frames.current.push({elapsed:0,sample:lastPreview.current});
     updateStatus('recording');
   }
   async function stop(){
     if(stopping.current||statusRef.current!=='recording')return;
-    stopping.current=true;recording.current=false;updateStatus('processing');
-    setMessage('Compiling captured movements and facial acting into editable cartoon keyframes…');
+    stopping.current=true;recording.current=false;
+    // Stop time is captured before MediaRecorder's asynchronous stop event.
+    const duration=(performance.now()-started.current)/1000;
+    const last=frames.current[frames.current.length-1];
+    if(last && duration>last.elapsed+.0001)frames.current.push({
+      elapsed:duration,
+      sample:lastPreview.current&&performance.now()-lastSeen.current<150
+        ?lastPreview.current:undefined
+    });
+    updateStatus('processing');
+    setMessage('Compiling exactly the motion you saw, preserving tracking gaps and voice timing…');
     const writer=recorder.current;recorder.current=undefined;
     let audio:Blob|undefined;
     if(writer?.state==='recording')audio=await new Promise<Blob|undefined>(resolve=>{
@@ -206,9 +232,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     });
     if(audio)setRecordedAudio(audio);
     try{
-      const compiled=compilePerformance(frames.current,{
-        exaggeration:intensityRef.current/100,smoothing:smoothingRef.current/100
-      });
+      const compiled=compileResolvedPerformance(frames.current,duration);
       setResult(compiled);updateStatus('review');
       drawPose(samplePerformance(compiled.keys,1));
       setMessage('Captured '+compiled.framesAccepted+' frames ('+compiled.framesDropped+
@@ -245,6 +269,10 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         };
         try{
           const analyzed=await analyzeLocalLipSync(recordedAudio);
+          // Audio and motion share the Record origin but may have different
+          // true durations. Never crop a spoken ending when tracking stops.
+          if(Number.isFinite(analyzed.analyzedDuration)&&analyzed.analyzedDuration>.1)
+            spoken.length=clamp(analyzed.analyzedDuration,.1,180-startAt);
           spoken.visemes=analyzed.cues;
           spoken.lipSync={source:'dsp',engine:analyzed.engine,cacheKey:analyzed.cacheKey,analyzedDuration:analyzed.analyzedDuration};
         }catch{setMessage('Audio saved; precise audio analysis was unavailable. You can refine lip sync later.');}
