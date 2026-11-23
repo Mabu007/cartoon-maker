@@ -18,6 +18,8 @@ export type CaptureOptions = { exaggeration?: number; smoothing?: number; maxKey
 export type PerformanceKey = {
   time: number; pose: JointPose; lift?: number;
   hands?: { left: HandPose; right: HandPose }; expression?: Expression;
+  /** Screen-space eye direction, normalized and independent of the authored gaze track. */
+  focus?: { x:number; y:number };
   /** Reduced and editable face blendshapes; never raw webcam imagery. */
   facial?: FacialControls;
 };
@@ -69,17 +71,25 @@ function facialExpression(face?: Record<string, number>): Expression | undefined
 }
 export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | undefined {
   const p=frame.pose;
-  // Speaking-at-a-desk framing often excludes hips and even one wrist. Keep
-  // accurate observed upper-body motion; never synthesize unobserved legs.
-  if(p.length<17||![11,12].every(i=>confidence(p[i]))||
-    ![13,14,15,16].some(i=>confidence(p[i])))return undefined;
+  // A webcam can show just a face, one arm, or the full body. Do not reject
+  // legitimate facial movement because the performer's hips or shoulders
+  // were cropped. Never invent joints the camera cannot see.
+  const shouldersVisible=confidence(p[11])&&confidence(p[12]);
+  const visibleArms=shouldersVisible&&[13,14,15,16].some(i=>confidence(p[i]));
+  const visibleEyes=confidence(p[2])&&confidence(p[5]);
+  const visibleFace=visibleEyes||Boolean(frame.face);
+  const visibleLegs=[23,24,25,26].some(i=>confidence(p[i]));
+  if(!visibleArms&&!visibleFace&&!visibleLegs)return undefined;
   const world=worldBodyProjector(frame.world);
+  // MediaPipe labels the *performer's* left/right. Front-facing cartoon rigs
+  // display that performer like a mirror, so horizontal arm angles must also
+  // be mirrored. Previously an upward left arm was mapped toward the torso.
   const angleOf=(from:number,to:number) => {
-    const image=angle(p[from],p[to]);
+    const image=degrees(-angle(p[from],p[to]));
     return world?fuseWorldAngle(image,world.angle(from,to),world.frontness):image;
   };
-  const hipsVisible=confidence(p[23])&&confidence(p[24]);
-  const shoulders=midpoint(p[11],p[12]);
+  const hipsVisible=shouldersVisible&&confidence(p[23])&&confidence(p[24]);
+  const shoulders=shouldersVisible?midpoint(p[11],p[12]):undefined;
   const screenTorso=hipsVisible
     ?degrees(180-angle(midpoint(p[23],p[24]),shoulders))
     :0;
@@ -91,7 +101,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const pose:JointPose={torso};
   for(const side of ['left','right'] as const) {
     const i=side==='left'?11:12, e=side==='left'?13:14, w=side==='left'?15:16;
-    if(!confidence(p[e]))continue;
+    if(!confidence(p[i])||!confidence(p[e]))continue;
     const upper=angleOf(i,e);
     pose[`${side}Shoulder`]=clamp(degrees(upper-(side==='left'?-13:13)-torso),-165,165);
     if(confidence(p[w])){
@@ -101,12 +111,26 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
       pose[`${side}Wrist`]=clamp(degrees(palm-angle(p[e],p[w])),-65,65);
     }
   }
-  if(confidence(p[0])){
-    const screenHead=degrees(180-angle(shoulders,p[0]))-torso;
-    const worldHead=world?.angle(11,0)!==undefined && world?.angle(12,0)!==undefined
-      ? degrees(180-mixDegrees(world.angle(11,0)!,world.angle(12,0)!,.5))-torso : undefined;
-    pose.head=clamp(worldHead===undefined?screenHead:
-      fuseWorldAngle(screenHead,worldHead,world!.frontness),-35,35);
+  // Two eye landmarks measure the face's actual tilt; the nose alone cannot
+  // distinguish a head turn from a shoulder sway. This runs within Pose's
+  // existing 33 landmarks and adds zero neural-network inference cost.
+  let focus:PerformanceKey['focus'];
+  if(visibleEyes){
+    const leftEye=p[2],rightEye=p[5],eyeWidth=Math.max(.025,Math.abs(leftEye.x-rightEye.x));
+    const eyeMid=midpoint(leftEye,rightEye);
+    const eyeRoll=-Math.atan2(leftEye.y-rightEye.y,eyeWidth)*180/Math.PI;
+    const nose=confidence(p[0])?p[0]:eyeMid;
+    const yaw=clamp(-(nose.x-eyeMid.x)/eyeWidth*24,-22,22);
+    pose.neck=clamp(yaw*.54,-14,14);
+    pose.head=clamp(eyeRoll*1.3-torso*.28-(pose.neck??0)*.65,-34,34);
+    focus={
+      x:clamp(-(nose.x-eyeMid.x)/eyeWidth*1.75,-.85,.85),
+      y:clamp((nose.y-eyeMid.y)/eyeWidth*-.4,-.6,.6)
+    };
+  }else if(shoulders&&confidence(p[0])){
+    // Eye occlusion: use modest head sway only, never a giant false rotation.
+    const horizontal=(p[0].x-shoulders.x)/Math.max(.1,Math.abs(p[11].x-p[12].x));
+    pose.head=clamp(-horizontal*13-torso*.25,-18,18);
   }
   // Legs are included only when observed; never fabricate missing knees/feet.
   for(const side of ['left','right'] as const){
@@ -118,7 +142,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     }
   }
   const left=handShape(frame.leftHand),right=handShape(frame.rightHand);
-  return {time:frame.t,pose,
+  return {time:frame.t,pose,...(focus?{focus}:{}),
     ...(left||right?{hands:{left:left??'relaxed',right:right??'relaxed'}}:{}),
     ...(facialExpression(frame.face)?{expression:facialExpression(frame.face)}:{}),
     ...(frame.face?{facial:facialFromBlendshapes(frame.face)}:{})};
@@ -139,6 +163,9 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
   }
   return {time:at,pose,
     hands: fraction<.5 ? a.hands??b.hands : b.hands??a.hands,
+    ...((a.focus||b.focus)?{focus:a.focus&&b.focus
+      ?{x:mix(a.focus.x,b.focus.x,fraction),y:mix(a.focus.y,b.focus.y,fraction)}
+      :a.focus??b.focus}:{}),
     expression: fraction<.5?a.expression??b.expression:b.expression??a.expression,
     ...((a.facial||b.facial)?{facial:a.facial&&b.facial
       ? blendFacialControls(a.facial,b.facial,ease(fraction))
@@ -255,6 +282,9 @@ export function compilePerformance(frames: readonly CaptureFrame[], options:Capt
       pose[joint]=round(clamp(mixDegrees(from,target,response*deadband),-165,165));
     }
     keys.push({time:Math.round((elapsed/duration)*10000)/10000,pose,
+      ...(source.focus?{focus:prev?.focus?{
+        x:round(mix(prev.focus.x,source.focus.x,1-smoothing*.45)),
+        y:round(mix(prev.focus.y,source.focus.y,1-smoothing*.45))}:source.focus}:{}),
       ...(source.hands?{hands:source.hands}:{}),...(source.expression?{expression:source.expression}:{}),
       ...(source.facial?{facial:prev?.facial
         ? blendFacialControls(prev.facial,source.facial,1-smoothing*.6)
