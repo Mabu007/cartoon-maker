@@ -48,9 +48,10 @@ npm run dev -- --host 127.0.0.1
 ```
 
 Open `http://localhost:5173/` and use **Performance → camera icon**.
-The character and webcam appear side by side. Select **Front**, **Face left**
-or **Face right** in Performance Studio to choose the cartoon's direction
-independently of your webcam posture. You can change this again after
+The character and webcam appear side by side. Select **Front**, **¾ Front Left**
+or **¾ Front Right** in Performance Studio to choose the cartoon's direction
+independently of your webcam posture. These are slight three-quarter turns,
+not full side profiles. You can change this again after
 recording in the take's **Inspector → Facing for this take**. Each saved take
 remembers its direction; older takes continue to inherit the actor's facing. On 4 GB laptops facial tracking
 starts **off** to reduce inference load; enable `Track face` in Performance
