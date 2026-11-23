@@ -2,7 +2,7 @@ import { animations, armIK, clamp, ease, mix, rig, type Point } from './animatio
 import { propRelease } from './performanceCatalog.ts';
 import type { Action, Character, JointPose, Prop } from './schema.ts';
 
-export type PropPose = {action:Action; time:number; weight:number; target?:Point};
+export type PropPose = {action:Action; time:number; weight:number; target?:Point;hand?:'left'|'right'};
 const cycle=(pose:PropPose)=>pose.time/animations[pose.action].duration%1;
 export function propArm(character:Character, joints:ReturnType<typeof rig>, side:'left'|'right', pose:PropPose, carrying:boolean, rear=false) {
   const joint=joints[side], {head,neck,hip}=joints;
@@ -23,7 +23,7 @@ export function propArm(character:Character, joints:ReturnType<typeof rig>, side
     case 'drive':
       target={x:neck.x+(side==='right'?37:4),y:neck.y+32+beat*(side==='right'?7:-7)};break;
     case 'pick-up':case 'put-down':
-      if(side==='right'&&pose.target)target=pose.target;
+      if(side===(pose.hand??'right')&&pose.target)target=pose.target;
       break;
     case 'throw-prop':case 'cartoon-stab':break;
     default:
