@@ -280,16 +280,17 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       </div>
       <div className="performance-controls">
         <label>Perform as <select aria-label="Perform as" value={actor} onChange={e=>setActor(e.target.value)} disabled={status==='recording'||status==='processing'}>
-          {scene.actors.map(a=><option key={a.id} value={a.id}>{a.id}</option>)}
+          {scene.actors.map(a=><option key={a.id} value={a.id}>{characters.find(c=>c.id===a.characterId)?.name??'Character'}</option>)}
         </select></label>
         <div className="performance-values">
           <label>Exaggeration {intensity}%<input type="range" min="50" max="180" step="10" value={intensity} disabled={status==='recording'} onChange={e=>setIntensity(Number(e.target.value))}/></label>
           <label>Smoothing {smoothing}%<input type="range" min="0" max="95" step="5" value={smoothing} disabled={status==='recording'} onChange={e=>setSmoothing(Number(e.target.value))}/></label>
         </div>
         <div className="performance-toggles">
-          <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track hands</label>
-          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track face (extra CPU)</label>
+          <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track finger poses (extra CPU)</label>
+          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track eyebrows + mouth (extra CPU)</label>
         </div>
+        <p className="performance-help">Fast eye direction, head tilt and visible arm movement use the lightweight pose model. Detailed eyebrows, mouth corners and finger shapes use additional optional models.</p>
         <p className="performance-help" role="status">{message}</p>
         <div className="performance-actions">
           {status==='idle'&&<button type="button" className="primary" disabled={!actor} onClick={()=>void prepare()}><Camera size={16}/> Enable camera</button>}
