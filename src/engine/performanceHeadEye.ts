@@ -13,21 +13,18 @@ const finite=(p?:Landmark)=>Boolean(p&&Number.isFinite(p.x)&&Number.isFinite(p.y
 export function constrainCapturedHead(pose:JointPose):JointPose {
   const hasHead=pose.head!==undefined||pose.neck!==undefined;
   if(!hasHead)return pose;
-  const torso=clamp(pose.torso??0,-18,18);
+  let torso=clamp(pose.torso??0,-18,18);
   let neck=clamp(pose.neck??0,-8,8);
   let head=clamp(pose.head??0,-18,18);
-  // Avoid mechanical overrotation when torso, neck and head all lean in
-  // the same direction. The head always retains the opposing correction.
-  const target=clamp(torso+neck+head,-23,23);
-  head=target-torso-neck;
-  // The corrections above can put too much roll into the neck/head if
-  // the torso is near its own limits: redistribute without drift.
-  if(head>18){
-    neck=clamp(neck+(head-18),-8,8);
-    head=target-torso-neck;
-  }else if(head< -18){
-    neck=clamp(neck+(head+18),-8,8);
-    head=target-torso-neck;
+  // Preserve the direction and proportional acting intention of all three
+  // joints. Correcting only the head caused it to *reverse direction*
+  // when the torso and neck were both heavily tilted.
+  const total=torso+neck+head;
+  if(Math.abs(total)>23){
+    const proportion=23/Math.abs(total);
+    torso*=proportion;
+    neck*=proportion;
+    head*=proportion;
   }
   return {...pose,torso,neck,head};
 }
