@@ -66,11 +66,14 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const joint = r[side];
     const propPose=appearance?.propPose??{action,time:actionTime,weight:appearance?.actionWeight??1};
     let [elbow, hand]=propArm(c,r,side,propPose,carrying,art.rear);
+    const costumeHand=c.wardrobe?.hand??'right';
+    const holdsCostume=side===costumeHand&&!carrying&&
+      Boolean(c.wardrobe?.handheld&&c.wardrobe.handheld!=='none');
     const reachesFace=cryHand(side);
     // Screen-space hand contact is not reconstructed by synthesizing limbs.
     // Only observed MoCap arms may receive the small deterministic IK snap.
     const contact=appearance?.capturedContact;
-    if(contact&&appearance?.capturedArms?.[side]&&!carrying){
+    if(contact&&appearance?.capturedArms?.[side]&&!carrying&&!held&&!holdsCostume){
       const sign=side==='left'?-1:1;
       const headX=r.head.x,headY=r.head.y;
       let goal:{x:number;y:number}|undefined;
@@ -113,8 +116,6 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       stroke(g,upper?[joint.shoulder,cuff]:[joint.shoulder,elbow,cuff],limbWidth*build.arm+4,c.shirt);
       segment(g,cuff.x-3,cuff.y,cuff.x+3,cuff.y+1,c.wardrobe?.trim??shade(c.shirt,-.27),1.45);
     }
-    const costumeHand = c.wardrobe?.hand ?? 'right';
-    const holdsCostume = side===costumeHand && !carrying && Boolean(c.wardrobe?.handheld && c.wardrobe.handheld!=='none');
     const performance = handPerformance({
       action, locomotion, side, carrying: carrying || holdsCostume || (action === 'drive' && !!held),
       gesture: handGesture, actionWeight: appearance?.actionWeight
@@ -128,7 +129,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         observed.from[side],observed[side],observed.progress,observed.influence)
       : sampleHandRig(performance.pose,performance.blend);
     const geometry=applyCapturedFingerCurls(presetGeometry,
-      appearance?.capturedFingers?.[side],appearance?.capturedFingers?.influence??0);
+      !carrying&&!holdsCostume?appearance?.capturedFingers?.[side]:undefined,
+      appearance?.capturedFingers?.influence??0);
     const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
     const wristDegrees = pose[`${side}Wrist`] ?? 0;
     const rotation = observed||appearance?.capturedFingers?.[side]
