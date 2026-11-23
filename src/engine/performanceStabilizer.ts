@@ -161,6 +161,12 @@ export function createPerformanceStabilizer(){
           if(counts[side]>=3){bend[side]=measuredBend;counts[side]=0;pendingBend[side]=undefined;}
         }else{counts[side]=0;pendingBend[side]=undefined;}
         bends[side]=bend[side];
+      }else if(bend[side]!==undefined && lastTarget[side] &&
+        time-lastTarget[side]!.time<.6){
+        // Do not suddenly invert the elbow when its pole keypoint is briefly
+        // hidden behind the chest. Keep the proven anatomical bend until
+        // fresh evidence or the whole arm fades out.
+        bends[side]=bend[side];
       }
       const detected=key.fingerCurls?.[side];
       const quality=clamp(key.handConfidence?.[side]??1,0,1);
