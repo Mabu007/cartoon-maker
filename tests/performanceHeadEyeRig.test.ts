@@ -85,6 +85,17 @@ test('two 478-point face irises drive independent eyeball gaze with the head sti
   const upwards=observedIrisFocus(irisMesh(.43,.57,-.008));
   assert(upwards && upwards.y<-.3);
   assert.equal(observedIrisFocus(irisMesh(.43,.57).slice(0,468)),undefined);
+  // Turning or tilting the skull should not be mistaken for pupil motion.
+  const tilted=irisMesh(.451,.591);
+  const radians=32*Math.PI/180,cos=Math.cos(radians),sin=Math.sin(radians);
+  for(const landmark of tilted){
+    const dx=landmark.x-.5,dy=landmark.y-.3;
+    landmark.x=.5+dx*cos-dy*sin;
+    landmark.y=.3+dx*sin+dy*cos;
+  }
+  const tiltFocus=observedIrisFocus(tilted);
+  assert(tiltFocus&&Math.abs(tiltFocus.x-glance.x)<.12,
+    'eye-relative iris gaze must remain stable under a rotated face');
   const missingEye=irisMesh(.43,.592);
   missingEye[145]=point(.43,.282);
   assert(observedIrisFocus(missingEye),
