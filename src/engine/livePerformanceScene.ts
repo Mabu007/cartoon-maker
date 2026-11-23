@@ -56,7 +56,7 @@ export function livePerformanceScene(scene:Scene,actorId:string,key?:Performance
   if(!source)throw Error('Select an actor in the current scene to perform as.');
   const actor={...source,x:480,y:524,scale:clamp(source.scale*1.9,1.7,2.3),
     rotation:0,depth:0,...performanceFacingView(facing),
-    // A side-facing actor should not turn the head toward the webcam.
+    // A directed front-three-quarter angle should not snap to camera-front.
     gazeTarget:performanceFacesCamera(facing)?'camera':undefined};
   const performance:Clip[] = key ? [{
     id:'__live-performance-preview',track:'performance',actor:actorId,
