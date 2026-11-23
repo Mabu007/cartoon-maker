@@ -82,7 +82,7 @@ export function observedIrisFocus(
 export function estimateHeadYaw(
   nose:Landmark|undefined,eyeA:Landmark|undefined,eyeB:Landmark|undefined
 ):number|undefined{
-  if(!finite(nose)||!finite(eyeA)||!finite(eyeB))return undefined;
+  if(!nose||!eyeA||!eyeB||!finite(nose)||!finite(eyeA)||!finite(eyeB))return undefined;
   const width=Math.hypot(eyeA.x-eyeB.x,eyeA.y-eyeB.y);
   if(width<.018)return undefined;
   const center=(eyeA.x+eyeB.x)/2;
