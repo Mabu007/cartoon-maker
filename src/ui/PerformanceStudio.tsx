@@ -8,6 +8,7 @@ import { analyzeLocalLipSync } from '../services/localLipSync.ts';
 import { clamp } from '../engine/animation.ts';
 import { smoothLivePerformance } from '../engine/livePerformanceScene.ts';
 import { createPerformancePreview, type PerformancePreview } from '../services/performancePreview.ts';
+import { drawPerformanceLandmarks } from '../services/performanceOverlay.ts';
 import { uid, type Character, type Clip, type Scene } from '../engine/schema.ts';
 import { Modal } from './shared.tsx';
 
@@ -29,6 +30,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   // Start with body + hands on modest devices; facial capture stays one click away.
   const [face,setFace]=useState(()=>((navigator as Navigator & {deviceMemory?:number}).deviceMemory??8)>4);
   const [hands,setHands]=useState(true);
+  const [trackingOverlay,setTrackingOverlay]=useState(true);
   const [transcript,setTranscript]=useState('');
   const [takeName,setTakeName]=useState('Webcam take');
   const [result,setResult]=useState<Result>();
@@ -38,11 +40,13 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [previewError,setPreviewError]=useState('');
   const [replaying,setReplaying]=useState(false);
   const camera=useRef<HTMLVideoElement>(null),characterHost=useRef<HTMLDivElement>(null);
+  const overlay=useRef<HTMLCanvasElement>(null);
   const preview=useRef<PerformancePreview|undefined>(undefined);
   const actorRef=useRef(actor);actorRef.current=actor;
   const statusRef=useRef<Status>(status);statusRef.current=status;
   const smoothingRef=useRef(smoothing);smoothingRef.current=smoothing;
   const intensityRef=useRef(intensity);intensityRef.current=intensity;
+  const trackingOverlayRef=useRef(trackingOverlay);trackingOverlayRef.current=trackingOverlay;
   const stream=useRef<MediaStream|undefined>(undefined);
   const tracker=useRef<PerformanceTracker|undefined>(undefined);
   const raf=useRef(0),last=useRef(0),started=useRef(0),alive=useRef(true);
@@ -102,6 +106,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       const before=performance.now();
       try{
         const observed=tracker.current.detect(camera.current!,at);
+        if(overlay.current)drawPerformanceLandmarks(overlay.current,trackingOverlayRef.current?observed:undefined);
         const key=observed&&retargetCaptureFrame(observed);
         if(key){
           lastSeen.current=at;
@@ -258,6 +263,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <div className="performance-view-heading"><span>YOU · CAMERA</span><span className="performance-view-badge">{status==='recording'?'Recording':status==='review'?'Take finished':status==='ready'?'Camera active':'Camera off'}</span></div>
           <div className="performance-camera">
             <video ref={camera} autoPlay playsInline muted aria-label="Live mirrored webcam video for performance capture"/>
+            <canvas ref={overlay} width={320} height={240} className="performance-landmark-overlay" aria-hidden="true"/>
             {(status==='idle'||status==='loading')&&<div className="performance-standby"><Camera size={32}/><span>{status==='loading'?'Starting camera…':'Enable your camera below'}</span></div>}
             {status==='recording'&&<div className="performance-live"><Circle size={11} fill="currentColor"/> Recording · 18s maximum</div>}
           </div>
@@ -289,6 +295,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         <div className="performance-toggles">
           <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track finger poses (extra CPU)</label>
           <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track eyebrows + mouth (extra CPU)</label>
+          <label><input type="checkbox" checked={trackingOverlay} onChange={e=>setTrackingOverlay(e.target.checked)}/> Show tracking points</label>
         </div>
         <p className="performance-help">Fast eye direction, head tilt and visible arm movement use the lightweight pose model. Detailed eyebrows, mouth corners and finger shapes use additional optional models.</p>
         <p className="performance-help" role="status">{message}</p>
