@@ -231,8 +231,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       }
     }
     const face = latest(clips.filter((clip): clip is Extract<Clip, { track: 'face' }> => clip.track === 'face' && active(clip, t)));
-    const captured = latest(clips.filter((clip):clip is Extract<Clip,{track:'body'}> =>
-      clip.track==='body' && !!clip.performance?.length && active(clip,t)));
+    const captured = latest(clips.filter((clip):clip is Extract<Clip,{track:'body'}>|Extract<Clip,{track:'performance'}> =>
+      (clip.track==='performance'||(clip.track==='body'&&!!clip.performance?.length)) && active(clip,t)));
     let handOverride: CharacterState['handOverride'];
     let facialCapture:CharacterState['facialCapture'];
     const authoredGesture=Boolean(gesture && !gesture.performance && gesture.id!==captured?.id);
