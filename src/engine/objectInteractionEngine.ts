@@ -44,7 +44,7 @@ export function actorPositionAt(scene:Scene,actorId:string,time:number):Point|un
  * can then walk over to the new position to pick it up. All calculations
  * are pure and deterministic, so export and preview agree. */
 function resolveHandState(scene:Scene,time:number){
-  type Event={actor:string;prop:string;at:number;kind:'take'|'drop';
+  type Event={id:string;actor:string;prop:string;at:number;kind:'take'|'drop';
     action:'equip'|'release'|'pick-up'|'put-down'|'throw-prop';hand:HandSide;
     pointAt?:Point;inherited?:boolean};
   const events:Event[]=[];
@@ -52,12 +52,12 @@ function resolveHandState(scene:Scene,time:number){
   for(const clip of scene.clips){
     if(scene.trackSettings?.[clip.track]?.muted)continue;
     if(clip.track==='props'&&(clip.interaction==='equip'||clip.interaction==='release')){
-      if(clip.start<=time)events.push({actor:clip.actor,prop:clip.target,at:clip.start,
+      if(clip.start<=time)events.push({id:clip.id,actor:clip.actor,prop:clip.target,at:clip.start,
         kind:clip.interaction==='equip'?'take':'drop',action:clip.interaction,
         hand:clip.hand??'right',inherited:clip.inherited});
     }else if(clip.track==='body'&&clip.target&&clip.action in fractions){
       const at=clip.start+clip.length*fractions[clip.action];
-      if(at<=time)events.push({actor:clip.actor,prop:clip.target,at,
+      if(at<=time)events.push({id:clip.id,actor:clip.actor,prop:clip.target,at,
         kind:clip.action==='pick-up'?'take':'drop',
         action:clip.action as 'pick-up'|'put-down'|'throw-prop',
         hand:clip.hand??'right',pointAt:clip.pointAt});
@@ -65,6 +65,7 @@ function resolveHandState(scene:Scene,time:number){
   }
   events.sort((a,b)=>a.at-b.at||(a.kind==='drop'?-1:1));
   const owned=new Map<string,{actor:string;hand:HandSide;at:number}>();
+  const successfulReleases=new Set<string>();
   const locations=new Map(scene.objects.map(item=>[item.id,{x:item.x,y:item.y}]));
   const actors=new Map(scene.actors.map(actor=>[actor.id,actor]));
   const props=new Map(scene.objects.map(prop=>[prop.id,prop]));
@@ -88,6 +89,7 @@ function resolveHandState(scene:Scene,time:number){
       const current=owned.get(event.prop);
       if(current?.actor!==event.actor)continue;
       owned.delete(event.prop);
+      successfulReleases.add(event.id);
       const sign=actor.flip?-1:1;
       const next=event.action==='throw-prop'
         ?event.pointAt??{x:at.x+sign*210*actor.scale,y:at.y}
@@ -104,7 +106,7 @@ function resolveHandState(scene:Scene,time:number){
     if([...owned.values()].some(item=>item.actor===event.actor&&item.hand===event.hand))continue;
     owned.set(event.prop,{actor:event.actor,hand:event.hand,at:event.at});
   }
-  return {owned,locations};
+  return {owned,locations,successfulReleases};
 }
 /** Same rules for authored action validation and evaluated scene frames. */
 export function mayAttachProp(scene:Scene,actorId:string,propId:string,time:number){
