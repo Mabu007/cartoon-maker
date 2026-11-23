@@ -46,7 +46,7 @@ export function actorPositionAt(scene:Scene,actorId:string,time:number):Point|un
 function resolveHandState(scene:Scene,time:number){
   type Event={actor:string;prop:string;at:number;kind:'take'|'drop';
     action:'equip'|'release'|'pick-up'|'put-down'|'throw-prop';hand:HandSide;
-    pointAt?:Point};
+    pointAt?:Point;inherited?:boolean};
   const events:Event[]=[];
   const fractions:{[k:string]:number}={'pick-up':.50,'put-down':.69,'throw-prop':.46};
   for(const clip of scene.clips){
@@ -54,7 +54,7 @@ function resolveHandState(scene:Scene,time:number){
     if(clip.track==='props'&&(clip.interaction==='equip'||clip.interaction==='release')){
       if(clip.start<=time)events.push({actor:clip.actor,prop:clip.target,at:clip.start,
         kind:clip.interaction==='equip'?'take':'drop',action:clip.interaction,
-        hand:clip.hand??'right'});
+        hand:clip.hand??'right',inherited:clip.inherited});
     }else if(clip.track==='body'&&clip.target&&clip.action in fractions){
       const at=clip.start+clip.length*fractions[clip.action];
       if(at<=time)events.push({actor:clip.actor,prop:clip.target,at,
@@ -99,7 +99,7 @@ function resolveHandState(scene:Scene,time:number){
     }
     if(owned.has(event.prop)||anchorFor(prop)?.action!=='hold')continue;
     const place=locations.get(event.prop)??prop;
-    if(!assessHandReach({...actor,...at},place).canReach)continue;
+    if(!event.inherited&&!assessHandReach({...actor,...at},place).canReach)continue;
     // One prop per hand; custody persists until a matching release.
     if([...owned.values()].some(item=>item.actor===event.actor&&item.hand===event.hand))continue;
     owned.set(event.prop,{actor:event.actor,hand:event.hand,at:event.at});
