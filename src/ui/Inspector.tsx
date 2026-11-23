@@ -5,10 +5,11 @@ import { SceneLayers } from './SceneLayers.tsx';
 import { usesSeat, gaitStyles, gaitStyleNames, transitionNames, vfxNames } from '../engine/performanceCatalog.ts';
 import { MediaImage } from './MediaImage.tsx';
 import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, ArrowLeft, ArrowRight, FlipHorizontal, Footprints, Zap, Eye, EyeOff } from 'lucide-react';
-import { actingIntents, actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
+import { actingIntents, actions, expressions, label, cameraAngles, cameraMovements, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
 import { anchorFor, compatibleObjects, objectDependencies } from '../engine/interactions.ts';
 import { anchors } from '../engine/presets.ts';
 import { Avatar, clipLabel, IconButton, NumberField, propIcon, Select, trackIcon } from './shared.tsx';
+import { CameraShotSelect, cameraDirectionHint } from './CameraShotSelect.tsx';
 import { changeClipTiming, type Selection } from '../studio.ts';
 import { resizeSceneTimeline } from '../engine/timelineEditing.ts';
 import { SoundClipEditor } from './SoundClipEditor.tsx';
@@ -161,13 +162,51 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
         {(clip.track==='dialogue'||clip.track==='audio'||clip.track==='music')&&
           <SoundClipEditor key={'audio/'+clip.id} clip={clip} change={patchClip} locked={!!scene.trackSettings?.[clip.track]?.locked}/>}
         {clip.track==='dialogue'&&<VoiceClipControls key={'voice/'+clip.id} clip={clip} character={characters.find(character=>character.id===scene.actors.find(actor=>actor.id===clip.actor)?.characterId)} precision={precision} rerecord={rerecord} align={alignVoiceClip}/>}
-        {clip.track === 'camera' && <>
-          <p className="small-text camera-inspector-hint">One active camera at a time. Extending or moving this shot trims and splits covered shots without affecting dialogue, movement or music.</p>
-          <label className="field">Shot<Select aria="Camera shot" value={clip.shot} onChange={shot => patchClip({ ...clip, shot })} options={shots}/></label>
-          <label className="field">Focus<Select aria="Camera focus" value={clip.focus ?? ''} onChange={value => { const { focus: _, ...rest } = clip; patchClip(value ? { ...rest, focus: value } : rest); }} options={['', ...Object.keys(actors)]} render={id => actors[id] ?? 'Automatic'}/></label>
-          <label className="field">Transition<Select aria="Camera transition" value={clip.transition} onChange={transition => patchClip({ ...clip, transition })} options={['cut', 'glide']}/></label>
-          <p className="small-text">Camera: {clip.start.toFixed(2)}s – {(clip.start + clip.length).toFixed(2)}s ({clip.length.toFixed(2)}s). {clip.transition === 'glide' ? 'Smooth glide from previous framing.' : 'Instant cut to this framing.'}</p>
-        </>}
+        {clip.track === 'camera' && <div className="camera-direction-fields">
+          <p className="small-text camera-inspector-hint">One camera at a time. Choose framing, target, angle and motion independently. Existing timeline trims and cuts remain non-destructive.</p>
+          <label className="field">Shot size / composition
+            <CameraShotSelect value={clip.shot} onChange={shot=>patchClip({...clip,shot})}/>
+          </label>
+          <label className="field">Focus · actor or prop
+            <Select aria="Camera focus" value={clip.focus ?? ''}
+              onChange={value=>{
+                const {focus: _old,...rest}=clip;
+                patchClip(value?{...rest,focus:value}:rest);
+              }}
+              options={['',...Object.keys(actors),...scene.objects.map(prop=>prop.id)]}
+              render={id=>actors[id]??scene.objects.find(prop=>prop.id===id)?.name??'Automatic'}/>
+          </label>
+          <div className="field-row">
+            <label className="field">Camera angle
+              <Select aria="Camera angle" value={clip.angle??'eye-level'}
+                onChange={angle=>{
+                  const {angle:_old,...rest}=clip;
+                  patchClip(angle==='eye-level'?rest:{...rest,angle});
+                }} options={cameraAngles}/>
+            </label>
+            <label className="field">Camera movement
+              <Select aria="Camera movement" value={clip.movement??'none'}
+                onChange={movement=>{
+                  const {movement:_old,strength:_strength,...rest}=clip;
+                  patchClip(movement==='none'?rest:{...rest,movement,strength:clip.strength??1});
+                }} options={cameraMovements}/>
+            </label>
+          </div>
+          {clip.movement&&clip.movement!=='none'&&
+            <NumberField text="Movement intensity" value={clip.strength??1}
+              min={.25} max={2.5} step={.25}
+              onChange={strength=>patchClip({...clip,strength})}/>}
+          {clip.angle==='dutch-angle'&&
+            <NumberField text="Dutch tilt (°)" value={clip.roll??12}
+              min={-30} max={30} step={1}
+              onChange={roll=>patchClip({...clip,roll})}/>}
+          <label className="field">Transition
+            <Select aria="Camera transition" value={clip.transition}
+              onChange={transition=>patchClip({...clip,transition})} options={['cut','glide']}/>
+          </label>
+          <p className="camera-direction-hint">{cameraDirectionHint(clip.shot,clip.angle??'eye-level',clip.movement??'none')}</p>
+          <p className="small-text">Camera: {clip.start.toFixed(2)}–{(clip.start+clip.length).toFixed(2)}s · {clip.transition==='glide'?'Smooth glide':'Instant cut'}.</p>
+        </div>
         {clip.track === 'transition' && <label className="field">Transition<Select aria="Scene transition" value={clip.effect} onChange={effect => patchClip({ ...clip, effect })} options={transitionNames}/></label>}
       </details></>}
       {object && objectDependencies(scene, object.id, actors).length > 0 && <p className="small-text" role="status">This object supports {objectDependencies(scene, object.id, actors).length} timeline action(s). Deleting it will let you choose replacements.</p>}
