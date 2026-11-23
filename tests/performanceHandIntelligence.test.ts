@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { measuredFingerCurls, observedHandPose, detectedHandContact } from '../src/engine/performanceHandIntelligence.ts';
+import { capturedEyeFocus } from '../src/engine/facialIntelligence.ts';
 import { sampleHandRig, applyCapturedFingerCurls } from '../src/engine/handRig.ts';
 import { retargetCaptureFrame, samplePerformance, reducePerformanceKeys, type Landmark } from '../src/engine/performanceCapture.ts';
 import { smoothLivePerformance } from '../src/engine/livePerformanceScene.ts';
@@ -47,6 +48,18 @@ test('each finger bends independently, not just a small library of preset hands'
   assert(shape.fingers[2][2][1]<shape.fingers[3][2][1],
     'closed ring fingertip should be visibly nearer the palm');
   assert.equal(measuredFingerCurls(hand().slice(0,6)),undefined);
+});
+test('face blendshapes move pupils for real eye rolls without requiring head motion',()=>{
+  const up=capturedEyeFocus({eyeLookUpLeft:.87,eyeLookUpRight:.9});
+  assert(up&&up.y<-.65);
+  const down=capturedEyeFocus({eyeLookDownLeft:.82,eyeLookDownRight:.89});
+  assert(down&&down.y>.65);
+  const glance=capturedEyeFocus({eyeLookOutLeft:.82,eyeLookInRight:.79});
+  assert(glance&&glance.x<-.65);
+  const still=capturedEyeFocus({eyeLookOutLeft:.02,eyeLookUpLeft:.08});
+  assert.equal(still,undefined);
+  const captured=retargetCaptureFrame({t:3,pose:body(),face:{eyeLookUpLeft:.9,eyeLookUpRight:.92}});
+  assert(captured?.focus&&captured.focus.y<-.65);
 });
 test('two visible wrists support prayer, hands-on-head, guarding and a clenched punch',()=>{
   const open=hand(),fist=hand([false,false,false,false,false]);
