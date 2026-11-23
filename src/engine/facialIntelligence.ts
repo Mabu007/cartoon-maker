@@ -45,7 +45,7 @@ const signed = new Set<keyof FacialControls>(['browLeft','browRight','browTiltLe
 const limit=(key:keyof FacialControls,value:number)=>clamp(value,signed.has(key)?-1:0,1);
 export function blendFacialControls(a:FacialControls,b:FacialControls,weight:number):FacialControls {
   const result={...a};
-  const w=clamp(Number.isFinite(weight)?weight:0);
+  const w=clamp(Number.isFinite(weight)?weight:0,0,1.5);
   for(const channel of channels) result[channel]=limit(channel,mix(a[channel],b[channel],w));
   return result;
 }
