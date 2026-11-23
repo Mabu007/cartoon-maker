@@ -54,6 +54,7 @@ export function createPerformanceStabilizer(){
   let trackedHead:'front'|'left'|'right'='front';
   let headCandidate:'front'|'left'|'right'|undefined,headFrames=0;
   let recentYaw:{time:number;value:number}|undefined;
+  let reacquire:{since:number;previous:PerformanceKey}|undefined;
   let activeContact:string|undefined;
   let candidateContact:string|undefined;
   let candidateFrames=0,lastContactSeen=-Infinity;
@@ -90,7 +91,15 @@ export function createPerformanceStabilizer(){
   function update(key:PerformanceKey,smoothing=.25):PerformanceKey{
     const time=key.time;
     if(!Number.isFinite(time))return key;
-    if(time<=lastTime||time-lastTime>.42)reset();
+    if(time<=lastTime)reset();
+    else if(time-lastTime>.22){
+      const previous=recover(time);
+      const hadCapture=lastOutput!==undefined;
+      reset();
+      if(hadCapture)reacquire={since:time,previous:previous??{
+        time,pose:{},presence:0
+      }};
+    }
     lastTime=time;
     const amount=clamp(smoothing,0,1);
     const pose={...key.pose};
@@ -235,6 +244,35 @@ export function createPerformanceStabilizer(){
       handConfidence:confidence.left!==undefined||confidence.right!==undefined?confidence:undefined,
       contact:activeContact as PerformanceKey['contact']
     };
+    if(reacquire){
+      // Blend the first 180ms from the last held pose to the new measured
+      // one. After a long outage, fade in from the existing authored rig.
+      const ratio=clamp((time-reacquire.since)/.18,0,1);
+      const t=ratio*ratio*(3-2*ratio);
+      const prev=reacquire.previous;
+      const merged={...result.pose};
+      for(const joint of Object.keys(merged) as JointName[]){
+        const v=merged[joint],from=prev.pose[joint];
+        if(v!==undefined&&from!==undefined)
+          merged[joint]=from+(v-from)*t;
+      }
+      result.pose=constrainCapturedHead(merged);
+      result.presence=(prev.presence??1)*(1-t)+t;
+      if(prev.focus&&result.focus)result.focus={
+        x:prev.focus.x+(result.focus.x-prev.focus.x)*t,
+        y:prev.focus.y+(result.focus.y-prev.focus.y)*t
+      };
+      if(prev.armTargets&&result.armTargets){
+        for(const side of ['left','right'] as const){
+          const old=prev.armTargets[side],next=result.armTargets[side];
+          if(old&&next)result.armTargets[side]={
+            x:old.x+(next.x-old.x)*t,y:old.y+(next.y-old.y)*t
+          };
+        }
+      }
+      if(t<.6&&prev.headFacing)result.headFacing=prev.headFacing;
+      if(t>=1)reacquire=undefined;
+    }
     lastOutput=result;lastObservation=time;
     return result;
   }
@@ -243,6 +281,7 @@ export function createPerformanceStabilizer(){
     lastJoint.clear();lastTarget.left=undefined;lastTarget.right=undefined;
     lastOutput=undefined;lastObservation=-Infinity;recentYaw=undefined;
     trackedHead='front';headCandidate=undefined;headFrames=0;
+    reacquire=undefined;
     lastGoodHand.left=undefined;lastGoodHand.right=undefined;
     bend.left=undefined;bend.right=undefined;
     pendingBend.left=undefined;pendingBend.right=undefined;
