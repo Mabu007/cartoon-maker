@@ -15,9 +15,9 @@ import { resizeSceneTimeline } from '../engine/timelineEditing.ts';
 import { SoundClipEditor } from './SoundClipEditor.tsx';
 import { VoiceClipControls } from './VoiceClipControls.tsx';
 
-export function Inspector({ onPresence, scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, setDestination, previewPath, onWalk, onRecover, onOverlay, onLanding, onLayer, onUseProp, getPlayhead, precision, rerecord, regenerateVoice, restoreVoiceVersion, alignVoiceClip }: {
+export function Inspector({ onPresence, scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, setDestination, previewPath, onWalk, onRecover, onOverlay, onLanding, onLayer, onUseProp, onPickUpProp, onReleaseHand, getPlayhead, precision, rerecord, regenerateVoice, restoreVoiceVersion, alignVoiceClip }: {
   onPresence:(id:string,action:'walk-in'|'run-in'|'walk-out'|'run-out'|'show'|'hide')=>void;
-  onLayer:(id:string,move:LayerMove)=>void; onUseProp:(id:string)=>void; onLanding:(clip:Extract<Clip,{track:'body'}>)=>void;
+  onLayer:(id:string,move:LayerMove)=>void; onUseProp:(id:string)=>void;onPickUpProp:(id:string)=>void;onReleaseHand:(id:string,hand:'left'|'right')=>void; onLanding:(clip:Extract<Clip,{track:'body'}>)=>void;
   previewPath:()=>void;onWalk:(id:string)=>void;onRecover:(id:string)=>void;onOverlay:(id:string)=>void;getPlayhead:()=>number;
   scene: Scene; actors: Record<string, string>; characters: Character[]; selection: Selection; select: (value: Selection) => void;
   patchActor: (actor: ActorData) => void; patchObject: (object: Prop) => void; patchClip: (clip: Clip) => void; patchScene: (patch: Partial<Scene>) => void;
@@ -39,6 +39,7 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
     return ()=>window.removeEventListener('toonroom-seek',update);
   },[actor,scene,getPlayhead]);
   const character = actor && characters.find(item => item.id === actor.characterId);
+  const actorWithProps=actor?evaluate(scene,getPlayhead()).actors.find(item=>item.id===actor.id):undefined;
   const object = scene.objects.find(item => item.id === selection?.id);
   const clip = scene.clips.find(item => item.id === selection?.id);
   const Icon = clip ? trackIcon[clip.track] : object ? propIcon[object.kind] : actor ? UserRound : Clapperboard;
@@ -48,7 +49,11 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
     <div className="inspector-scroll">
     {selected ? <>
       <div className="inspector-card"><div className="inspector-emblem">{character ? <Avatar character={character}/> : <Icon size={20}/>}</div><div><strong>{object?.name ?? character?.name ?? (clip && clipLabel(clip, actors))}</strong><small>{clip ? `${label(clip.track)} clip` : actor ? 'Selected actor' : 'Selected prop'}</small></div></div>
-      {object&&anchorFor(object)?.action==='hold'&&<button type="button" className="primary full" onClick={()=>onUseProp(object.id)}>Use prop in an action</button>}
+      {object&&anchorFor(object)?.action==='hold'&&<div className="object-grab-tools">
+        <button type="button" className="primary full" onClick={()=>onPickUpProp(object.id)}>Pick up with nearest character</button>
+        <button type="button" className="quiet full" onClick={()=>onUseProp(object.id)}>Use prop in an action</button>
+        <p className="small-text">A character must walk within arm's reach first. Objects attach to the chosen hand at contact and stay there until released.</p>
+      </div>}
       <SceneLayers scene={scene} names={actors} select={select} selection={selection} move={onLayer} open={!clip}/>
       {(actor || object) && <details open><summary>Transform</summary><div className="field-row"><NumberField text="X" value={(actor ?? object)!.x} min={-2000} max={3000} onChange={x => actor ? patchActor({ ...actor, x }) : patchObject({ ...object!, x })}/><NumberField text="Y" value={(actor ?? object)!.y} min={-2000} max={3000} onChange={y => actor ? patchActor({ ...actor, y }) : patchObject({ ...object!, y })}/></div>
       <div className="field-row"><NumberField text="Scale" value={(actor ?? object)!.scale} min={.2} max={4} step={.05} onChange={scale => actor ? patchActor({ ...actor, scale }) : patchObject({ ...object!, scale })}/><NumberField text="Rotation" value={(actor ?? object)!.rotation} min={-360} max={360} onChange={rotation => actor ? patchActor({ ...actor, rotation }) : patchObject({ ...object!, rotation })}/></div><NumberField text="Layer depth" value={(actor ?? object)!.depth} min={-1000} max={1000} onChange={depth => actor ? patchActor({ ...actor, depth }) : patchObject({ ...object!, depth })}/></details>}
@@ -64,6 +69,12 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
        <button type="button" className={actor.view==='side'&&!actor.flip?'active':''} aria-pressed={actor.view==='side'&&!actor.flip} onClick={()=>patchActor({...actor,view:'side',flip:false})}><ArrowRight size={15}/> Face right</button>
        <button type="button" aria-label="Flip actor horizontally" title="Flip selected actor" onClick={()=>patchActor({...actor,flip:!actor.flip})}><FlipHorizontal size={16}/> Flip</button>
      </div>
+     {(actorWithProps?.heldItems?.left||actorWithProps?.heldItems?.right)&&<div className="object-grab-tools">
+       <strong>Held objects</strong>
+       {(['left','right'] as const).map(hand=>actorWithProps.heldItems?.[hand]?
+         <button key={hand} type="button" className="quiet full"
+           onClick={()=>onReleaseHand(actor.id,hand)}>Release {actorWithProps.heldItems?.[hand]?.name} ({hand} hand)</button>:null)}
+     </div>}
      <div className="actor-entrance-section">
        <strong>On-screen timing</strong>
        <p className="small-text">Position the playhead first. Entrance and exit clips are editable on the timeline.</p>
