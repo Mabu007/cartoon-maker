@@ -29,7 +29,9 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
   capturedFacing?:import('./schema.ts').PerformanceFacing; handOverride?: {
     left:HandPose;right:HandPose;
     from:{left:HandPose;right:HandPose};
-    progress:number;influence:number
+    progress:number;influence:number;
+    /** Current capture only owns observed hands; legacy captures own both. */
+    observed?:{left:boolean;right:boolean}
   } };
 export type CameraState = { x: number; y: number; zoom: number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
@@ -265,7 +267,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       const transition=samplePerformanceHands(captured.performance,progress);
       if(transition)handOverride={
         ...transition.to,from:transition.from,
-        progress:transition.progress,influence:weight
+        progress:transition.progress,influence:weight,
+        ...(key.fingerCurls?{observed:{
+          left:Boolean(key.fingerCurls.left),right:Boolean(key.fingerCurls.right)
+        }}:{})
       };
       if(key.expression&&!face&&weight>.45)expression=key.expression;
       // Explicit face clips retain ownership when captured facial acting overlaps.
