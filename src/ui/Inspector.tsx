@@ -5,7 +5,7 @@ import { SceneLayers } from './SceneLayers.tsx';
 import { usesSeat, gaitStyles, gaitStyleNames, transitionNames, vfxNames } from '../engine/performanceCatalog.ts';
 import { MediaImage } from './MediaImage.tsx';
 import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, ArrowLeft, ArrowRight, FlipHorizontal, Footprints, Zap, Eye, EyeOff } from 'lucide-react';
-import { actingIntents, actions, expressions, label, cameraAngles, cameraMovements, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
+import { actingIntents, actions, expressions, label, shotCompositions, shotLabel, cameraAngles, cameraMovements, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
 import { anchorFor, compatibleObjects, objectDependencies } from '../engine/interactions.ts';
 import { anchors } from '../engine/presets.ts';
 import { Avatar, clipLabel, IconButton, NumberField, propIcon, Select, trackIcon } from './shared.tsx';
@@ -164,8 +164,17 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
         {clip.track==='dialogue'&&<VoiceClipControls key={'voice/'+clip.id} clip={clip} character={characters.find(character=>character.id===scene.actors.find(actor=>actor.id===clip.actor)?.characterId)} precision={precision} rerecord={rerecord} align={alignVoiceClip}/>}
         {clip.track === 'camera' && <div className="camera-direction-fields">
           <p className="small-text camera-inspector-hint">One camera at a time. Choose framing, target, angle and motion independently. Existing timeline trims and cuts remain non-destructive.</p>
-          <label className="field">Shot size / composition
+          <label className="field">Shot size / classic preset
             <CameraShotSelect value={clip.shot} onChange={shot=>patchClip({...clip,shot})}/>
+          </label>
+          <label className="field">Subject framing / perspective
+            <Select aria="Camera subject composition" value={clip.composition??'none'}
+              onChange={value=>{
+                const {composition:_old,...rest}=clip;
+                patchClip(value==='none'?rest:{...rest,composition:value});
+              }}
+              options={['none',...shotCompositions] as const}
+              render={value=>value==='none'?'None · use shot size':shotLabel(value)}/>
           </label>
           <label className="field">Focus · actor or prop
             <Select aria="Camera focus" value={clip.focus ?? ''}
@@ -204,7 +213,7 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
             <Select aria="Camera transition" value={clip.transition}
               onChange={transition=>patchClip({...clip,transition})} options={['cut','glide']}/>
           </label>
-          <p className="camera-direction-hint">{cameraDirectionHint(clip.shot,clip.angle??'eye-level',clip.movement??'none')}</p>
+          <p className="camera-direction-hint">{cameraDirectionHint(clip.shot,clip.angle??'eye-level',clip.movement??'none',clip.composition)}</p>
           <p className="small-text">Camera: {clip.start.toFixed(2)}–{(clip.start+clip.length).toFixed(2)}s · {clip.transition==='glide'?'Smooth glide':'Instant cut'}.</p>
         </div>
         {clip.track === 'transition' && <label className="field">Transition<Select aria="Scene transition" value={clip.effect} onChange={effect => patchClip({ ...clip, effect })} options={transitionNames}/></label>}
