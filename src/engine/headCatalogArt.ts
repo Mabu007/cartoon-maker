@@ -155,7 +155,8 @@ export function drawEye(g:Graphics,layer:EyeLayer,c:Character,m:FacialPerformanc
   const narrowControl=left?m.controls?.eyeNarrowLeft??0:m.controls?.eyeNarrowRight??0;
   const wideControl=left?m.controls?.eyeWideLeft??0:m.controls?.eyeWideRight??0;
   const eyeScale=Math.max(.16,Math.min(1.55,attitude+wideControl*.39-narrowControl*.40));
-  const sx=narrow?.72:1, sy=Math.max(.05,(1-m.blink)*(1-(w?.eyelid??0))*eyeScale);
+  const capturedBlink=left?m.controls?.blinkLeft??0:m.controls?.blinkRight??0;
+  const sx=narrow?.72:1, sy=Math.max(.05,(1-Math.max(m.blink,capturedBlink))*(1-(w?.eyelid??0))*eyeScale);
   const t=at(x,y,sx*side,sy);
   if(kind==='bead') {
     if(sy>.15)vector(g,eyePaths.bead,w?.iris??INK,INK,0,t);
