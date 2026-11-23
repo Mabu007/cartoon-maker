@@ -231,7 +231,14 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
       let error=0;
       for(const joint of watched){
         const value=observed.pose[joint];
-        if(value===undefined)continue;
+        // Visibility changes are meaningful acting beats: keeping the
+        // surrounding keys while deleting the dropout would invent an arm
+        // moving through a period when the camera never saw it.
+        if(value===undefined){
+          if(estimated.pose[joint]!==undefined)error=Math.max(error,8);
+          continue;
+        }
+        if(estimated.pose[joint]===undefined)error=Math.max(error,8);
         const delta=Math.abs(wrapDegrees(value-(estimated.pose[joint]??value)));
         const emphasis=joint==='head'||joint==='torso'?1.5:
           joint.endsWith('Wrist')?.7:1;
