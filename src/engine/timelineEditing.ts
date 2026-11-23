@@ -63,9 +63,9 @@ export function resizeSceneTimeline(scene: Scene, duration: number): Scene {
       if (clip.start + clip.length <= length + 1e-8) return [clip];
       const trimmed = Math.min(clip.length, length - clip.start);
       if (trimmed < MIN - 1e-8) return [];
-      if(clip.track==='body'&&clip.performance){
+      if((clip.track==='body'||clip.track==='performance')&&clip.performance){
         return [{...clip,length:rounding(trimmed),
-          performance:segmentedPerformance(clip.performance,0,trimmed/clip.length)}];
+          performance:segmentedPerformance(clip.performance,0,trimmed/clip.length)} as Clip];
       }
       if (clip.track === 'movement') {
         const fraction = trimmed/clip.length;
@@ -111,6 +111,13 @@ function splitOne(clip: Clip, at: number): [Clip,Clip] {
     ];
   }
   if(clip.track==='body'&&clip.performance&&right.track==='body'){
+    const fraction=leftLength/clip.length;
+    return [
+      {...clip,length:leftLength,performance:segmentedPerformance(clip.performance,0,fraction)},
+      {...right,performance:segmentedPerformance(clip.performance,fraction,1)}
+    ];
+  }
+  if(clip.track==='performance'&&right.track==='performance'){
     const fraction=leftLength/clip.length;
     return [
       {...clip,length:leftLength,performance:segmentedPerformance(clip.performance,0,fraction)},
@@ -178,6 +185,10 @@ export function trimTimelineClip(scene: Scene, id: string, edge: 'in'|'out', nex
   let edited: Clip = { ...clip, start, length };
   if ('offset' in edited && edge==='in') edited = {...edited, offset: Math.min(180,rounding(edited.offset+start-clip.start))};
   if(clip.track==='body'&&clip.performance&&edited.track==='body') {
+    edited={...edited,performance:segmentedPerformance(clip.performance,
+      (start-clip.start)/clip.length,(ending-clip.start)/clip.length)};
+  }
+  if(clip.track==='performance'&&edited.track==='performance') {
     edited={...edited,performance:segmentedPerformance(clip.performance,
       (start-clip.start)/clip.length,(ending-clip.start)/clip.length)};
   }

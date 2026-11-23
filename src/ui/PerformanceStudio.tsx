@@ -26,6 +26,7 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
   const [face,setFace]=useState(false);
   const [hands,setHands]=useState(true);
   const [transcript,setTranscript]=useState('');
+  const [takeName,setTakeName]=useState('Webcam take');
   const [result,setResult]=useState<Result>();
   const [recordedAudio,setRecordedAudio]=useState<Blob>();
   const camera=useRef<HTMLVideoElement>(null);
@@ -122,8 +123,8 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
     try{
       const startAt=clamp(start,0,180-result.duration);
       const length=clamp(result.duration,.1,180-startAt);
-      const motion:Extract<Clip,{track:'body'}>={
-        id:uid(),track:'body',actor,action:'idle',layer:'gesture',
+      const motion:Extract<Clip,{track:'performance'}>={
+        id:uid(),track:'performance',actor,name:takeName.trim().slice(0,72)||'Webcam take',
         start:startAt,length,performance:result.keys,performanceOrigin:'mocap'
       };
       const clips:Clip[]=[motion];
@@ -176,9 +177,12 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
         </div>
         {status==='review'&&result&&<>
           <div className="performance-summary">
-            <strong>{result.duration.toFixed(1)}s performance · {result.keys.length} poses</strong>
-            <span>Conversational gestures, hand acting and subtle body language</span>
+            <strong>{result.duration.toFixed(1)}s performance · {result.keys.length} editable poses</strong>
+            <span>Captured body, hand{face?' and facial':''} acting · ready for the Performance track</span>
           </div>
+          <label>Performance name
+            <input type="text" maxLength={72} value={takeName} onChange={e=>setTakeName(e.target.value)} placeholder="Webcam take"/>
+          </label>
           <label>Spoken dialogue (optional transcript)
             <input type="text" maxLength={1000} value={transcript} onChange={e=>setTranscript(e.target.value)} placeholder="Type the words you spoke for dialogue editing"/>
           </label>

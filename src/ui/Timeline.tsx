@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type DragEvent } from 'react';
-import { ChevronDown, ChevronUp, Copy, Keyboard, Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Lock, Unlock, Volume2, VolumeX, Headphones, ChevronRight, ListFilter, Clapperboard, Image, CopyPlus, ClipboardPaste, PanelBottom } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, Keyboard, Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Lock, Unlock, Volume2, VolumeX, Headphones, ChevronRight, ListFilter, Clapperboard, Image, CopyPlus, Camera, ClipboardPaste, PanelBottom } from 'lucide-react';
 import { AudioWaveform } from './AudioWaveform.tsx';
 import { animations, clamp } from '../engine/animation.ts';
 import { movieTicks, type MovieTiming, type MovieCursor } from '../engine/movieTime.ts';
@@ -17,7 +17,7 @@ type DragSession = {
 };
 type ContextMenu = {x:number;y:number;id:string;at:number}|null;
 
-const standardTracks = new Set<Track>(['actors','movement','body','face','dialogue','audio','music','camera','transition','vfx','text']);
+const standardTracks = new Set<Track>(['actors','movement','body','performance','face','dialogue','audio','music','camera','transition','vfx','text']);
 function sceneTracks(scene: Scene) {
   const groups = new Map(tracks.map(track => [track, [] as Clip[]]));
   for (const clip of scene.clips) groups.get(clip.track)!.push(clip);
@@ -49,7 +49,7 @@ function packedTracks(scene: Scene) {
 export function Timeline({
   scene, movie, characters, selection, selectedClipIds, selectedKeyframe, selectClips, selectKeyframe,
   seek, seekMovie, seekScene, addScene, deleteScene, manageScenes, tall, onTall, onPath, onPoint, onPropAction, add, remove, duplicate, copy, cut, paste, split,
-  apply, compact, playing, onCompact, onResizeScene, playhead
+  apply, compact, playing, onCompact, onResizeScene, playhead, onPerformance
 }: {
   scene: Scene; movie: MovieTiming; characters: Character[]; selection: Selection;
   selectedClipIds: string[]; selectedKeyframe: Keyframe;
@@ -62,7 +62,7 @@ export function Timeline({
   addScene:()=>void; deleteScene:(scene:Scene)=>void; manageScenes:()=>void; add: (track?:Track) => void;
   remove: () => void; duplicate: () => void; copy: () => void; cut: () => void; paste: () => void; split: () => void;
   apply: (next:Scene, ids?:string[]) => void; compact:boolean; playing:boolean; onCompact:()=>void;
-  onResizeScene:(duration:number)=>void; playhead:number;
+  onResizeScene:(duration:number)=>void; playhead:number; onPerformance:()=>void;
 }) {
   const [zoom,setZoom]=useState(1), [viewport,setViewport]=useState(900), [scrollLeft,setScrollLeft]=useState(0);
   const [snap,setSnap]=useState(true),[shortcuts,setShortcuts]=useState(false);
@@ -284,7 +284,9 @@ export function Timeline({
         {(track==='dialogue'||track==='audio'||track==='music')&&<button type="button" className={settings?.solo?'track-solo-active':''}
           aria-label={(settings?.solo?'Unsolo ':'Solo ')+trackNames[track]} title={settings?.solo?'Stop solo':'Solo this audio track'} onClick={()=>toggle(track,'solo')}><Headphones size={13}/></button>}
         <button type="button" aria-label={(locked?'Unlock ':'Lock ')+trackNames[track]} title={locked?'Unlock track':'Lock track'} onClick={()=>toggle(track,'locked')}>{locked?<Lock size={13}/>:<Unlock size={13}/>}</button>
-        <button type="button" title={'Add '+trackNames[track]+' clip'} aria-label={'Add '+trackNames[track]+' clip'} disabled={locked} onClick={()=>add(track)}><Plus size={13}/></button>
+        {track==='performance'
+          ? <button type="button" className="quiet mini track-record" title="Record a new performance with your webcam" aria-label="Record a new webcam performance" disabled={locked} onClick={onPerformance}><Camera size={13}/><span>Record</span></button>
+          : <button type="button" title={'Add '+trackNames[track]+' clip'} aria-label={'Add '+trackNames[track]+' clip'} disabled={locked} onClick={()=>add(track)}><Plus size={13}/></button>}
       </div>
       <div className="lane" data-timeline-track={track} aria-label={trackNames[track]+' timeline lane'}>
         {visible.map(span=>{
@@ -337,6 +339,7 @@ export function Timeline({
             </span>}
             {!locked&&<span className="clip-handle" data-edge="in" title="Trim start"/>}
             {!tiny&&(clip.track==='dialogue'||((clip.track==='audio'||clip.track==='music')&&clip.asset.startsWith('asset:')))&&<AudioWaveform asset={clip.asset} offset={clip.offset} length={clip.length}/>}<Icon size={11}/><span className="clip-label-text">{clipLabel(clip,names)}{clip.track==='camera'&&<small className="camera-clip-mode"> {clip.transition === 'glide' ? '↝' : '│'}</small>}</span>
+            {clip.track==='performance'&&clip.performance.map((key,index)=><i key={index} className="performance-keyframe" style={{left:key.time*100+'%'}} title={`Captured pose ${index+1} · ${(span.start+clip.start+clip.length*key.time).toFixed(2)}s`}/>)}
             {clip.track==='movement'&&clip.keyframes?.map((key,index)=><span key={index} role="button" tabIndex={0}
               className={`timeline-keyframe ${active&&selectedKeyframe?.clipId===clip.id&&selectedKeyframe.index===index?'selected':''}`}
               style={{left:key.time*100+'%'}} title={`Keyframe ${index+1} · ${(span.start+clip.start+clip.length*key.time).toFixed(2)}s`}
@@ -346,6 +349,7 @@ export function Timeline({
             {!locked&&<span className="clip-handle right" data-edge="out" title="Trim end"/>}
           </div>;
         })}
+        {track==='performance'&&!settings?.collapsed&&!rows.length&&active&&!locked&&<button type="button" className="performance-track-empty" onClick={onPerformance}><Camera size={14}/> Record a webcam performance to create your first take</button>}
         {locked&&!settings?.collapsed&&!rows.length&&track!=='actors'&&active&&<span className="timeline-empty-track">Locked</span>}
           </div>;
         })}

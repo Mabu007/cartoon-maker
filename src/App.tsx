@@ -11,6 +11,7 @@ import { moveLayer, nextLayerDepth, type LayerMove } from './engine/sceneLayers.
 import { movieTiming, nextClipEdge, type MovieCursor } from './engine/movieTime.ts';
 import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/evaluate.ts';
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
+import { makeActingDemoProject } from './engine/actingDemo.ts';
 import { compatibleObject, compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
 import { label, shotLabel, SceneDefinition, props as propKinds, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import { formatLabel, type Format } from './engine/videoFormats.ts';
@@ -1181,8 +1182,8 @@ export default function App() {
       const state=useStudio.getState();
       if(state.session!==expected.session||state.sceneId!==expected.sceneId)
         throw Error('Scene changed while recording. Reopen Performance Studio.');
-      if(clips.some(clip=>scene.trackSettings?.[clip.track]?.locked))
-        throw Error('Unlock the Actions and Dialogue timeline tracks before importing a performance.');
+      const locked=clips.find(clip=>scene.trackSettings?.[clip.track]?.locked);
+      if(locked)throw Error('Unlock the '+locked.track+' track before adding this performance.');
       const latest=Math.max(...clips.map(clip=>clip.start+clip.length));
       if(latest>180)throw Error('This performance exceeds the 180-second scene limit.');
       state.editScene(current=>({...current,duration:Math.max(current.duration,Math.ceil(latest*100)/100),
@@ -1229,6 +1230,7 @@ export default function App() {
       duplicate={duplicateHomeProject} rename={(value,name)=>renameHomeProject(value,name).catch(showError)}
       backup={value=>void backupMovie(value).catch(showError)} restore={()=>importFile.current?.click()}
       organize={organizeHomeProject} remove={deleteHomeProject} openExample={openRentExample}
+      openActingDemo={()=>{void openProject(makeActingDemoProject(),true);}}
       theme={theme==='dark'?'dark':'light'} toggleTheme={toggleTheme}/>
     {backupInput}
     <OfflineStatus status={saveStatus} save={()=>useStudio.getState().dirty?persist():Promise.resolve(true)}/>
@@ -1334,7 +1336,7 @@ export default function App() {
     </main>
     <Timeline key={session} scene={scene} movie={movie} characters={project.characters} selection={selection} selectedClipIds={selectedClipIds} selectedKeyframe={selectedKeyframe}
       selectClips={useStudio.getState().selectClips} selectKeyframe={useStudio.getState().selectKeyframe}
-      seek={seek} seekMovie={seekMovie} seekScene={seekScene} addScene={createDirectScene} deleteScene={dropDirectScene} tall={timelineTall} onTall={toggleTimelineHeight} onPropAction={(actor,action,start)=>showClip('body',action,undefined,actor,start)} onPath={(actor,gait,start)=>beginPath(gait,actor,'move',undefined,start)} onPoint={(actor,action,start)=>beginPlacement({kind:'point',sceneId:currentScene(useStudio.getState()).id,start,id:actor,action})} manageScenes={()=>showDialog('scenes')} add={showClip} remove={()=>run(deleteTimelineSelection)} duplicate={duplicateTimelineSelection}
+      seek={seek} seekMovie={seekMovie} seekScene={seekScene} addScene={createDirectScene} deleteScene={dropDirectScene} tall={timelineTall} onTall={toggleTimelineHeight} onPropAction={(actor,action,start)=>showClip('body',action,undefined,actor,start)} onPath={(actor,gait,start)=>beginPath(gait,actor,'move',undefined,start)} onPoint={(actor,action,start)=>beginPlacement({kind:'point',sceneId:currentScene(useStudio.getState()).id,start,id:actor,action})} manageScenes={()=>showDialog('scenes')} add={showClip} onPerformance={()=>{pause();showDialog('performance');}} remove={()=>run(deleteTimelineSelection)} duplicate={duplicateTimelineSelection}
       copy={copyTimelineSelection} cut={()=>run(cutTimelineSelection)} paste={pasteTimelineSelection} split={splitTimelineSelection}
       apply={editTimeline} compact={compact} playing={playing} onResizeScene={duration => { editScene(current => resizeSceneTimeline(current,duration)); const updated=currentScene(useStudio.getState()); if(time.current.local>updated.duration)seek(updated.duration); }} playhead={time.current.movie} onCompact={() => {setTimelineTall(false);setCompact(value => !value);}}/></>}
     {backupInput}

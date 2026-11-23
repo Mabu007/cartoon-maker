@@ -23,7 +23,8 @@ export type ClipRequest = { track?: Track; action?: Action; actor?: string; targ
 type BodyClip=Extract<Clip,{track:'body'}>;
 export function AddClipDialog({ close, request, scene, actors, time, add, audio, path, point, throwTo }: { close: () => void; request: ClipRequest; scene: Scene; actors: Record<string, string>; time: number; path:(actor:string,gait:'walk'|'run',start:number)=>void; point:(actor:string,action:'point'|'reach',start:number)=>void; add: (clip: Clip, newProp?:Prop['kind']) => void;
   throwTo:(clip:BodyClip,newProp:Prop['kind']|undefined)=>void; audio: (track: 'dialogue' | 'audio' | 'music', actor: string, start: number) => void }) {
-  const [track, setTrack] = useState<Track>(request.track ?? 'body');
+  const [track, setTrack] = useState<Exclude<Track,'performance'>>(request.track==='performance'?'body':request.track??'body');
+  const addableTracks=tracks.filter((item):item is Exclude<Track,'performance'>=>item!=='performance');
   const [presence, setPresence] = useState<'show'|'hide'|'span'>('show');
   const [actor, setActor] = useState(request.actor ?? Object.keys(actors)[0] ?? '');
   const [action, setAction] = useState<Action>(request.action ?? 'idle');
@@ -79,7 +80,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio,
   const drawsPath=track==='movement'||(track==='body'&&(action==='walk'||action==='run'));
   const placesPoint=track==='body'&&(action==='point'||action==='reach');
   return <Modal title="Add timeline clip" description="Choose what happens at the playhead." close={close}><form onSubmit={e => { e.preventDefault(); submit(); }}>
-    <div className="dialog-fields"><label className="field">Track<Select aria="Track" value={track} options={tracks} onChange={value=>{setTrack(value);if(value==='audio')setLength(soundDurations[sound]);if(value==='transition')setLength(.5);if(value==='vfx')setLength(.75);}} render={id => trackNames[id]}/></label>
+    <div className="dialog-fields"><label className="field">Track<Select aria="Track" value={track} options={addableTracks} onChange={value=>{setTrack(value);if(value==='audio')setLength(soundDurations[sound]);if(value==='transition')setLength(.5);if(value==='vfx')setLength(.75);}} render={id => trackNames[id]}/></label>
     {(needsActor || track === 'camera') && <label className="field">{track === 'camera' ? 'Focus' : 'Actor'}<Select aria="Actor" value={actor} onChange={value => { setActor(value); setTarget(request.target??''); }} options={track === 'camera' ? ['', ...Object.keys(actors)] : Object.keys(actors)} render={id => actors[id] ?? 'Automatic'}/></label>}
     {needsActor && !actor && <p className="form-error">Add an actor to the scene first.</p>}
     {track==='actors'&&<><label className="field">On-screen event<Select aria="Actor visibility event"

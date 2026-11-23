@@ -151,7 +151,12 @@ const eyeAttitude:Partial<Record<FacialPerformance['expression'],number>>={surpr
 export function drawEye(g:Graphics,layer:EyeLayer,c:Character,m:FacialPerformance,x:number,y:number,side:number,narrow:boolean,camera:boolean,faceShift:number) {
   const w=c.wardrobe, kind=c.eyes;
   const attitude=eyeAttitude[m.expression]??1;
-  const sx=narrow?.72:1, sy=Math.max(.05,(1-m.blink)*(1-(w?.eyelid??0))*attitude);
+  const left=side<0;
+  const narrowControl=left?m.controls?.eyeNarrowLeft??0:m.controls?.eyeNarrowRight??0;
+  const wideControl=left?m.controls?.eyeWideLeft??0:m.controls?.eyeWideRight??0;
+  const eyeScale=Math.max(.16,Math.min(1.55,attitude+wideControl*.39-narrowControl*.40));
+  const capturedBlink=left?m.controls?.blinkLeft??0:m.controls?.blinkRight??0;
+  const sx=narrow?.72:1, sy=Math.max(.05,(1-Math.max(m.blink,capturedBlink))*(1-(w?.eyelid??0))*eyeScale);
   const t=at(x,y,sx*side,sy);
   if(kind==='bead') {
     if(sy>.15)vector(g,eyePaths.bead,w?.iris??INK,INK,0,t);
@@ -179,9 +184,11 @@ export function drawEye(g:Graphics,layer:EyeLayer,c:Character,m:FacialPerformanc
   if((w?.undereye??0)>0) g.moveTo(x-6*sx,y+6*sy+1).quadraticCurveTo(x,y+9*sy+2,x+6*sx,y+6*sy+1)
     .stroke({color:'#78576d',alpha:w?.undereye,width:1.4,cap:'round'});
   const tilt=m.expression==='angry'?-4:m.expression==='sad'?3.8:m.expression==='nervous'?(side<0?-6.5:4.5):m.expression==='smug'?side*2:0;
-  const ox=x+side*(w?.browSpacing??0), oy=y-12+(w?.browOffset??0)-(attitude-1)*6-(m.expression==='nervous'?3.7:0);
-  const iy=tilt+Math.tan((w?.browInner??0)*Math.PI/180)*5;
-  const ey=-tilt+Math.tan((w?.browOuter??0)*Math.PI/180)*5;
+  const browLift=left?m.controls?.browLeft??0:m.controls?.browRight??0;
+  const browTilt=left?m.controls?.browTiltLeft??0:m.controls?.browTiltRight??0;
+  const ox=x+side*(w?.browSpacing??0), oy=y-12+(w?.browOffset??0)-(attitude-1)*3.5-(m.expression==='nervous'?2:0)-browLift*5;
+  const iy=tilt+browTilt*4+Math.tan((w?.browInner??0)*Math.PI/180)*5;
+  const ey=-tilt-browTilt*4+Math.tan((w?.browOuter??0)*Math.PI/180)*5;
   const bend=(w?.browBend??0)*6;
   const trace=c.brows==='angled'?`M-9 ${ey}L-1 ${-6-bend}L9 ${iy}`:
     `M-9 ${ey}Q0 ${-(c.brows==='arched'?6:c.brows==='bold'?3:0)-bend} 9 ${iy}`;

@@ -54,7 +54,15 @@ export function mouthParameters(character:Character,mood:FacialPerformance):Mout
     p.jawOpening*=mood.expression==='excited'?1.35:.92;
     p.mouthWidth*=1.05;
   }else if(target==='round')p.jawOpening=1;
-  if(!mood.speaking&&mood.expression==='smug')p.asymmetry=.75;
+  const controls=mood.controls;
+  if(controls){
+    const smile=(controls.smileLeft+controls.smileRight)*.5;
+    p.mouthWidth*=1+smile*.16-controls.lipPress*.11;
+    p.lipRounding=cap(p.lipRounding+controls.lipRound*(mood.speaking?.12:.34));
+    p.asymmetry+=(controls.smileLeft-controls.smileRight)*.48;
+    if(!mood.speaking&&controls.jawTension>.4)p.jawOpening*=1-controls.jawTension*.12;
+  }
+  if(!mood.speaking&&mood.expression==='smug')p.asymmetry+=.58;
   if(!mood.speaking&&mood.expression==='confused')p.asymmetry=-.55;
   if(mood.speaking&&mood.expression==='nervous')p.asymmetry+=.12;
   if(!mood.speaking&&(character.wardrobe?.restJaw??0)>0) {
@@ -78,7 +86,8 @@ export function mouthGeometry(character:Character,mood:FacialPerformance,view:Vi
   const top=-height*(.73+parameters.upperLip*.15);
   const bottom=height*(.88+parameters.lowerLip*.18);
   const curve=(character.wardrobe?.mouthCurve??0)*-4;
-  const cornerLeft=curve+parameters.asymmetry*1.9,cornerRight=curve-parameters.asymmetry*1.9;
+  const cornerLeft=curve+parameters.asymmetry*1.9-(mood.controls?.smileLeft??0)*2.9+(mood.controls?.frownLeft??0)*2.8;
+  const cornerRight=curve-parameters.asymmetry*1.9-(mood.controls?.smileRight??0)*2.9+(mood.controls?.frownRight??0)*2.8;
   const upperLipPath=`M ${fmt(-rx)} ${fmt(cornerLeft)} Q ${fmt(-rx*.4)} ${fmt(top-1.2)} 0 ${fmt(top-1.45)}
     Q ${fmt(rx*.4)} ${fmt(top-1.05)} ${fmt(rx)} ${fmt(cornerRight)}`;
   const restY=mood.expression==='sad'?-2.6:1.4;

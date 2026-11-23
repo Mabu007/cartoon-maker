@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Download, FolderOpen, LogOut, Moon, Plus, Sun, Trash2 } from 'lucide-react';
+import { Copy, Download, Film, FolderOpen, LogOut, Moon, Plus, Sun, Trash2 } from 'lucide-react';
 import type { Welcome as PreviousWelcome } from './ParkedWelcome.tsx';
 import { ProjectThumbnail } from './ProjectThumbnail.tsx';
 import { SirvibeLanding } from './SirvibeLanding.tsx';
@@ -7,6 +7,7 @@ import type { Account } from '../services/cloud.ts';
 
 type Original=Omit<Parameters<typeof PreviousWelcome>[0], 'createAI'>;
 type Props=Original & {
+  openActingDemo:()=>void;
   account:Account|null; authAvailable:boolean;
   login:(email:string,password:string,register:boolean,name?:string)=>Promise<void>;
   logout:()=>Promise<void>; enter:()=>void;
@@ -25,7 +26,7 @@ export function Welcome(props: Props){
       </div>
     </header>
     <section className="simple-projects">
-      <div className="projects-heading"><div><span className="eyebrow">YOUR CREATOR UNIVERSE · FREE (BETA)</span><h1>My cartoons</h1><p>Every story starts somewhere. Pick up where you left off.</p></div><button className="primary" onClick={props.createManual}><Plus size={18}/>Create a Cartoon</button></div>
+      <div className="projects-heading"><div><span className="eyebrow">YOUR CREATOR UNIVERSE · FREE (BETA)</span><h1>My cartoons</h1><p>Every story starts somewhere. Pick up where you left off.</p></div><div className="home-tools"><button className="quiet" type="button" onClick={props.openActingDemo}><Film size={17}/>Acting demo</button><button className="primary" onClick={props.createManual}><Plus size={18}/>Create a Cartoon</button></div></div>
       <div className="projects-tools"><input aria-label="Search cartoons" placeholder="Find a cartoon…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="quiet" onClick={props.restore}>Import backup</button></div>
       {error&&<p role="alert" className="form-error">{error}</p>}
       <div className="simple-project-grid">{props.items.filter(item=>item.project.name.toLowerCase().includes(query.toLowerCase())).map(({project})=><article key={project.id}>

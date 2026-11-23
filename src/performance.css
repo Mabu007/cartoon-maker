@@ -23,3 +23,13 @@
 .performance-privacy svg{flex-shrink:0}
 .performance-controls small{font-weight:400}
 @media(max-width:760px){.performance-studio{grid-template-columns:1fr}.performance-camera{max-height:37vh}.performance-values{grid-template-columns:1fr 1fr}.performance-launch span{display:none}}
+
+/* Dedicated captured-performance lane: the first take is discoverable in place. */
+.track-record{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;min-height:24px;padding:3px 7px;font-size:11px}
+.performance-track-empty{display:inline-flex;align-items:center;gap:8px;margin:6px 8px;padding:7px 11px;border:1px dashed var(--line,rgba(128,128,128,.4));border-radius:8px;background:var(--panel,rgba(128,128,128,.06));color:inherit;font-size:11px;opacity:.82;cursor:pointer}
+.performance-track-empty:hover{opacity:1;border-style:solid}
+.clip-performance{background:linear-gradient(110deg,rgba(99,102,241,.25),rgba(14,165,233,.20));border-color:rgba(99,102,241,.52)}
+.performance-summary{overflow-wrap:anywhere}
+@media(max-width:760px){.track-record span{display:none}.performance-track-empty{max-width:calc(100% - 16px);text-align:left}}
+
+.performance-keyframe{position:absolute;z-index:2;top:50%;width:4px;height:4px;border-radius:50%;transform:translate(-50%,-50%);background:rgba(224,231,255,.95);box-shadow:0 0 0 1px rgba(49,46,129,.75);pointer-events:none}

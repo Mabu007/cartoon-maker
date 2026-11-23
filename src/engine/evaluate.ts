@@ -11,13 +11,16 @@ import { gestureAt, livingPose, type ActingContext, type GestureSample } from '.
 import { occupiedHands } from './handPerformance.ts';
 import { samplePerformance, samplePerformanceHands } from './performanceCapture.ts';
 import { capturedMicroMotion } from './performanceMicroMotion.ts';
+import { directedActingPosture } from './actingPosture.ts';
 import type { HandPose } from './handRig.ts';
-import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
+import type { FacialControls } from './facialIntelligence.ts';
+import { HEIGHT, WIDTH, views, type EmotionSpace, type ActingIntent, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
-  speaking: boolean; actionTime: number; actionWeight:number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
+  speaking: boolean; actionTime: number; actionWeight:number; expressionIntensity:number; actingIntent?:ActingIntent; emotion?:EmotionSpace; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string;
+  facialCapture?: {controls:FacialControls;influence:number};
   handGesture?: GestureSample; handOverride?: {
     left:HandPose;right:HandPose;
     from:{left:HandPose;right:HandPose};
@@ -228,9 +231,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       }
     }
     const face = latest(clips.filter((clip): clip is Extract<Clip, { track: 'face' }> => clip.track === 'face' && active(clip, t)));
-    const captured = latest(clips.filter((clip):clip is Extract<Clip,{track:'body'}> =>
-      clip.track==='body' && !!clip.performance?.length && active(clip,t)));
+    const captured = latest(clips.filter((clip):clip is Extract<Clip,{track:'body'}>|Extract<Clip,{track:'performance'}> =>
+      (clip.track==='performance'||(clip.track==='body'&&!!clip.performance?.length)) && active(clip,t)));
     let handOverride: CharacterState['handOverride'];
+    let facialCapture:CharacterState['facialCapture'];
     const authoredGesture=Boolean(gesture && !gesture.performance && gesture.id!==captured?.id);
     if(captured?.performance && !authoredGesture){
       const progress=(t-captured.start)/captured.length;
@@ -246,6 +250,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         progress:transition.progress,influence:weight
       };
       if(key.expression&&!face&&weight>.45)expression=key.expression;
+      // Explicit face clips retain ownership when captured facial acting overlaps.
+      if(key.facial&&!face)facialCapture={controls:key.facial,influence:weight};
     }
     if (face) expression = face.expression;
     const spoken = latest(sounds.filter((clip):clip is Extract<Clip,{track:'dialogue'}> =>
@@ -304,12 +310,19 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         pose=livingPose(character,acting,pose,handGesture);
       }
     }
+    // Small, high-level body-language offsets support facial direction.
+    // Locomotion, held props, manual body gestures and mocap retain authority.
+    if(face?.intent && face.intent!=='none' && !captured?.performance && !authoredGesture &&
+      ['idle','talk','listen','think'].includes(action) && !['walk','run'].includes(locomotion)){
+      const intensity=(face.intensity??1)*frameWeight(face,t);
+      pose=directedActingPosture(pose,face.intent,intensity);
+    }
     const performance=action===gesture?.action?gesture:body;
     const actionTime=performance?t-performance.start:0;
     const actionWeight=performance?frameWeight(performance,t):1;
-    return { ...actor, x, y, view, flip, pose, lift, expression, action,
+    return { ...actor, x, y, view, flip, pose, lift, expression, expressionIntensity:face?.intensity??1,actingIntent:face?.intent,emotion:face?.emotion, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking, handGesture, handOverride, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
+      speaking, handGesture, handOverride, facialCapture, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.

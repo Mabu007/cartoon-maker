@@ -6,6 +6,7 @@ import { armIK, gaitLeg, mix, rig, seatedLeg, viewForward, type Point } from './
 import { ellipse, INK, line, rect, segment } from './art.ts';
 import { drawIllustratedHair, drawIllustratedHand, shade } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
+import { blendFacialControls, neutralFacialControls, type FacialControls } from './facialIntelligence.ts';
 import { at, drawBag, drawHandheld, drawShoe, drawTop, drawWatch, sleeveCoverage, vector, type CostumeTexture } from './wardrobeArt.ts';
 import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
@@ -14,7 +15,7 @@ import type { GestureSample } from './livingCharacter.ts';
 import { handRotation, handRotationParams, handSize, handWidthScale,
   sampleHandRig, sampleLayeredHandRig, type HandPose } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
-import type { Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
+import type { ActingIntent, EmotionSpace, Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
 export const viewArt: Record<View, { width: number; face: number; far: boolean; rear: boolean; profile: boolean }> = {
   front: { width: 1, face: 0, far: true, rear: false, profile: false },
@@ -41,7 +42,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number}},
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number}},
   handGesture?: GestureSample) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
@@ -158,7 +159,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   face.angle = r.angle + (listening ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
   face.scale.set(c.head*turnScale,c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
-  const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus, c.personality);
+  const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus, c.personality,appearance?.expressionIntensity??1,appearance?.actingIntent,appearance?.emotion);
+  if(appearance?.facialCapture) mood.controls=blendFacialControls(
+    mood.controls??{...neutralFacialControls},appearance.facialCapture.controls,appearance.facialCapture.influence);
   if(isSleep(action)&&!speaking){
     const p=actionTime*.54%1;
     const x=r.head.x+27+p*16, y=r.head.y-54-p*34, size=4+p*4;
@@ -199,6 +202,14 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   const eyes=profile?[center+facialOffset]:[center-spacing+facialOffset,Math.min(w-8,center+spacing*(art.face?.81:1)-facialOffset)];
   const eyeY=-5*yScale;
   eyes.forEach((x,i)=>drawEye(g,layers.eyes[i],c,mood,x,eyeY,i?1:-1,Boolean(i&&art.face),camera,art.face));
+  // Raised cheeks follow the asymmetric expression without changing face geometry.
+  if(!profile&&mood.controls){
+    eyes.forEach((x,i)=>{
+      const lift=i?mood.controls!.cheekRight:mood.controls!.cheekLeft;
+      if(lift>.05)g.ellipse(x+(i?3:-3),eyeY+12-lift*1.5,5.7,2.3+lift*.8)
+        .fill({color:'#a95d5e',alpha:lift*.12});
+    });
+  }
   if(q?.unibrow&&eyes.length>1)segment(g,eyes[0]+7,eyeY-12+(q.browOffset??0),eyes[1]-7,eyeY-12+(q.browOffset??0),c.hairColor,2);
   if(!profile&&['happy','excited','sad'].includes(mood.expression)) {
     for(const x of eyes)g.ellipse(Math.max(-w+9,Math.min(w-9,x+(x<center?-8:8))),14,5,2.7)

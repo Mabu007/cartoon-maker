@@ -5,7 +5,7 @@ import { SceneLayers } from './SceneLayers.tsx';
 import { usesSeat, gaitStyles, gaitStyleNames, transitionNames, vfxNames } from '../engine/performanceCatalog.ts';
 import { MediaImage } from './MediaImage.tsx';
 import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, ArrowLeft, ArrowRight, FlipHorizontal, Footprints, Zap, Eye, EyeOff } from 'lucide-react';
-import { actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
+import { actingIntents, actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
 import { anchorFor, compatibleObjects, objectDependencies } from '../engine/interactions.ts';
 import { anchors } from '../engine/presets.ts';
 import { Avatar, clipLabel, IconButton, NumberField, propIcon, Select, trackIcon } from './shared.tsx';
@@ -126,7 +126,26 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
           options={['', ...compatibleObjects(scene, clip.action).map(item => item.id)]}
           render={id => id==='' ? usesSeat(clip.action)?'Keep current position':'No object' : scene.objects.find(item => item.id === id)?.name ?? 'No object'}/></label></>}
         {clip.track==='body'&&clip.action==='throw-prop'&&clip.target&&<button type="button" className="quiet full" onClick={()=>onLanding(clip)}>Set landing point on stage</button>}
-        {clip.track === 'face' && <label className="field">Expression<Select aria="Clip expression" value={clip.expression} onChange={expression => patchClip({ ...clip, expression })} options={expressions}/></label>}
+        {clip.track === 'performance' && <>
+          <label className="field">Take name<input aria-label="Performance take name" key={clip.id+'/'+clip.name} defaultValue={clip.name??'Performance take'} maxLength={72}
+            onBlur={event=>{const name=event.currentTarget.value.trim().slice(0,72)||'Performance take';if(name!==clip.name)patchClip({...clip,name});}}/></label>
+          <div className="performance-summary">
+            <strong>{clip.performance.length} editable pose keys</strong>
+            <span>{clip.performanceOrigin==='mocap'?'Recorded with webcam':'Authored performance'} · body and hand movement{clip.performance.some(key=>!!key.facial)?' · facial controls':''}</span>
+          </div>
+          <p className="small-text">Move, trim, split, duplicate or copy this take like any other timeline clip. Its captured poses stay retimed with the clip.</p>
+        </>}
+        {clip.track === 'face' && <><label className="field">Expression<Select aria="Clip expression" value={clip.expression} onChange={expression => patchClip({ ...clip, expression })} options={expressions}/></label>
+          <label className="field">Acting intention<Select aria="Acting intention" value={clip.intent??'none'} onChange={intent=>patchClip({...clip,intent})} options={actingIntents}/></label>
+          <NumberField text="Acting intensity" value={clip.intensity??1} min={0} max={1.5} step={.05} onChange={intensity=>patchClip({...clip,intensity})}/>
+          <details><summary>Emotion mixer</summary><div className="field-row">
+            <NumberField text="Mood -/+" value={clip.emotion?.valence??0} min={-1} max={1} step={.1} onChange={valence=>patchClip({...clip,emotion:{...clip.emotion,valence}})}/>
+            <NumberField text="Energy" value={clip.emotion?.arousal??.5} min={0} max={1} step={.1} onChange={arousal=>patchClip({...clip,emotion:{...clip.emotion,arousal}})}/>
+          </div><div className="field-row">
+            <NumberField text="Confidence" value={clip.emotion?.dominance??.5} min={0} max={1} step={.1} onChange={dominance=>patchClip({...clip,emotion:{...clip.emotion,dominance}})}/>
+            <NumberField text="Tension" value={clip.emotion?.tension??.2} min={0} max={1} step={.1} onChange={tension=>patchClip({...clip,emotion:{...clip.emotion,tension}})}/>
+          </div></details>
+          <p className="small-text">Subtle at 0.35 · Natural at 1 · Exaggerated at 1.5. Expression edits remain timeline-based.</p></>}
         {(clip.track==='dialogue'||clip.track==='audio'||clip.track==='music')&&
           <SoundClipEditor key={'audio/'+clip.id} clip={clip} change={patchClip} locked={!!scene.trackSettings?.[clip.track]?.locked}/>}
         {clip.track==='dialogue'&&<VoiceClipControls key={'voice/'+clip.id} clip={clip} character={characters.find(character=>character.id===scene.actors.find(actor=>actor.id===clip.actor)?.characterId)} precision={precision} rerecord={rerecord} align={alignVoiceClip}/>}
