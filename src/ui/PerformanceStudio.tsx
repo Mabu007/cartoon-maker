@@ -8,6 +8,7 @@ import { putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
 import { clamp } from '../engine/animation.ts';
 import { createPerformanceStabilizer } from '../engine/performanceStabilizer.ts';
+import { constrainCapturedHead } from '../engine/performanceHeadEye.ts';
 import { createPerformancePreview, type PerformancePreview } from '../services/performancePreview.ts';
 import { drawPerformanceLandmarks } from '../services/performanceOverlay.ts';
 import { uid, type Character, type Clip, type Scene, type PerformanceFacing } from '../engine/schema.ts';
@@ -126,7 +127,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             const value=pose[joint];
             if(value!==undefined)pose[joint]=clamp(value*factor,-165,165);
           }
-          lastPreview.current=motionStabilizer.current.update({...key,pose},smoothingRef.current/100);
+          lastPreview.current=motionStabilizer.current.update({...key,pose:constrainCapturedHead(pose)},smoothingRef.current/100);
           // The exact filtered frame shown to the actor is what we save.
           // The shared Record clock also includes periods when tracking fails.
           if(recording.current)frames.current.push({
@@ -359,7 +360,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         </div>
         <div className="performance-toggles">
           <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track finger poses (extra CPU)</label>
-          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track eye rolls + face (extra CPU)</label>
+          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track actual pupils + eyes + face (extra CPU)</label>
           <label><input type="checkbox" checked={trackingOverlay} onChange={e=>setTrackingOverlay(e.target.checked)}/> Show tracking points</label>
         </div>
         <details className="performance-gesture-guide">
@@ -367,7 +368,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <p>Close your fingers for a <b>fist</b>, extend just the index finger to <b>point</b>, or bend individual fingers to control their cartoon equivalents. Bring both open hands together at chest height for <b>prayer</b>; move them to your head for <b>hands on head</b>. Keep two fists near your face for a <b>guard stance</b>, or extend one clenched arm for a <b>punch pose</b>.</p>
           <p>Keep hands and wrists visible and well lit. Two-hand interactions require both wrists and usable body tracking; the system does not invent gestures from hidden hands.</p>
         </details>
-        <p className="performance-help">Arms, head tilt and approximate gaze use the lightweight pose model. Optional hand tracking captures all five finger bends; optional face tracking captures real eye rolls, eyebrows and mouth.</p>
+        <p className="performance-help">Arms and bounded head tilt use the lightweight pose model. Actual eyeball direction requires the optional face model (iris landmarks), which also captures eyebrows, eyelids and mouth. Without it, eye direction is only approximate.</p>
         <p className="performance-help" role="status">{message}</p>
         <div className="performance-actions">
           {status==='idle'&&<button type="button" className="primary" disabled={!actor} onClick={()=>void prepare()}><Camera size={16}/> Enable camera</button>}
