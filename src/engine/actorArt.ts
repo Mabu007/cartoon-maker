@@ -45,7 +45,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
   appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number};capturedArms?:{left:boolean;right:boolean};
     capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number};
-    capturedContact?:{type:CapturedContact;influence:number};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number}},
+    capturedContact?:{type:CapturedContact;influence:number};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number;observed?:{left:boolean;right:boolean}}},
   handGesture?: GestureSample) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
@@ -121,7 +121,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     });
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
     if(holdsCostume) drawHandheld(g,c,hand);
-    const observed=!(carrying||holdsCostume) ? appearance?.handOverride : undefined;
+    const observed=!(carrying||holdsCostume)&&appearance?.handOverride?.observed?.[side]!==false
+      ? appearance?.handOverride : undefined;
     const presetGeometry=observed
       ? sampleLayeredHandRig(performance.pose,performance.blend,
         observed.from[side],observed[side],observed.progress,observed.influence)
