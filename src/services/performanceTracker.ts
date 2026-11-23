@@ -6,6 +6,8 @@
  */
 import type { CaptureFrame, Landmark } from '../engine/performanceCapture.ts';
 
+declare const __SIRVIBE_LOCAL_VISION__: boolean;
+
 type VisionApi = {
   FilesetResolver:{forVisionTasks:(url:string)=>Promise<unknown>};
   PoseLandmarker:{createFromOptions:(files:unknown,options:unknown)=>Promise<Detector>};
@@ -28,22 +30,21 @@ const models={
   hands:`${google}/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
   face:`${google}/face_landmarker/face_landmarker/float16/1/face_landmarker.task`
 };
-async function exists(path:string) {
-  try {
-    const response=await fetch(path,{method:'HEAD',cache:'force-cache'});
-    const type=response.headers.get('content-type')??'';
-    return response.ok && !type.includes('text/html');
-  } catch{return false;}
-}
-async function source(path:string,fallback:string) {
-  return await exists(path)?path:fallback;
-}
+// Vite embeds this boolean from the actual public/ directory. No speculative
+// requests to missing /mediapipe routes; no misleading console 404s.
+const localVision=typeof __SIRVIBE_LOCAL_VISION__!=='undefined'&&__SIRVIBE_LOCAL_VISION__;
+const modelPath=(name:'pose'|'hands'|'face')=>
+  localVision ? ({
+    pose:'/mediapipe/models/pose_landmarker_lite.task',
+    hands:'/mediapipe/models/hand_landmarker.task',
+    face:'/mediapipe/models/face_landmarker.task'
+  })[name] : models[name];
 async function resolveRuntime() {
   const local='/mediapipe/vision_bundle.mjs';
-  const path=await source(local,`${cdn}/vision_bundle.mjs`);
+  const path=localVision?local:`${cdn}/vision_bundle.mjs`;
   // Vite must not prebundle this optional, privacy-gated dependency.
   const module=await import(/* @vite-ignore */ path) as VisionApi;
-  const wasm=path===local?'/mediapipe/wasm':`${cdn}/wasm`;
+  const wasm=localVision?'/mediapipe/wasm':`${cdn}/wasm`;
   return {module,files:await module.FilesetResolver.forVisionTasks(wasm)};
 }
 const posePoints=(result:any):Landmark[]|undefined=>result?.landmarks?.[0];
@@ -52,17 +53,17 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
   const {module,files}=await resolveRuntime();
   const baseOptions=(modelAssetPath:string)=>({baseOptions:{modelAssetPath,delegate:'CPU'},runningMode:'VIDEO',numPoses:1});
   const pose=await module.PoseLandmarker.createFromOptions(files,baseOptions(
-    await source('/mediapipe/models/pose_landmarker_lite.task',models.pose)));
+    modelPath('pose')));
   let hands:Detector|undefined,face:Detector|undefined;
   if(options.hands!==false){
     try{hands=await module.HandLandmarker.createFromOptions(files,{
-      baseOptions:{modelAssetPath:await source('/mediapipe/models/hand_landmarker.task',models.hands),delegate:'CPU'},
+      baseOptions:{modelAssetPath:modelPath('hands'),delegate:'CPU'},
       runningMode:'VIDEO',numHands:2
     });}catch(error){warnings.push('Hand tracking unavailable; body tracking will continue. '+String(error));}
   }
   if(options.face){
     try{face=await module.FaceLandmarker.createFromOptions(files,{
-      baseOptions:{modelAssetPath:await source('/mediapipe/models/face_landmarker.task',models.face),delegate:'CPU'},
+      baseOptions:{modelAssetPath:modelPath('face'),delegate:'CPU'},
       runningMode:'VIDEO',numFaces:1,outputFaceBlendshapes:true
     });}catch(error){warnings.push('Facial tracking unavailable; body tracking will continue. '+String(error));}
   }
