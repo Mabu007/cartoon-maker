@@ -52,7 +52,7 @@ export function observedIrisFocus(
     if(!finite(iris)||!finite(a)||!finite(b)||!finite(top)||!finite(bottom))continue;
     const width=Math.abs(a.x-b.x);
     const opening=Math.abs(top.y-bottom.y);
-    if(width<.014||opening<.002)return undefined;
+    if(width<.014||opening<.002)continue;
     const midX=(a.x+b.x)/2,midY=(top.y+bottom.y)/2;
     if(iris.x<Math.min(a.x,b.x)-width*.25 ||
       iris.x>Math.max(a.x,b.x)+width*.25)continue;
