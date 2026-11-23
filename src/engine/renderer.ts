@@ -176,6 +176,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     // Preview, export and stage picking share one exact camera projection.
     const transform = cameraViewport(camera, { width, height }, format);
     world.scale.set(transform.zoom);
+    world.rotation=transform.rotation;
     world.position.set(transform.x, transform.y);
     guides.clear(); fade.clear(); hitboxes.length = 0;
     lastSelectedId = options.selected;

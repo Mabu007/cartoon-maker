@@ -316,7 +316,7 @@ export function Timeline({
           if(!selected && (start+clip.length<visibleStart-80*unitsPerPixel || start>visibleEnd+80*unitsPerPixel))return null;
           const tiny=clip.length*pixelsPerSecond<26;
           return <div role="button" tabIndex={0} key={clip.id} aria-label={`${trackNames[track]}: ${clipLabel(clip,names)}`}
-            aria-pressed={selected} title={`${clipLabel(clip,names)} · ${(span.start+clip.start).toFixed(2)}–${(span.start+clip.start+clip.length).toFixed(2)}s${clip.track==='camera'?' · '+clip.transition+' · '+(clip.focus?names[clip.focus]??clip.focus:'auto focus')+' · exclusive':''}`}
+            aria-pressed={selected} title={`${clipLabel(clip,names)} · ${(span.start+clip.start).toFixed(2)}–${(span.start+clip.start+clip.length).toFixed(2)}s${clip.track==='camera'?' · '+clip.transition+' · '+(clip.focus?names[clip.focus]??source.objects.find(prop=>prop.id===clip.focus)?.name??clip.focus:'auto focus')+(clip.angle?' · '+clip.angle:'')+(clip.movement?' · '+clip.movement:'')+' · exclusive':''}`}
             className={`clip clip-${track} ${selected?'clip-selected':''} ${tiny?'clip-tiny':''} ${drag.current?.sceneId===source.id&&drag.current.ids.includes(clip.id)?'clip-preview':''} ${clip.track==='camera'?'cinematic-shot':''}`}
             style={{left:clip.start/source.duration*100+'%',width:clip.length/source.duration*100+'%',top:4+row*27}}
             onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();seekScene(source.id,clip.start);selectionFor(source,clip.id,event);}}}

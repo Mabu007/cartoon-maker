@@ -1,5 +1,5 @@
 import { WIDTH, HEIGHT } from './schema.ts';
-export type CameraPose = { x: number; y: number; zoom: number };
+export type CameraPose = { x: number; y: number; zoom: number; roll?:number };
 export type Point = { x: number; y: number };
 export type Viewport = { width: number; height: number };
 export type { Format as ViewportFormat } from './videoFormats.ts';
@@ -9,15 +9,27 @@ export function cameraViewport(camera: CameraPose, viewport: Viewport, format: V
   const zoom = Math.max(0.001,camera.zoom);
   const halfWidth = Math.min(WIDTH / 2, viewport.width / (2 * zoom));
   const centerX = format === '16:9' ? camera.x : Math.max(halfWidth, Math.min(WIDTH - halfWidth, camera.x));
-  return { zoom, x: viewport.width / 2 - centerX * zoom, y: viewport.height / 2 - camera.y * zoom };
+  const rotation=(camera.roll??0)*Math.PI/180;
+  const cos=Math.cos(rotation),sin=Math.sin(rotation);
+  // Pixi's world transform is Scale -> Rotation -> Translation. Project the
+  // center using exactly the same math for picking, previews and export.
+  return {zoom,rotation,
+    x:viewport.width/2-zoom*(centerX*cos-camera.y*sin),
+    y:viewport.height/2-zoom*(centerX*sin+camera.y*cos)};
 }
 export function worldToScreen(point: Point, camera: CameraPose, viewport: Viewport, format: ViewportFormat): Point {
   const transform = cameraViewport(camera, viewport, format);
-  return { x: point.x * transform.zoom + transform.x, y: point.y * transform.zoom + transform.y };
+  const cos=Math.cos(transform.rotation),sin=Math.sin(transform.rotation);
+  return {
+    x:transform.x+transform.zoom*(point.x*cos-point.y*sin),
+    y:transform.y+transform.zoom*(point.x*sin+point.y*cos)
+  };
 }
 export function screenToWorld(point: Point, camera: CameraPose, viewport: Viewport, format: ViewportFormat): Point {
   const transform = cameraViewport(camera, viewport, format);
-  return { x: (point.x - transform.x) / transform.zoom, y: (point.y - transform.y) / transform.zoom };
+  const dx=(point.x-transform.x)/transform.zoom,dy=(point.y-transform.y)/transform.zoom;
+  const cos=Math.cos(transform.rotation),sin=Math.sin(transform.rotation);
+  return {x:dx*cos+dy*sin,y:-dx*sin+dy*cos};
 }
 export type WorldEntityRect = { x:number; y:number; scaleX:number; scaleY:number; angle:number; left:number; right:number; top:number; bottom:number };
 const radians=Math.PI / 180;

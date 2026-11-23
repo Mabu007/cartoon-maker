@@ -9,6 +9,7 @@ import { effectiveCues } from './dspLipSync.ts';
 import { sampleViseme, sampleTimedViseme, type Viseme } from './visemes.ts';
 import { gestureAt, livingPose, type ActingContext, type GestureSample } from './livingCharacter.ts';
 import { occupiedHands } from './handPerformance.ts';
+import { directCamera } from './cameraDirector.ts';
 import { samplePerformance, samplePerformanceHands } from './performanceCapture.ts';
 import { performanceFacingView } from './performanceFacing.ts';
 import { capturedMicroMotion } from './performanceMicroMotion.ts';
@@ -33,7 +34,7 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
     /** Current capture only owns observed hands; legacy captures own both. */
     observed?:{left:boolean;right:boolean}
   } };
-export type CameraState = { x: number; y: number; zoom: number; view?: View };
+export type CameraState = { x: number; y: number; zoom: number; roll?:number; view?: View };
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
 const frameWeight = (clip: Clip, t: number) => ease(clamp(Math.min((t - clip.start) / .16, (clip.start + clip.length - t) / .15)));
@@ -403,42 +404,12 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   }
   const cameraClips = timelineClips.filter(clip => clip.track === 'camera');
   const cameraClip = latest(cameraClips.filter(clip => active(clip, t)));
-  function frame(clip?: typeof cameraClip): CameraState {
-    const target = actors.find(actor => actor.id === clip?.focus && actor.visible) ?? actors.find(actor => actor.visible);
-    const horizontal = (x: number, zoom: number) => clamp(x, viewportWidth / (2 * zoom), WIDTH - viewportWidth / (2 * zoom));
-    if (!clip || !target) return { x: WIDTH / 2, y: HEIGHT / 2, zoom: 1 };
-    if (clip.shot === 'wide' || clip.shot === 'establishing')
-      return { x: horizontal(clip.focus ? target.x : WIDTH / 2, 1), y: HEIGHT / 2, zoom: 1 };
-    if (clip.shot === 'two-shot') {
-      // Frame the focused character and their nearest visible scene partner,
-      // not the average of every actor (which could leave both off-camera).
-      const partner = actors.filter(actor => actor.visible && actor.id !== target.id)
-        .sort((a, b) => Math.abs(a.x - target.x) - Math.abs(b.x - target.x))[0];
-      const pair = partner ? [target, partner] : [target];
-      const spread = partner ? Math.abs(target.x - partner.x) : 0;
-      const zoom = clamp((viewportWidth - 180) / (spread + 200), 1, 1.55);
-      const mid = pair.reduce((sum, actor) => sum + actor.x, 0) / pair.length;
-      const midY = pair.reduce((sum, actor) => sum + actor.y - 120 * actor.scale - actor.lift, 0) / pair.length;
-      return { x: horizontal(mid, zoom),
-        y: clamp(midY, HEIGHT / (2 * zoom), HEIGHT - HEIGHT / (2 * zoom)), zoom };
-    }
-    const close = ['close-up', 'reaction', 'extreme-close-up'].includes(clip.shot);
-    const zoom = clip.shot === 'extreme-close-up' ? 3.35 : close ? 2.26 : clip.shot === 'over-shoulder' ? 1.95 : clip.shot === 'medium' || clip.shot === 'zoom' ? 1.64 : 1.28;
-    const desiredY = target.y - (close ? 157 : 113) * target.scale - target.lift;
-    const shoulder = clip.shot === 'over-shoulder' ? actors.find(actor => actor.id !== target.id && actor.visible) : undefined;
-    const desiredX = shoulder ? target.x + (shoulder.x - target.x) * .24 : target.x;
-    const view = clip.shot === 'front' || clip.shot === 'side' || clip.shot === 'back' ? clip.shot : undefined;
-    return { x: horizontal(desiredX, zoom), y: clamp(desiredY, HEIGHT / (2 * zoom), HEIGHT - HEIGHT / (2 * zoom)), zoom, view };
-  }
-  const previous = frame(cameraClip && latest(cameraClips.filter(clip => clip.start < cameraClip.start)));
-  const camera = cameraClip?.shot === 'hold' ? previous : frame(cameraClip);
-  if (cameraClip && (cameraClip.transition === 'glide' || ['pan', 'tilt', 'zoom'].includes(cameraClip.shot))) {
-    const animating = ['pan', 'tilt', 'zoom'].includes(cameraClip.shot);
-    const weight = ease(clamp((t - cameraClip.start) / (animating ? cameraClip.length : .7)));
-    camera.x = cameraClip.shot === 'tilt' ? previous.x : mix(previous.x, camera.x, weight);
-    camera.y = cameraClip.shot === 'pan' ? previous.y : mix(previous.y, camera.y, weight);
-    camera.zoom = cameraClip.shot === 'pan' || cameraClip.shot === 'tilt' ? Math.max(1.28, previous.zoom) : mix(previous.zoom, camera.zoom, weight);
-  }
+  const previousCameraClip=cameraClip
+    ?latest(cameraClips.filter(clip=>clip.start<cameraClip.start))
+    :undefined;
+  const camera:CameraState=directCamera(
+    cameraClip,previousCameraClip,actors,scene.objects,t,viewportWidth
+  );
   const transition = latest(timelineClips.filter((clip): clip is Extract<Clip, { track: 'transition' }> => clip.track === 'transition' && active(clip, t)));
   const fade = transition ? clamp((t - transition.start) / transition.length) : 0;
   const objects = scene.objects.map(object => {

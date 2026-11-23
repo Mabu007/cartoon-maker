@@ -1,5 +1,5 @@
 import { gaitStyles, vfxNames, transitionNames } from './performanceCatalog.ts';
-import { ProjectDocument, builtinVoiceNames, soundNames, tracks, actions, shots, expressions, environments, type Clip, type Scene, type Project } from './schema.ts';
+import { ProjectDocument, builtinVoiceNames, soundNames, tracks, actions, shots, cameraAngles, cameraMovements, expressions, environments, type Clip, type Scene, type Project } from './schema.ts';
 import { repairOrphanedObjectActions } from './interactions.ts';
 
 /** Canonical scene interchange: editable code is the same scene the renderer executes. */
@@ -80,8 +80,10 @@ export function sceneContext(project: Project, scene: Scene): string {
     'Available character actions: ' + actions.join(', '),
     'Available expressions: ' + expressions.join(', '),
     'Available camera shots: ' + shots.join(', '),
+    'Camera angle presets (2D compositional treatments): '+cameraAngles.join(', '),
+    'Camera movement presets: '+cameraMovements.join(', '),
     'Available environments: ' + environments.join(', '),
-    'Track clip shapes: actors {actor,visible}; movement {actor,fromX,fromY,toX,toY,gait?,style?,keyframes?}; body {actor,action,layer,target?,pointAt?}; face {actor,expression}; gaze {actor,target}; props {actor,target,interaction}; dialogue {actor,text,asset,volume,muted,offset}; audio/music {asset,name,volume,muted,offset}; camera {shot,focus?,transition}; transition {effect}; vfx {effect,x,y,strength}; text {text,x,y,color,size,style}.',
+    'Track clip shapes: actors {actor,visible}; movement {actor,fromX,fromY,toX,toY,gait?,style?,keyframes?}; body {actor,action,layer,target?,pointAt?}; face {actor,expression}; gaze {actor,target}; props {actor,target,interaction}; dialogue {actor,text,asset,volume,muted,offset}; audio/music {asset,name,volume,muted,offset}; camera {shot,composition?,focus?,transition,angle?,movement?,strength?,roll?}; transition {effect}; vfx {effect,x,y,strength}; text {text,x,y,color,size,style}.',
     'Every clip requires id, track, start, length. Dialogue and audio assets must be existing asset IDs; do not invent sound files.',
     'Cast: ' + JSON.stringify(characterNames),
     'Scene actors: ' + JSON.stringify(actors),
