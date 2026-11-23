@@ -13,10 +13,10 @@ import { samplePerformance, samplePerformanceHands } from './performanceCapture.
 import { capturedMicroMotion } from './performanceMicroMotion.ts';
 import type { HandPose } from './handRig.ts';
 import type { FacialControls } from './facialIntelligence.ts';
-import { HEIGHT, WIDTH, views, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
+import { HEIGHT, WIDTH, views, type ActingIntent, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
 
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
-  speaking: boolean; actionTime: number; actionWeight:number; expressionIntensity:number; locomotion: Action; gaitTime: number; gaitVelocity?: number;
+  speaking: boolean; actionTime: number; actionWeight:number; expressionIntensity:number; actingIntent?:ActingIntent; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string;
   facialCapture?: {controls:FacialControls;influence:number};
@@ -312,7 +312,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const performance=action===gesture?.action?gesture:body;
     const actionTime=performance?t-performance.start:0;
     const actionWeight=performance?frameWeight(performance,t):1;
-    return { ...actor, x, y, view, flip, pose, lift, expression, expressionIntensity:face?.intensity??1, action,
+    return { ...actor, x, y, view, flip, pose, lift, expression, expressionIntensity:face?.intensity??1,actingIntent:face?.intent, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
       speaking, handGesture, handOverride, facialCapture, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
   });
