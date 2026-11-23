@@ -114,7 +114,9 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       // origin. Keep them for retargeting only, never in persisted clip JSON.
       const world=output?.worldLandmarks?.[0] as Landmark[]|undefined;
       tick++;
-      if(hands&&tick%2===1){
+      // When both trackers are enabled, alternate them: on low-end CPUs
+      // running face + both hands on a single frame creates long UI stalls.
+      if(hands&&(face?tick%2===0:tick%2===1)){
         const result=hands.detectForVideo(video,atMs);
         previousLeft=undefined;previousRight=undefined;
         // A camera preview may be mirrored by CSS while detector coordinates are
@@ -146,7 +148,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
           }
         }
       }
-      if(face&&tick%3===1){
+      if(face&&(hands?tick%2===1:tick%3===1)){
         const result=face.detectForVideo(video,atMs);
         previousFace=result.faceBlendshapes?.[0]?.categories?.reduce((acc:Record<string,number>,c:{categoryName:string;score:number})=>{
           acc[c.categoryName]=c.score;return acc;
