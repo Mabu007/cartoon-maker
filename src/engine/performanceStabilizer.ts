@@ -9,6 +9,7 @@ import type { JointName } from './schema.ts';
 import type { PerformanceKey } from './performanceCapture.ts';
 import { decideFrontArm, contactHysteresis, type ArmSide } from './performanceArmIntelligence.ts';
 import { observedHandPose, type FingerCurls } from './performanceHandIntelligence.ts';
+import { constrainCapturedHead } from './performanceHeadEye.ts';
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
 type FilterState={time:number;value:number;derivative:number};
 function coefficient(cutoff:number,dt:number){
@@ -47,8 +48,15 @@ export function createPerformanceStabilizer(){
   let activeContact:string|undefined;
   let candidateContact:string|undefined;
   let candidateFrames=0,lastContactSeen=-Infinity;
-  function filter(name:string,value:number,time:number,base:number,beta:number,angle=false){
-    const next=oneEuroStep(filters.get(name),value,time,base,beta,1.7,angle);
+  function filter(name:string,value:number,time:number,base:number,beta:number,angle=false,speedLimit?:number){
+    const previous=filters.get(name);
+    const next=oneEuroStep(previous,value,time,base,beta,1.7,angle);
+    // Prevent single-frame neck/head spikes from snapping the entire face.
+    // This is only active for captured head/neck, not authored animations.
+    if(speedLimit&&previous&&time>previous.time&&time-previous.time<.35){
+      const reach=speedLimit*(time-previous.time);
+      next.value=previous.value+clamp(next.value-previous.value,-reach,reach);
+    }
     filters.set(name,next);
     return next.value;
   }
@@ -65,7 +73,10 @@ export function createPerformanceStabilizer(){
       const elbow=joint.endsWith('Elbow');
       const base=wrist?3.1-amount*1.5:elbow?3.7-amount*1.5:4.7-amount*1.1;
       const beta=wrist?.085:elbow?.070:.045;
-      pose[joint]=clamp(filter('joint:'+joint,measurement,time,base,beta,true),-180,180);
+      const head=joint==='head'||joint==='neck';
+      pose[joint]=clamp(filter('joint:'+joint,measurement,time,
+        head?2.2-amount*.75:base,head?0.016:beta,true,
+        head?(joint==='head'?135:95):undefined),-180,180);
     }
     const targets:PerformanceKey['armTargets']={};
     const depths:PerformanceKey['armDepth']={};
@@ -150,7 +161,7 @@ export function createPerformanceStabilizer(){
       y:clamp(filter('eyes:y',key.focus.y,time,4,.15),-1,1)
     }:undefined;
     const result:PerformanceKey={
-      ...key,pose,focus,hands,
+      ...key,pose:constrainCapturedHead(pose),focus,hands,
       armTargets:targets.left||targets.right?targets:undefined,
       armDepth:depths.left!==undefined||depths.right!==undefined?depths:undefined,
       armBend:bends.left!==undefined||bends.right!==undefined?bends:undefined,

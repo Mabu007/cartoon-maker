@@ -12,6 +12,7 @@ import { occupiedHands } from './handPerformance.ts';
 import { directCamera } from './cameraDirector.ts';
 import { samplePerformance, samplePerformanceHands } from './performanceCapture.ts';
 import { performanceFacingView } from './performanceFacing.ts';
+import { constrainCapturedHead } from './performanceHeadEye.ts';
 import { capturedMicroMotion } from './performanceMicroMotion.ts';
 import { directedActingPosture } from './actingPosture.ts';
 import type { HandPose } from './handRig.ts';
@@ -272,7 +273,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       // Preserve the lower body and its floor contact in an authored sit,
       // walk, sleep or driving animation. A recording owns only observed
       // upper-body joints in this case.
-      pose=blend(pose,key.pose,weight,Boolean(body));
+      pose=blend(pose,constrainCapturedHead(key.pose),weight,Boolean(body));
       const transition=samplePerformanceHands(captured.performance,progress);
       if(transition)handOverride={
         ...transition.to,from:transition.from,

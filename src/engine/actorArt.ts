@@ -13,7 +13,7 @@ import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
 import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
-import { solveCapturedArm, decideFrontArm, observedArmPaintOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
+import { solveCapturedArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import { handRotation, handRotationParams, handSize, handWidthScale,
   sampleHandRig, sampleLayeredHandRig, applyCapturedFingerCurls, type HandPose } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
@@ -229,13 +229,14 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const nearest=appearance?.capturedRig?.near??decideFrontArm(
     appearance?.capturedRig?.depths??{},undefined,frontArm
   );
-  const passes=observedArmPaintOrder({
+  const capturedOrder=connectedCapturedArmOrder({
     left:mocapFront('left'),right:mocapFront('right')
   },nearest);
-  // The shoulder/sleeve enters underneath the shirt; foreground forearms
-  // are drawn only after the torso and in stable far/near painter order.
-  for(const pass of passes)
-    if(pass.part==='upper')arm(pass.side,false,bodyArt,'upper');
+  // One draw pass per captured arm below. Previously the upper arm was
+  // painted into bodyArt, while the forearm and hand lived in gestureArt,
+  // separated by the torso. At a crossing this created a visible hole.
+  // The complete shoulder -> elbow -> wrist line and attached hand now
+  // share one Graphics layer and one pair of solved endpoints.
   if(c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
     const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
@@ -246,8 +247,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
   if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,!art.rear&&!!held);
-  for(const pass of passes)
-    if(pass.part!=='upper')arm(pass.side,false,appearance?.gestureArt??g,pass.part);
+  for(const side of capturedOrder)
+    arm(side,false,appearance?.gestureArt??g,'all');
   if(cryHand('left'))arm('left',false,appearance?.gestureArt??g);
   if(cryHand('right'))arm('right',false,appearance?.gestureArt??g);
   face.position.set(r.head.x, r.head.y);
