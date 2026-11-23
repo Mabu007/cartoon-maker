@@ -45,8 +45,15 @@ test('each finger bends independently, not just a small library of preset hands'
   const shape=applyCapturedFingerCurls(sampleHandRig('relaxed'),ringOnly!,1);
   assert(shape.params.curl[3]>.65);
   assert(shape.params.curl[2]<.42);
-  assert(shape.fingers[2][2][1]<shape.fingers[3][2][1],
-    'closed ring fingertip should be visibly nearer the palm');
+  // Finger geometry uses local -Y away from the palm. Compare the *same*
+  // ring finger with its open state, not the naturally shorter pinky.
+  const openShape=applyCapturedFingerCurls(sampleHandRig('relaxed'),allOpen!,1);
+  assert(shape.fingers[2][2][1]>openShape.fingers[2][2][1]+5,
+    'curling the ring finger must bring its fingertip toward the palm');
+  assert(Math.abs(shape.fingers[1][2][1]-openShape.fingers[1][2][1])<.1,
+    'curling the ring finger must not move the middle fingertip');
+  assert(Math.abs(shape.fingers[3][2][1]-openShape.fingers[3][2][1])<.1,
+    'curling the ring finger must not move the pinky fingertip');
   assert.equal(measuredFingerCurls(hand().slice(0,6)),undefined);
 });
 test('face blendshapes move pupils for real eye rolls without requiring head motion',()=>{
