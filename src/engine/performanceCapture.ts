@@ -16,6 +16,8 @@ export type Landmark = { x: number; y: number; z?: number; visibility?: number }
 export type CaptureFrame = {
   t: number; pose: Landmark[]; world?: Landmark[]; leftHand?: Landmark[]; rightHand?: Landmark[];
   face?: Record<string, number>;
+  /** Elapsed milliseconds since each tracked hand was last truly detected. */
+  handAgeMs?:{left?:number;right?:number};
 };
 export type CaptureOptions = { exaggeration?: number; smoothing?: number; maxKeys?: number };
 export type PerformanceKey = {
@@ -150,6 +152,10 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     ...(left||right?{hands:{left:left??'relaxed',right:right??'relaxed'}}:{}),
     ...(leftCurls||rightCurls?{fingerCurls:{...(leftCurls?{left:leftCurls}:{}),
       ...(rightCurls?{right:rightCurls}:{})}}:{}),
+    ...((leftCurls||rightCurls)?{handConfidence:{
+      ...(leftCurls?{left:clamp(1-(frame.handAgeMs?.left??0)/300,0,1)}:{}),
+      ...(rightCurls?{right:clamp(1-(frame.handAgeMs?.right??0)/300,0,1)}:{})
+    }}:{}),
     ...(contact?{contact}:{}),
     ...(emotion?{expression:emotion}:{}),
     ...(frame.face?{facial:facialFromBlendshapes(frame.face)}:{})};
