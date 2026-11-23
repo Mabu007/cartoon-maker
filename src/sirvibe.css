@@ -137,3 +137,9 @@
 @media(max-width:790px){.offline-status{bottom:3px;right:5px;font-size:.7rem}.offline-status button{min-height:30px}.filmmaking-shell .statusbar{padding-bottom:30px}}
 .offline-status{max-width:calc(100% - 24px);flex-wrap:wrap}.offline-save-status{display:none!important}
 @media(max-width:790px){.offline-save-status{display:inline-flex!important}.mobile-nav>button:not(.icon-button){width:auto;min-width:0;flex:1}.mobile-nav>.icon-button{width:36px;min-width:36px;flex:0 0 36px}.offline-status{max-width:calc(100% - 10px)}}
+
+/* Loopback development workspace: make the absence of cloud login explicit. */
+.local-studio-pill{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  color:#b4f0d8;background:rgba(30,121,92,.14);border:1px solid rgba(73,194,149,.37);
+  border-radius:9px;padding:7px 10px;font-size:11px;font-weight:800;letter-spacing:.02em}
+@media(max-width:590px){.local-studio-pill{font-size:10px;padding:6px 7px}}

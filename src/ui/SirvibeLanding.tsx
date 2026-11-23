@@ -26,15 +26,15 @@ function authError(error:unknown){
   if(message.includes('auth/network-request-failed'))return 'Could not connect. Check your internet connection and retry.';
   return message;
 }
-export function SirvibeLanding({account,available,login,enter}:{
-  account:Account|null;available:boolean;
+export function SirvibeLanding({account,available,login,enter,localStudio}:{
+  account:Account|null;available:boolean;localStudio:boolean;
   login:(email:string,password:string,register:boolean,displayName?:string)=>Promise<void>;
   enter:()=>void;
 }){
   const [mode,setMode]=useState<AuthMode|null>(null),[busy,setBusy]=useState(false);
   const [name,setName]=useState(''),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState('');
   const start=(next:AuthMode)=>{
-    if(account){enter();return;}
+    if(localStudio||account){enter();return;}
     setError('');setMode(next);
   };
   async function submit(event:FormEvent){
@@ -48,7 +48,7 @@ export function SirvibeLanding({account,available,login,enter}:{
     } catch(e) {setError(authError(e));}
     finally {setBusy(false);}
   }
-  const primary='Start Creating — No Account Needed';
+  const primary=localStudio?'Open Local Studio':'Start Creating — No Account Needed';
   return <div className="sv-landing">
     <header className="sv-nav">
       <div className="sv-nav-inner">
@@ -60,9 +60,9 @@ export function SirvibeLanding({account,available,login,enter}:{
           <a href="#how-it-works">How it works</a>
           <a href="#studio-features">The studio</a>
           <span className="sv-beta-pill"><span/> FREE (BETA)</span>
-          {!account&&<button type="button" className="sv-nav-login" onClick={()=>start('login')}>Log in</button>}
+          {!localStudio&&!account&&<button type="button" className="sv-nav-login" onClick={()=>start('login')}>Log in</button>}
           <button type="button" className="sv-nav-cta" onClick={()=>start('register')}>
-            {account?'My projects':'Create account'} <ArrowRight size={15}/>
+            {localStudio?'Open Local Studio':account?'My projects':'Create account'} <ArrowRight size={15}/>
           </button>
         </nav>
       </div>
@@ -79,7 +79,7 @@ export function SirvibeLanding({account,available,login,enter}:{
               <button type="button" className="sv-primary" onClick={enter}>{primary}<ArrowRight size={19}/></button>
               <a className="sv-secondary" href="#how-it-works"><Play size={16} fill="currentColor"/> See how it works</a>
             </div>
-            <div className="sv-hero-assurance"><Check size={15}/><span>No account. No card. Free beta.</span><i/><Check size={15}/><span>Create offline after first download</span></div>
+            <div className="sv-hero-assurance"><Check size={15}/><span>{localStudio?'No login or Firebase needed':'No account. No card. Free beta.'}</span><i/><Check size={15}/><span>{localStudio?'Projects saved locally in this browser':'Create offline after first download'}</span></div>
           </div>
           <div className="sv-hero-art" aria-label="Actual customizable SIRVIBE starter characters and editing timeline">
             <div className="sv-art-halo"/>
@@ -119,11 +119,11 @@ export function SirvibeLanding({account,available,login,enter}:{
       </section>
       <section className="sv-cta-section">
         <div className="sv-cta-glow"/>
-        <div className="sv-cta-content"><span className="sv-overline">WELCOME TO THE CREATOR ERA · FREE (BETA)</span><h2>The world doesn't need<br/>another story left untold.</h2><p>Your first scene is waiting. Make something only you could make.</p><button type="button" className="sv-primary sv-cta-large" onClick={enter}>Start Creating — No Account Needed<ArrowRight size={19}/></button><small>Saved on your device · Optional cloud backup</small></div>
+        <div className="sv-cta-content"><span className="sv-overline">WELCOME TO THE CREATOR ERA · FREE (BETA)</span><h2>The world doesn't need<br/>another story left untold.</h2><p>Your first scene is waiting. Make something only you could make.</p><button type="button" className="sv-primary sv-cta-large" onClick={enter}>{primary}<ArrowRight size={19}/></button><small>{localStudio?'Local browser storage · Export backups anytime':'Saved on your device · Optional cloud backup'}</small></div>
       </section>
     </main>
     <footer className="sv-footer"><span className="sv-identity sv-footer-brand"><span className="sv-wordmark">SIRVIBE<span className="sv-mark">.</span></span></span><p>Where imagination becomes animation.</p><span>FREE (BETA) · Made for creators everywhere.</span></footer>
-    {mode&&!account&&<div className="sv-auth-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget&&!busy)setMode(null);}}>
+    {!localStudio&&mode&&!account&&<div className="sv-auth-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget&&!busy)setMode(null);}}>
       <section className="sv-auth-card" role="dialog" aria-modal="true" aria-labelledby="sv-auth-title" onKeyDown={event=>{if(event.key==='Escape'&&!busy)setMode(null);}}>
         <button type="button" className="sv-auth-close" onClick={()=>setMode(null)} disabled={busy} aria-label="Close"><X size={19}/></button>
         <span className="sv-auth-logo">SIRVIBE<span>.</span></span><span className="sv-overline">FREE (BETA)</span>

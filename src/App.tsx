@@ -16,6 +16,7 @@ import { compatibleObject, compatibleObjects, objectDependencies, removeObjectWi
 import { label, shotLabel, SceneDefinition, props as propKinds, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import { formatLabel, type Format } from './engine/videoFormats.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, uploadProject, listenAccount, login, logout, type Account } from './services/cloud.ts';
+import { localStudioMode, LOCAL_PROJECT_SCOPE } from './services/localStudio.ts';
 import { audioLength, getOrFetchAudio, createAudioMixer, stopSoundPreview, setRemoteAudio, type Mixer } from './services/audio.ts';
 import { type Recognizer } from './services/lipSync.ts';
 import { duplicateProject, readPreference, lastEditorSession, editorSessionFor, rememberEditorSession, type SavedProject, type ProjectCollection } from './services/projects.ts';
@@ -98,7 +99,7 @@ export default function App() {
   const selectedClipIds = useStudio(state => state.clipIds), selectedKeyframe = useStudio(state => state.selectedKeyframe);
   const hasUndo = useStudio(state => state.past.length > 0), hasRedo = useStudio(state => state.future.length > 0);
   const workspace='direct';
-  const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(()=>new URLSearchParams(location.search).has('studio')?'projects':'landing');
+  const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(()=>localStudioMode||new URLSearchParams(location.search).has('studio')?'projects':'landing');
   const [placement,setPlacement]=useState<Placement>();
   const [timelineTall,setTimelineTall]=useState(false);
   const arrowHold=useRef<{key:string;since:number}|undefined>(undefined);
@@ -112,7 +113,7 @@ export default function App() {
   const sceneIndex = movie.byId.get(scene.id)?.index ?? 0;
   const [dialog, setDialog] = useState<Dialog>(null), [account, setAccount] = useState<Account | null>(null), [items, setItems] = useState<SavedProject[]>([]);
   const [cloudRequested,setCloudRequested]=useState(false);
-  const scope = 'guest';
+  const scope = LOCAL_PROJECT_SCOPE;
   const [loadedScope,setLoadedScope]=useState<string>();
   const [worlds, setWorlds] = useState<WorldPreset[]>([]);
   const [saveStatus, setSaveStatus] = useState('Saved on device'), [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
@@ -149,7 +150,7 @@ export default function App() {
     if (window.matchMedia('(max-width: 790px)').matches || ((navigator as Navigator & {deviceMemory?:number}).deviceMemory??4)<=4) setQuality(false);
   }, []);
   useEffect(() => {
-    if (!cloudEnabled || !cloudRequested) return;
+    if (localStudioMode || !cloudEnabled || !cloudRequested) return;
     let dispose: (() => void) | undefined, alive = true;
     listenAccount(user => { if (alive) { setAccount(user); } }).then(unsubscribe => { if (alive) dispose = unsubscribe; else unsubscribe(); }).catch(err => { if(alive){tell(errorMessage(err),true);} });
     return () => { alive = false; dispose?.(); };
@@ -214,11 +215,13 @@ export default function App() {
     return()=>{alive=false;};
   },[]);
   async function loginCreator(email:string,password:string,register:boolean,name?:string){
+    if(localStudioMode)throw Error('This local SIRVIBE studio requires no Firebase login. Open My cartoons to begin.');
     if(!navigator.onLine)throw Error('Reconnect to use optional cloud sign-in. You can keep creating offline.');
     await login(email,password,register,name??email.split('@')[0]);
     setCloudRequested(true);
   }
   async function backUpOnline(){
+    if(localStudioMode)throw Error('Cloud backup is disabled in local studio. Download a project backup instead.');
     if(!account||!navigator.onLine)throw Error('Connect and sign in to back up online.');
     const current=useStudio.getState().project;
     if(!await persist(current))throw Error('Save on this device before backing up.');
@@ -229,6 +232,7 @@ export default function App() {
     tell('Cloud backup complete. Your local copy stays on this device.');
   }
   async function downloadCloudCopies(){
+    if(localStudioMode)throw Error('Cloud project sync is disabled in local studio. Import a project backup instead.');
     if(!account||!navigator.onLine)throw Error('Connect and sign in to download cloud projects.');
     const remote=await cloudProjects(account);
     // Download media before committing a local project. A failed download leaves
@@ -1207,7 +1211,7 @@ export default function App() {
     close={close} open={switchScene} rename={renameDirectScene} savePreset={saveWorld}
     add={createDirectScene} copy={duplicateDirectScene}
     reorder={reorderDirectScene} drop={dropDirectScene}/>;
-  if (dialog === 'account') content = <AccountDialog backup={backUpOnline} downloadCloud={downloadCloudCopies} available={cloudEnabled} account={account} login={loginCreator} logout={async () => {
+  if (dialog === 'account' && !localStudioMode) content = <AccountDialog backup={backUpOnline} downloadCloud={downloadCloudCopies} available={cloudEnabled} account={account} login={loginCreator} logout={async () => {
     if (useStudio.getState().dirty && !await persist()) throw new Error('Save your current project before signing out.');
     await logout();
   }} close={close}/>;
@@ -1221,8 +1225,8 @@ export default function App() {
   const noticeToast = notice && <div className={`toast ${notice.error ? 'toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{!notice.error && <Check size={16}/>}<span>{notice.message}</span><IconButton title="Dismiss notice" onClick={() => setNotice(null)}><X size={14}/></IconButton></div>;
   if (home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
     <Welcome screen={home==='projects'?'projects':'landing'} items={items} lastSession={lastEditorSession(scope)}
-      account={account} authAvailable={cloudEnabled} login={loginCreator}
-      logout={async()=>{await logout();setHome('landing');}}
+      account={account} localStudio={localStudioMode} authAvailable={cloudEnabled&&!localStudioMode} login={loginCreator}
+      logout={async()=>{if(localStudioMode)return;await logout();setHome('landing');}}
       enter={()=>{void requestDurableStorage();setHome('projects');}}
       openProjects={()=>showDialog('projects')}
       openLanding={()=>setHome('landing')} openProject={openLibraryProject}
@@ -1241,7 +1245,9 @@ export default function App() {
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={2.4}/></span><strong>{studioName}<span>.</span></strong><span className="brand-edition">STUDIO</span></div>
       <div className="project-controls"><button className="quiet project-button" onClick={async()=>{pause();if(useStudio.getState().dirty&&!await persist())return;close();setHome('projects');}}><House size={17}/><span>Home</span></button><span className="divider"/><label className="project-name"><input aria-label="Project name" key={project.name} defaultValue={project.name} maxLength={100} onBlur={e => { rename(e.target.value); e.target.value = e.target.value.trim() || project.name; }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/></label><IconButton title="Project options" onClick={()=>showDialog('projects')}><ChevronDown size={15}/></IconButton>{saveStatus==='Save failed'&&<button className="quiet" onClick={()=>void backupMovie(project).catch(showError)}>Download recovery backup</button>}<span className="save-state" role="status"><Check size={14}/> {headerStatus}</span></div>
-      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><button className="quiet performance-launch" title="Record actor performance using camera" onClick={()=>{pause();showDialog('performance');}}><Camera size={16}/><span>Perform</span></button><IconButton title={playing?'Pause preview':'Play preview'} onClick={() => void play()}>{playing?<Pause size={17}/>:<Play size={17}/>}</IconButton><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button><IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton></div>
+      <div className="top-actions"><div className="history"><IconButton title="Undo" onClick={() => run(() => useStudio.getState().undo())} disabled={!hasUndo}><Undo2 size={17}/></IconButton><IconButton title="Redo" onClick={() => run(() => useStudio.getState().redo())} disabled={!hasRedo}><Redo2 size={17}/></IconButton></div><span className="divider"/><button className="quiet performance-launch" title="Record actor performance using camera" onClick={()=>{pause();showDialog('performance');}}><Camera size={16}/><span>Perform</span></button><IconButton title={playing?'Pause preview':'Play preview'} onClick={() => void play()}>{playing?<Pause size={17}/>:<Play size={17}/>}</IconButton><IconButton title="Save project" onClick={() => persist(undefined, true)}><Save size={17}/></IconButton><IconButton title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}</IconButton><IconButton title="Quick start" onClick={() => showDialog('help')}><CircleHelp size={18}/></IconButton><button className="primary export-button" onClick={() => showDialog('export')}><Download size={17}/> <span>Export video</span></button>{localStudioMode
+        ? <span className="local-studio-pill" title="Local creator session · No Firebase login · Projects saved in this browser">Local Studio</span>
+        : <IconButton title={account ? 'Your account' : 'Sign in'} onClick={() => showDialog('account')} className="account-button">{account?.email?.slice(0, 1).toUpperCase() ?? <UserRound size={17}/>}</IconButton>}</div>
     </header>
     {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button><IconButton title="Undo" disabled={!hasUndo} onClick={() => run(() => useStudio.getState().undo())}><Undo2 size={17}/></IconButton><IconButton title="Redo" disabled={!hasRedo} onClick={() => run(() => useStudio.getState().redo())}><Redo2 size={17}/></IconButton></nav>
     <main className={`workspace mobile-${mobilePanel}`} style={{ '--asset-width': `${assetWidth}px`, '--inspector-width': `${inspectorWidth}px` } as CSSProperties}>
