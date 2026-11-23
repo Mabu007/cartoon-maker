@@ -1,72 +1,176 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles } from 'lucide-react';
-import { compilePerformance, actingDNA,
+import { compilePerformance, actingDNA, retargetCaptureFrame, samplePerformance,
   type CaptureFrame, type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
 import { startPerformanceTracker, type PerformanceTracker } from '../services/performanceTracker.ts';
 import { putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
 import { clamp } from '../engine/animation.ts';
-import { uid, type Clip, type Scene } from '../engine/schema.ts';
+import { smoothLivePerformance } from '../engine/livePerformanceScene.ts';
+import { createPerformancePreview, type PerformancePreview } from '../services/performancePreview.ts';
+import { uid, type Character, type Clip, type Scene } from '../engine/schema.ts';
 import { Modal } from './shared.tsx';
 
 type Result = {keys:PerformanceKey[];duration:number;framesAccepted:number;framesDropped:number};
 type Props={
-  scene:Scene; selectedActor?:string; start:number;
+  scene:Scene; characters:Character[]; selectedActor?:string; start:number;
   close:()=>void; commit:(clips:Clip[])=>Promise<void>;
   saveActingDNA:(actorId:string,style:MotionDNA)=>void;
 };
 type Status='idle'|'loading'|'ready'|'recording'|'processing'|'review';
 const maxDuration=18;
-export function PerformanceStudio({scene,selectedActor,start,close,commit,saveActingDNA}:Props) {
+export function PerformanceStudio({scene,characters,selectedActor,start,close,commit,saveActingDNA}:Props) {
   const [actor,setActor]=useState(selectedActor??scene.actors[0]?.id??'');
   const [status,setStatus]=useState<Status>('idle');
   const [message,setMessage]=useState('Nothing leaves your device during tracking. Models may be downloaded on the first use.');
   const [intensity,setIntensity]=useState(100);
   const [smoothing,setSmoothing]=useState(55);
-  const [face,setFace]=useState(false);
+  const [face,setFace]=useState(true);
   const [hands,setHands]=useState(true);
   const [transcript,setTranscript]=useState('');
   const [takeName,setTakeName]=useState('Webcam take');
   const [result,setResult]=useState<Result>();
   const [recordedAudio,setRecordedAudio]=useState<Blob>();
-  const camera=useRef<HTMLVideoElement>(null);
+  const [tracking,setTracking]=useState<'off'|'searching'|'live'|'lost'>('off');
+  const [trackedFrames,setTrackedFrames]=useState(0);
+  const [previewError,setPreviewError]=useState('');
+  const [replaying,setReplaying]=useState(false);
+  const camera=useRef<HTMLVideoElement>(null),characterHost=useRef<HTMLDivElement>(null);
+  const preview=useRef<PerformancePreview|undefined>(undefined);
+  const actorRef=useRef(actor);actorRef.current=actor;
+  const statusRef=useRef<Status>(status);statusRef.current=status;
+  const smoothingRef=useRef(smoothing);smoothingRef.current=smoothing;
+  const intensityRef=useRef(intensity);intensityRef.current=intensity;
   const stream=useRef<MediaStream|undefined>(undefined);
   const tracker=useRef<PerformanceTracker|undefined>(undefined);
   const raf=useRef(0),last=useRef(0),started=useRef(0),alive=useRef(true);
   const frames=useRef<CaptureFrame[]>([]);
   const recorder=useRef<MediaRecorder|undefined>(undefined),chunks=useRef<Blob[]>([]);
-  const stopping=useRef(false);
-  const takeDown=()=>{
-    cancelAnimationFrame(raf.current);
+  const stopping=useRef(false),recording=useRef(false);
+  const lastSeen=useRef(0),lastUi=useRef(0),lastPreview=useRef<PerformanceKey|undefined>(undefined);
+  const playback=useRef<{keys:PerformanceKey[];duration:number;start:number}|undefined>(undefined);
+  const interval=useRef(100);
+  const updateStatus=(next:Status)=>{statusRef.current=next;setStatus(next);};
+  function drawPose(key?:PerformanceKey){
+    if(!preview.current||!actorRef.current)return;
+    try{preview.current.draw(actorRef.current,key);}
+    catch(error){setPreviewError('Character preview error: '+String(error));}
+  }
+  function takeDown(){
+    recording.current=false;playback.current=undefined;
+    cancelAnimationFrame(raf.current);raf.current=0;
     try{if(recorder.current?.state==='recording')recorder.current.stop();}catch{/* cleanup */}
     recorder.current=undefined;
     tracker.current?.close();tracker.current=undefined;
     stream.current?.getTracks().forEach(track=>track.stop());stream.current=undefined;
     if(camera.current)camera.current.srcObject=null;
-  };
-  useEffect(()=>()=>{alive.current=false;takeDown();},[]);
+  }
+  useEffect(()=>{
+    alive.current=true;
+    let disposed=false;
+    const host=characterHost.current;
+    if(host){
+      void createPerformancePreview(host,scene,characters).then(renderer=>{
+        if(disposed){renderer.destroy();return;}
+        preview.current=renderer;
+        drawPose(lastPreview.current);
+      }).catch(error=>{if(!disposed)setPreviewError('Cartoon renderer unavailable: '+String(error));});
+    }
+    return ()=>{
+      disposed=true;alive.current=false;takeDown();
+      preview.current?.destroy();preview.current=undefined;
+    };
+  },[]);
+  useEffect(()=>{drawPose(lastPreview.current);},[actor]);
   const dismiss=()=>{takeDown();close();};
-  async function prepare() {
-    if(!navigator.mediaDevices?.getUserMedia){setMessage('Camera capture requires HTTPS and browser camera support.');return;}
-    setStatus('loading');setResult(undefined);setMessage('Requesting camera permission and loading on-device trackers…');
+  function loop(at:number){
+    if(!alive.current||!tracker.current)return;
+    if(statusRef.current==='recording'&&at-started.current>=maxDuration*1000)void stop();
+    const state=statusRef.current;
+    if(state==='review'&&playback.current){
+      const playing=playback.current;
+      if(at-last.current>=75){
+        last.current=at;
+        const progress=clamp((at-playing.start)/Math.max(.1,playing.duration*1000));
+        drawPose(samplePerformance(playing.keys,progress));
+        if(progress>=1){playback.current=undefined;setReplaying(false);}
+      }
+    }else if((state==='ready'||state==='recording')&&at-last.current>=interval.current){
+      last.current=at;
+      const before=performance.now();
+      try{
+        const observed=tracker.current.detect(camera.current!,at);
+        const key=observed&&retargetCaptureFrame(observed);
+        if(key){
+          lastSeen.current=at;
+          if(recording.current&&observed){
+            frames.current.push(observed);
+          }
+          const factor=intensityRef.current/100;
+          const pose={...key.pose};
+          for(const joint of Object.keys(pose) as Array<keyof typeof pose>){
+            const value=pose[joint];
+            if(value!==undefined)pose[joint]=clamp(value*factor,-165,165);
+          }
+          lastPreview.current=smoothLivePerformance(lastPreview.current,{...key,pose},smoothingRef.current/100);
+          drawPose(lastPreview.current);
+          if(at-lastUi.current>350){
+            setTracking('live');setTrackedFrames(frames.current.length);lastUi.current=at;
+          }
+        }else if(at-lastUi.current>700){
+          setTracking(lastSeen.current&&at-lastSeen.current>2200?'lost':'searching');
+          lastUi.current=at;
+        }
+      }catch(error){
+        if(at-lastUi.current>1400){
+          setMessage('Tracking interrupted: '+String(error));
+          lastUi.current=at;
+        }
+      }
+      const elapsed=performance.now()-before;
+      interval.current=elapsed>95?Math.min(280,Math.ceil(elapsed*1.22)):100;
+    }
+    raf.current=requestAnimationFrame(loop);
+  }
+  async function prepare(){
+    if(!navigator.mediaDevices?.getUserMedia){
+      setMessage('Use HTTPS and a browser with camera permissions to capture a performance.');return;
+    }
+    updateStatus('loading');setResult(undefined);setPreviewError('');
+    setTracking('searching');setMessage('Requesting camera permission and loading on-device MediaPipe models…');
     let media:MediaStream|undefined;let vision:PerformanceTracker|undefined;
-    try {
-      try{media=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:480},height:{ideal:360},frameRate:{ideal:15,max:20}},audio:{echoCancellation:true,noiseSuppression:true}});}
-      catch{media=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:480},height:{ideal:360},frameRate:{ideal:15,max:20}},audio:false});}
+    try{
+      try{media=await navigator.mediaDevices.getUserMedia({
+        video:{width:{ideal:480},height:{ideal:360},frameRate:{ideal:15,max:20}},
+        audio:{echoCancellation:true,noiseSuppression:true}});}
+      catch{media=await navigator.mediaDevices.getUserMedia({
+        video:{width:{ideal:480},height:{ideal:360},frameRate:{ideal:15,max:20}},audio:false});}
       vision=await startPerformanceTracker({hands,face});
       if(!alive.current){vision.close();media.getTracks().forEach(track=>track.stop());return;}
       stream.current=media;tracker.current=vision;
       if(camera.current){camera.current.srcObject=media;await camera.current.play();}
-      setStatus('ready');
-      setMessage(vision.warnings.length?vision.warnings.join(' ') : 'Ready. Keep your shoulders, arms and hands in view. Record up to 18 seconds.');
+      last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=100;
+      updateStatus('ready');
+      setMessage(vision.warnings.length?vision.warnings.join(' ') :
+        'Live puppeteering is active. Move your head, shoulders and hands; the character responds alongside you. Record up to 18 seconds.');
+      cancelAnimationFrame(raf.current);
+      raf.current=requestAnimationFrame(loop);
     }catch(error){
-      vision?.close();media?.getTracks().forEach(track=>track.stop());setStatus('idle');
-      setMessage('Camera or tracker could not start: '+String(error));
+      vision?.close();media?.getTracks().forEach(track=>track.stop());
+      tracker.current=undefined;stream.current=undefined;
+      updateStatus('idle');setTracking('off');
+      setMessage('Could not start camera or body tracker: '+String(error));
     }
   }
-  function begin() {
-    if(status!=='ready'||!tracker.current)return;
-    frames.current=[];chunks.current=[];stopping.current=false;setRecordedAudio(undefined);setResult(undefined);
+  function resetCamera(){
+    if(statusRef.current!=='ready')return;
+    takeDown();setTracking('off');setTrackedFrames(0);
+    updateStatus('idle');setMessage('Choose hand and face tracking options, then enable the camera again.');
+  }
+  function begin(){
+    if(statusRef.current!=='ready'||!tracker.current||!lastSeen.current)return;
+    frames.current=[];chunks.current=[];stopping.current=false;recording.current=true;
+    playback.current=undefined;setRecordedAudio(undefined);setResult(undefined);setTrackedFrames(0);
     let writer:MediaRecorder|undefined;
     const audio=stream.current?.getAudioTracks();
     if(audio?.length&&typeof MediaRecorder!=='undefined'){
@@ -74,33 +178,15 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
         writer=new MediaRecorder(new MediaStream(audio));
         writer.ondataavailable=event=>{if(event.data.size)chunks.current.push(event.data);};
         writer.start(250);
-      }catch{setMessage('Motion will record without audio on this browser.');}
+      }catch{setMessage('Video motion will record without voice on this browser.');}
     }
-    recorder.current=writer;started.current=performance.now();last.current=0;
-    setStatus('recording');
-    let interval=100;
-    const step=(at:number)=>{
-      if(!alive.current)return;
-      if(at-started.current>=maxDuration*1000){void stop();return;}
-      if(at-last.current>=interval&&camera.current&&tracker.current){
-        last.current=at;
-        const before=performance.now();
-        try {
-          const found=tracker.current.detect(camera.current,at);
-          if(found)frames.current.push(found);
-        }catch(error){setMessage('Some tracking frames were skipped: '+String(error));}
-        const cost=performance.now()-before;
-        interval=cost>95?Math.min(210,Math.ceil(cost*1.25)):100;
-      }
-      raf.current=requestAnimationFrame(step);
-    };
-    raf.current=requestAnimationFrame(step);
+    recorder.current=writer;started.current=performance.now();
+    updateStatus('recording');
   }
-  async function stop() {
-    if(stopping.current)return;
-    stopping.current=true;
-    cancelAnimationFrame(raf.current);
-    setStatus('processing');setMessage('Compiling tracked movement into editable cartoon poses…');
+  async function stop(){
+    if(stopping.current||statusRef.current!=='recording')return;
+    stopping.current=true;recording.current=false;updateStatus('processing');
+    setMessage('Compiling captured movements and facial acting into editable cartoon keyframes…');
     const writer=recorder.current;recorder.current=undefined;
     let audio:Blob|undefined;
     if(writer?.state==='recording')audio=await new Promise<Blob|undefined>(resolve=>{
@@ -112,14 +198,27 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
     });
     if(audio)setRecordedAudio(audio);
     try{
-      const compiled=compilePerformance(frames.current,{exaggeration:intensity/100,smoothing:smoothing/100});
-      setResult(compiled);setStatus('review');
-      setMessage(`Captured ${compiled.framesAccepted} tracked frames (${compiled.framesDropped} discarded). The result uses ${compiled.keys.length} editable key poses.`);
-    }catch(error){setStatus('ready');setMessage(String(error));}
+      const compiled=compilePerformance(frames.current,{
+        exaggeration:intensityRef.current/100,smoothing:smoothingRef.current/100
+      });
+      setResult(compiled);updateStatus('review');
+      drawPose(samplePerformance(compiled.keys,1));
+      setMessage('Captured '+compiled.framesAccepted+' frames ('+compiled.framesDropped+
+        ' discarded) and compiled '+compiled.keys.length+' editable poses. Replay before saving.');
+    }catch(error){
+      stopping.current=false;updateStatus('ready');
+      setMessage('Recording could not compile: '+String(error)+' Try a longer take with shoulders and arms visible.');
+    }
+  }
+  function replay(){
+    if(!result||!preview.current)return;
+    playback.current={keys:result.keys,duration:result.duration,start:performance.now()};
+    last.current=0;setReplaying(true);
   }
   async function save(){
     if(!result||!actor)return;
-    setStatus('processing');
+    playback.current=undefined;setReplaying(false);
+    updateStatus('processing');
     try{
       const startAt=clamp(start,0,180-result.duration);
       const length=clamp(result.duration,.1,180-startAt);
@@ -146,15 +245,35 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
 
       await commit(clips);
       dismiss();
-    }catch(error){setStatus('review');setMessage('Could not save performance: '+String(error));}
+    }catch(error){updateStatus('review');setMessage('Could not save performance: '+String(error));}
   }
   const style=result?actingDNA(result.keys):undefined;
   return <Modal title="Performance Studio" description="Record natural talking, expressive gestures and personality-driven micro movements." close={dismiss} wide>
     <div className="performance-studio">
-      <div className="performance-camera">
-        <video ref={camera} autoPlay playsInline muted aria-label="Live camera preview for performance capture"/>
-        {status==='idle'&&<div className="performance-standby"><Camera size={32}/><span>Camera is off</span></div>}
-        {status==='recording'&&<div className="performance-live"><Circle size={11} fill="currentColor"/> Recording · 18s maximum</div>}
+      <div className="performance-views">
+        <section className="performance-view" aria-label="Your webcam">
+          <div className="performance-view-heading"><span>YOU · CAMERA</span><span className="performance-view-badge">{status==='recording'?'Recording':status==='review'?'Take finished':status==='ready'?'Camera active':'Camera off'}</span></div>
+          <div className="performance-camera">
+            <video ref={camera} autoPlay playsInline muted aria-label="Live mirrored webcam video for performance capture"/>
+            {(status==='idle'||status==='loading')&&<div className="performance-standby"><Camera size={32}/><span>{status==='loading'?'Starting camera…':'Enable your camera below'}</span></div>}
+            {status==='recording'&&<div className="performance-live"><Circle size={11} fill="currentColor"/> Recording · 18s maximum</div>}
+          </div>
+        </section>
+        <section className="performance-view" aria-label="Live cartoon character">
+          <div className="performance-view-heading"><span>SIRVIBE · LIVE CHARACTER</span>
+            <span className={'performance-view-badge performance-status-'+tracking}>{tracking==='live'?'Tracking body':tracking==='lost'?'Tracking lost':tracking==='searching'?'Looking for actor':'Ready'}</span>
+          </div>
+          <div className="performance-character" ref={characterHost}>
+            {previewError&&<p className="performance-preview-error" role="alert">{previewError}</p>}
+          </div>
+        </section>
+      </div>
+      <div className="performance-live-description" role="status">
+        <span>{status==='recording'?'Recording your acting while the cartoon mirrors your movement.':
+          status==='review'?'Replay your take on the cartoon before adding it to the timeline.':
+          status==='ready'?'Move in front of your camera. The cartoon responds live — recording is optional.':
+          'A live side-by-side view of you and the character you control.'}</span>
+        <strong>{status==='recording'?trackedFrames+' frames captured':tracking==='live'?'Live motion connected':'Local tracking'}</strong>
       </div>
       <div className="performance-controls">
         <label>Perform as <select aria-label="Perform as" value={actor} onChange={e=>setActor(e.target.value)} disabled={status==='recording'||status==='processing'}>
@@ -171,7 +290,8 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
         <p className="performance-help" role="status">{message}</p>
         <div className="performance-actions">
           {status==='idle'&&<button type="button" className="primary" disabled={!actor} onClick={()=>void prepare()}><Camera size={16}/> Enable camera</button>}
-          {status==='ready'&&<button type="button" className="primary" onClick={begin}><Circle size={15}/> Record acting</button>}
+          {status==='ready'&&<button type="button" className="primary" disabled={tracking!=='live'} onClick={begin}><Circle size={15}/> Record acting</button>}
+          {status==='ready'&&<button type="button" className="quiet" onClick={resetCamera}>Change tracking options</button>}
           {status==='recording'&&<button type="button" className="primary" onClick={()=>void stop()}><VideoOff size={15}/> Stop & compile</button>}
           {(status==='loading'||status==='processing')&&<span>Processing on your device…</span>}
         </div>
@@ -191,10 +311,11 @@ export function PerformanceStudio({scene,selectedActor,start,close,commit,saveAc
             <span>Energy {style.energy}% · Gesture size {style.gestureAmplitude}% · Dominant {style.dominantHand} hand</span>
             <button type="button" className="quiet" onClick={()=>saveActingDNA(actor,style)}><WandSparkles size={14}/> Apply motion style to character</button>
           </div>}
+          <button type="button" className="quiet" disabled={replaying||!!previewError} onClick={replay}>Replay on character</button>
           <button className="primary" type="button" onClick={()=>void save()}>Add performance to timeline{recordedAudio?' + recorded voice':''}</button>
-          <button className="quiet" type="button" onClick={()=>{setResult(undefined);setStatus('ready');}}>Retake</button>
+          <button className="quiet" type="button" onClick={()=>{playback.current=undefined;setReplaying(false);setResult(undefined);stopping.current=false;frames.current=[];updateStatus('ready');}}>Retake</button>
         </>}
-        <div className="performance-privacy"><ShieldAlert size={15}/> Raw camera video is not stored. Only pose keys and an optional voice recording are saved to this project.</div>
+        <div className="performance-privacy"><ShieldAlert size={15}/> Raw camera video is not stored. The character is controlled locally; only compact pose keys and an optional voice recording are saved. Face tracking can be disabled for slower computers.</div>
       </div>
     </div>
   </Modal>;

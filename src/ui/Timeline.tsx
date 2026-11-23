@@ -285,7 +285,7 @@ export function Timeline({
           aria-label={(settings?.solo?'Unsolo ':'Solo ')+trackNames[track]} title={settings?.solo?'Stop solo':'Solo this audio track'} onClick={()=>toggle(track,'solo')}><Headphones size={13}/></button>}
         <button type="button" aria-label={(locked?'Unlock ':'Lock ')+trackNames[track]} title={locked?'Unlock track':'Lock track'} onClick={()=>toggle(track,'locked')}>{locked?<Lock size={13}/>:<Unlock size={13}/>}</button>
         {track==='performance'
-          ? <button type="button" className="quiet mini track-record" title="Record a new performance with your webcam" aria-label="Record a new webcam performance" disabled={locked} onClick={onPerformance}><Camera size={13}/><span>Record</span></button>
+          ? <button type="button" className="quiet mini track-record" title="Record a new performance with your webcam" aria-label="Record a new webcam performance" disabled={locked} onClick={onPerformance}><Camera size={14}/></button>
           : <button type="button" title={'Add '+trackNames[track]+' clip'} aria-label={'Add '+trackNames[track]+' clip'} disabled={locked} onClick={()=>add(track)}><Plus size={13}/></button>}
       </div>
       <div className="lane" data-timeline-track={track} aria-label={trackNames[track]+' timeline lane'}>
