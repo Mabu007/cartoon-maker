@@ -146,6 +146,15 @@ export const CapturedPoseKey = z.strictObject({
   fingerCurls:z.strictObject({left:FingerCurls.optional(),right:FingerCurls.optional()}).optional(),
   /** Optional observed interaction: hands together, head touch, guard, or clenched extension. */
   contact:CapturedContactSchema.optional(),
+  /** Captured wrist targets in 2D character shoulder-local coordinates. */
+  armTargets:z.strictObject({left:z.strictObject({x:num(-180,180),y:num(-180,180)}).optional(),
+    right:z.strictObject({x:num(-180,180),y:num(-180,180)}).optional()}).optional(),
+  /** Signed elbow bend preference and relative near-camera arm scores. */
+  armBend:z.strictObject({left:num(-1,1).optional(),right:num(-1,1).optional()}).optional(),
+  armDepth:z.strictObject({left:num(-1,1).optional(),right:num(-1,1).optional()}).optional(),
+  nearArm:z.enum(['left','right']).optional(),
+  /** A brief held hand is not equivalent to a freshly observed hand. */
+  handConfidence:z.strictObject({left:num(0,1).optional(),right:num(0,1).optional()}).optional(),
   expression:z.enum(expressions).optional(),
   /** Optional capture confidence: 0 marks an unobserved interval. Legacy keys imply 1. */
   presence:num(0,1).optional(),

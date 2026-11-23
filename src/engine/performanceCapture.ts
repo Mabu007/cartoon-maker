@@ -5,6 +5,7 @@
  */
 import { clamp, ease, mix } from './animation.ts';
 import { fuseWorldAngle, mixDegrees, worldBodyProjector, wrapDegrees } from './worldRetarget.ts';
+import { observedArmGuidance, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import type { Character, Expression, JointPose } from './schema.ts';
 import type { HandPose } from './handRig.ts';
 import { measuredFingerCurls, observedHandPose, detectedHandContact,
@@ -15,6 +16,8 @@ export type Landmark = { x: number; y: number; z?: number; visibility?: number }
 export type CaptureFrame = {
   t: number; pose: Landmark[]; world?: Landmark[]; leftHand?: Landmark[]; rightHand?: Landmark[];
   face?: Record<string, number>;
+  /** Elapsed milliseconds since each tracked hand was last truly detected. */
+  handAgeMs?:{left?:number;right?:number};
 };
 export type CaptureOptions = { exaggeration?: number; smoothing?: number; maxKeys?: number };
 export type PerformanceKey = {
@@ -24,6 +27,12 @@ export type PerformanceKey = {
   hands?: { left: HandPose; right: HandPose }; expression?: Expression;
   fingerCurls?:{left?:FingerCurls;right?:FingerCurls};
   contact?:CapturedContact;
+  /** Optional shoulder-local wrist anchors, depth scores and stable bend pole. */
+  armTargets?:ArmTargets;
+  armBend?:ArmBends;
+  armDepth?:ArmDepths;
+  nearArm?:ArmSide;
+  handConfidence?:{left?:number;right?:number};
   /** Screen-space eye direction, normalized and independent of the authored gaze track. */
   focus?: { x:number; y:number };
   /** Reduced and editable face blendshapes; never raw webcam imagery. */
@@ -59,6 +68,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const left=leftCurls?observedHandPose(leftCurls):undefined;
   const right=rightCurls?observedHandPose(rightCurls):undefined;
   const contact=detectedHandContact(p,frame.leftHand,frame.rightHand,leftCurls,rightCurls);
+  const arms=observedArmGuidance(p,frame.world);
   // A webcam can show just a face, one arm, or the full body. Do not reject
   // legitimate facial movement because the performer's hips or shoulders
   // were cropped. Never invent joints the camera cannot see.
@@ -136,9 +146,16 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   }
   const emotion=facialExpression(frame.face);
   return {time:frame.t,pose,...(focus?{focus}:{}),
+    ...(arms.targets.left||arms.targets.right?{armTargets:arms.targets}:{}),
+    ...(arms.bends.left!==undefined||arms.bends.right!==undefined?{armBend:arms.bends}:{}),
+    ...(arms.depths.left!==undefined||arms.depths.right!==undefined?{armDepth:arms.depths}:{}),
     ...(left||right?{hands:{left:left??'relaxed',right:right??'relaxed'}}:{}),
     ...(leftCurls||rightCurls?{fingerCurls:{...(leftCurls?{left:leftCurls}:{}),
       ...(rightCurls?{right:rightCurls}:{})}}:{}),
+    ...((leftCurls||rightCurls)?{handConfidence:{
+      ...(leftCurls?{left:clamp(1-(frame.handAgeMs?.left??0)/300,0,1)}:{}),
+      ...(rightCurls?{right:clamp(1-(frame.handAgeMs?.right??0)/300,0,1)}:{})
+    }}:{}),
     ...(contact?{contact}:{}),
     ...(emotion?{expression:emotion}:{}),
     ...(frame.face?{facial:facialFromBlendshapes(frame.face)}:{})};
@@ -182,7 +199,29 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
       Math.round(mix(v,second[i],fraction)*1000)/1000) as FingerCurls;
     else fingerCurls[side]=fraction<.5?first:second;
   }
+  const armTargets:ArmTargets={},armDepth:ArmDepths={},armBend:ArmBends={};
+  const handConfidence:PerformanceKey['handConfidence']={};
+  for(const side of ['left','right'] as const){
+    const source=a.armTargets?.[side],destination=b.armTargets?.[side];
+    if(source&&destination)armTargets[side]={
+      x:mix(source.x,destination.x,fraction),
+      y:mix(source.y,destination.y,fraction)};
+    else armTargets[side]=fraction<.5?source:destination;
+    const first=a.armDepth?.[side],second=b.armDepth?.[side];
+    armDepth[side]=first!==undefined&&second!==undefined
+      ?mix(first,second,fraction):fraction<.5?first:second;
+    armBend[side]=fraction<.5?a.armBend?.[side]:b.armBend?.[side];
+    const confidenceFrom=a.handConfidence?.[side],confidenceTo=b.handConfidence?.[side];
+    handConfidence[side]=confidenceFrom!==undefined&&confidenceTo!==undefined
+      ?mix(confidenceFrom,confidenceTo,fraction)
+      :fraction<.5?confidenceFrom:confidenceTo;
+  }
   return {time:at,pose,
+    ...(armTargets.left||armTargets.right?{armTargets}:{}),
+    ...(armDepth.left!==undefined||armDepth.right!==undefined?{armDepth}:{}),
+    ...(armBend.left!==undefined||armBend.right!==undefined?{armBend}:{}),
+    ...(fraction<.5?a.nearArm?{nearArm:a.nearArm}:{}:b.nearArm?{nearArm:b.nearArm}:{}),
+    ...(handConfidence.left!==undefined||handConfidence.right!==undefined?{handConfidence}:{}),
     ...(fingerCurls.left||fingerCurls.right?{fingerCurls}:{}),
     ...(fraction<.5?a.contact?{contact:a.contact}:{}:b.contact?{contact:b.contact}:{}),
     ...((a.presence!==undefined||b.presence!==undefined)?{presence:mix(aPresent,bPresent,fraction)}:{}),
@@ -266,8 +305,20 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
           joint.endsWith('Wrist')?.7:1;
         error=Math.max(error,delta*emphasis);
       }
+      if(observed.nearArm!==estimated.nearArm)error=Math.max(error,40);
       for(const side of ['left','right'] as const){
         if(observed.hands?.[side]!==estimated.hands?.[side])error=Math.max(error,20);
+        const arm=observed.armTargets?.[side],estimate=estimated.armTargets?.[side];
+        if(Boolean(arm)!==Boolean(estimate))error=Math.max(error,30);
+        else if(arm&&estimate)error=Math.max(error,Math.hypot(arm.x-estimate.x,arm.y-estimate.y)*1.5);
+        if(observed.armBend?.[side]!==estimated.armBend?.[side])
+          error=Math.max(error,20);
+        const actualDepth=observed.armDepth?.[side],estimatedDepth=estimated.armDepth?.[side];
+        if(actualDepth!==undefined&&estimatedDepth!==undefined)
+          error=Math.max(error,Math.abs(actualDepth-estimatedDepth)*24);
+        const handWeight=observed.handConfidence?.[side],predictedWeight=estimated.handConfidence?.[side];
+        if(handWeight!==undefined&&predictedWeight!==undefined)
+          error=Math.max(error,Math.abs(handWeight-predictedWeight)*25);
         const raw=observed.fingerCurls?.[side],interpolated=estimated.fingerCurls?.[side];
         if(Boolean(raw)!==Boolean(interpolated))error=Math.max(error,24);
         else if(raw&&interpolated)for(let digit=0;digit<5;digit++)
