@@ -322,7 +322,7 @@ function verifySceneRelationships(scene: Scene, characters: ReadonlySet<string>,
     }
     if ('actor' in clip && !actors.has(clip.actor)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing actor' });
     if (!targetValid) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing target' });
-    if ('focus' in clip && clip.focus && !actors.has(clip.focus) && !objects.has(clip.focus)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Camera shot has unknown actor or prop focus' });
+    if ('focus' in clip && clip.focus && !actors.has(clip.focus) && !objects.has(clip.focus)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Camera shot has unknown focus (actor or prop)' });
   }
 }
 
