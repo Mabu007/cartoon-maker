@@ -51,9 +51,12 @@ function angleFrame(camera:DirectedCamera,clip:DirectedCameraClip,width:number):
   const roll=clip.roll??(clip.angle==='dutch-angle'?12:0);
   if(roll){
     result.roll=roll;
-    // A slight overscan keeps Dutch tilt from revealing triangular gaps at
-    // the edges of a 960×540 background, without a second render pass.
-    result.zoom=Math.max(result.zoom,1+Math.abs(Math.sin(roll*Math.PI/180))*.95);
+    // The inverse-rotated viewport corners must remain inside the authored
+    // 960×540 world. This analytic overscan prevents blank Dutch corners
+    // without extra background geometry, filters or 3D processing.
+    const radians=Math.abs(roll)*Math.PI/180;
+    const coverage=Math.cos(radians)+Math.sin(radians)*WIDTH/HEIGHT;
+    result.zoom=Math.max(result.zoom,coverage);
   }
   return clampCamera(result,width);
 }
