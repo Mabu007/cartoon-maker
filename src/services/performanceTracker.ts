@@ -49,16 +49,22 @@ const modelPath=(name:'pose'|'hands'|'face')=>
  * when a creator closes and reopens the recording studio.
  */
 let visionModule:Promise<VisionApi>|undefined;
+/** Static asset request only; never a Vite module import. Exported separately
+ * so missing, malformed and HTML fallback responses have regression tests. */
+export async function fetchLocalVisionBlob(fetcher:typeof fetch=fetch):Promise<Blob>{
+  const response=await fetcher('/mediapipe/vision_bundle.mjs',{cache:'force-cache'});
+  if(!response.ok)throw Error('Local MediaPipe bundle missing (HTTP '+response.status+'). Re-run npm run assets:performance and restart Vite.');
+  if(response.headers.get('content-type')?.includes('text/html'))
+    throw Error('Local MediaPipe bundle returned HTML instead of JavaScript. Re-run npm run assets:performance.');
+  const blob=await response.blob();
+  if(blob.size<1024)throw Error('Local MediaPipe module is incomplete. Re-run npm run assets:performance.');
+  return blob;
+}
 export async function loadVisionModule():Promise<VisionApi> {
   if(!visionModule){
     visionModule=(async()=>{
       if(!localVision)return await import(/* @vite-ignore */ `${cdn}/vision_bundle.mjs`) as VisionApi;
-      const response=await fetch('/mediapipe/vision_bundle.mjs',{cache:'force-cache'});
-      if(!response.ok)throw Error('Local MediaPipe bundle missing (HTTP '+response.status+'). Re-run npm run assets:performance and restart Vite.');
-      if(response.headers.get('content-type')?.includes('text/html'))
-        throw Error('Local MediaPipe bundle returned HTML instead of JavaScript. Re-run npm run assets:performance.');
-      const blob=await response.blob();
-      if(blob.size<1024)throw Error('Local MediaPipe module is incomplete. Re-run npm run assets:performance.');
+      const blob=await fetchLocalVisionBlob();
       // Keep this object URL alive for the module lifetime: some MediaPipe
       // implementations may resolve delayed imports relative to import.meta.url.
       const moduleUrl=URL.createObjectURL(new Blob([blob],{type:'text/javascript'}));
