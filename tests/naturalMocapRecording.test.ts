@@ -89,7 +89,11 @@ test('complete tracking dropout holds then fades; re-acquisition blends from las
   assert.equal(filter.recover(.73),undefined);
   const reacquired=filter.update(sample(.45,-65));
   assert((reacquired.pose.leftShoulder??0)>-65,'return must not teleport to a newly detected wrist');
-  const settled=filter.update(sample(.7,-65));
+  // Normal inference resumes at a useful cadence, allowing the 180ms
+  // re-acquisition blend to finish without a second dropout.
+  filter.update(sample(.54,-65));
+  filter.update(sample(.63,-65));
+  const settled=filter.update(sample(.72,-65));
   assert(Math.abs((settled.pose.leftShoulder??0)+65)<15);
 });
 test('recorded confidence-faded frames remain faded after timeline compilation',()=>{
