@@ -7,6 +7,8 @@ import { clamp, ease, mix } from './animation.ts';
 import { fuseWorldAngle, mixDegrees, worldBodyProjector, wrapDegrees } from './worldRetarget.ts';
 import type { Character, Expression, JointPose } from './schema.ts';
 import type { HandPose } from './handRig.ts';
+import { measuredFingerCurls, observedHandPose, detectedHandContact,
+  type FingerCurls, type CapturedContact } from './performanceHandIntelligence.ts';
 import { blendFacialControls, facialFromBlendshapes, type FacialControls } from './facialIntelligence.ts';
 
 export type Landmark = { x: number; y: number; z?: number; visibility?: number };
@@ -20,6 +22,8 @@ export type PerformanceKey = {
   /** 0 for a genuine tracking gap; optional for backward-compatible clips. */
   presence?: number;
   hands?: { left: HandPose; right: HandPose }; expression?: Expression;
+  fingerCurls?:{left?:FingerCurls;right?:FingerCurls};
+  contact?:CapturedContact;
   /** Screen-space eye direction, normalized and independent of the authored gaze track. */
   focus?: { x:number; y:number };
   /** Reduced and editable face blendshapes; never raw webcam imagery. */
