@@ -1174,7 +1174,7 @@ export default function App() {
     const character = actor && project.characters.find(item => item.id === actor.characterId);
     if (clip?.track === 'dialogue' && character) content = <PrecisionLipSyncEditor key={clip.id} clip={clip} character={character} change={patchClip} close={close} regenerate={() => alignVoiceClip(clip,'phonetic')} undo={() => useStudio.getState().undo()} redo={() => useStudio.getState().redo()} canUndo={hasUndo} canRedo={hasRedo}/>;
   }
-  if (dialog === 'performance') content = <PerformanceStudio key={session + scene.id} scene={scene}
+  if (dialog === 'performance') content = <PerformanceStudio key={session + scene.id} scene={scene} characters={project.characters}
     selectedActor={selection?.kind==='actor'?selection.id:scene.actors[0]?.id}
     start={time.current.local} close={close}
     commit={async clips=>{
