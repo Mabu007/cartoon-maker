@@ -69,15 +69,21 @@ function facialExpression(face?: Record<string, number>): Expression | undefined
 }
 export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | undefined {
   const p=frame.pose;
-  if(p.length<17||![11,12,13,14,15,16,23,24].every(i=>confidence(p[i])))return undefined;
+  // Speaking-at-a-desk framing often excludes hips and even one wrist. Keep
+  // accurate observed upper-body motion; never synthesize unobserved legs.
+  if(p.length<17||![11,12].every(i=>confidence(p[i]))||
+    ![13,14,15,16].some(i=>confidence(p[i])))return undefined;
   const world=worldBodyProjector(frame.world);
   const angleOf=(from:number,to:number) => {
     const image=angle(p[from],p[to]);
     return world?fuseWorldAngle(image,world.angle(from,to),world.frontness):image;
   };
-  const hips=midpoint(p[23],p[24]), shoulders=midpoint(p[11],p[12]);
-  const screenTorso=degrees(180-angle(hips,shoulders));
-  const worldTorso=world && world.angle(23,11)!==undefined && world.angle(24,12)!==undefined
+  const hipsVisible=confidence(p[23])&&confidence(p[24]);
+  const shoulders=midpoint(p[11],p[12]);
+  const screenTorso=hipsVisible
+    ?degrees(180-angle(midpoint(p[23],p[24]),shoulders))
+    :0;
+  const worldTorso=hipsVisible && world && world.angle(23,11)!==undefined && world.angle(24,12)!==undefined
     ? degrees(180-mixDegrees(world.angle(23,11)!,world.angle(24,12)!,.5))
     : undefined;
   const torso=clamp(worldTorso===undefined?screenTorso:
@@ -85,12 +91,15 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const pose:JointPose={torso};
   for(const side of ['left','right'] as const) {
     const i=side==='left'?11:12, e=side==='left'?13:14, w=side==='left'?15:16;
+    if(!confidence(p[e]))continue;
     const upper=angleOf(i,e);
     pose[`${side}Shoulder`]=clamp(degrees(upper-(side==='left'?-13:13)-torso),-165,165);
-    pose[`${side}Elbow`]=clamp(degrees(angleOf(e,w)-upper),-160,160);
-    const hand=side==='left'?frame.leftHand:frame.rightHand;
-    const palm=hand&&hand.length>9?angle(hand[0],hand[9]):angle(p[e],p[w]);
-    pose[`${side}Wrist`]=clamp(degrees(palm-angle(p[e],p[w])),-65,65);
+    if(confidence(p[w])){
+      pose[`${side}Elbow`]=clamp(degrees(angleOf(e,w)-upper),-160,160);
+      const hand=side==='left'?frame.leftHand:frame.rightHand;
+      const palm=hand&&hand.length>9?angle(hand[0],hand[9]):angle(p[e],p[w]);
+      pose[`${side}Wrist`]=clamp(degrees(palm-angle(p[e],p[w])),-65,65);
+    }
   }
   if(confidence(p[0])){
     const screenHead=degrees(180-angle(shoulders,p[0]))-torso;
