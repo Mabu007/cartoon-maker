@@ -22,7 +22,7 @@ const allowedClipPatch:Readonly<Record<Clip['track'],readonly string[]>>={
   dialogue:['start','length','offset','volume','muted','fadeIn','fadeOut','voicePreset','voiceEffect'],
   audio:['start','length','offset','volume','muted','fadeIn','fadeOut','name','loop','asset'],
   music:['start','length','offset','volume','muted','fadeIn','fadeOut','name','loop','asset'],
-  camera:['start','length','shot','focus','transition','angle','movement','strength','roll'],
+  camera:['start','length','shot','composition','focus','transition','angle','movement','strength','roll'],
   transition:['start','length','effect'],
   vfx:['start','length','effect','x','y','strength'],
   text:['start','length','text','x','y','size','color','style']
