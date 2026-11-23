@@ -109,27 +109,32 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
   }
   let tick=0,previousLeft:Landmark[]|undefined,previousRight:Landmark[]|undefined;
   let previousFace:Record<string,number>|undefined;
+  let previousFaceLandmarks:Landmark[]|undefined;
+  let lastHandsAt=0,lastFaceAt=0;
   const close=()=>{for(const detector of [pose,hands,face])try{detector?.close();}catch{/* already closed */}};
   return {features:{pose:true,hands:!!hands,face:!!face},warnings,close,
     detect(video,atMs) {
       if(video.readyState<2||!video.videoWidth)return undefined;
       const output=poseDetector(video,atMs);
-      const pose=posePoints(output);
-      if(!pose)return undefined;
+      const measuredPose=posePoints(output);
+      // A face-only crop need not be rejected if the dedicated face tracker
+      // still sees a nose/eyes; unknown shoulder/leg joints stay unobserved.
+      let pose=measuredPose;
       // MediaPipe worldLandmarks are 3D metre-scale points around the hip
       // origin. Keep them for retargeting only, never in persisted clip JSON.
       const world=output?.worldLandmarks?.[0] as Landmark[]|undefined;
       tick++;
-      // When both trackers are enabled, alternate them: on low-end CPUs
-      // running face + both hands on a single frame creates long UI stalls.
-      if(hands&&(face?tick%2===0:tick%2===1)){
+      // Arm position comes from the light pose model every frame. Finger
+      // classification and high-detail eyebrows/lips are much slower and
+      // need not run on each frame. Stagger them so they never compete.
+      if(hands&&tick%3===0){
         const result=hands.detectForVideo(video,atMs);
-        previousLeft=undefined;previousRight=undefined;
+        previousLeft=undefined;previousRight=undefined;lastHandsAt=atMs;
         // A camera preview may be mirrored by CSS while detector coordinates are
         // not. Associate hands to the tracked body wrists spatially instead of
         // trusting model handedness labels.
         const detections=(result.landmarks??[]) as Landmark[][];
-        const leftWrist=pose[15],rightWrist=pose[16];
+        const leftWrist=pose?.[15],rightWrist=pose?.[16];
         if(leftWrist&&rightWrist){
           const options=detections.map((landmarks,index)=>({
             landmarks,index,
@@ -153,14 +158,42 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
             }
           }
         }
+        if(!leftWrist&&!rightWrist&&detections.length){
+          // Hand-only framing: retain the independently observed hand shapes,
+          // but do not fabricate upper-arm joint positions from those hands.
+          for(const landmarks of detections){
+            if(landmarks[0].x<.5)previousRight=landmarks;
+            else previousLeft=landmarks;
+          }
+        }
       }
-      if(face&&(hands?tick%2===1:tick%3===1)){
+      if(face&&tick%3===1){
         const result=face.detectForVideo(video,atMs);
         previousFace=result.faceBlendshapes?.[0]?.categories?.reduce((acc:Record<string,number>,c:{categoryName:string;score:number})=>{
           acc[c.categoryName]=c.score;return acc;
         },{});
+        previousFaceLandmarks=result.landmarks?.[0] as Landmark[]|undefined;
+        if(previousFaceLandmarks?.length)lastFaceAt=atMs;
       }
-      return {t:atMs/1000,pose,world,leftHand:previousLeft,rightHand:previousRight,face:previousFace};
+      if(atMs-lastHandsAt>450){previousLeft=undefined;previousRight=undefined;}
+      if(atMs-lastFaceAt>600){previousFace=undefined;previousFaceLandmarks=undefined;}
+      if((!pose||!pose.length)&&previousFaceLandmarks?.length){
+        const points=previousFaceLandmarks;
+        const nose=points[1],a=points[33],b=points[263];
+        if(nose&&a&&b){
+          const empty=Array.from({length:33},():Landmark=>({x:0,y:0,visibility:0}));
+          empty[0]={...nose,visibility:1};
+          // Pose's left/right labels follow performer anatomy, while these
+          // face mesh corners are re-ordered to the same selfie convention.
+          const rightmost=a.x>b.x?a:b,leftmost=a.x>b.x?b:a;
+          empty[2]={...rightmost,visibility:1};
+          empty[5]={...leftmost,visibility:1};
+          pose=empty;
+        }
+      }
+      if(!pose?.length&&!previousLeft&&!previousRight&&!previousFace)return undefined;
+      return {t:atMs/1000,pose:pose??[],world:output?.worldLandmarks?.[0] as Landmark[]|undefined,
+        leftHand:previousLeft,rightHand:previousRight,face:previousFace};
     }
   };
   function poseDetector(video:HTMLVideoElement,t:number){return pose.detectForVideo(video,t);}
