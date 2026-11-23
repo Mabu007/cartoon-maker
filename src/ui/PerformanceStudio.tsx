@@ -47,8 +47,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const frames=useRef<CaptureFrame[]>([]);
   const recorder=useRef<MediaRecorder|undefined>(undefined),chunks=useRef<Blob[]>([]);
   const stopping=useRef(false),recording=useRef(false);
-  const lastSeen=useRef(0),lastUi=useRef(0),lastPreview=useRef<PerformanceKey>();
-  const playback=useRef<{keys:PerformanceKey[];duration:number;start:number}|undefined>();
+  const lastSeen=useRef(0),lastUi=useRef(0),lastPreview=useRef<PerformanceKey|undefined>(undefined);
+  const playback=useRef<{keys:PerformanceKey[];duration:number;start:number}|undefined>(undefined);
   const interval=useRef(100);
   const updateStatus=(next:Status)=>{statusRef.current=next;setStatus(next);};
   function drawPose(key?:PerformanceKey){
