@@ -13,6 +13,7 @@ import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/ev
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
 import { makeActingDemoProject } from './engine/actingDemo.ts';
 import { compatibleObject, compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
+import { pickupFeedback } from './engine/objectInteractionEngine.ts';
 import { label, shotLabel, SceneDefinition, props as propKinds, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import { formatLabel, type Format } from './engine/videoFormats.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, uploadProject, listenAccount, login, logout, type Account } from './services/cloud.ts';
@@ -425,6 +426,12 @@ export default function App() {
   function patchObject(value: Prop) { editScene(current => repairOrphanedObjectActions({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
   function patchClip(value: Clip, original?: Clip) {
     if (scene.trackSettings?.[value.track]?.locked) { tell('Unlock the track before editing this clip.',true); return; }
+    if((value.track==='body'&&value.action==='pick-up'&&value.target)||
+       (value.track==='props'&&value.interaction==='equip')){
+      const at=value.track==='body'?value.start+value.length*.5:value.start;
+      const reason=pickupFeedback(scene,value.actor,value.target!,at);
+      if(reason){tell(reason,true);return;}
+    }
     if('offset' in value&&(livePlaying.current||livePreparing.current))pause();
     let updated: Clip = value;
     // Moving or repositioning a keyed clip in the visual inspector should not
@@ -476,6 +483,12 @@ export default function App() {
         value={...value,target:prop.id};
       }
       const clip = value.track === 'camera' ? value : changeClipTiming(value, value.start, value.length, current.duration);
+      if((clip.track==='body'&&clip.action==='pick-up'&&clip.target)||
+         (clip.track==='props'&&clip.interaction==='equip')){
+        const contact=clip.track==='body'?clip.start+clip.length*.5:clip.start;
+        const reason=pickupFeedback({...current,objects},clip.actor,clip.target!,contact);
+        if(reason)throw Error(reason);
+      }
       return { ...current, objects, clips: clip.track === 'camera' ? insertCameraShot(current.clips, clip, [...current.actors, ...current.objects].map(item => item.id)) : [...current.clips, clip] };
     });
     setArrange(true); select({ kind: 'clip', id: value.id }); close();
@@ -1107,7 +1120,7 @@ export default function App() {
       // Text fields keep their native keyboard behavior. The preview range
       // is a timeline control and shares the same playhead shortcuts.
       if (!transportFocused && (el?.isContentEditable || el?.closest('input,textarea,select,[role="textbox"],.monaco-editor,.cm-editor,[contenteditable]'))) return;
-      if (transportFocused && !isArrowShortcut && !isHeightShortcut) return;
+      if (transportFocused && !isArrowShortcut && !isHeightShortcut && event.code!=='Space') return;
       if (el?.closest('[role="separator"]') && !isHeightShortcut) return;
       const inClip = !!el?.closest('.clip,.timeline-keyframe');
       const inTimeline = !!el?.closest('.professional-timeline');
