@@ -11,6 +11,7 @@ import { gestureAt, livingPose, type ActingContext, type GestureSample } from '.
 import { occupiedHands } from './handPerformance.ts';
 import { samplePerformance, samplePerformanceHands } from './performanceCapture.ts';
 import { capturedMicroMotion } from './performanceMicroMotion.ts';
+import { directedActingPosture } from './actingPosture.ts';
 import type { HandPose } from './handRig.ts';
 import type { FacialControls } from './facialIntelligence.ts';
 import { HEIGHT, WIDTH, views, type ActingIntent, type Action, type ActorData, type Character, type Clip, type Expression, type JointPose, type Prop, type Scene, type SoundClip, type View } from './schema.ts';
@@ -308,6 +309,13 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       }else if(!captured || authoredGesture){
         pose=livingPose(character,acting,pose,handGesture);
       }
+    }
+    // Small, high-level body-language offsets support facial direction.
+    // Locomotion, held props, manual body gestures and mocap retain authority.
+    if(face?.intent && face.intent!=='none' && !captured?.performance && !authoredGesture &&
+      ['idle','talk','listen','think'].includes(action) && !['walk','run'].includes(locomotion)){
+      const intensity=(face.intensity??1)*frameWeight(face,t);
+      pose=directedActingPosture(pose,face.intent,intensity);
     }
     const performance=action===gesture?.action?gesture:body;
     const actionTime=performance?t-performance.start:0;
