@@ -47,7 +47,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number};capturedArms?:{left:boolean;right:boolean};
     capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
     capturedRig?:{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
-    capturedHeadFacing?:PerformanceFacing;
+    capturedHeadFacing?:PerformanceFacing;capturedHeadYaw?:number;
     capturedContact?:{type:CapturedContact;influence:number};heldItems?:{left?:Prop;right?:Prop};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number;observed?:{left:boolean;right:boolean}}},
   handGesture?: GestureSample) {
   const costume=appearance?.texture;
@@ -253,13 +253,16 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     arm(side,false,appearance?.gestureArt??g,'all');
   if(cryHand('left'))arm('left',false,appearance?.gestureArt??g);
   if(cryHand('right'))arm('right',false,appearance?.gestureArt??g);
-  face.position.set(r.head.x, r.head.y);
+  const headYaw=appearance?.capturedHeadYaw??0;
+  // Use the already stabilized yaw as a subtle continuous transition,
+  // while the front/three-quarter artwork supplies the three discrete poses.
+  face.position.set(r.head.x+headYaw*3.6*c.head,r.head.y);
   face.angle = r.angle + (listening ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
   // Three modest head poses are independent from the body facing selected
   // by the director. Mirroring the three-quarter head does not rotate the
   // whole torso or change the saved character viewpoint.
   const trackedHead=art.rear?undefined:appearance?.capturedHeadFacing;
-  face.scale.set(c.head*turnScale*(trackedHead==='left'?-1:1),c.head);
+  face.scale.set(c.head*turnScale*(1-.09*Math.abs(headYaw))*(trackedHead==='left'?-1:1),c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
   const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus, c.personality,appearance?.expressionIntensity??1,appearance?.actingIntent,appearance?.emotion);
   if(appearance?.facialCapture) mood.controls=blendFacialControls(
