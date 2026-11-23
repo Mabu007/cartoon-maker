@@ -165,6 +165,22 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       {x:x??box.left+box.width/2,y:y??box.top+box.height/2},
       {x:box.left+box.width/2,y:box.top+box.height/2}));
   };
+  useEffect(()=>{
+    const element=stage.current;
+    if(!element||playing)return;
+    // Browser wheel listeners may be passive by default; a native
+    // nonpassive handler keeps canvas zoom from scrolling the entire page.
+    const onWheel=(event:WheelEvent)=>{
+      event.preventDefault();
+      const rect=element.getBoundingClientRect();
+      const center={x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+      setViewport(previous=>zoomStageAt(previous,
+        previous.zoom*(event.deltaY<0?1.14:1/1.14),
+        {x:event.clientX,y:event.clientY},center));
+    };
+    element.addEventListener('wheel',onWheel,{passive:false});
+    return ()=>element.removeEventListener('wheel',onWheel);
+  },[playing]);
   const displayPath=pathPoints?.map((point,index)=>
     draggedPath&&draggedPath.index===index?draggedPath.position:point);
   const offstageActors=!playing?evaluate(scene,time.current.local).actors.filter(actor=>{
@@ -179,7 +195,6 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   }):[];
   const hiddenSelected=selectedActor&&offstageActors.some(actor=>actor.id===selectedActor.id);
   return <div ref={stage} className={`stage-format format-${format.replace(':', '-')}`}
-    onWheel={event=>{if(!playing){event.preventDefault();zoom(event.deltaY<0?1.14:1/1.14,event.clientX,event.clientY);}}}
     onDoubleClick={event=>{
     if(!editPath||(event.target as Element).closest('.stage-path-handle,button'))return;
     const hit=pointer(event);
