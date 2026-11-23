@@ -89,11 +89,14 @@ export function createPerformanceStabilizer(){
         bends[side]=bend[side];
       }
       const detected=key.fingerCurls?.[side];
-      if(detected){
-        lastGoodHand[side]={time,curls:detected};
-        confidence[side]=1;
+      const quality=clamp(key.handConfidence?.[side]??1,0,1);
+      if(detected&&quality>.08){
+        // An old detector frame may remain visible briefly but never
+        // restarts the hold timer. Its influence decays while the arm moves.
+        if(quality>.92)lastGoodHand[side]={time,curls:detected};
+        confidence[side]=quality;
         curls[side]=detected.map((value,index)=>
-          clamp(filter(side+':finger:'+index,value,time,2.3-amount*1.2,.22),0,1)
+          clamp(filter(side+':finger:'+index,value,time,2.3-amount*1.2,.22*quality),0,1)
         ) as FingerCurls;
       }else{
         const held=lastGoodHand[side],age=held?time-held.time:Infinity;
