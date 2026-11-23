@@ -114,6 +114,11 @@ test('iris direction beats inferred nose-based gaze in a seated acting take',()=
   assert(raw);
   assert.deepEqual(raw.focus,{x:-.8,y:-.45});
   assert(Math.abs(headRoll(raw.pose))<=23);
+  const hiddenEyes=retargetCaptureFrame({
+    t:1.1,pose:seatedPose(),faceTracking:true
+  });
+  assert.equal(hiddenEyes?.focus,undefined,
+    'a nose movement is not a measured iris when face tracking is enabled');
   const project=makeProject(true),scene=project.scenes[0],actor=scene.actors[0];
   const keys=[{...raw,time:0},{...raw,time:1}];
   const clip:Extract<Clip,{track:'performance'}>={
