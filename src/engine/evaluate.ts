@@ -1,5 +1,6 @@
 import { smoothPath } from './stagePath.ts';
 import { propPlacement, throwArc, transferFraction, type PropPose } from './propMotion.ts';
+import { resolveHandCustody,mayAttachProp,type HandSide } from './objectInteractionEngine.ts';
 import { gaitProfiles, usesSeat, type GaitStyle } from './performanceCatalog.ts';
 import { animations, armIK, blend, clamp, ease, mix, rig, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
 import { actorWorldPoint, eyeWorldPoint, aimEyes } from './gaze.ts';
@@ -24,7 +25,7 @@ import { HEIGHT, WIDTH, views, type EmotionSpace, type ActingIntent, type Action
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
   speaking: boolean; actionTime: number; actionWeight:number; expressionIntensity:number; actingIntent?:ActingIntent; emotion?:EmotionSpace; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
-  focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string;
+  focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; heldHand?:HandSide; heldItems?:{left?:Prop;right?:Prop}; propPose?:PropPose; sitting:boolean; seat?:string;
   facialCapture?: {controls:FacialControls;influence:number};
   handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number};
   capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
@@ -70,6 +71,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(group)group.push(clip);else byActor.set(clip.actor,[clip]);
   }
   const objectsById=new Map(scene.objects.map(object=>[object.id,object]));
+  const handCustody=resolveHandCustody(scene,t);
   type BodyClip=Extract<Clip,{track:'body'}>;
   type PropEvent={clip:BodyClip;at:number};
   const propEvents=new Map<string,PropEvent>();
@@ -120,15 +122,9 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   }
   const actors = scene.actors.map((actor): CharacterState => {
     const clips = byActor.get(actor.id)??[];
-    const propCue = latest(clips.filter(clip => clip.track==='props' &&
-      (clip.interaction==='equip'||clip.interaction==='release')&&clip.start<=t));
-    let ownership=propCue ? {at:propCue.start,target:propCue.track==='props'&&propCue.interaction==='equip'?propCue.target:undefined} : undefined;
-    for(const event of (transfersByActor.get(actor.id)??[]).sort((a,b)=>a.at-b.at)){
-      if(event.at<(ownership?.at??-1))continue;
-      // Placing one prop down only clears custody of that prop.
-      if(event.clip.action==='pick-up'||!ownership?.target||ownership.target===event.clip.target)
-        ownership={at:event.at,target:event.clip.action==='pick-up'?event.clip.target:undefined};
-    }
+    // One deterministic custody model handles both explicit Equip/Release
+    // and body pick-up/put-down actions. Unreachable props never teleport
+    // into an actor's hand, even in imported historical projects.
     const gaze = latest(clips.filter(clip => clip.track === 'gaze' && active(clip, t)));
     const movement = latest(clips.filter((clip): clip is Extract<Clip, { track: 'movement' }> => clip.track === 'movement' && clip.start <= t));
     const progress = movement ? clamp((t - movement.start) / movement.length) : 0;
@@ -219,7 +215,9 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         flip = progression > .66 ? !flip : flip;
       }
       if(target&&usesSeat(activeAction))view=anchorFor(target)?.facing??view;
-      if(target&&compatibleObject(target,activeAction)&&!usesSeat(activeAction)){
+      if(target&&compatibleObject(target,activeAction)&&!usesSeat(activeAction)&&
+        (activeAction!=='pick-up'||mayAttachProp(scene,actor.id,target.id,
+          clip.start+clip.length*(transfer??.5)))){
         const elapsed=t-clip.start, phase=elapsed/clip.length;
         const attaches=activeAction==='pick-up'?phase>=transfer!:
           activeAction==='throw-prop'||activeAction==='put-down'?phase<transfer!:true;
@@ -299,10 +297,14 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const viseme = spoken?.visemes?.length
       ? sampleTimedViseme(spoken.manualVisemes?.length ? effectiveCues(spoken.visemes, spoken.manualVisemes) : spoken.visemes,audioTime)
       : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
-    if(!held&&ownership?.target&&!propPose){
-      const latestForProp=propEvents.get(ownership.target);
-      if(!latestForProp||latestForProp.at<=ownership.at)held=objectsById.get(ownership.target);
-    }
+    const heldItems:{left?:Prop;right?:Prop}={};
+    for(const [propId,holder] of handCustody)
+      if(holder.actor===actor.id){
+        const prop=objectsById.get(propId);
+        if(prop)heldItems[holder.hand]=prop;
+      }
+    held=heldItems.right??heldItems.left;
+    const heldHand:HandSide|undefined=heldItems.right?'right':heldItems.left?'left':undefined;
     const character = characters?.get(actor.characterId);
     let handGesture: GestureSample | undefined;
     const speaking = Boolean(spoken) || action === 'talk';
@@ -359,7 +361,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, expressionIntensity:face?.intensity??1,actingIntent:face?.intent,emotion:face?.emotion, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, capturedHeadFacing, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
+      speaking, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, capturedHeadFacing, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,heldHand,heldItems,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
