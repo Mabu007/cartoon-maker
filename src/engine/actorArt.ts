@@ -42,7 +42,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number}},
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number};capturedArms?:{left:boolean;right:boolean};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number}},
   handGesture?: GestureSample) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
@@ -52,6 +52,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const build=bodyProportions(c);
   const bodyArt=g;
   const crying=action==='cry'&&!art.rear;
+  // Captured hands must remain *in front* of clothing and faces whenever
+  // they are raised. The old fixed back/front arm order buried one wrist
+  // behind the shirt and made open-hand gestures disappear.
+  const mocapFront=(side:'left'|'right')=>Boolean(!art.rear&&!held&&appearance?.capturedArms?.[side]);
   const freeHand=(side:'left'|'right')=>!(held&&side==='right')&&
     !(c.wardrobe?.handheld&&c.wardrobe.handheld!=='none'&&(c.wardrobe.hand??'right')===side);
   const cryHand=(side:'left'|'right')=>crying&&freeHand(side);
@@ -142,7 +146,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     drawShoe(g,c,foot,toe,costume,view==='back');
   };
   leg(art.rear?'right':'left'); leg(art.rear?'left':'right');
-  if(!cryHand(art.rear?'right':'left'))arm(art.rear?'right':'left',art.rear&&!!held);
+  const rearArm=art.rear?'right':'left';
+  if(!cryHand(rearArm)&&!mocapFront(rearArm))arm(rearArm,art.rear&&!!held);
   if(c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
     const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
@@ -152,7 +157,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   drawTop(g,c,art,r.neck,r.hip,costume);
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
-  if(!cryHand(art.rear?'left':'right'))arm(art.rear?'left':'right',!art.rear&&!!held);
+  const frontArm=art.rear?'left':'right';
+  if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,!art.rear&&!!held);
+  if(mocapFront('left'))arm('left',false,appearance?.gestureArt??g);
+  if(mocapFront('right'))arm('right',false,appearance?.gestureArt??g);
   if(cryHand('left'))arm('left',false,appearance?.gestureArt??g);
   if(cryHand('right'))arm('right',false,appearance?.gestureArt??g);
   face.position.set(r.head.x, r.head.y);
