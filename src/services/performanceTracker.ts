@@ -134,12 +134,13 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
         // not. Associate hands to the tracked body wrists spatially instead of
         // trusting model handedness labels.
         const detections=(result.landmarks??[]) as Landmark[][];
-        const leftWrist=pose?.[15],rightWrist=pose?.[16];
-        if(leftWrist&&rightWrist){
+        const leftWrist=pose?.[15]&&(pose[15].visibility??1)>.55?pose[15]:undefined;
+        const rightWrist=pose?.[16]&&(pose[16].visibility??1)>.55?pose[16]:undefined;
+        if(leftWrist||rightWrist){
           const options=detections.map((landmarks,index)=>({
             landmarks,index,
-            left:Math.hypot(landmarks[0].x-leftWrist.x,landmarks[0].y-leftWrist.y),
-            right:Math.hypot(landmarks[0].x-rightWrist.x,landmarks[0].y-rightWrist.y)
+            left:leftWrist?Math.hypot(landmarks[0].x-leftWrist.x,landmarks[0].y-leftWrist.y):2,
+            right:rightWrist?Math.hypot(landmarks[0].x-rightWrist.x,landmarks[0].y-rightWrist.y):2
           }));
           if(options.length===1){
             const best=options[0];
@@ -177,12 +178,12 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       }
       if(atMs-lastHandsAt>450){previousLeft=undefined;previousRight=undefined;}
       if(atMs-lastFaceAt>600){previousFace=undefined;previousFaceLandmarks=undefined;}
-      if((!pose||!pose.length)&&previousFaceLandmarks?.length){
+      if((!pose?.length||!((pose[2]?.visibility??0)>=.55&&(pose[5]?.visibility??0)>=.55))&&previousFaceLandmarks?.length){
         const points=previousFaceLandmarks;
         const nose=points[1],a=points[33],b=points[263];
         if(nose&&a&&b){
-          const empty=Array.from({length:33},():Landmark=>({x:0,y:0,visibility:0}));
-          empty[0]={...nose,visibility:1};
+          const empty=pose?.length?pose.slice():Array.from({length:33},():Landmark=>({x:0,y:0,visibility:0}));
+          if((empty[0]?.visibility??0)<.55)empty[0]={...nose,visibility:1};
           // Pose's left/right labels follow performer anatomy, while these
           // face mesh corners are re-ordered to the same selfie convention.
           const rightmost=a.x>b.x?a:b,leftmost=a.x>b.x?b:a;
