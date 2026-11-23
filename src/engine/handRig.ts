@@ -1,4 +1,5 @@
 import type { View } from './schema.ts';
+import type { FingerCurls } from './performanceHandIntelligence.ts';
 
 export type HandPose = 'relaxed' | 'loose-open' | 'open' | 'point' |
   'count-one' | 'count-two' | 'count-three' | 'pinch' | 'fist' | 'grip' |
@@ -116,6 +117,22 @@ export function sampleLayeredHandRig(base:HandPose,baseWeight:number,
     wristBend:lerp(start.wristBend,target.wristBend,strength),
     wristTwist:lerp(start.wristTwist,target.wristTwist,strength)
   });
+}
+/** Apply five independently observed finger bends on top of the existing
+ * illustrated hand silhouette. Hands stay fully editable using the regular
+ * pose presets when landmarks are absent; no extra renderer or ML model. */
+export function applyCapturedFingerCurls(
+  geometry:ReturnType<typeof sampleHandRig>,fingers:FingerCurls|undefined,influence:number
+){
+  if(!fingers||influence<=0)return geometry;
+  const weight=unit(influence),base=geometry.params;
+  const target:HandPoseParams={
+    ...base,
+    curl:base.curl.map((curl,index)=>lerp(curl,unit(fingers[index]),weight)) as FingerCurls,
+    spread:lerp(base.spread,Math.max(.02,.32-(fingers[1]+fingers[2]+fingers[3]+fingers[4])*.065),weight),
+    thumbOpposition:lerp(base.thumbOpposition,fingers[0]>.6?.7:.10,weight)
+  };
+  return buildHand(target);
 }
 export function handRotationParams(forearmRadians:number,wristDegrees:number,
   bend:number,side:HandSide) {
