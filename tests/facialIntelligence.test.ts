@@ -6,6 +6,7 @@ import {
   neutralFacialControls,facialExpressionControls,blendFacialControls,actingFacialControls,facialFromBlendshapes
 } from '../src/engine/facialIntelligence.ts';
 import { facialPerformance } from '../src/engine/facialAnimation.ts';
+import { directedActingPosture } from '../src/engine/actingPosture.ts';
 import { mouthGeometry } from '../src/engine/mouthRig.ts';
 import { evaluate } from '../src/engine/evaluate.ts';
 
@@ -107,4 +108,41 @@ test('facial performance capture keys interpolate and survive project serializat
   const frame=evaluate(doc.scenes[0],.7,new Map(doc.characters.map(c=>[c.id,c])));
   assert(frame.actors.find(item=>item.id===actor.id)?.facialCapture);
   assert(doc.scenes[0].clips.some(c=>c.track==='body'&&c.id===track.id&&c.performance?.[0]?.facial));
+});
+
+test('acting intentions can contradict base emotion without affecting the rig or speech',()=>{
+  const c=makeProject(true).characters[0];
+  const genuine=facialPerformance(1,c.id,'idle','happy',0,undefined,undefined,c.personality,1);
+  const forced=facialPerformance(1,c.id,'idle','happy',0,undefined,undefined,c.personality,1,'forced-smile');
+  assert(genuine.controls && forced.controls);
+  assert(forced.controls!.lipPress>genuine.controls!.lipPress);
+  assert(forced.controls!.cheekLeft<genuine.controls!.cheekLeft);
+  const guarded=facialPerformance(1,c.id,'idle','neutral',0,undefined,undefined,c.personality,1,'hide-anger');
+  assert(guarded.controls && guarded.controls.smileLeft>0 && guarded.controls.browLeft<0);
+  const closed=facialPerformance(1,c.id,'talk','happy',1,{shape:'closed',weight:1},undefined,c.personality,1,'forced-smile');
+  assert.equal(mouthGeometry(c,closed,'front').open,false);
+});
+test('directed posture modifies only bounded upper body and is deterministic',()=>{
+  const base={head:2,torso:1,leftHip:5,rightKnee:8,rightElbow:14};
+  const tense=directedActingPosture(base,'hide-anger',1);
+  assert.notEqual(tense.torso,base.torso);
+  assert.equal(tense.leftHip,base.leftHip);
+  assert.equal(tense.rightKnee,base.rightKnee);
+  assert.equal(tense.rightElbow,base.rightElbow);
+  assert.deepEqual(directedActingPosture(base,'embarrassed',1),directedActingPosture(base,'embarrassed',1));
+  assert.deepEqual(directedActingPosture(base,'embarrassed',0),base);
+});
+test('a timeline face intention directs the body and can be saved and restored',()=>{
+  const project=makeProject(true), scene=project.scenes[0],actor=scene.actors[0];
+  const clip={id:'authored-acting-intention',track:'face' as const,actor:actor.id,
+    expression:'happy' as const,intent:'forced-smile' as const,
+    intensity:1,start:2.2,length:1.7};
+  const next={...scene,clips:[...scene.clips,clip]};
+  const doc=ProjectDocument.parse({...project,scenes:[next,...project.scenes.slice(1)]});
+  const characters=new Map(doc.characters.map(c=>[c.id,c]));
+  const before=evaluate(doc.scenes[0],2.7,characters).actors.find(a=>a.id===actor.id);
+  const repeat=evaluate(doc.scenes[0],2.7,characters).actors.find(a=>a.id===actor.id);
+  assert.equal(before?.actingIntent,'forced-smile');
+  assert.deepEqual(before,repeat);
+  assert.equal(doc.scenes[0].clips.find(c=>c.id===clip.id)?.track,'face');
 });
