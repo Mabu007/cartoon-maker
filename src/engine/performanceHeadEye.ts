@@ -50,14 +50,23 @@ export function observedIrisFocus(
     const iris=mesh[e.iris],a=mesh[e.outer],b=mesh[e.inner],
       top=mesh[e.top],bottom=mesh[e.bottom];
     if(!finite(iris)||!finite(a)||!finite(b)||!finite(top)||!finite(bottom))continue;
-    const width=Math.abs(a.x-b.x);
-    const opening=Math.abs(top.y-bottom.y);
-    if(width<.014||opening<.002)continue;
-    const midX=(a.x+b.x)/2,midY=(top.y+bottom.y)/2;
-    if(iris.x<Math.min(a.x,b.x)-width*.25 ||
-      iris.x>Math.max(a.x,b.x)+width*.25)continue;
-    x+=clamp(-(iris.x-midX)/(width*.28),-1,1);
-    y+=clamp((iris.y-midY)/Math.max(.004,opening*.65),-1,1);
+    // Resolve the pupil in the eye's own coordinate frame. Using raw
+    // horizontal/vertical deltas made iris movement appear to change as
+    // the person tilted their head, even with both pupils stationary.
+    const dx=b.x-a.x,dy=b.y-a.y;
+    const width=Math.hypot(dx,dy);
+    if(width<.014)continue;
+    const tx=dx/width,ty=dy/width;
+    const nx=-ty,ny=tx;
+    const lidX=(top.x+bottom.x)/2,lidY=(top.y+bottom.y)/2;
+    const opening=Math.abs((bottom.x-top.x)*nx+(bottom.y-top.y)*ny);
+    if(opening<.002)continue;
+    const midX=(a.x+b.x)/2,midY=(a.y+b.y)/2;
+    const horizontal=(iris.x-midX)*tx+(iris.y-midY)*ty;
+    const vertical=(iris.x-lidX)*nx+(iris.y-lidY)*ny;
+    if(Math.abs(horizontal)>width*.75||Math.abs(vertical)>opening*1.5)continue;
+    x+=clamp(-horizontal/(width*.28),-1,1);
+    y+=clamp(vertical/Math.max(.004,opening*.65),-1,1);
     count++;
   }
   if(!count)return undefined;
