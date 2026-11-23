@@ -28,7 +28,7 @@ export type MotionDNA = {
   energy: number; gestureAmplitude: number; movementSmoothness: number;
   dominantHand: 'left' | 'right'; observations: number;
 };
-const tracked = ['torso','head','leftShoulder','leftElbow','leftWrist','rightShoulder','rightElbow','rightWrist',
+const tracked = ['torso','neck','head','leftShoulder','leftElbow','leftWrist','rightShoulder','rightElbow','rightWrist',
   'leftHip','leftKnee','rightHip','rightKnee'] as const;
 const confidence = (p?: Landmark) => p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility ?? 1) >= .55;
 const midpoint = (a: Landmark, b: Landmark): Landmark => ({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
@@ -160,17 +160,19 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     const lag=joint.endsWith('Wrist')?.035:
       joint.endsWith('Elbow')?.02:joint==='head'?.006:0;
     const phase=clamp((fraction-lag)/Math.max(.01,1-lag));
-    pose[joint]=mixDegrees(left??right??0,right??left??0,ease(phase));
+    // An unobserved joint must fade to neutral, not freeze at the last
+    // observed wrist/arm position for the remainder of a performance.
+    pose[joint]=mixDegrees(left??0,right??0,ease(phase));
   }
   return {time:at,pose,
-    hands: fraction<.5 ? a.hands??b.hands : b.hands??a.hands,
+    hands: fraction<.5 ? a.hands : b.hands,
     ...((a.focus||b.focus)?{focus:a.focus&&b.focus
       ?{x:mix(a.focus.x,b.focus.x,fraction),y:mix(a.focus.y,b.focus.y,fraction)}
       :a.focus??b.focus}:{}),
-    expression: fraction<.5?a.expression??b.expression:b.expression??a.expression,
+    expression: fraction<.5?a.expression:b.expression,
     ...((a.facial||b.facial)?{facial:a.facial&&b.facial
       ? blendFacialControls(a.facial,b.facial,ease(fraction))
-      : a.facial??b.facial}: {})};
+      : fraction<.5?a.facial:b.facial}: {})};
 }
 export function samplePerformance(keys:readonly PerformanceKey[],normalized:number):PerformanceKey {
   if(!keys.length)return {time:normalized,pose:{}};
@@ -197,9 +199,15 @@ export function samplePerformanceHands(keys:readonly PerformanceKey[],normalized
     const mid=(lo+hi)>>1;
     if(keys[mid].time<=t)lo=mid;else hi=mid;
   }
-  const from=keys[lo].hands??keys[hi].hands;
-  const to=keys[hi].hands??from;
-  if(!from||!to)return undefined;
+  const from=keys[lo].hands;
+  const to=keys[hi].hands;
+  // Finger poses only exist while explicitly observed. Never propagate a
+  // later hand detection backward through frames where it was not visible.
+  if(!from&&!to)return undefined;
+  if(!from||!to){
+    const selected=t<=(keys[lo].time+keys[hi].time)/2?from:to;
+    return selected?{from:selected,to:selected,progress:1}:undefined;
+  }
   return {from,to,progress:lo===hi?1:ease(clamp((t-keys[lo].time)/Math.max(1e-6,keys[hi].time-keys[lo].time)))};
 }
 
@@ -232,6 +240,11 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
       for(const side of ['left','right'] as const)
         if(observed.hands?.[side]!==estimated.hands?.[side])error=Math.max(error,20);
       if(observed.expression!==estimated.expression)error=Math.max(error,20);
+      if(observed.focus){
+        if(!estimated.focus)error=Math.max(error,20);
+        else error=Math.max(error,Math.hypot(
+          observed.focus.x-estimated.focus.x,observed.focus.y-estimated.focus.y)*38);
+      }
       if(observed.facial){
         if(!estimated.facial)error=Math.max(error,20);
         else for(const channel of Object.keys(observed.facial) as (keyof FacialControls)[])
