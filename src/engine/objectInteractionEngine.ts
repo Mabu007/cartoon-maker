@@ -62,12 +62,13 @@ export function resolveHandCustody(scene:Scene,time:number){
   type Event={actor:string;prop:string;at:number;kind:'take'|'drop';hand:HandSide};
   const events:Event[]=[];
   for(const clip of scene.clips){
+    if(scene.trackSettings?.[clip.track]?.muted)continue;
     if(clip.track==='props'&&(clip.interaction==='equip'||clip.interaction==='release')){
       if(clip.start<=time)events.push({actor:clip.actor,prop:clip.target,at:clip.start,
         kind:clip.interaction==='equip'?'take':'drop',hand:clip.hand??'right'});
     }else if(clip.track==='body'&&clip.target&&
       ['pick-up','put-down','throw-prop'].includes(clip.action)){
-      const fractions:{[k:string]:number}={'pick-up':.48,'put-down':.48,'throw-prop':.58};
+      const fractions:{[k:string]:number}={'pick-up':.50,'put-down':.69,'throw-prop':.46};
       const at=clip.start+clip.length*fractions[clip.action];
       if(at<=time)events.push({actor:clip.actor,prop:clip.target,at,
         kind:clip.action==='pick-up'?'take':'drop',hand:clip.hand??'right'});
