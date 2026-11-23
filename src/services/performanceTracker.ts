@@ -5,6 +5,7 @@
  * first-run fallback when local models have not been installed.
  */
 import type { CaptureFrame, Landmark } from '../engine/performanceCapture.ts';
+import { associateObservedHands } from './handAssociation.ts';
 
 declare const __SIRVIBE_LOCAL_VISION__: boolean;
 
@@ -137,7 +138,8 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
   let tick=0,previousLeft:Landmark[]|undefined,previousRight:Landmark[]|undefined;
   let previousFace:Record<string,number>|undefined;
   let previousFaceLandmarks:Landmark[]|undefined;
-  let lastHandsAt=0,lastFaceLandmarksAt=0,lastFaceBlendshapesAt=0;
+  let lastLeftHandAt=-Infinity,lastRightHandAt=-Infinity;
+  let lastFaceLandmarksAt=0,lastFaceBlendshapesAt=0;
   const close=()=>{for(const detector of [pose,hands,face])try{detector?.close();}catch{/* already closed */}};
   return {features:{pose:true,hands:!!hands,face:!!face},warnings,close,
     detect(video,atMs) {
@@ -156,51 +158,21 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       // need not run on each frame. Stagger them so they never compete.
       if(hands&&tick%3===0){
         const result=hands.detectForVideo(video,atMs) as HandLandmarkerResult;
-        previousLeft=undefined;previousRight=undefined;lastHandsAt=atMs;
-        // A camera preview may be mirrored by CSS while detector coordinates are
-        // not. Associate hands to the tracked body wrists spatially instead of
-        // trusting model handedness labels.
-        const detections=(result.landmarks??[]) as Landmark[][];
-        const leftWrist=pose?.[15]&&(pose[15].visibility??1)>.55?pose[15]:undefined;
-        const rightWrist=pose?.[16]&&(pose[16].visibility??1)>.55?pose[16]:undefined;
-        if(leftWrist||rightWrist){
-          const options=detections.map((landmarks,index)=>({
-            landmarks,index,
-            left:leftWrist?Math.hypot(landmarks[0].x-leftWrist.x,landmarks[0].y-leftWrist.y):2,
-            right:rightWrist?Math.hypot(landmarks[0].x-rightWrist.x,landmarks[0].y-rightWrist.y):2
-          }));
-          if(options.length===1){
-            const best=options[0];
-            if(Math.min(best.left,best.right)<.25){
-              if(best.left<best.right)previousLeft=best.landmarks;
-              else previousRight=best.landmarks;
-            }
-          }else if(options.length>1){
-            const [a,b]=options;
-            if(a.left+b.right<=b.left+a.right){
-              if(a.left<.25)previousLeft=a.landmarks;
-              if(b.right<.25)previousRight=b.landmarks;
-            }else{
-              if(b.left<.25)previousLeft=b.landmarks;
-              if(a.right<.25)previousRight=a.landmarks;
-            }
-          }
-        }
-        if(!leftWrist&&!rightWrist&&detections.length){
-          // Hand-only framing: retain the independently observed hand shapes,
-          // but do not fabricate upper-arm joint positions from those hands.
-          for(const landmarks of detections){
-            if(landmarks[0].x<.5)previousRight=landmarks;
-            else previousLeft=landmarks;
-          }
-        }
+        const association=associateObservedHands(result.landmarks??[],pose??[],{
+          left:previousLeft,right:previousRight
+        });
+        // Retain recent anatomical identity through brief occlusion. Never
+        // assume the only detected hand must be the right hand.
+        if(association.left){previousLeft=association.left;lastLeftHandAt=atMs;}
+        if(association.right){previousRight=association.right;lastRightHandAt=atMs;}
       }
       if(face&&tick%3===1){
         const result=extractFaceObservation(face.detectForVideo(video,atMs) as FaceLandmarkerResultLike);
         if(result.blendshapes){previousFace=result.blendshapes;lastFaceBlendshapesAt=atMs;}
         if(result.landmarks){previousFaceLandmarks=result.landmarks;lastFaceLandmarksAt=atMs;}
       }
-      if(atMs-lastHandsAt>450){previousLeft=undefined;previousRight=undefined;}
+      if(atMs-lastLeftHandAt>260)previousLeft=undefined;
+      if(atMs-lastRightHandAt>260)previousRight=undefined;
       const fresh=freshFaceSignals(previousFace,lastFaceBlendshapesAt,
         previousFaceLandmarks,lastFaceLandmarksAt,atMs);
       previousFace=fresh.blendshapes;
@@ -221,7 +193,12 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       }
       if(!pose?.length&&!previousLeft&&!previousRight&&!previousFace)return undefined;
       return {t:atMs/1000,pose:pose??[],world:output?.worldLandmarks?.[0] as Landmark[]|undefined,
-        leftHand:previousLeft,rightHand:previousRight,face:previousFace};
+        leftHand:previousLeft,rightHand:previousRight,
+        handAgeMs:{
+          ...(previousLeft?{left:Math.max(0,atMs-lastLeftHandAt)}:{}),
+          ...(previousRight?{right:Math.max(0,atMs-lastRightHandAt)}:{})
+        },
+        face:previousFace};
     }
   };
   function poseDetector(video:HTMLVideoElement,t:number){return pose.detectForVideo(video,t);}
