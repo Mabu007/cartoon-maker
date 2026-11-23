@@ -75,7 +75,7 @@ export function createPerformanceStabilizer(){
       const beta=wrist?.085:elbow?.070:.045;
       const head=joint==='head'||joint==='neck';
       pose[joint]=clamp(filter('joint:'+joint,measurement,time,
-        head?2.2-amount*.75:base,head?.016:beta,true,
+        head?2.2-amount*.75:base,head?0.016:beta,true,
         head?(joint==='head'?135:95):undefined),-180,180);
     }
     const targets:PerformanceKey['armTargets']={};
