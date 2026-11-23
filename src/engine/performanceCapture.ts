@@ -130,8 +130,11 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     const eyeRoll=-Math.atan2(leftEye.y-rightEye.y,eyeWidth)*180/Math.PI;
     const nose=confidence(p[0])?p[0]:eyeMid;
     const yaw=clamp(-(nose.x-eyeMid.x)/eyeWidth*24,-22,22);
-    pose.neck=clamp(yaw*.54,-14,14);
-    pose.head=clamp(eyeRoll*1.3-torso*.28-(pose.neck??0)*.65,-34,34);
+    // Looking left/right should turn the illustrated head, not fold the
+    // neck sideways. Reserve only a tiny accompanying neck roll; actual
+    // head tilt comes from the line between the eyes.
+    pose.neck=clamp(yaw*.22,-6,6);
+    pose.head=clamp(eyeRoll*.95-torso*.26-(pose.neck??0)*.45,-22,22);
     focus={
       x:clamp(-(nose.x-eyeMid.x)/eyeWidth*1.75,-.85,.85),
       y:clamp((nose.y-eyeMid.y)/eyeWidth*-.4,-.6,.6)
