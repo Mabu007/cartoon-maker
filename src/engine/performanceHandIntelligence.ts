@@ -50,7 +50,8 @@ export function observedHandPose(curls:FingerCurls){
 /** Classify only observed joint arrangements. Do not infer an emotion from a
  * gesture, nor invent an unseen second hand for a contact. */
 export function detectedHandContact(
-  pose:readonly Landmark[],left?:Landmark[],right?:Landmark[]
+  pose:readonly Landmark[],left?:Landmark[],right?:Landmark[],
+  observedLeft?:FingerCurls,observedRight?:FingerCurls
 ):CapturedContact|undefined{
   const head=pose[0],leftShoulder=pose[11],rightShoulder=pose[12],
     leftWrist=pose[15],rightWrist=pose[16];
@@ -59,8 +60,8 @@ export function detectedHandContact(
   const span=Math.max(.07,gap(leftShoulder,rightShoulder));
   const mid={x:(leftShoulder.x+rightShoulder.x)/2,y:(leftShoulder.y+rightShoulder.y)/2};
   const both=good(leftWrist)&&good(rightWrist);
-  const leftFingers=measuredFingerCurls(left);
-  const rightFingers=measuredFingerCurls(right);
+  const leftFingers=observedLeft??measuredFingerCurls(left);
+  const rightFingers=observedRight??measuredFingerCurls(right);
   const leftFist=Boolean(leftFingers&&leftFingers.slice(1).every(v=>v>.65));
   const rightFist=Boolean(rightFingers&&rightFingers.slice(1).every(v=>v>.65));
   if(both){
