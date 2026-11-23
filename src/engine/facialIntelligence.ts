@@ -13,6 +13,7 @@ export type FacialControls = {
   browLeft: number; browRight: number;
   browTiltLeft: number; browTiltRight: number;
   eyeNarrowLeft: number; eyeNarrowRight: number;
+  blinkLeft: number; blinkRight: number;
   eyeWideLeft: number; eyeWideRight: number;
   cheekLeft: number; cheekRight: number;
   smileLeft: number; smileRight: number;
@@ -22,7 +23,7 @@ export type FacialControls = {
 };
 export const neutralFacialControls: Readonly<FacialControls> = Object.freeze({
   browLeft:0,browRight:0,browTiltLeft:0,browTiltRight:0,
-  eyeNarrowLeft:0,eyeNarrowRight:0,eyeWideLeft:0,eyeWideRight:0,
+  eyeNarrowLeft:0,eyeNarrowRight:0,blinkLeft:0,blinkRight:0,eyeWideLeft:0,eyeWideRight:0,
   cheekLeft:0,cheekRight:0,smileLeft:0,smileRight:0,
   frownLeft:0,frownRight:0,lipPress:0,lipRound:0,jawTension:0,noseWrinkle:0
 });
@@ -97,4 +98,32 @@ export function actingFacialControls(
     face.eyeNarrowRight=limit('eyeNarrowRight',face.eyeNarrowRight+micro*.65);
   }
   return face;
+}
+
+/**
+ * Map optional local MediaPipe Face Landmarker blendshapes to native 2D
+ * controls. Never serialize raw face landmarks, camera pixels or scores
+ * outside these bounded, purpose-built acting channels.
+ */
+export function facialFromBlendshapes(blendshapes:Record<string,number>):FacialControls {
+  const value=(key:string)=>clamp(Number.isFinite(blendshapes[key])?blendshapes[key]:0);
+  const brow=(side:'Left'|'Right')=>clamp(
+    value('browInnerUp')*.55+value('browOuterUp'+side)-value('browDown'+side),-1,1);
+  return {
+    ...neutralFacialControls,
+    browLeft:brow('Left'),browRight:brow('Right'),
+    browTiltLeft:clamp(value('browOuterUpLeft')-value('browDownLeft'),-1,1),
+    browTiltRight:clamp(value('browDownRight')-value('browOuterUpRight'),-1,1),
+    eyeNarrowLeft:value('eyeSquintLeft'),eyeNarrowRight:value('eyeSquintRight'),
+    eyeWideLeft:value('eyeWideLeft'),eyeWideRight:value('eyeWideRight'),
+    blinkLeft:value('eyeBlinkLeft'),blinkRight:value('eyeBlinkRight'),
+    cheekLeft:Math.max(value('cheekSquintLeft'),value('mouthSmileLeft')*.4),
+    cheekRight:Math.max(value('cheekSquintRight'),value('mouthSmileRight')*.4),
+    smileLeft:value('mouthSmileLeft'),smileRight:value('mouthSmileRight'),
+    frownLeft:value('mouthFrownLeft'),frownRight:value('mouthFrownRight'),
+    lipPress:Math.max(value('mouthPressLeft'),value('mouthPressRight')),
+    lipRound:Math.max(value('mouthPucker'),value('mouthFunnel')*.8),
+    jawTension:Math.max(value('mouthPressLeft'),value('mouthPressRight')),
+    noseWrinkle:Math.max(value('noseSneerLeft'),value('noseSneerRight'))
+  };
 }
