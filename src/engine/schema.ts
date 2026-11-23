@@ -159,6 +159,11 @@ export const CapturedPoseKey = z.strictObject({
   /** Optional capture confidence: 0 marks an unobserved interval. Legacy keys imply 1. */
   presence:num(0,1).optional(),
   focus:z.strictObject({x:num(-1,1),y:num(-1,1)}).optional(),
+  /** Pose-based subtle head turn, independent of body facing and head roll. */
+  headYaw:num(-1,1).optional(),
+  headFacing:PerformanceFacingSchema.optional(),
+  /** Per-arm influence that fades after short wrist tracking loss. */
+  armConfidence:z.strictObject({left:num(0,1).optional(),right:num(0,1).optional()}).optional(),
   facial:CapturedFacialControls.optional()
 });
 const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional(), pointAt: z.strictObject({ x: position.x, y: position.y }).optional(),
