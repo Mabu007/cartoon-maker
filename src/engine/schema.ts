@@ -95,11 +95,23 @@ const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: 
   keyframes: z.array(z.strictObject({ time: num(0, 1), x: position.x, y: position.y })).min(2).max(32).optional() });
 /** Sparse sampled performance data shares the existing body timeline lane and actor IDs. */
 const CapturedHand = z.enum(['relaxed','loose-open','open','point','count-one','count-two','count-three','pinch','fist','grip','palm-up','palm-out','shrug','self-reference','thumbs-up','count']);
+/** Compact validated 2D facial coefficients: expressive data, never camera imagery. */
+const CapturedFacialControls = z.strictObject({
+  browLeft:num(-1,1),browRight:num(-1,1),browTiltLeft:num(-1,1),browTiltRight:num(-1,1),
+  eyeNarrowLeft:num(0,1),eyeNarrowRight:num(0,1),
+  blinkLeft:num(0,1),blinkRight:num(0,1),
+  eyeWideLeft:num(0,1),eyeWideRight:num(0,1),
+  cheekLeft:num(0,1),cheekRight:num(0,1),
+  smileLeft:num(0,1),smileRight:num(0,1),
+  frownLeft:num(0,1),frownRight:num(0,1),
+  lipPress:num(0,1),lipRound:num(0,1),jawTension:num(0,1),noseWrinkle:num(0,1)
+});
 export const CapturedPoseKey = z.strictObject({
   time:num(0,1),pose:z.partialRecord(Joint,num(-180,180)),
   lift:num(-100,100).optional(),
   hands:z.strictObject({left:CapturedHand,right:CapturedHand}).optional(),
-  expression:z.enum(expressions).optional()
+  expression:z.enum(expressions).optional(),
+  facial:CapturedFacialControls.optional()
 });
 const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional(), pointAt: z.strictObject({ x: position.x, y: position.y }).optional(),
   performance:z.array(CapturedPoseKey).min(2).max(240).optional(),
