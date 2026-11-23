@@ -14,6 +14,15 @@ export function actorWorldPoint(actor:PosedActor,point:Point):Point {
   return {x:actor.x+x*cos-y*sin,y:actor.y+x*sin+y*cos};
 }
 
+/** Creator-facing gaze sliders override the preview, otherwise use the
+ * captured/evaluated gaze. Undefined does not mean look straight ahead. */
+export function resolvePreviewFocus(
+  characterPreview:boolean,previewFocus:{x:number;y:number}|undefined,
+  evaluatedFocus:{x:number;y:number}|undefined
+) {
+  return characterPreview&&previewFocus!==undefined?previewFocus:evaluatedFocus;
+}
+
 export function aimEyes(eye:Point,target:Point,directionFlip:boolean,angle:number,scale:number) {
   const dx=target.x-eye.x,dy=target.y-eye.y;
   const radians=-angle*Math.PI/180, cos=Math.cos(radians), sin=Math.sin(radians);

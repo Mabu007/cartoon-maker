@@ -43,7 +43,7 @@ export function smoothLivePerformance(
       ?blendFacialControls(previous.facial,current.facial,alpha)
       :current.facial,
     // Discrete hand poses switch immediately so gestures read on the preview.
-    hands:current.hands??previous.hands
+    hands:current.hands
   };
 }
 

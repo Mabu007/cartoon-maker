@@ -241,9 +241,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(captured?.performance && !authoredGesture){
       const progress=(t-captured.start)/captured.length;
       const key=samplePerformance(captured.performance,progress);
-      capturedArms={left:key.pose.leftShoulder!==undefined,right:key.pose.rightShoulder!==undefined};
-      if(key.focus&&!gaze)capturedFocus=key.focus;
-      const weight=frameWeight(captured,t);
+      const weight=frameWeight(captured,t)*clamp(key.presence??1);
+      capturedArms={left:weight>.02&&key.pose.leftShoulder!==undefined,
+        right:weight>.02&&key.pose.rightShoulder!==undefined};
+      if(key.focus&&!gaze&&weight>.02)capturedFocus=key.focus;
       // Preserve the lower body and its floor contact in an authored sit,
       // walk, sleep or driving animation. A recording owns only observed
       // upper-body joints in this case.

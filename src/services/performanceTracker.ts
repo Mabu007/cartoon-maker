@@ -14,7 +14,24 @@ type VisionApi = {
   HandLandmarker:{createFromOptions:(files:unknown,options:unknown)=>Promise<Detector>};
   FaceLandmarker:{createFromOptions:(files:unknown,options:unknown)=>Promise<Detector>};
 };
-type Detector={detectForVideo:(video:HTMLVideoElement,at:number)=>any;close:()=>void};
+type Detector={detectForVideo:(video:HTMLVideoElement,at:number)=>unknown;close:()=>void};
+type PoseLandmarkerResult={landmarks?:Landmark[][];worldLandmarks?:Landmark[][]};
+type HandLandmarkerResult={landmarks?:Landmark[][]};
+export type FaceLandmarkerResultLike={
+  faceLandmarks?:Landmark[][];
+  faceBlendshapes?:Array<{categories?:Array<{categoryName:string;score:number}>}>;
+};
+/** MediaPipe returns faceLandmarks (not landmarks). Parse the real API shape,
+ * preserving valid blendshapes even if a mesh is temporarily missing. */
+export function extractFaceObservation(result:FaceLandmarkerResultLike|undefined){
+  const landmarks=result?.faceLandmarks?.[0];
+  const categories=result?.faceBlendshapes?.[0]?.categories;
+  const blendshapes=categories?.length?Object.fromEntries(
+    categories.filter(item=>item.categoryName&&Number.isFinite(item.score))
+      .map(item=>[item.categoryName,item.score])
+  ) as Record<string,number>:undefined;
+  return {landmarks:landmarks?.length?landmarks:undefined,blendshapes};
+}
 type TrackerOptions={hands?:boolean;face?:boolean};
 export type PerformanceTracker={
   detect:(video:HTMLVideoElement,atMs:number)=>CaptureFrame|undefined;
@@ -87,7 +104,17 @@ async function resolveRuntime() {
   const wasm=localVision?'/mediapipe/wasm':`${cdn}/wasm`;
   return {module,files:await module.FilesetResolver.forVisionTasks(wasm)};
 }
-const posePoints=(result:any):Landmark[]|undefined=>result?.landmarks?.[0];
+/** Treat mesh and facial action coefficients as independent observations. */
+export function freshFaceSignals(
+  blendshapes:Record<string,number>|undefined,blendshapeAt:number,
+  landmarks:Landmark[]|undefined,landmarksAt:number,now:number,maxAge=600
+){
+  return {
+    blendshapes:blendshapes&&now-blendshapeAt<=maxAge?blendshapes:undefined,
+    landmarks:landmarks&&now-landmarksAt<=maxAge?landmarks:undefined
+  };
+}
+const posePoints=(result:PoseLandmarkerResult):Landmark[]|undefined=>result?.landmarks?.[0];
 export async function startPerformanceTracker(options:TrackerOptions={}):Promise<PerformanceTracker> {
   const warnings:string[]=[];
   const {module,files}=await resolveRuntime();
@@ -110,12 +137,12 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
   let tick=0,previousLeft:Landmark[]|undefined,previousRight:Landmark[]|undefined;
   let previousFace:Record<string,number>|undefined;
   let previousFaceLandmarks:Landmark[]|undefined;
-  let lastHandsAt=0,lastFaceAt=0;
+  let lastHandsAt=0,lastFaceLandmarksAt=0,lastFaceBlendshapesAt=0;
   const close=()=>{for(const detector of [pose,hands,face])try{detector?.close();}catch{/* already closed */}};
   return {features:{pose:true,hands:!!hands,face:!!face},warnings,close,
     detect(video,atMs) {
       if(video.readyState<2||!video.videoWidth)return undefined;
-      const output=poseDetector(video,atMs);
+      const output=poseDetector(video,atMs) as PoseLandmarkerResult;
       const measuredPose=posePoints(output);
       // A face-only crop need not be rejected if the dedicated face tracker
       // still sees a nose/eyes; unknown shoulder/leg joints stay unobserved.
@@ -128,7 +155,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       // classification and high-detail eyebrows/lips are much slower and
       // need not run on each frame. Stagger them so they never compete.
       if(hands&&tick%3===0){
-        const result=hands.detectForVideo(video,atMs);
+        const result=hands.detectForVideo(video,atMs) as HandLandmarkerResult;
         previousLeft=undefined;previousRight=undefined;lastHandsAt=atMs;
         // A camera preview may be mirrored by CSS while detector coordinates are
         // not. Associate hands to the tracked body wrists spatially instead of
@@ -169,15 +196,15 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
         }
       }
       if(face&&tick%3===1){
-        const result=face.detectForVideo(video,atMs);
-        previousFace=result.faceBlendshapes?.[0]?.categories?.reduce((acc:Record<string,number>,c:{categoryName:string;score:number})=>{
-          acc[c.categoryName]=c.score;return acc;
-        },{});
-        previousFaceLandmarks=result.landmarks?.[0] as Landmark[]|undefined;
-        if(previousFaceLandmarks?.length)lastFaceAt=atMs;
+        const result=extractFaceObservation(face.detectForVideo(video,atMs) as FaceLandmarkerResultLike);
+        if(result.blendshapes){previousFace=result.blendshapes;lastFaceBlendshapesAt=atMs;}
+        if(result.landmarks){previousFaceLandmarks=result.landmarks;lastFaceLandmarksAt=atMs;}
       }
       if(atMs-lastHandsAt>450){previousLeft=undefined;previousRight=undefined;}
-      if(atMs-lastFaceAt>600){previousFace=undefined;previousFaceLandmarks=undefined;}
+      const fresh=freshFaceSignals(previousFace,lastFaceBlendshapesAt,
+        previousFaceLandmarks,lastFaceLandmarksAt,atMs);
+      previousFace=fresh.blendshapes;
+      previousFaceLandmarks=fresh.landmarks;
       if((!pose?.length||!((pose[2]?.visibility??0)>=.55&&(pose[5]?.visibility??0)>=.55))&&previousFaceLandmarks?.length){
         const points=previousFaceLandmarks;
         const nose=points[1],a=points[33],b=points[263];

@@ -17,6 +17,8 @@ export type CaptureFrame = {
 export type CaptureOptions = { exaggeration?: number; smoothing?: number; maxKeys?: number };
 export type PerformanceKey = {
   time: number; pose: JointPose; lift?: number;
+  /** 0 for a genuine tracking gap; optional for backward-compatible clips. */
+  presence?: number;
   hands?: { left: HandPose; right: HandPose }; expression?: Expression;
   /** Screen-space eye direction, normalized and independent of the authored gaze track. */
   focus?: { x:number; y:number };
@@ -150,6 +152,22 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
 }
 function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey {
   const fraction=clamp((at-a.time)/Math.max(.000001,b.time-a.time));
+  const aPresent=a.presence??1,bPresent=b.presence??1;
+  // Never synthesize a motion trajectory across a webcam dropout.
+  // Hold and briefly release the last seen pose. Reacquisition starts from
+  // the new observation; its first 100ms blend in from the underlying rig.
+  if(aPresent===0||bPresent===0) {
+    if(aPresent===0&&bPresent===0)return {time:at,pose:{},presence:0};
+    const fade=Math.min(.12,(b.time-a.time)*.5);
+    if(aPresent===0){
+      const weight=clamp((at-(b.time-fade))/Math.max(.000001,fade));
+      return weight<=0?{time:at,pose:{},presence:0}:
+        {...b,time:at,presence:ease(weight)};
+    }
+    const weight=1-clamp((at-a.time)/Math.max(.000001,fade));
+    return weight<=0?{time:at,pose:{},presence:0}:
+      {...a,time:at,presence:ease(weight)};
+  }
   const pose:JointPose={};
   for(const joint of tracked) {
     const left=a.pose[joint],right=b.pose[joint];
@@ -165,6 +183,7 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     pose[joint]=mixDegrees(left??0,right??0,ease(phase));
   }
   return {time:at,pose,
+    ...((a.presence!==undefined||b.presence!==undefined)?{presence:mix(aPresent,bPresent,fraction)}:{}),
     hands: fraction<.5 ? a.hands : b.hands,
     ...((a.focus||b.focus)?{focus:a.focus&&b.focus
       ?{x:mix(a.focus.x,b.focus.x,fraction),y:mix(a.focus.y,b.focus.y,fraction)}
@@ -192,6 +211,7 @@ export type PerformanceHandTransition={
 export function samplePerformanceHands(keys:readonly PerformanceKey[],normalized:number):PerformanceHandTransition|undefined {
   if(!keys.length)return undefined;
   const t=clamp(normalized);
+  if(samplePerformance(keys,t).presence===0)return undefined;
   let lo=0,hi=keys.length-1;
   if(t<=keys[0].time)hi=0;
   else if(t>=keys[hi].time)lo=hi;
@@ -247,6 +267,9 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
       for(const side of ['left','right'] as const)
         if(observed.hands?.[side]!==estimated.hands?.[side])error=Math.max(error,20);
       if(observed.expression!==estimated.expression)error=Math.max(error,20);
+      // Force explicit tracking gaps into the key set before other compression.
+      if(Math.abs((observed.presence??1)-(estimated.presence??1))>.05)
+        error=Math.max(error,100);
       if(observed.focus){
         if(!estimated.focus)error=Math.max(error,20);
         else error=Math.max(error,Math.hypot(
