@@ -39,6 +39,19 @@ function clampCamera(camera:DirectedCamera,viewportWidth:number):DirectedCamera{
     x:clampAxis(camera.x,halfX,WIDTH),
     y:clampAxis(camera.y,halfY,HEIGHT)};
 }
+function angleFrame(camera:DirectedCamera,clip:DirectedCameraClip,width:number):DirectedCamera{
+  const result={...camera};
+  switch(clip.angle){
+    case 'high-angle':result.zoom=Math.max(1.16,result.zoom);result.y+=50;break;
+    case 'low-angle':result.zoom=Math.max(1.16,result.zoom);result.y-=48;break;
+    case 'birds-eye':result.zoom=Math.max(1.2,result.zoom*.85);result.y+=100;break;
+    case 'worms-eye':result.zoom=Math.max(1.45,result.zoom);result.y-=85;break;
+    case 'aerial':result.zoom=1;result.y=HEIGHT/2;result.x=WIDTH/2;break;
+  }
+  const roll=clip.roll??(clip.angle==='dutch-angle'?12:0);
+  if(roll)result.roll=roll;
+  return clampCamera(result,width);
+}
 function nearest(subject:Subject,candidates:CameraActor[]) {
   return candidates.filter(a=>a.id!==subject.id).sort((a,b)=>
     Math.abs(a.x-subject.x)-Math.abs(b.x-subject.x))[0];
@@ -60,7 +73,7 @@ export function cameraFraming(
   const partner=defaultActor?nearest(asSubject(defaultActor),visible):undefined;
   if(shot==='wide'||shot==='establishing'||shot==='extreme-wide'||shot==='master'){
     const center=clip.focus?defaultSubject.x:WIDTH/2;
-    return clampCamera({x:center,y:HEIGHT/2,zoom:1},viewportWidth);
+    return angleFrame({x:center,y:HEIGHT/2,zoom:1},clip,viewportWidth);
   }
   if(['two-shot','three-shot','group-shot'].includes(shot)){
     const count=shot==='two-shot'?2:shot==='three-shot'?3:visible.length;
@@ -75,7 +88,7 @@ export function cameraFraming(
       const limit=shot==='two-shot'?1.55:shot==='three-shot'?1.42:1.3;
       const zoom=clamp((viewportWidth-160)/(spread+78),1,limit);
       const y=selected.reduce((sum,a)=>sum+a.y-120*a.scale-a.lift,0)/selected.length;
-      return clampCamera({x:(left+right)/2,y,zoom},viewportWidth);
+      return angleFrame({x:(left+right)/2,y,zoom},clip,viewportWidth);
     }
   }
   let subject=defaultSubject;
@@ -94,14 +107,8 @@ export function cameraFraming(
   if(shot==='full')y=subject.kind==='actor'?subject.y-145*subject.scale-subject.lift:y;
   if(shot==='cowboy'||shot==='medium-long')y=subject.kind==='actor'
     ?subject.y-128*subject.scale-subject.lift:y;
-  if(clip.angle==='high-angle')y+=50;
-  if(clip.angle==='low-angle')y-=48;
-  if(clip.angle==='birds-eye'){zoom=Math.max(1.2,zoom*.85);y+=100;}
-  if(clip.angle==='worms-eye'){zoom=Math.max(1.45,zoom);y-=85;}
-  if(clip.angle==='aerial'){zoom=1;y=HEIGHT/2;x=WIDTH/2;}
   const view=shot==='front'||shot==='side'||shot==='back'?shot:undefined;
-  const roll=clip.roll??(clip.angle==='dutch-angle'?12:0);
-  return clampCamera({x,y,zoom,...(view?{view}:{}),...(roll?{roll}:{})},viewportWidth);
+  return angleFrame({x,y,zoom,...(view?{view}:{})},clip,viewportWidth);
 }
 const inheritedMotion=(shot:string)=>{
   if(shot==='pan')return 'pan-right';
