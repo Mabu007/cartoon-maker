@@ -445,12 +445,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       return placedProp(object,lastDrop);
     if(cue?.track==='props' && (cue.interaction==='open'||cue.interaction==='close')) {const progress=ease(clamp((t-cue.start)/Math.min(.7,cue.length)));return {...object,doorOpen:cue.interaction==='open'?progress:1-progress};}
     if (cue?.track !== 'props' || cue.interaction !== 'release') return object;
-    const owner = scene.actors.find(actor => actor.id === cue.actor);
-    const move = latest(timelineClips.filter(clip => clip.track === 'movement' && clip.actor === cue.actor && clip.start <= cue.start));
-    if (move?.track !== 'movement') return owner ? { ...object, x: owner.x + 42, y: owner.y - 35 } : object;
-    const at = clamp((cue.start - move.start) / move.length);
-    const position = movementPosition(move, at);
-    return { ...object, x: position.x + 42, y: position.y - 35 };
+    // Release location comes from the same validated custody state used by
+    // pick-up and rendering; a non-owner cannot teleport a prop here.
+    const place=propLocations.get(object.id);
+    return place?{...object,...place}:object;
   });
   const effects=timelineClips.filter((clip):clip is Extract<Clip,{track:'vfx'|'text'}>=>(clip.track==='vfx'||clip.track==='text')&&active(clip,t));
   return { actors, objects, sounds, camera, effects, transition:transition?{effect:transition.effect,progress:fade}:undefined, shot: cameraClip?.shot ?? 'wide', fade: transition?.effect === 'fade-in' ? 1 - fade : fade };
