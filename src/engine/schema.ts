@@ -34,7 +34,7 @@ export const cameraMovements = [
   'none','pan-left','pan-right','tilt-up','tilt-down',
   'dolly-in','dolly-out','truck-left','truck-right','pedestal-up','pedestal-down',
   'zoom-in','zoom-out','dolly-zoom','whip-pan-left','whip-pan-right',
-  'crane-up','crane-down','handheld','gimbal','follow'
+  'crane-up','crane-down','handheld','steadicam','gimbal','follow'
 ] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
 export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image', ...dailyProps, ...seatingStyles] as const;
