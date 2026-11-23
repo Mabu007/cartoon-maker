@@ -193,11 +193,11 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
         }
       }
       if(!pose?.length&&!previousLeft&&!previousRight&&!previousFace)return undefined;
-      const eyeFocus=previousFaceLandmarks && atMs-lastFaceLandmarksAt<280
+      const eyeFocus=previousFaceLandmarks && atMs-lastFaceLandmarksAt<450
         ?observedIrisFocus(previousFaceLandmarks):undefined;
       return {t:atMs/1000,pose:pose??[],world:output?.worldLandmarks?.[0] as Landmark[]|undefined,
         leftHand:previousLeft,rightHand:previousRight,
-        ...(eyeFocus?{eyeFocus}:{}),
+        ...(eyeFocus?{eyeFocus}:{}),faceTracking:!!face,
         handAgeMs:{
           ...(previousLeft?{left:Math.max(0,atMs-lastLeftHandAt)}:{}),
           ...(previousRight?{right:Math.max(0,atMs-lastRightHandAt)}:{})
