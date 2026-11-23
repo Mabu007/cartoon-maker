@@ -94,6 +94,13 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
       </details>}
       {clip && <><details open><summary>Timing</summary><div className="field-row"><NumberField text="Start" value={clip.start} min={0} max={scene.duration - .1} step={.01} onChange={start => patchClip(changeClipTiming(clip, start, clip.length, scene.duration))}/><NumberField text="Length" value={clip.length} min={.1} max={scene.duration - clip.start} step={.01} onChange={length => patchClip(changeClipTiming(clip, clip.start, length, scene.duration))}/></div></details><details open><summary>{label(clip.track)} settings</summary>
         {'actor' in clip && <label className="field">Actor<Select aria="Clip actor" value={clip.actor} onChange={actor => patchClip({ ...clip, actor })} options={Object.keys(actors)} render={id => actors[id]}/></label>}
+        {((clip.track==='props'&&['equip','release'].includes(clip.interaction))||
+          (clip.track==='body'&&['pick-up','put-down','throw-prop','eat','drink','write','read','phone-call'].includes(clip.action)))&&
+          <label className="field">Holding hand
+            <Select aria="Holding hand" value={clip.hand??'right'} options={['right','left'] as const}
+              render={hand=>hand==='right'?'Right hand':'Left hand'}
+              onChange={hand=>patchClip({...clip,hand})}/>
+          </label>}
         {clip.track === 'movement' && <>
           <button className="primary full" onClick={setDestination}>Edit path on stage</button>
           <button className="quiet full" onClick={previewPath}>Preview path</button>
