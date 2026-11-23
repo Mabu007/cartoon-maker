@@ -156,8 +156,8 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     // Animator-style overlap: the shoulder initiates a gesture, the elbow
     // follows, and the wrist settles last. The lag is an intra-key interval,
     // not a delayed timestamp, so each authored pose is hit exactly.
-    const lag=joint.endsWith('Wrist')?.15:
-      joint.endsWith('Elbow')?.075:joint==='head'?.045:0;
+    const lag=joint.endsWith('Wrist')?.035:
+      joint.endsWith('Elbow')?.02:joint==='head'?.006:0;
     const phase=clamp((fraction-lag)/Math.max(.01,1-lag));
     pose[joint]=mixDegrees(left??right??0,right??left??0,ease(phase));
   }
@@ -250,7 +250,7 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
 export function compilePerformance(frames: readonly CaptureFrame[], options:CaptureOptions={}) {
   const valid=frames.map(retargetCaptureFrame).filter((v):v is PerformanceKey=>!!v)
     .filter((v,i,a)=>i===0||v.time>a[i-1].time);
-  if(valid.length<2)throw Error('Capture at least two clearly tracked frames with both arms and shoulders visible.');
+  if(valid.length<2)throw Error('Capture at least two valid frames. Keep your face, shoulders or another tracked body part in view.');
   const start=valid[0].time, duration=valid[valid.length-1].time-start;
   if(duration<.15)throw Error('Performance is too short. Record at least half a second.');
   const max=Math.max(2,Math.min(240,Math.floor(options.maxKeys??180)));
