@@ -5,7 +5,7 @@ import { SceneLayers } from './SceneLayers.tsx';
 import { usesSeat, gaitStyles, gaitStyleNames, transitionNames, vfxNames } from '../engine/performanceCatalog.ts';
 import { MediaImage } from './MediaImage.tsx';
 import { AudioLines, Clapperboard, Copy, Layers3, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, ArrowLeft, ArrowRight, FlipHorizontal, Footprints, Zap, Eye, EyeOff } from 'lucide-react';
-import { actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
+import { actingIntents, actions, expressions, label, shots, views, type ActorData, type Character, type Clip, type Prop, type Scene } from '../engine/schema.ts';
 import { anchorFor, compatibleObjects, objectDependencies } from '../engine/interactions.ts';
 import { anchors } from '../engine/presets.ts';
 import { Avatar, clipLabel, IconButton, NumberField, propIcon, Select, trackIcon } from './shared.tsx';
@@ -127,6 +127,7 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
           render={id => id==='' ? usesSeat(clip.action)?'Keep current position':'No object' : scene.objects.find(item => item.id === id)?.name ?? 'No object'}/></label></>}
         {clip.track==='body'&&clip.action==='throw-prop'&&clip.target&&<button type="button" className="quiet full" onClick={()=>onLanding(clip)}>Set landing point on stage</button>}
         {clip.track === 'face' && <><label className="field">Expression<Select aria="Clip expression" value={clip.expression} onChange={expression => patchClip({ ...clip, expression })} options={expressions}/></label>
+          <label className="field">Acting intention<Select aria="Acting intention" value={clip.intent??'none'} onChange={intent=>patchClip({...clip,intent})} options={actingIntents}/></label>
           <NumberField text="Acting intensity" value={clip.intensity??1} min={0} max={1.5} step={.05} onChange={intensity=>patchClip({...clip,intensity})}/>
           <p className="small-text">Subtle at 0.35 · Natural at 1 · Exaggerated at 1.5. Expression edits remain timeline-based.</p></>}
         {(clip.track==='dialogue'||clip.track==='audio'||clip.track==='music')&&
