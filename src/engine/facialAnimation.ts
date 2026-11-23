@@ -1,4 +1,4 @@
-import type { Action, Character, Expression } from './schema.ts';
+import type { Action, Character, Expression, ActingIntent } from './schema.ts';
 import { actingFacialControls, type FacialControls } from './facialIntelligence.ts';
 import { resolvePersonality } from './livingCharacter.ts';
 import { isSleep } from './performanceCatalog.ts';
@@ -28,7 +28,8 @@ export function facialPerformance(
   speechCue?: VisemeSample,
   focus?: { x: number; y: number },
   personality?: Character['personality'],
-  expressionIntensity = 1
+  expressionIntensity = 1,
+  actingIntent:ActingIntent='none'
 ): FacialPerformance {
   const t = Number.isFinite(time) ? Math.max(0, time) : 0;
   const seed = seedFrom(actorId);
@@ -68,7 +69,7 @@ export function facialPerformance(
       clamp(speechCue.weight * (.48 + .52 * Math.max(.32, envelope))))
     : clamp(Math.max(envelope, animationSpeech));
   return { blink, gazeX, gazeY, mouthOpen, expression: resolved,
-    controls:actingFacialControls(t,actorId,resolved,personality,expressionIntensity),
+    controls:actingFacialControls(t,actorId,resolved,personality,expressionIntensity,actingIntent),
     viseme: speechCue?.shape ?? (animationSpeech ? 'open' : 'rest'),
     mouthFrom:speechCue?.from,mouthBlend:speechCue?.blend,
     speaking: Boolean(speechCue) };
