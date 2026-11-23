@@ -3,10 +3,11 @@ import test from 'node:test';
 import { makeProject } from '../src/engine/presets.ts';
 import { ProjectDocument } from '../src/engine/schema.ts';
 import {
-  neutralFacialControls,facialExpressionControls,blendFacialControls,actingFacialControls,facialFromBlendshapes
+  neutralFacialControls,facialExpressionControls,blendFacialControls,actingFacialControls,facialFromBlendshapes,emotionFacialControls
 } from '../src/engine/facialIntelligence.ts';
 import { facialPerformance } from '../src/engine/facialAnimation.ts';
 import { directedActingPosture } from '../src/engine/actingPosture.ts';
+import { makeActingDemoProject } from '../src/engine/actingDemo.ts';
 import { mouthGeometry } from '../src/engine/mouthRig.ts';
 import { evaluate } from '../src/engine/evaluate.ts';
 
@@ -145,4 +146,36 @@ test('a timeline face intention directs the body and can be saved and restored',
   assert.equal(before?.actingIntent,'forced-smile');
   assert.deepEqual(before,repeat);
   assert.equal(doc.scenes[0].clips.find(c=>c.id===clip.id)?.track,'face');
+});
+
+test('continuous emotion space remains editable, bounded and distinct from expressions',()=>{
+  const neutral=facialExpressionControls('neutral',1);
+  const warm=emotionFacialControls(neutral,{valence:.9,arousal:.5,dominance:.7,tension:.05});
+  const upset=emotionFacialControls(neutral,{valence:-.9,arousal:.8,dominance:.3,tension:.85});
+  assert(warm.smileLeft>upset.smileLeft);
+  assert(upset.frownRight>warm.frownRight);
+  assert(upset.lipPress>warm.lipPress);
+  assert.deepEqual(emotionFacialControls(neutral),neutral);
+  assert(Object.values(emotionFacialControls(neutral,{
+    valence:3,arousal:5,dominance:-9,tension:6
+  })).every(v=>Number.isFinite(v)&&v>=-1&&v<=1));
+});
+test('the 30-second acting demo is schema-valid with editable directed performances',()=>{
+  const project=makeActingDemoProject();
+  const parsed=ProjectDocument.parse(project);
+  assert.equal(parsed.scenes.length,1);
+  const scene=parsed.scenes[0];
+  assert.equal(scene.duration,30);
+  assert.equal(scene.actors.length,2);
+  const faces=scene.clips.filter(c=>c.track==='face');
+  assert(faces.length>=8 && faces.some(c=>c.track==='face'&&c.intent==='forced-smile'));
+  assert(scene.clips.some(c=>c.track==='text'));
+  assert(scene.clips.some(c=>c.track==='camera'));
+  assert(scene.clips.some(c=>c.track==='gaze'));
+  const actors=new Map(parsed.characters.map(c=>[c.id,c]));
+  for(const time of [0,3,6,12,17,23,27,29.8]){
+    const frame=evaluate(scene,time,actors);
+    assert(frame.actors.length===2);
+    assert(frame.actors.every(c=>Object.values(c.pose).every(Number.isFinite)));
+  }
 });
