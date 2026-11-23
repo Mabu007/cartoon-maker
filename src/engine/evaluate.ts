@@ -21,7 +21,7 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string;
   facialCapture?: {controls:FacialControls;influence:number};
-  handGesture?: GestureSample; capturedArms?:boolean; capturedFocus?:{x:number;y:number}; handOverride?: {
+  handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number}; handOverride?: {
     left:HandPose;right:HandPose;
     from:{left:HandPose;right:HandPose};
     progress:number;influence:number
@@ -236,12 +236,12 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     let handOverride: CharacterState['handOverride'];
     let facialCapture:CharacterState['facialCapture'];
     let capturedFocus:CharacterState['capturedFocus'];
-    let capturedArms=false;
+    let capturedArms:CharacterState['capturedArms'];
     const authoredGesture=Boolean(gesture && !gesture.performance && gesture.id!==captured?.id);
     if(captured?.performance && !authoredGesture){
       const progress=(t-captured.start)/captured.length;
       const key=samplePerformance(captured.performance,progress);
-      capturedArms=Boolean(key.pose.leftShoulder!==undefined||key.pose.rightShoulder!==undefined);
+      capturedArms={left:key.pose.leftShoulder!==undefined,right:key.pose.rightShoulder!==undefined};
       if(key.focus&&!gaze)capturedFocus=key.focus;
       const weight=frameWeight(captured,t);
       // Preserve the lower body and its floor contact in an authored sit,
