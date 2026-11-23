@@ -126,7 +126,9 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
           options={['', ...compatibleObjects(scene, clip.action).map(item => item.id)]}
           render={id => id==='' ? usesSeat(clip.action)?'Keep current position':'No object' : scene.objects.find(item => item.id === id)?.name ?? 'No object'}/></label></>}
         {clip.track==='body'&&clip.action==='throw-prop'&&clip.target&&<button type="button" className="quiet full" onClick={()=>onLanding(clip)}>Set landing point on stage</button>}
-        {clip.track === 'face' && <label className="field">Expression<Select aria="Clip expression" value={clip.expression} onChange={expression => patchClip({ ...clip, expression })} options={expressions}/></label>}
+        {clip.track === 'face' && <><label className="field">Expression<Select aria="Clip expression" value={clip.expression} onChange={expression => patchClip({ ...clip, expression })} options={expressions}/></label>
+          <NumberField text="Acting intensity" value={clip.intensity??1} min={0} max={1.5} step={.05} onChange={intensity=>patchClip({...clip,intensity})}/>
+          <p className="small-text">Subtle at 0.35 · Natural at 1 · Exaggerated at 1.5. Expression edits remain timeline-based.</p></>}
         {(clip.track==='dialogue'||clip.track==='audio'||clip.track==='music')&&
           <SoundClipEditor key={'audio/'+clip.id} clip={clip} change={patchClip} locked={!!scene.trackSettings?.[clip.track]?.locked}/>}
         {clip.track==='dialogue'&&<VoiceClipControls key={'voice/'+clip.id} clip={clip} character={characters.find(character=>character.id===scene.actors.find(actor=>actor.id===clip.actor)?.characterId)} precision={precision} rerecord={rerecord} align={alignVoiceClip}/>}
