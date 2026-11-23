@@ -13,7 +13,7 @@ import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/ev
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
 import { makeActingDemoProject } from './engine/actingDemo.ts';
 import { compatibleObject, compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
-import { pickupFeedback } from './engine/objectInteractionEngine.ts';
+import { pickupFeedback,actorPositionAt,assessHandReach } from './engine/objectInteractionEngine.ts';
 import { label, shotLabel, SceneDefinition, props as propKinds, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import { formatLabel, type Format } from './engine/videoFormats.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, uploadProject, listenAccount, login, logout, type Account } from './services/cloud.ts';
@@ -1386,7 +1386,37 @@ export default function App() {
         }}/></div>
         <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause movie' : 'Play movie'} aria-label={playing || preparing ? 'Pause movie' : 'Play movie'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop movie" onClick={() => seekMovie(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock(movie.duration)}</span></span><input className="preview-range" aria-label="Seek movie" ref={range} type="range" min={0} max={movie.duration} step={.01} defaultValue={0} onChange={e => seekMovie(Number(e.target.value))}/><div className="transport-end"><details className="playback-range-controls"><summary title="Play a selected time range in this scene">Scene range</summary><div><label>From<input aria-label="Playback range start" type="number" step=".1" min={0} max={scene.duration-.1} value={playbackRange?.start??0} onChange={e=>{pause();setPlaybackRange({start:clamp(Number(e.target.value),0,(playbackRange?.end??scene.duration)-.1),end:playbackRange?.end??scene.duration});}}/></label><label>To<input aria-label="Playback range end" type="number" step=".1" min={(playbackRange?.start??0)+.1} max={scene.duration} value={playbackRange?.end??scene.duration} onChange={e=>{pause();setPlaybackRange({start:playbackRange?.start??0,end:clamp(Number(e.target.value),(playbackRange?.start??0)+.1,scene.duration)});}}/></label><button className="quiet" onClick={()=>{pause();setPlaybackRange(undefined);}}>Whole film</button></div></details><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
       </section>
-      {<Inspector onLayer={reorderSceneLayer} onUseProp={choosePropAction} onLanding={clip=>pickPropLanding(clip,undefined,true)} onPresence={actorPresence} scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} setDestination={()=>{if(pathClip)beginPath(pathClip.gait??'walk',pathClip.actor,'move',undefined,pathClip.start,pathClip);}}
+      {<Inspector onLayer={reorderSceneLayer} onUseProp={choosePropAction}
+         onPickUpProp={id=>{
+           const current=currentScene(useStudio.getState());
+           const target=current.objects.find(item=>item.id===id);
+           if(!target)return;
+           const start=clamp(time.current.local,0,current.duration-.2);
+           const choices=current.actors.map(actor=>{
+             const at=actorPositionAt(current,actor.id,start+.3)??actor;
+             return {actor,reach:assessHandReach({...actor,...at},target)};
+           }).sort((a,b)=>a.reach.distance-b.reach.distance);
+           const chosen=choices.find(item=>item.reach.canReach);
+           if(!chosen){
+             tell(choices.length?'Walk a character closer to '+target.name+' before picking it up.':'Add a character to the scene first.',true);
+             return;
+           }
+           const held=evaluate(current,start).actors.find(item=>item.id===chosen.actor.id)?.heldItems;
+           const hand=held?.right&&!held.left?'left':!held?.right?'right':undefined;
+           if(!hand){tell('Both hands are occupied. Release an object before picking up another.',true);return;}
+           run(()=>addClip({id:uid(),track:'body',actor:chosen.actor.id,
+             action:'pick-up',layer:'gesture',target:id,hand,
+             start,length:Math.min(1.1,current.duration-start)}));
+         }}
+         onReleaseHand={(id,hand)=>{
+           const current=currentScene(useStudio.getState());
+           const held=evaluate(current,time.current.local).actors.find(item=>item.id===id)?.heldItems?.[hand];
+           if(!held){tell('This hand is already empty.',true);return;}
+           const at=clamp(time.current.local,0,current.duration-.1);
+           run(()=>addClip({id:uid(),track:'props',actor:id,target:held.id,
+             interaction:'release',hand,start:at,length:.1}));
+         }}
+         onLanding={clip=>pickPropLanding(clip,undefined,true)} onPresence={actorPresence} scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} setDestination={()=>{if(pathClip)beginPath(pathClip.gait??'walk',pathClip.actor,'move',undefined,pathClip.start,pathClip);}}
         previewPath={()=>{if(pathClip){seek(pathClip.start);void play({start:pathClip.start,end:pathClip.start+pathClip.length});}}}
         onWalk={id=>beginPath('walk',id)} onRecover={id=>beginPlacement({kind:'recover',sceneId:scene.id,start:time.current.local,id})}
         onOverlay={id=>beginPlacement({kind:'overlay',sceneId:scene.id,start:time.current.local,id})} getPlayhead={getPlayhead} alignVoiceClip={alignVoiceClip} precision={() => showDialog('lipsync')} rerecord={() => { const clip=scene.clips.find(c=>c.id===selection?.id); if(clip?.track==='dialogue'){pause();setRequestedAudio({track:'dialogue',actor:clip.actor,start:clip.start,replaceId:clip.id});setDialog('audio');} }}/>}
