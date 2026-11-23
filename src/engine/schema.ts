@@ -18,8 +18,8 @@ export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 's
 export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow', 'extreme-close-up', 'over-shoulder', 'establishing', 'reaction', 'pan', 'tilt', 'zoom', 'hold'] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
 export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image', ...dailyProps, ...seatingStyles] as const;
-export const tracks = ['actors', 'movement', 'body', 'face', 'gaze', 'props', 'dialogue', 'audio', 'music', 'camera', 'transition', 'vfx', 'text'] as const;
-export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'SFX', music: 'Music', camera: 'Camera', transition: 'Transitions', vfx: 'VFX', text: 'Text' };
+export const tracks = ['actors', 'movement', 'body', 'performance', 'face', 'gaze', 'props', 'dialogue', 'audio', 'music', 'camera', 'transition', 'vfx', 'text'] as const;
+export const trackNames = { actors: 'Actors', movement: 'Movement', body: 'Actions', performance: 'Performance', face: 'Expressions', gaze: 'Eye gaze', props: 'Prop cues', dialogue: 'Dialogue', audio: 'SFX', music: 'Music', camera: 'Camera', transition: 'Transitions', vfx: 'VFX', text: 'Text' };
 const id = z.string().min(1).max(100);
 const color = z.string().regex(/^#[\da-f]{6}$/i);
 // Portable WebP thumbnails are embedded in project JSON. A strict budget keeps
@@ -123,6 +123,11 @@ const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, 
   performance:z.array(CapturedPoseKey).min(2).max(240).optional(),
   performanceOrigin:z.enum(['mocap','choreography']).optional()
 });
+/** Dedicated lane for captured and reusable performance takes. Legacy captured body clips remain valid. */
+const PerformanceClip = z.strictObject({ ...time, track: z.literal('performance'), actor: id,
+  name:z.string().trim().min(1).max(72).optional(),
+  performance:z.array(CapturedPoseKey).min(2).max(240),
+  performanceOrigin:z.enum(['mocap','choreography']).optional() });
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });
 const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']) });
 /** Four editable emotion axes; independent from expression and character personality. */
@@ -157,7 +162,7 @@ const Transition = z.strictObject({ ...time, track: z.literal('transition'), eff
 const VfxClip = z.strictObject({ ...time, track:z.literal('vfx'), effect:z.enum(vfxNames), x:position.x, y:position.y, strength:num(.1,2) });
 const TextClip = z.strictObject({ ...time, track:z.literal('text'), text:z.string().trim().min(1).max(180), x:position.x, y:position.y,
   size:num(12,120), color, style:z.enum(['caption','title','comic']) });
-export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, MusicClip, CameraShot, Transition, VfxClip, TextClip]);
+export const TimelineClip = z.discriminatedUnion('track', [ActorClip, MoveClip, BodyClip, PerformanceClip, FaceClip, GazeClip, PropClip, DialogueClip, AudioClip, MusicClip, CameraShot, Transition, VfxClip, TextClip]);
 export const TimelineTrack = z.enum(tracks);
 export const TimelineMarker = z.strictObject({ id, name: z.string().trim().min(1).max(60), time: num(0, 180) });
 export const TimelineTrackSettings = z.strictObject({ muted: z.boolean().optional(), solo: z.boolean().optional(), locked: z.boolean().optional(), collapsed: z.boolean().optional() });
@@ -259,7 +264,7 @@ function verifySceneRelationships(scene: Scene, characters: ReadonlySet<string>,
       if (keys[0].time !== 0 || keys[keys.length - 1].time !== 1 || keys.some((key, i) => i > 0 && key.time <= keys[i - 1].time))
         ctx.addIssue({ code: 'custom', path: [...clipPath, 'keyframes'], message: 'Movement keyframes must begin at 0, end at 1 and have strictly increasing times' });
     }
-    if(clip.track==='body' && clip.performance?.length) {
+    if((clip.track==='body'||clip.track==='performance') && clip.performance?.length) {
       const keys=clip.performance;
       if(keys[0].time!==0||keys[keys.length-1].time!==1||
          keys.some((key,i)=>i>0&&key.time<=keys[i-1].time))
