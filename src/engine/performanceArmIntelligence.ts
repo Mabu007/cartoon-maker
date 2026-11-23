@@ -11,7 +11,7 @@ export type ArmTargets={left?:Point;right?:Point};
 export type ArmBends={left?:number;right?:number};
 export type ArmDepths={left?:number;right?:number};
 const finite=(v:number|undefined)=>v!==undefined&&Number.isFinite(v);
-const visible=(point?:Landmark)=>Boolean(point&&finite(point.x)&&finite(point.y)&&
+const visible=(point?:Landmark):point is Landmark=>Boolean(point&&finite(point.x)&&finite(point.y)&&
   (point.visibility??1)>=.55);
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
 const distance=(a:Point,b:Point)=>Math.hypot(a.x-b.x,a.y-b.y);
