@@ -524,3 +524,14 @@
 .stage-zoom-tools small{display:none}
 .stage-zoom-tools button{min-width:25px;height:27px}
 .stage-zoom-tools span{min-width:36px;font-size:11px}}
+
+.stage-hidden-actors{position:absolute;z-index:8;top:10px;left:10px;
+  max-width:min(240px,75%);border:1px solid #8964b5;background:#2b213cf2;
+  color:#fff;border-radius:10px;box-shadow:0 4px 18px #130c2390}
+.stage-hidden-actors summary{display:flex;align-items:center;gap:7px;padding:9px 11px;
+  font-size:12px;font-weight:750;cursor:pointer}
+.stage-hidden-actors>div{display:grid;gap:5px;padding:4px 8px 9px;max-height:160px;overflow:auto}
+.stage-hidden-actors button{border:1px solid #795d9a;background:#4c336c;color:#fff;
+  border-radius:7px;text-align:left;padding:8px;font-size:11px;cursor:pointer}
+.stage-hidden-actors button:hover{background:#70549c}
+.stage-hidden-actors:has(+.stage-recover-actor) + .stage-recover-actor{display:none}
