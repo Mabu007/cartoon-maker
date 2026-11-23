@@ -117,6 +117,7 @@ export const CapturedPoseKey = z.strictObject({
   lift:num(-100,100).optional(),
   hands:z.strictObject({left:CapturedHand,right:CapturedHand}).optional(),
   expression:z.enum(expressions).optional(),
+  focus:z.strictObject({x:num(-1,1),y:num(-1,1)}).optional(),
   facial:CapturedFacialControls.optional()
 });
 const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional(), pointAt: z.strictObject({ x: position.x, y: position.y }).optional(),
