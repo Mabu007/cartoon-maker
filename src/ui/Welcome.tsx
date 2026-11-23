@@ -8,25 +8,25 @@ import type { Account } from '../services/cloud.ts';
 type Original=Omit<Parameters<typeof PreviousWelcome>[0], 'createAI'>;
 type Props=Original & {
   openActingDemo:()=>void;
-  account:Account|null; authAvailable:boolean;
+  account:Account|null; authAvailable:boolean; localStudio:boolean;
   login:(email:string,password:string,register:boolean,name?:string)=>Promise<void>;
   logout:()=>Promise<void>; enter:()=>void;
 };
 export function Welcome(props: Props){
   const [query,setQuery]=useState(''),[error,setError]=useState('');
-  if(props.screen==='landing')return <SirvibeLanding account={props.account} available={props.authAvailable} login={props.login} enter={props.enter}/>;
+  if(props.screen==='landing')return <SirvibeLanding account={props.account} available={props.authAvailable} login={props.login} enter={props.enter} localStudio={props.localStudio}/>;
   return <main className="simple-home sv-projects-home">
     <header>
       <button className="home-wordmark" onClick={props.openLanding}><img className="sv-project-logo" src="/sirvibe-logo.png" alt="" onError={event=>{event.currentTarget.hidden=true;}}/>SIRVIBE<span>.</span></button>
       <div className="home-tools">
-        <span className="sv-project-account">{props.account?.displayName||props.account?.email||'Saved on this device'}</span>
+        <span className="sv-project-account">{props.localStudio?'Local Creator · Saved on this computer':props.account?.displayName||props.account?.email||'Saved on this device'}</span>
         <button className="quiet" onClick={props.openProjects}><FolderOpen size={17}/>Backups & recovery</button>
-        {props.account&&<button className="quiet" onClick={()=>void props.logout().catch(err=>setError(err instanceof Error?err.message:'Could not log out.'))}><LogOut size={16}/>Sign out</button>}
+        {!props.localStudio&&props.account&&<button className="quiet" onClick={()=>void props.logout().catch(err=>setError(err instanceof Error?err.message:'Could not log out.'))}><LogOut size={16}/>Sign out</button>}
         <button className="icon-button" aria-label="Toggle theme" onClick={props.toggleTheme}>{props.theme==='dark'?<Sun size={18}/>:<Moon size={18}/>}</button>
       </div>
     </header>
     <section className="simple-projects">
-      <div className="projects-heading"><div><span className="eyebrow">YOUR CREATOR UNIVERSE · FREE (BETA)</span><h1>My cartoons</h1><p>Every story starts somewhere. Pick up where you left off.</p></div><div className="home-tools"><button className="quiet" type="button" onClick={props.openActingDemo}><Film size={17}/>Acting demo</button><button className="primary" onClick={props.createManual}><Plus size={18}/>Create a Cartoon</button></div></div>
+      <div className="projects-heading"><div><span className="eyebrow">{props.localStudio?'LOCAL WORKSPACE · NO ACCOUNT REQUIRED':'YOUR CREATOR UNIVERSE · FREE (BETA)'}</span><h1>My cartoons</h1><p>Every story starts somewhere. Pick up where you left off.</p></div><div className="home-tools"><button className="quiet" type="button" onClick={props.openActingDemo}><Film size={17}/>Acting demo</button><button className="primary" onClick={props.createManual}><Plus size={18}/>Create a Cartoon</button></div></div>
       <div className="projects-tools"><input aria-label="Search cartoons" placeholder="Find a cartoon…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="quiet" onClick={props.restore}>Import backup</button></div>
       {error&&<p role="alert" className="form-error">{error}</p>}
       <div className="simple-project-grid">{props.items.filter(item=>item.project.name.toLowerCase().includes(query.toLowerCase())).map(({project})=><article key={project.id}>
