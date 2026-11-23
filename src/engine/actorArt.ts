@@ -131,16 +131,35 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const cuffStart=upper?joint.shoulder:elbow, cuffEnd=upper?elbow:hand;
     const cover=upper?coverage:coverage-1;
     const cuff={x:cuffStart.x+(cuffEnd.x-cuffStart.x)*cover,y:cuffStart.y+(cuffEnd.y-cuffStart.y)*cover};
-    if(build.arm===1)stroke(g,[joint.shoulder,elbow,hand],limbWidth,c.skin);
-    else{
-      stroke(g,[joint.shoulder,elbow],limbWidth*build.arm,c.skin);
-      stroke(g,[elbow,hand],limbWidth*(.63+.37*build.arm),c.skin);
-      if(build.arm>1)segment(g,(joint.shoulder.x+elbow.x)/2,(joint.shoulder.y+elbow.y)/2,elbow.x,elbow.y,shade(c.skin,-.18),1.2);
+    const drawUpper=part==='all'||part==='upper';
+    const drawLower=part==='all'||part==='lower';
+    if(drawUpper&&drawLower&&build.arm===1){
+      stroke(g,[joint.shoulder,elbow,hand],limbWidth,c.skin);
+    }else{
+      if(drawUpper)stroke(g,[joint.shoulder,elbow],limbWidth*build.arm,c.skin);
+      if(drawLower)stroke(g,[elbow,hand],limbWidth*(.63+.37*build.arm),c.skin);
+      if(drawUpper&&build.arm>1)
+        segment(g,(joint.shoulder.x+elbow.x)/2,(joint.shoulder.y+elbow.y)/2,
+          elbow.x,elbow.y,shade(c.skin,-.18),1.2);
     }
-    if(coverage>0) {
-      stroke(g,upper?[joint.shoulder,cuff]:[joint.shoulder,elbow,cuff],limbWidth*build.arm+4,c.shirt);
-      segment(g,cuff.x-3,cuff.y,cuff.x+3,cuff.y+1,c.wardrobe?.trim??shade(c.shirt,-.27),1.45);
+    if(coverage>0){
+      if(part==='all'){
+        stroke(g,upper?[joint.shoulder,cuff]:[joint.shoulder,elbow,cuff],limbWidth*build.arm+4,c.shirt);
+        segment(g,cuff.x-3,cuff.y,cuff.x+3,cuff.y+1,c.wardrobe?.trim??shade(c.shirt,-.27),1.45);
+      }else if(drawUpper){
+        const end=upper?cuff:elbow;
+        stroke(g,[joint.shoulder,end],limbWidth*build.arm+4,c.shirt);
+        if(upper)segment(g,cuff.x-3,cuff.y,cuff.x+3,cuff.y+1,
+          c.wardrobe?.trim??shade(c.shirt,-.27),1.45);
+      }else if(drawLower&&!upper){
+        stroke(g,[elbow,cuff],limbWidth*build.arm+4,c.shirt);
+        segment(g,cuff.x-3,cuff.y,cuff.x+3,cuff.y+1,
+          c.wardrobe?.trim??shade(c.shirt,-.27),1.45);
+      }
     }
+    // For MoCap we paint upper arms behind the chest, then each entire
+    // forearm+hand in stable near/far order over the chest and face.
+    if(part==='upper'||part==='lower')return;
     const performance = handPerformance({
       action, locomotion, side, carrying: carrying || holdsCostume || (action === 'drive' && !!held),
       gesture: handGesture, actionWeight: appearance?.actionWeight
@@ -153,9 +172,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       ? sampleLayeredHandRig(performance.pose,performance.blend,
         observed.from[side],observed[side],observed.progress,observed.influence)
       : sampleHandRig(performance.pose,performance.blend);
+    const confidence=appearance?.capturedFingers?.confidence?.[side]??1;
     const geometry=applyCapturedFingerCurls(presetGeometry,
       !carrying&&!holdsCostume?appearance?.capturedFingers?.[side]:undefined,
-      appearance?.capturedFingers?.influence??0);
+      (appearance?.capturedFingers?.influence??0)*confidence);
     const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
     const wristDegrees = pose[`${side}Wrist`] ?? 0;
     const rotation = observed||appearance?.capturedFingers?.[side]
@@ -205,6 +225,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   leg(art.rear?'right':'left'); leg(art.rear?'left':'right');
   const rearArm=art.rear?'right':'left';
   if(!cryHand(rearArm)&&!mocapFront(rearArm))arm(rearArm,art.rear&&!!held);
+  // The sleeve starts underneath the shirt rather than being pasted on top.
+  // Captured elbows remain owned by the same measured limb on both passes.
+  if(mocapFront('left'))arm('left',false,bodyArt,'upper');
+  if(mocapFront('right'))arm('right',false,bodyArt,'upper');
   if(c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
     const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
@@ -216,8 +240,17 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
   const frontArm=art.rear?'left':'right';
   if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,!art.rear&&!!held);
-  if(mocapFront('left'))arm('left',false,appearance?.gestureArt??g);
-  if(mocapFront('right'))arm('right',false,appearance?.gestureArt??g);
+  const measuredArms=(['left','right'] as const).filter(side=>mocapFront(side));
+  // Both forearm AND hand are painted in one depth-ordered pass. Previously
+  // the right arm always painted last, hiding the upper left hand in crosses.
+  const near=appearance?.capturedRig?.near??decideFrontArm(
+    appearance?.capturedRig?.depths??{},undefined,frontArm
+  );
+  const orderedArms=measuredArms.sort((a,b)=>a===near?1:b===near?-1:0);
+  for(const side of orderedArms){
+    arm(side,false,appearance?.gestureArt??g,'lower');
+    arm(side,false,appearance?.gestureArt??g,'hand');
+  }
   if(cryHand('left'))arm('left',false,appearance?.gestureArt??g);
   if(cryHand('right'))arm('right',false,appearance?.gestureArt??g);
   face.position.set(r.head.x, r.head.y);
