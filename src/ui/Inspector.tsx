@@ -201,6 +201,10 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
                 }} options={cameraMovements}/>
             </label>
           </div>
+          <NumberField text="Film camera zoom multiplier" value={clip.zoomMultiplier??1}
+            min={.5} max={8} step={.25}
+            onChange={zoomMultiplier=>patchClip({...clip,zoomMultiplier})}/>
+          <p className="small-text">Use up to 8× additional zoom for extreme close-ups. This affects the movie; the canvas zoom controls only affect editing.</p>
           {clip.movement&&clip.movement!=='none'&&
             <NumberField text="Movement intensity" value={clip.strength??1}
               min={.25} max={2.5} step={.25}
