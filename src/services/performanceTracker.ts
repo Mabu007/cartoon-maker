@@ -39,11 +39,45 @@ const modelPath=(name:'pose'|'hands'|'face')=>
     hands:'/mediapipe/models/hand_landmarker.task',
     face:'/mediapipe/models/face_landmarker.task'
   })[name] : models[name];
+/**
+ * Vite 7 explicitly disallows dynamic imports of JS modules directly from
+ * /public, even with @vite-ignore. Fetching the public asset as *data* and
+ * importing an object URL keeps it out of Vite's module transform while
+ * retaining an entirely local, offline-capable MediaPipe runtime.
+ *
+ * One module per page: large vision bundles must not be fetched/parsed again
+ * when a creator closes and reopens the recording studio.
+ */
+let visionModule:Promise<VisionApi>|undefined;
+export async function loadVisionModule():Promise<VisionApi> {
+  if(!visionModule){
+    visionModule=(async()=>{
+      if(!localVision)return await import(/* @vite-ignore */ `${cdn}/vision_bundle.mjs`) as VisionApi;
+      const response=await fetch('/mediapipe/vision_bundle.mjs',{cache:'force-cache'});
+      if(!response.ok)throw Error('Local MediaPipe bundle missing (HTTP '+response.status+'). Re-run npm run assets:performance and restart Vite.');
+      if(response.headers.get('content-type')?.includes('text/html'))
+        throw Error('Local MediaPipe bundle returned HTML instead of JavaScript. Re-run npm run assets:performance.');
+      const blob=await response.blob();
+      if(blob.size<1024)throw Error('Local MediaPipe module is incomplete. Re-run npm run assets:performance.');
+      // Keep this object URL alive for the module lifetime: some MediaPipe
+      // implementations may resolve delayed imports relative to import.meta.url.
+      const moduleUrl=URL.createObjectURL(new Blob([blob],{type:'text/javascript'}));
+      try {
+        const module=await import(/* @vite-ignore */ moduleUrl) as VisionApi;
+        if(!module.FilesetResolver||!module.PoseLandmarker)
+          throw Error('Local MediaPipe module is missing vision task exports.');
+        return module;
+      } catch(error) {
+        URL.revokeObjectURL(moduleUrl);
+        throw error;
+      }
+    })();
+  }
+  try{return await visionModule;}
+  catch(error){visionModule=undefined;throw error;}
+}
 async function resolveRuntime() {
-  const local='/mediapipe/vision_bundle.mjs';
-  const path=localVision?local:`${cdn}/vision_bundle.mjs`;
-  // Vite must not prebundle this optional, privacy-gated dependency.
-  const module=await import(/* @vite-ignore */ path) as VisionApi;
+  const module=await loadVisionModule();
   const wasm=localVision?'/mediapipe/wasm':`${cdn}/wasm`;
   return {module,files:await module.FilesetResolver.forVisionTasks(wasm)};
 }
