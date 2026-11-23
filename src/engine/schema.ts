@@ -117,6 +117,8 @@ export const CapturedPoseKey = z.strictObject({
   lift:num(-100,100).optional(),
   hands:z.strictObject({left:CapturedHand,right:CapturedHand}).optional(),
   expression:z.enum(expressions).optional(),
+  /** Optional capture confidence: 0 marks an unobserved interval. Legacy keys imply 1. */
+  presence:num(0,1).optional(),
   focus:z.strictObject({x:num(-1,1),y:num(-1,1)}).optional(),
   facial:CapturedFacialControls.optional()
 });
