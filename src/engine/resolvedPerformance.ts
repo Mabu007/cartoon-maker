@@ -26,7 +26,7 @@ const absent=(time:number):PerformanceKey=>({time,pose:{},presence:0});
 function keyAt(observation:ResolvedObservation,duration:number):PerformanceKey {
   const time=precision(clamp(observation.elapsed/duration));
   return observation.sample
-    ? {...observation.sample,time,presence:1}
+    ? {...observation.sample,time,presence:clamp(observation.sample.presence??1)}
     : absent(time);
 }
 

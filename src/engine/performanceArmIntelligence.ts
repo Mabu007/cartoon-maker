@@ -83,6 +83,41 @@ export function solveCapturedArm(
   }
   return {elbow:make(preference),hand,reach};
 }
+/** Preserve a readable anatomical elbow under crossed-body targets.
+ *
+ * Two mathematically valid IK elbows exist for a given shoulder/wrist.
+ * Most sideways flips in camera acting came from choosing the anatomically
+ * inverted solution when MediaPipe's elbow became occluded. Prefer the
+ * silhouette outside the torso, and only use the observed pole to resolve
+ * poses in which both solutions are anatomically credible. The wrist remains
+ * reachable and both bones retain their original lengths. */
+export function solveAnatomicalArm(
+  shoulder:Point,relativeTarget:Point,scale:number,side:ArmSide,
+  observedPole?:number,restElbow?:Point
+):{elbow:Point;hand:Point;reach:number}{
+  const sign=side==='left'?-1:1;
+  const safeTarget={
+    x:clamp(relativeTarget.x,-55,55),
+    y:clamp(relativeTarget.y,-55,55)
+  };
+  const left=solveCapturedArm(shoulder,safeTarget,scale,-1);
+  const right=solveCapturedArm(shoulder,safeTarget,scale,1);
+  const sidePenalty=(elbow:Point)=>{
+    // A wrist may cross the chest; its elbow normally remains near or
+    // outside its shoulder. Allow 8 px inward for natural near-face acting.
+    const inward=Math.max(0,8-sign*(elbow.x-shoulder.x));
+    return inward*inward*.20;
+  };
+  const score=(value:typeof left,pole:number)=>{
+    let cost=sidePenalty(value.elbow);
+    if(observedPole!==undefined&&observedPole!==pole)cost+=20;
+    if(restElbow)cost+=Math.hypot(value.elbow.x-restElbow.x,
+      value.elbow.y-restElbow.y)*.13;
+    return cost;
+  };
+  return score(left,-1)<=score(right,1)?left:right;
+}
+
 /** This score is strictly a 2D occlusion suggestion, not ground-truth depth.
  * If score difference is ambiguous, preserve the previous drawing order. */
 export function decideFrontArm(

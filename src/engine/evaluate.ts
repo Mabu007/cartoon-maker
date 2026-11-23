@@ -28,7 +28,8 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
   facialCapture?: {controls:FacialControls;influence:number};
   handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number};
   capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
-  capturedRig?:{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number};
+  capturedRig?:{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
+  capturedHeadFacing?:import('./schema.ts').PerformanceFacing;
   capturedContact?:{type:CapturedContact;influence:number};
   capturedFacing?:import('./schema.ts').PerformanceFacing; handOverride?: {
     left:HandPose;right:HandPose;
@@ -251,6 +252,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     let capturedFingers:CharacterState['capturedFingers'];
     let capturedRig:CharacterState['capturedRig'];
     let capturedContact:CharacterState['capturedContact'];
+    let capturedHeadFacing:CharacterState['capturedHeadFacing'];
     // A take owns its chosen facing throughout its interval, including
     // temporary tracking gaps. This does not mutate the source scene actor.
     const capturedFacing=captured?.track==='performance'?captured.facing:undefined;
@@ -266,9 +268,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         ...key.fingerCurls,influence:weight,confidence:key.handConfidence};
       if(weight>.02&&key.armTargets)capturedRig={
         targets:key.armTargets,bends:key.armBend??{},
-        depths:key.armDepth??{},near:key.nearArm,influence:weight
+        depths:key.armDepth??{},near:key.nearArm,influence:weight,confidence:key.armConfidence
       };
       if(weight>.02&&key.contact)capturedContact={type:key.contact,influence:weight};
+      if(weight>.12&&key.headFacing)capturedHeadFacing=key.headFacing;
       if(key.focus&&!gaze&&weight>.02)capturedFocus=key.focus;
       // Preserve the lower body and its floor contact in an authored sit,
       // walk, sleep or driving animation. A recording owns only observed
@@ -356,7 +359,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, expressionIntensity:face?.intensity??1,actingIntent:face?.intent,emotion:face?.emotion, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
+      speaking, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, capturedHeadFacing, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.

@@ -13,11 +13,11 @@ import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
 import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
-import { solveCapturedArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
+import { solveAnatomicalArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import { handRotation, handRotationParams, handSize, handWidthScale,
   sampleHandRig, sampleLayeredHandRig, applyCapturedFingerCurls, type HandPose } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
-import type { ActingIntent, EmotionSpace, Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
+import type { ActingIntent, EmotionSpace, Action, Character, Expression, JointPose, Prop, View, PerformanceFacing } from './schema.ts';
 
 export const viewArt: Record<View, { width: number; face: number; far: boolean; rear: boolean; profile: boolean }> = {
   front: { width: 1, face: 0, far: true, rear: false, profile: false },
@@ -46,7 +46,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
   appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number};capturedArms?:{left:boolean;right:boolean};
     capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
-    capturedRig?:{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number};
+    capturedRig?:{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
+    capturedHeadFacing?:PerformanceFacing;
     capturedContact?:{type:CapturedContact;influence:number};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number;observed?:{left:boolean;right:boolean}}},
   handGesture?: GestureSample) {
   const costume=appearance?.texture;
@@ -82,8 +83,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         // Solve in the existing character's shoulder-local coordinate system,
         // not by forcing raw MediaPipe angles onto the elbow.
         const pole=guidance.bends[side]??(side==='left'?-1:1);
-        const solved=solveCapturedArm(joint.shoulder,target,c.arms,pole,joint.elbow);
-        const weight=Math.max(0,Math.min(1,guidance.influence));
+        const solved=solveAnatomicalArm(joint.shoulder,target,c.arms,side,pole,joint.elbow);
+        const weight=Math.max(0,Math.min(1,guidance.influence*(guidance.confidence?.[side]??1)));
         elbow={x:mix(elbow.x,solved.elbow.x,weight),y:mix(elbow.y,solved.elbow.y,weight)};
         hand={x:mix(hand.x,solved.hand.x,weight),y:mix(hand.y,solved.hand.y,weight)};
       }
@@ -106,10 +107,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         if(goal){
           const weight=Math.min(.82,Math.max(0,contact.influence)*.76);
           const blended={x:mix(hand.x,goal.x,weight),y:mix(hand.y,goal.y,weight)};
-          const solved=solveCapturedArm(joint.shoulder,{
+          const solved=solveAnatomicalArm(joint.shoulder,{
             x:(blended.x-joint.shoulder.x)/c.arms,
             y:(blended.y-joint.shoulder.y)/c.arms
-          },c.arms,guidance?.bends[side]??sign,elbow);
+          },c.arms,side,guidance?.bends[side]??sign,elbow);
           elbow=solved.elbow;hand=solved.hand;
         }
       }
@@ -253,7 +254,11 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   if(cryHand('right'))arm('right',false,appearance?.gestureArt??g);
   face.position.set(r.head.x, r.head.y);
   face.angle = r.angle + (listening ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
-  face.scale.set(c.head*turnScale,c.head);
+  // Three modest head poses are independent from the body facing selected
+  // by the director. Mirroring the three-quarter head does not rotate the
+  // whole torso or change the saved character viewpoint.
+  const trackedHead=art.rear?undefined:appearance?.capturedHeadFacing;
+  face.scale.set(c.head*turnScale*(trackedHead==='left'?-1:1),c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
   const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus, c.personality,appearance?.expressionIntensity??1,appearance?.actingIntent,appearance?.emotion);
   if(appearance?.facialCapture) mood.controls=blendFacialControls(
@@ -264,8 +269,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     line(g,[{x:x-size,y:y-size},{x:x+size,y:y-size},{x:x-size,y:y+size},{x:x+size,y:y+size}],'#e2d3ef',2.2);
   }
   if (action === 'blink' && actionTime < .22) mood.blink = Math.max(mood.blink, 1 - Math.abs(actionTime - .11) / .11);
-  const headView = lookAtCamera && (art.profile || art.rear)
-    ? view === 'back' ? 'back' : 'three-quarter' : view;
+  const headView:View = trackedHead
+    ? trackedHead==='front'?'front':'three-quarter'
+    : lookAtCamera && (art.profile || art.rear)
+      ? view === 'back' ? 'back' : 'three-quarter' : view;
   const facialArt=appearance?.art??(face instanceof Graphics?face:undefined);
   if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined);
 }

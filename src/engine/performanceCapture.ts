@@ -11,7 +11,7 @@ import type { HandPose } from './handRig.ts';
 import { measuredFingerCurls, observedHandPose, detectedHandContact,
   type FingerCurls, type CapturedContact } from './performanceHandIntelligence.ts';
 import { blendFacialControls, facialFromBlendshapes, capturedEyeFocus, type FacialControls } from './facialIntelligence.ts';
-import { constrainCapturedHead } from './performanceHeadEye.ts';
+import { constrainCapturedHead,estimateHeadYaw,headFacingForYaw } from './performanceHeadEye.ts';
 
 export type Landmark = { x: number; y: number; z?: number; visibility?: number };
 export type CaptureFrame = {
@@ -19,6 +19,8 @@ export type CaptureFrame = {
   face?: Record<string, number>;
   /** Independent pupil gaze from Face Landmarker iris points when available. */
   eyeFocus?:{x:number;y:number};
+  /** Face mesh yaw cue when available; otherwise the pose nose is used. */
+  headYaw?:number;
   /** Face model enabled: never treat nose motion as actual pupil detection. */
   faceTracking?:boolean;
   /** Elapsed milliseconds since each tracked hand was last truly detected. */
@@ -40,6 +42,9 @@ export type PerformanceKey = {
   handConfidence?:{left?:number;right?:number};
   /** Screen-space eye direction, normalized and independent of the authored gaze track. */
   focus?: { x:number; y:number };
+  headYaw?:number;
+  headFacing?:'front'|'left'|'right';
+  armConfidence?:{left?:number;right?:number};
   /** Reduced and editable face blendshapes; never raw webcam imagery. */
   facial?: FacialControls;
 };
@@ -125,8 +130,11 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     const eyeRoll=-Math.atan2(leftEye.y-rightEye.y,eyeWidth)*180/Math.PI;
     const nose=confidence(p[0])?p[0]:eyeMid;
     const yaw=clamp(-(nose.x-eyeMid.x)/eyeWidth*24,-22,22);
-    pose.neck=clamp(yaw*.54,-14,14);
-    pose.head=clamp(eyeRoll*1.3-torso*.28-(pose.neck??0)*.65,-34,34);
+    // Looking left/right should turn the illustrated head, not fold the
+    // neck sideways. Reserve only a tiny accompanying neck roll; actual
+    // head tilt comes from the line between the eyes.
+    pose.neck=clamp(yaw*.22,-6,6);
+    pose.head=clamp(eyeRoll*.95-torso*.26-(pose.neck??0)*.45,-22,22);
     focus={
       x:clamp(-(nose.x-eyeMid.x)/eyeWidth*1.75,-.85,.85),
       y:clamp((nose.y-eyeMid.y)/eyeWidth*-.4,-.6,.6)
@@ -152,7 +160,11 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     }
   }
   const emotion=facialExpression(frame.face);
+  const yaw=frame.headYaw??(visibleEyes
+    ?estimateHeadYaw(confidence(p[0])?p[0]:undefined,p[2],p[5])
+    :undefined);
   return {time:frame.t,pose:constrainCapturedHead(pose),...(focus?{focus}:{}),
+    ...(yaw!==undefined?{headYaw:yaw,headFacing:headFacingForYaw(yaw)}:{}),
     ...(arms.targets.left||arms.targets.right?{armTargets:arms.targets}:{}),
     ...(arms.bends.left!==undefined||arms.bends.right!==undefined?{armBend:arms.bends}:{}),
     ...(arms.depths.left!==undefined||arms.depths.right!==undefined?{armDepth:arms.depths}:{}),
@@ -208,6 +220,7 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
   }
   const armTargets:ArmTargets={},armDepth:ArmDepths={},armBend:ArmBends={};
   const handConfidence:PerformanceKey['handConfidence']={};
+  const armConfidence:PerformanceKey['armConfidence']={};
   for(const side of ['left','right'] as const){
     const source=a.armTargets?.[side],destination=b.armTargets?.[side];
     if(source&&destination)armTargets[side]={
@@ -218,6 +231,9 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     armDepth[side]=first!==undefined&&second!==undefined
       ?mix(first,second,fraction):fraction<.5?first:second;
     armBend[side]=fraction<.5?a.armBend?.[side]:b.armBend?.[side];
+    const armFrom=a.armConfidence?.[side],armTo=b.armConfidence?.[side];
+    armConfidence[side]=armFrom!==undefined&&armTo!==undefined
+      ?mix(armFrom,armTo,fraction):fraction<.5?armFrom:armTo;
     const confidenceFrom=a.handConfidence?.[side],confidenceTo=b.handConfidence?.[side];
     handConfidence[side]=confidenceFrom!==undefined&&confidenceTo!==undefined
       ?mix(confidenceFrom,confidenceTo,fraction)
@@ -229,6 +245,10 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     ...(armBend.left!==undefined||armBend.right!==undefined?{armBend}:{}),
     ...(fraction<.5?a.nearArm?{nearArm:a.nearArm}:{}:b.nearArm?{nearArm:b.nearArm}:{}),
     ...(handConfidence.left!==undefined||handConfidence.right!==undefined?{handConfidence}:{}),
+    ...(armConfidence.left!==undefined||armConfidence.right!==undefined?{armConfidence}:{}),
+    ...((a.headYaw!==undefined||b.headYaw!==undefined)?{headYaw:mix(a.headYaw??0,b.headYaw??0,fraction)}:{}),
+    ...(fraction<.5?a.headFacing?{headFacing:a.headFacing}:{}:
+      b.headFacing?{headFacing:b.headFacing}:{}),
     ...(fingerCurls.left||fingerCurls.right?{fingerCurls}:{}),
     ...(fraction<.5?a.contact?{contact:a.contact}:{}:b.contact?{contact:b.contact}:{}),
     ...((a.presence!==undefined||b.presence!==undefined)?{presence:mix(aPresent,bPresent,fraction)}:{}),
@@ -313,6 +333,9 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
         error=Math.max(error,delta*emphasis);
       }
       if(observed.nearArm!==estimated.nearArm)error=Math.max(error,40);
+      if(observed.headFacing!==estimated.headFacing)error=Math.max(error,28);
+      if(observed.headYaw!==undefined&&estimated.headYaw!==undefined)
+        error=Math.max(error,Math.abs(observed.headYaw-estimated.headYaw)*35);
       for(const side of ['left','right'] as const){
         if(observed.hands?.[side]!==estimated.hands?.[side])error=Math.max(error,20);
         const arm=observed.armTargets?.[side],estimate=estimated.armTargets?.[side];
@@ -320,6 +343,11 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
         else if(arm&&estimate)error=Math.max(error,Math.hypot(arm.x-estimate.x,arm.y-estimate.y)*1.5);
         if(observed.armBend?.[side]!==estimated.armBend?.[side])
           error=Math.max(error,20);
+        const armWeight=observed.armConfidence?.[side],estimateWeight=estimated.armConfidence?.[side];
+        if(Boolean(armWeight!==undefined)!==Boolean(estimateWeight!==undefined))
+          error=Math.max(error,25);
+        else if(armWeight!==undefined&&estimateWeight!==undefined)
+          error=Math.max(error,Math.abs(armWeight-estimateWeight)*35);
         const actualDepth=observed.armDepth?.[side],estimatedDepth=estimated.armDepth?.[side];
         if(actualDepth!==undefined&&estimatedDepth!==undefined)
           error=Math.max(error,Math.abs(actualDepth-estimatedDepth)*24);

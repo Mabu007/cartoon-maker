@@ -76,6 +76,28 @@ export function observedIrisFocus(
   if(Math.abs(focus.y)<.10)focus.y=0;
   return focus;
 }
+/** A small, dimensionless left/right yaw cue from visible facial geometry.
+ * The eyes establish head width; nose displacement suggests a *subtle*
+ * three-quarter turn. It does not estimate true 3D head rotation. */
+export function estimateHeadYaw(
+  nose:Landmark|undefined,eyeA:Landmark|undefined,eyeB:Landmark|undefined
+):number|undefined{
+  if(!finite(nose)||!finite(eyeA)||!finite(eyeB))return undefined;
+  const width=Math.hypot(eyeA.x-eyeB.x,eyeA.y-eyeB.y);
+  if(width<.018)return undefined;
+  const center=(eyeA.x+eyeB.x)/2;
+  return clamp(-(nose.x-center)/(width*.35),-1,1);
+}
+/** Two thresholds separate entering/leaving a turn, preventing rapid
+ * front/left/right oscillation from uncertain nose detections. */
+export function headFacingForYaw(yaw:number,previous:'front'|'left'|'right'='front'){
+  if(previous==='left'&&yaw>.09)return 'left';
+  if(previous==='right'&&yaw<-.09)return 'right';
+  if(yaw>.30)return 'left';
+  if(yaw<-.30)return 'right';
+  return 'front';
+}
+
 /** An extreme tracking spike should never swing the face 50 degrees in one
  * pose. Applied only to captured movements, not manually directed animation. */
 export function headRoll(pose:JointPose){

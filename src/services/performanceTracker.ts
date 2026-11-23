@@ -6,7 +6,7 @@
  */
 import type { CaptureFrame, Landmark } from '../engine/performanceCapture.ts';
 import { associateObservedHands } from './handAssociation.ts';
-import { observedIrisFocus } from '../engine/performanceHeadEye.ts';
+import { observedIrisFocus,estimateHeadYaw } from '../engine/performanceHeadEye.ts';
 
 declare const __SIRVIBE_LOCAL_VISION__: boolean;
 
@@ -193,11 +193,15 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
         }
       }
       if(!pose?.length&&!previousLeft&&!previousRight&&!previousFace)return undefined;
-      const eyeFocus=previousFaceLandmarks && atMs-lastFaceLandmarksAt<450
-        ?observedIrisFocus(previousFaceLandmarks):undefined;
+      const faceMesh=previousFaceLandmarks && atMs-lastFaceLandmarksAt<450
+        ?previousFaceLandmarks:undefined;
+      const eyeFocus=observedIrisFocus(faceMesh);
+      const headYaw=faceMesh
+        ?estimateHeadYaw(faceMesh[1],faceMesh[33],faceMesh[263]):undefined;
       return {t:atMs/1000,pose:pose??[],world:output?.worldLandmarks?.[0] as Landmark[]|undefined,
         leftHand:previousLeft,rightHand:previousRight,
-        ...(eyeFocus?{eyeFocus}:{}),faceTracking:!!face,
+        ...(eyeFocus?{eyeFocus}:{}),
+        ...(headYaw!==undefined?{headYaw}:{}),faceTracking:!!face,
         handAgeMs:{
           ...(previousLeft?{left:Math.max(0,atMs-lastLeftHandAt)}:{}),
           ...(previousRight?{right:Math.max(0,atMs-lastRightHandAt)}:{})
