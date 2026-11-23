@@ -6,10 +6,9 @@ import {
   ProjectDocument,type Clip,type Scene
 } from '../src/engine/schema.ts';
 import { cameraConflicts, insertCameraShot } from '../src/engine/cameraTimeline.ts';
-import { cameraFraming,directCamera } from '../src/engine/cameraDirector.ts';
+import { cameraFraming,directCamera,cameraDirectionHint } from '../src/engine/cameraDirector.ts';
 import { cameraViewport,screenToWorld,worldToScreen } from '../src/engine/cameraTransform.ts';
 import { evaluate } from '../src/engine/evaluate.ts';
-import { cameraDirectionHint } from '../src/ui/CameraShotSelect.tsx';
 
 type Camera=Extract<Clip,{track:'camera'}>;
 const demo=makeProject(true);
