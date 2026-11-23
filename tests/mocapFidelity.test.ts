@@ -74,6 +74,27 @@ test('fast live hand movement responds immediately but remains bounded',()=>{
   assert((preview.pose.rightShoulder??0)>105);
   assert((preview.pose.head??0)>16);
 });
+test('a visible hand alone updates its finger pose without making up shoulder motion',()=>{
+  const pose=Array.from({length:33},()=>point(0,0,0));
+  const hand=Array.from({length:21},(_,index)=>point(.7+(index%5)*.012,.43-index*.012));
+  hand[0]=point(.7,.62);
+  const key=retargetCaptureFrame({t:1,pose,leftHand:hand});
+  assert(key,'a tracked hand can supply a finger gesture without body tracking');
+  assert(key.hands);
+  assert.equal(key.pose.leftShoulder,undefined);
+  assert.equal(key.pose.rightElbow,undefined);
+  assert.equal(key.pose.leftHip,undefined);
+});
+test('eye glances between two identical poses survive loss-bounded recording compression',async()=>{
+  const {reducePerformanceKeys}=await import('../src/engine/performanceCapture.ts');
+  const keys=[
+    {time:0,pose:{head:0},focus:{x:0,y:0}},
+    {time:.5,pose:{head:0},focus:{x:.8,y:-.3}},
+    {time:1,pose:{head:0},focus:{x:0,y:0}}
+  ];
+  const reduced=reducePerformanceKeys(keys);
+  assert.equal(reduced.length,3);
+});
 test('captured gaze remains deterministic through timeline encoding and preview',()=>{
   const project=makeProject(true),scene=project.scenes[0],actor=scene.actors[0];
   const key=retargetCaptureFrame(observed())!;
