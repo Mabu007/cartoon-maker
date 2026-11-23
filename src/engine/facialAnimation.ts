@@ -1,4 +1,5 @@
 import type { Action, Character, Expression } from './schema.ts';
+import { actingFacialControls, type FacialControls } from './facialIntelligence.ts';
 import { resolvePersonality } from './livingCharacter.ts';
 import { isSleep } from './performanceCatalog.ts';
 import { clamp, mix } from './animation.ts';
@@ -7,6 +8,8 @@ import type { Viseme, VisemeSample } from './visemes.ts';
 export type FacialPerformance = {
   blink: number; gazeX: number; gazeY: number; mouthOpen: number; expression: Expression; viseme: Viseme; speaking: boolean;
   mouthFrom?: Viseme; mouthBlend?: number;
+  /** Continuous, independently controlled facial actions. Optional for legacy render calls. */
+  controls?: FacialControls;
 };
 
 // Pure, time-based facial performance: every preview/export frame is repeatable,
@@ -24,7 +27,8 @@ export function facialPerformance(
   audioAmplitude = 0,
   speechCue?: VisemeSample,
   focus?: { x: number; y: number },
-  personality?: Character['personality']
+  personality?: Character['personality'],
+  expressionIntensity = 1
 ): FacialPerformance {
   const t = Number.isFinite(time) ? Math.max(0, time) : 0;
   const seed = seedFrom(actorId);
@@ -64,6 +68,7 @@ export function facialPerformance(
       clamp(speechCue.weight * (.48 + .52 * Math.max(.32, envelope))))
     : clamp(Math.max(envelope, animationSpeech));
   return { blink, gazeX, gazeY, mouthOpen, expression: resolved,
+    controls:actingFacialControls(t,actorId,resolved,personality,expressionIntensity),
     viseme: speechCue?.shape ?? (animationSpeech ? 'open' : 'rest'),
     mouthFrom:speechCue?.from,mouthBlend:speechCue?.blend,
     speaking: Boolean(speechCue) };
