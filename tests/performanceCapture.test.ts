@@ -31,9 +31,13 @@ test('capture compiles into bounded monotonic editable keys',()=>{
   assert.ok(a.keys.every(k=>Object.values(k.pose).every(v=>Number.isFinite(v)&&Math.abs(v)<=165)));
   assert.ok(Number.isFinite(samplePerformance(a.keys,.5).pose.rightShoulder));
 });
-test('unreliable body tracking is not converted into a fabricated pose',()=>{
+test('unreliable right shoulder remains unobserved while the valid left arm survives',()=>{
   const missing=frame(0);missing.pose[12].visibility=.2;
-  assert.equal(retargetCaptureFrame(missing),undefined);
+  const detected=retargetCaptureFrame(missing);
+  assert(detected,'a missing shoulder must not discard visible joints');
+  assert.equal(detected.pose.rightShoulder,undefined);
+  assert.equal(detected.pose.rightElbow,undefined);
+  assert(detected.pose.leftShoulder!==undefined);
   assert.throws(()=>compilePerformance([missing,missing]),/Capture at least two/);
 });
 test('seated webcam tracking accepts upper-body-only frames without fabricating legs',()=>{

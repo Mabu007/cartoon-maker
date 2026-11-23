@@ -8,6 +8,7 @@ import { analyzeLocalLipSync } from '../services/localLipSync.ts';
 import { clamp } from '../engine/animation.ts';
 import { smoothLivePerformance } from '../engine/livePerformanceScene.ts';
 import { createPerformancePreview, type PerformancePreview } from '../services/performancePreview.ts';
+import { drawPerformanceLandmarks } from '../services/performanceOverlay.ts';
 import { uid, type Character, type Clip, type Scene } from '../engine/schema.ts';
 import { Modal } from './shared.tsx';
 
@@ -24,11 +25,12 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [status,setStatus]=useState<Status>('idle');
   const [message,setMessage]=useState('Nothing leaves your device during tracking. With installed local models, MediaPipe works without internet.');
   const [intensity,setIntensity]=useState(100);
-  const [smoothing,setSmoothing]=useState(55);
+  const [smoothing,setSmoothing]=useState(25);
   // A typical 4 GB laptop struggles with three synchronous vision models.
   // Start with body + hands on modest devices; facial capture stays one click away.
   const [face,setFace]=useState(()=>((navigator as Navigator & {deviceMemory?:number}).deviceMemory??8)>4);
   const [hands,setHands]=useState(true);
+  const [trackingOverlay,setTrackingOverlay]=useState(true);
   const [transcript,setTranscript]=useState('');
   const [takeName,setTakeName]=useState('Webcam take');
   const [result,setResult]=useState<Result>();
@@ -38,11 +40,13 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [previewError,setPreviewError]=useState('');
   const [replaying,setReplaying]=useState(false);
   const camera=useRef<HTMLVideoElement>(null),characterHost=useRef<HTMLDivElement>(null);
+  const overlay=useRef<HTMLCanvasElement>(null);
   const preview=useRef<PerformancePreview|undefined>(undefined);
   const actorRef=useRef(actor);actorRef.current=actor;
   const statusRef=useRef<Status>(status);statusRef.current=status;
   const smoothingRef=useRef(smoothing);smoothingRef.current=smoothing;
   const intensityRef=useRef(intensity);intensityRef.current=intensity;
+  const trackingOverlayRef=useRef(trackingOverlay);trackingOverlayRef.current=trackingOverlay;
   const stream=useRef<MediaStream|undefined>(undefined);
   const tracker=useRef<PerformanceTracker|undefined>(undefined);
   const raf=useRef(0),last=useRef(0),started=useRef(0),alive=useRef(true);
@@ -51,7 +55,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const stopping=useRef(false),recording=useRef(false);
   const lastSeen=useRef(0),lastUi=useRef(0),lastPreview=useRef<PerformanceKey|undefined>(undefined);
   const playback=useRef<{keys:PerformanceKey[];duration:number;start:number}|undefined>(undefined);
-  const interval=useRef(100);
+  const interval=useRef(70);
   const updateStatus=(next:Status)=>{statusRef.current=next;setStatus(next);};
   function drawPose(key?:PerformanceKey){
     if(!preview.current||!actorRef.current)return;
@@ -102,6 +106,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       const before=performance.now();
       try{
         const observed=tracker.current.detect(camera.current!,at);
+        if(overlay.current)drawPerformanceLandmarks(overlay.current,trackingOverlayRef.current?observed:undefined);
         const key=observed&&retargetCaptureFrame(observed);
         if(key){
           lastSeen.current=at;
@@ -130,7 +135,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         }
       }
       const elapsed=performance.now()-before;
-      interval.current=elapsed>95?Math.min(280,Math.ceil(elapsed*1.22)):100;
+      // Prevent the former 280ms stall after expensive inference.
+      interval.current=clamp(Math.ceil(elapsed*1.05),58,155);
     }
     raf.current=requestAnimationFrame(loop);
   }
@@ -143,15 +149,15 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     let media:MediaStream|undefined;let vision:PerformanceTracker|undefined;
     try{
       try{media=await navigator.mediaDevices.getUserMedia({
-        video:{width:{ideal:480},height:{ideal:360},frameRate:{ideal:15,max:20}},
+        video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},
         audio:{echoCancellation:true,noiseSuppression:true}});}
       catch{media=await navigator.mediaDevices.getUserMedia({
-        video:{width:{ideal:480},height:{ideal:360},frameRate:{ideal:15,max:20}},audio:false});}
+        video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},audio:false});}
       vision=await startPerformanceTracker({hands,face});
       if(!alive.current){vision.close();media.getTracks().forEach(track=>track.stop());return;}
       stream.current=media;tracker.current=vision;
       if(camera.current){camera.current.srcObject=media;await camera.current.play();}
-      last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=100;
+      last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=70;
       updateStatus('ready');
       setMessage(vision.warnings.length?vision.warnings.join(' ') :
         'Live puppeteering is active. Move your head, shoulders and hands; the character responds alongside you. Record up to 18 seconds.');
@@ -257,6 +263,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <div className="performance-view-heading"><span>YOU · CAMERA</span><span className="performance-view-badge">{status==='recording'?'Recording':status==='review'?'Take finished':status==='ready'?'Camera active':'Camera off'}</span></div>
           <div className="performance-camera">
             <video ref={camera} autoPlay playsInline muted aria-label="Live mirrored webcam video for performance capture"/>
+            <canvas ref={overlay} width={320} height={240} className="performance-landmark-overlay" aria-hidden="true"/>
             {(status==='idle'||status==='loading')&&<div className="performance-standby"><Camera size={32}/><span>{status==='loading'?'Starting camera…':'Enable your camera below'}</span></div>}
             {status==='recording'&&<div className="performance-live"><Circle size={11} fill="currentColor"/> Recording · 18s maximum</div>}
           </div>
@@ -279,16 +286,18 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       </div>
       <div className="performance-controls">
         <label>Perform as <select aria-label="Perform as" value={actor} onChange={e=>setActor(e.target.value)} disabled={status==='recording'||status==='processing'}>
-          {scene.actors.map(a=><option key={a.id} value={a.id}>{a.id}</option>)}
+          {scene.actors.map(a=><option key={a.id} value={a.id}>{characters.find(c=>c.id===a.characterId)?.name??'Character'}</option>)}
         </select></label>
         <div className="performance-values">
           <label>Exaggeration {intensity}%<input type="range" min="50" max="180" step="10" value={intensity} disabled={status==='recording'} onChange={e=>setIntensity(Number(e.target.value))}/></label>
           <label>Smoothing {smoothing}%<input type="range" min="0" max="95" step="5" value={smoothing} disabled={status==='recording'} onChange={e=>setSmoothing(Number(e.target.value))}/></label>
         </div>
         <div className="performance-toggles">
-          <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track hands</label>
-          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track face (extra CPU)</label>
+          <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track finger poses (extra CPU)</label>
+          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track eyebrows + mouth (extra CPU)</label>
+          <label><input type="checkbox" checked={trackingOverlay} onChange={e=>setTrackingOverlay(e.target.checked)}/> Show tracking points</label>
         </div>
+        <p className="performance-help">Fast eye direction, head tilt and visible arm movement use the lightweight pose model. Detailed eyebrows, mouth corners and finger shapes use additional optional models.</p>
         <p className="performance-help" role="status">{message}</p>
         <div className="performance-actions">
           {status==='idle'&&<button type="button" className="primary" disabled={!actor} onClick={()=>void prepare()}><Camera size={16}/> Enable camera</button>}
