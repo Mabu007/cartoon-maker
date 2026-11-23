@@ -31,3 +31,5 @@
 .clip-performance{background:linear-gradient(110deg,rgba(99,102,241,.25),rgba(14,165,233,.20));border-color:rgba(99,102,241,.52)}
 .performance-summary{overflow-wrap:anywhere}
 @media(max-width:760px){.track-record span{display:none}.performance-track-empty{max-width:calc(100% - 16px);text-align:left}}
+
+.performance-keyframe{position:absolute;z-index:2;top:50%;width:4px;height:4px;border-radius:50%;transform:translate(-50%,-50%);background:rgba(224,231,255,.95);box-shadow:0 0 0 1px rgba(49,46,129,.75);pointer-events:none}
