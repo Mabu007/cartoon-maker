@@ -13,7 +13,7 @@ import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/ev
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
 import { makeActingDemoProject } from './engine/actingDemo.ts';
 import { compatibleObject, compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
-import { pickupFeedback,actorPositionAt,assessHandReach } from './engine/objectInteractionEngine.ts';
+import { pickupFeedback,actorPositionAt,assessHandReach,propLocationAt } from './engine/objectInteractionEngine.ts';
 import { label, shotLabel, SceneDefinition, props as propKinds, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import { formatLabel, type Format } from './engine/videoFormats.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, uploadProject, listenAccount, login, logout, type Account } from './services/cloud.ts';
@@ -1392,9 +1392,10 @@ export default function App() {
            const target=current.objects.find(item=>item.id===id);
            if(!target)return;
            const start=clamp(time.current.local,0,current.duration-.2);
+           const location=propLocationAt(current,id,start)??target;
            const choices=current.actors.map(actor=>{
              const at=actorPositionAt(current,actor.id,start+.3)??actor;
-             return {actor,reach:assessHandReach({...actor,...at},target)};
+             return {actor,reach:assessHandReach({...actor,...at},location)};
            }).sort((a,b)=>a.reach.distance-b.reach.distance);
            const chosen=choices.find(item=>item.reach.canReach);
            if(!chosen){
