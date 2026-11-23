@@ -12,8 +12,11 @@ const finite=(p?:Landmark)=>Boolean(p&&Number.isFinite(p.x)&&Number.isFinite(p.y
  * The complete torso+neck+head rotation drives the actual face container. */
 export function constrainCapturedHead(pose:JointPose):JointPose {
   const hasHead=pose.head!==undefined||pose.neck!==undefined;
-  if(!hasHead)return pose;
+  if(!hasHead&&pose.torso===undefined)return pose;
   let torso=clamp(pose.torso??0,-18,18);
+  // With the face out of frame, constrain the measured torso without
+  // inventing a previously unobserved head or neck direction.
+  if(!hasHead)return {...pose,torso};
   let neck=clamp(pose.neck??0,-8,8);
   let head=clamp(pose.head??0,-18,18);
   // Preserve the direction and proportional acting intention of all three
