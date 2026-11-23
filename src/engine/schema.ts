@@ -15,7 +15,27 @@ export const actingIntents = ['none','suspicious','skeptical','forced-smile','su
   'excited-announcement','quiet-disappointment','confident-explanation','uncomfortable'] as const;
 export type ActingIntent = typeof actingIntents[number];
 export const actions = ['idle', 'walk', 'run', 'stop', 'turn', 'jump', 'sit', 'stand', 'wave', 'point', 'nod', 'shake', 'shrug', 'laugh', 'cry', 'angry', 'surprise', 'celebrate', 'talk', 'listen', 'think', 'lean', 'hand-on-hip', 'hand-to-face', 'hand-to-pocket', 'fist', 'open-hand', 'blink', 'look-away', ...extraActions] as const;
-export const shots = ['wide', 'medium', 'close-up', 'two-shot', 'front', 'side', 'back', 'follow', 'extreme-close-up', 'over-shoulder', 'establishing', 'reaction', 'pan', 'tilt', 'zoom', 'hold'] as const;
+/** Camera direction is separated into framing, angle and motion. Legacy
+ * shot IDs remain valid so no existing scenes need migration. */
+export const shotSizes = [
+  'extreme-wide','wide','full','medium-long','cowboy','medium',
+  'medium-close-up','close-up','big-close-up','extreme-close-up'
+] as const;
+export const shotCompositions = [
+  'establishing','master','two-shot','three-shot','group-shot',
+  'over-shoulder','point-of-view','insert','cutaway','reaction','shot-reverse-shot'
+] as const;
+export const legacyCameraShots = ['front','side','back','follow','pan','tilt','zoom','hold'] as const;
+export const shots = [...shotSizes,...shotCompositions,...legacyCameraShots] as const;
+export const cameraAngles = [
+  'eye-level','high-angle','low-angle','birds-eye','worms-eye','dutch-angle','aerial'
+] as const;
+export const cameraMovements = [
+  'none','pan-left','pan-right','tilt-up','tilt-down',
+  'dolly-in','dolly-out','truck-left','truck-right','pedestal-up','pedestal-down',
+  'zoom-in','zoom-out','dolly-zoom','whip-pan-left','whip-pan-right',
+  'crane-up','crane-down','handheld','gimbal','follow'
+] as const;
 export const environments = ['Living room', 'Classroom', 'Township street', 'Podcast studio'] as const;
 export const props = ['sofa', 'chair', 'table', 'desk', 'door', 'window', 'television', 'lamp', 'cup', 'book', 'phone', 'plant', 'microphone', 'streetlight', 'counter', 'image', ...dailyProps, ...seatingStyles] as const;
 export const tracks = ['actors', 'movement', 'body', 'performance', 'face', 'gaze', 'props', 'dialogue', 'audio', 'music', 'camera', 'transition', 'vfx', 'text'] as const;
@@ -172,7 +192,18 @@ export const DialogueClip = z.strictObject({ ...time, ...sound, track: z.literal
   voicePreset: VoicePreset.optional(), versions: z.array(DialogueVersion).max(5).optional(), visemes: mouthCues.optional(), manualVisemes: mouthCues.optional(), lipSync: LipSyncMetadata.optional() });
 const AudioClip = z.strictObject({ ...time, ...sound, track: z.literal('audio'), name: z.string().min(1).max(80) });
 const MusicClip = z.strictObject({ ...time, ...sound, track: z.literal('music'), name: z.string().min(1).max(80) });
-export const CameraShot = z.strictObject({ ...time, track: z.literal('camera'), shot: z.enum(shots), focus: id.optional(), transition: z.enum(['cut', 'glide']) });
+export const CameraShot = z.strictObject({
+  ...time, track:z.literal('camera'), shot:z.enum(shots),
+  /** Any staged actor or prop can become a framing target. */
+  focus:id.optional(), transition:z.enum(['cut','glide']),
+  /** Optional direction layers retain old shot behaviour when omitted. */
+  angle:z.enum(cameraAngles).optional(),
+  movement:z.enum(cameraMovements).optional(),
+  /** Strength of a stylized 2D move, 1 by default. */
+  strength:num(.25,2.5).optional(),
+  /** Optional Dutch tilt in degrees; only rotates the 2D stage. */
+  roll:num(-30,30).optional()
+});
 const Transition = z.strictObject({ ...time, track: z.literal('transition'), effect: z.enum(transitionNames) });
 const VfxClip = z.strictObject({ ...time, track:z.literal('vfx'), effect:z.enum(vfxNames), x:position.x, y:position.y, strength:num(.1,2) });
 const TextClip = z.strictObject({ ...time, track:z.literal('text'), text:z.string().trim().min(1).max(180), x:position.x, y:position.y,
@@ -291,7 +322,7 @@ function verifySceneRelationships(scene: Scene, characters: ReadonlySet<string>,
     }
     if ('actor' in clip && !actors.has(clip.actor)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing actor' });
     if (!targetValid) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Clip refers to a missing target' });
-    if ('focus' in clip && clip.focus && !actors.has(clip.focus)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Camera shot has unknown focus' });
+    if ('focus' in clip && clip.focus && !actors.has(clip.focus) && !objects.has(clip.focus)) ctx.addIssue({ code: 'custom', path: clipPath, message: 'Camera shot has unknown actor or prop focus' });
   }
 }
 
@@ -339,7 +370,18 @@ export type Animation = z.infer<typeof AnimationClip>;
 export type SoundClip = Extract<Clip, { track: 'audio' | 'music' | 'dialogue' }>;
 export const uid = () => crypto.randomUUID();
 export const label = (value: string) => ({ 'close-up': 'Close-up', 'two-shot': 'Two-shot', 'three-quarter': 'Front three-quarter', 'back-quarter': 'Back three-quarter', stand: 'Stand up', shake: 'Shake head', talk: 'Talking idle', listen: 'Listening', think: 'Thinking', angry: 'Angry', surprise: 'Surprised', 'sleep-seated':'Sleep seated', sleep:'Sleep lying down', 'throw-prop':'Throw prop', 'phone-call':'Phone call', 'cartoon-stab':'Cartoon stab', 'foam-dagger':'Foam dagger' })[value] ?? value.replaceAll('-', ' ').replace(/^./, first => first.toUpperCase());
-export const shotLabel = (shot: string) => shot === 'close-up' || shot === 'two-shot' ? label(shot) : `${label(shot)} shot`;
+export const shotLabel = (shot: string) => ({
+  'extreme-wide':'Extreme wide','wide':'Wide shot','full':'Full shot',
+  'medium-long':'Medium long','cowboy':'Cowboy shot','medium':'Medium shot',
+  'medium-close-up':'Medium close-up','close-up':'Close-up',
+  'big-close-up':'Big close-up','extreme-close-up':'Extreme close-up',
+  'two-shot':'Two-shot','three-shot':'Three-shot','group-shot':'Group shot',
+  'over-shoulder':'Over the shoulder','point-of-view':'POV (2D)',
+  'shot-reverse-shot':'Shot / reverse shot','establishing':'Establishing shot',
+  'master':'Master shot','insert':'Insert detail','cutaway':'Cutaway',
+  'reaction':'Reaction','birds-eye':"Bird's-eye (simulated)",
+  'worms-eye':"Worm's-eye (simulated)"
+} as Record<string,string>)[shot] ?? label(shot);
 
 /** Accept historical unversioned/v0 project data without modifying the stored original. */
 export function parseStoredProject(raw: unknown): Project {
