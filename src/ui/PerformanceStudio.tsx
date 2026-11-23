@@ -7,7 +7,7 @@ import { startPerformanceTracker, type PerformanceTracker } from '../services/pe
 import { putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
 import { clamp } from '../engine/animation.ts';
-import { smoothLivePerformance } from '../engine/livePerformanceScene.ts';
+import { createPerformanceStabilizer } from '../engine/performanceStabilizer.ts';
 import { createPerformancePreview, type PerformancePreview } from '../services/performancePreview.ts';
 import { drawPerformanceLandmarks } from '../services/performanceOverlay.ts';
 import { uid, type Character, type Clip, type Scene, type PerformanceFacing } from '../engine/schema.ts';
@@ -50,6 +50,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const actorRef=useRef(actor);actorRef.current=actor;
   const facingRef=useRef(facing);facingRef.current=facing;
   const lastDrawn=useRef<PerformanceKey|undefined>(undefined);
+  const motionStabilizer=useRef(createPerformanceStabilizer());
   const statusRef=useRef<Status>(status);statusRef.current=status;
   const smoothingRef=useRef(smoothing);smoothingRef.current=smoothing;
   const intensityRef=useRef(intensity);intensityRef.current=intensity;
@@ -71,6 +72,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     catch(error){setPreviewError('Character preview error: '+String(error));}
   }
   function takeDown(){
+    motionStabilizer.current.reset();
     recording.current=false;playback.current=undefined;
     cancelAnimationFrame(raf.current);raf.current=0;
     try{if(recorder.current?.state==='recording')recorder.current.stop();}catch{/* cleanup */}
@@ -124,7 +126,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             const value=pose[joint];
             if(value!==undefined)pose[joint]=clamp(value*factor,-165,165);
           }
-          lastPreview.current=smoothLivePerformance(lastPreview.current,{...key,pose},smoothingRef.current/100);
+          lastPreview.current=motionStabilizer.current.update({...key,pose},smoothingRef.current/100);
           // The exact filtered frame shown to the actor is what we save.
           // The shared Record clock also includes periods when tracking fails.
           if(recording.current)frames.current.push({
@@ -147,6 +149,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           // is lost; reacquisition starts a new filtered segment.
           if(!lastSeen.current||at-lastSeen.current>180){
             lastPreview.current=undefined;
+            motionStabilizer.current.reset();
             drawPose();
           }
           if(at-lastUi.current>700){
@@ -185,7 +188,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       stream.current=media;tracker.current=vision;
       if(camera.current){camera.current.srcObject=media;await camera.current.play();}
       last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=70;
-      lastPreview.current=undefined;
+      lastPreview.current=undefined;motionStabilizer.current.reset();
       updateStatus('ready');
       setMessage(vision.warnings.length?vision.warnings.join(' ') :
         'Live puppeteering is active. Move your head, shoulders and hands; the character responds alongside you. Record up to 18 seconds.');
