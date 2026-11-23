@@ -486,3 +486,16 @@
 .scene-layers .layer-order-tools button { flex:1; justify-content:center; }
 .scene-layers .layer-list { max-height:220px; overflow:auto; overscroll-behavior:contain; }
 .scene-layers .layer-relative { min-width:0; margin:0 5px 6px; }
+
+/* Director camera controls: four independent cinematic decisions, compact in
+   the Inspector and comfortably spaced in the Add Clip dialog. */
+.camera-direction-fields{display:flex;flex-direction:column;gap:12px;min-width:0}
+.camera-direction-fields>.field{min-width:0}
+.camera-direction-fields>.field-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.camera-direction-fields .select-wrap{min-width:0;width:100%}
+.camera-direction-fields select{width:100%;max-width:100%}
+.camera-direction-hint{margin:0;padding:10px 12px;border:1px solid rgba(168,139,205,.23);
+  border-radius:9px;background:rgba(143,93,190,.08);
+  line-height:1.5;font-size:11px;color:var(--text-muted,#c4bad2)}
+.camera-direction-fields .field-row>.field{min-width:0}
+@media(max-width:560px){.camera-direction-fields>.field-row{grid-template-columns:1fr;gap:11px}}
