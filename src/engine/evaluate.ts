@@ -233,10 +233,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
           const angle=-actor.rotation*Math.PI/180;
           gripTarget={x:(dx*Math.cos(angle)-dy*Math.sin(angle))*(flip?-1:1)/actor.scale,
             y:(dx*Math.sin(angle)+dy*Math.cos(angle))/actor.scale+lift-(target.kind==='ball'?14:6)};
-          propPose={action:activeAction,time:elapsed,weight:weight*ease(approach),target:gripTarget};
+          propPose={action:activeAction,time:elapsed,weight:weight*ease(approach),target:gripTarget,hand:clip.hand??'right'};
         }else {
           if(activeAction==='throw-prop'&&clip.pointAt&&Math.abs(clip.pointAt.x-x)>7)flip=Math.sign(clip.pointAt.x-x)!==viewForward(view);
-          propPose={action:activeAction,time:transfer===undefined?elapsed:phase*definition.duration,weight};
+          propPose={action:activeAction,time:transfer===undefined?elapsed:phase*definition.duration,weight,hand:clip.hand??'right'};
         }
       }
     }
