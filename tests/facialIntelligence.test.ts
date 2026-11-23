@@ -3,7 +3,7 @@ import test from 'node:test';
 import { makeProject } from '../src/engine/presets.ts';
 import { ProjectDocument } from '../src/engine/schema.ts';
 import {
-  neutralFacialControls,facialExpressionControls,blendFacialControls,actingFacialControls
+  neutralFacialControls,facialExpressionControls,blendFacialControls,actingFacialControls,facialFromBlendshapes
 } from '../src/engine/facialIntelligence.ts';
 import { facialPerformance } from '../src/engine/facialAnimation.ts';
 import { mouthGeometry } from '../src/engine/mouthRig.ts';
@@ -75,4 +75,36 @@ test('face intensity persists on the existing timeline and preview evaluator',()
     ...next,clips:[...scene.clips,{id:'invalid',track:'face',actor:actor.id,
       expression:'angry',start:1,length:2,intensity:5}]
   },...project.scenes.slice(1)]}).success,false);
+});
+
+test('MediaPipe facial blendshapes remain asymmetric and editable',()=>{
+  const facial=facialFromBlendshapes({
+    mouthSmileLeft:.9,mouthSmileRight:.15,eyeBlinkLeft:.8,eyeBlinkRight:.12,
+    browOuterUpLeft:.6,browDownRight:.4,mouthPucker:.21
+  });
+  assert(facial.smileLeft>facial.smileRight);
+  assert(facial.blinkLeft>facial.blinkRight);
+  assert(facial.browLeft>0 && facial.browRight<0);
+  assert(facial.lipRound>.2);
+  const halfway=blendFacialControls({...neutralFacialControls},facial,.5);
+  assert(halfway.smileLeft<facial.smileLeft && halfway.smileLeft>0);
+});
+test('facial performance capture keys interpolate and survive project serialization',async()=>{
+  const {samplePerformance}=await import('../src/engine/performanceCapture.ts');
+  const project=makeProject(true),scene=project.scenes[0],actor=scene.actors[0];
+  const first=facialFromBlendshapes({mouthSmileLeft:.05,eyeBlinkLeft:.1});
+  const last=facialFromBlendshapes({mouthSmileLeft:.95,eyeBlinkLeft:.9});
+  const keys=[{time:0,pose:{},facial:first},{time:1,pose:{},facial:last}];
+  const midpoint=samplePerformance(keys,.5).facial;
+  assert(midpoint && midpoint.smileLeft>.05 && midpoint.smileLeft<.95);
+  assert(midpoint.blinkLeft>.1 && midpoint.blinkLeft<.9);
+  const track={id:'face-mocap-test',track:'body' as const,actor:actor.id,
+    start:0,length:2,action:'idle' as const,layer:'gesture' as const,
+    performance:keys,performanceOrigin:'mocap' as const};
+  const doc=ProjectDocument.parse({...project,scenes:[{
+    ...scene,clips:[...scene.clips,track]
+  },...project.scenes.slice(1)]});
+  const frame=evaluate(doc.scenes[0],.7,new Map(doc.characters.map(c=>[c.id,c])));
+  assert(frame.actors.find(item=>item.id===actor.id)?.facialCapture);
+  assert(doc.scenes[0].clips.some(c=>c.track==='body'&&c.id===track.id&&c.performance?.[0]?.facial));
 });
