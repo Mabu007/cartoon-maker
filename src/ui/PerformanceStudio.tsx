@@ -22,10 +22,12 @@ const maxDuration=18;
 export function PerformanceStudio({scene,characters,selectedActor,start,close,commit,saveActingDNA}:Props) {
   const [actor,setActor]=useState(selectedActor??scene.actors[0]?.id??'');
   const [status,setStatus]=useState<Status>('idle');
-  const [message,setMessage]=useState('Nothing leaves your device during tracking. Models may be downloaded on the first use.');
+  const [message,setMessage]=useState('Nothing leaves your device during tracking. With installed local models, MediaPipe works without internet.');
   const [intensity,setIntensity]=useState(100);
   const [smoothing,setSmoothing]=useState(55);
-  const [face,setFace]=useState(true);
+  // A typical 4 GB laptop struggles with three synchronous vision models.
+  // Start with body + hands on modest devices; facial capture stays one click away.
+  const [face,setFace]=useState(()=>((navigator as Navigator & {deviceMemory?:number}).deviceMemory??8)>4);
   const [hands,setHands]=useState(true);
   const [transcript,setTranscript]=useState('');
   const [takeName,setTakeName]=useState('Webcam take');
@@ -285,7 +287,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         </div>
         <div className="performance-toggles">
           <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track hands</label>
-          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track face (slower)</label>
+          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track face (extra CPU)</label>
         </div>
         <p className="performance-help" role="status">{message}</p>
         <div className="performance-actions">
