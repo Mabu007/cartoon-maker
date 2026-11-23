@@ -259,8 +259,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.art.position.y = -lift;
       entity.gestureArt!.position.y=-lift;
       ellipse(entity.shadow!.clear(), 0, 3, 39 - Math.min(10, Math.max(0, lift / 5)), 7, '#816a61');
-      // Respect an explicitly staged side profile. Looking at the camera must not
-      // replace a left/right profile with three-quarter facial artwork.
+      // Respect staged three-quarter dialogue angles. An automatic camera gaze
+      // must not override the director's chosen front-left/front-right angle.
       const cameraGaze=actor.capturedFacing==='left'||actor.capturedFacing==='right'
         ? false
         : options.characterPreview?Boolean(options.previewCamera):actor.gazeTarget==='camera'&&actor.action!=='look-away';
