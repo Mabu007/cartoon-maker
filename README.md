@@ -48,7 +48,11 @@ npm run dev -- --host 127.0.0.1
 ```
 
 Open `http://localhost:5173/` and use **Performance → camera icon**.
-The character and webcam appear side by side. On 4 GB laptops facial tracking
+The character and webcam appear side by side. Select **Front**, **Face left**
+or **Face right** in Performance Studio to choose the cartoon's direction
+independently of your webcam posture. You can change this again after
+recording in the take's **Inspector → Facing for this take**. Each saved take
+remembers its direction; older takes continue to inherit the actor's facing. On 4 GB laptops facial tracking
 starts **off** to reduce inference load; enable `Track face` in Performance
 Studio *before* starting the camera if you need recorded facial expressions.
 The hand and face models are staggered across frames to avoid simultaneous

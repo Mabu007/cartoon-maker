@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles } from 'lucide-react';
+import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles, ArrowLeft, ArrowRight, UserRound } from 'lucide-react';
 import { actingDNA, retargetCaptureFrame, samplePerformance,
   type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
 import { compileResolvedPerformance, type ResolvedObservation } from '../engine/resolvedPerformance.ts';
@@ -10,7 +10,8 @@ import { clamp } from '../engine/animation.ts';
 import { smoothLivePerformance } from '../engine/livePerformanceScene.ts';
 import { createPerformancePreview, type PerformancePreview } from '../services/performancePreview.ts';
 import { drawPerformanceLandmarks } from '../services/performanceOverlay.ts';
-import { uid, type Character, type Clip, type Scene } from '../engine/schema.ts';
+import { uid, type Character, type Clip, type Scene, type PerformanceFacing } from '../engine/schema.ts';
+import { initialPerformanceFacing } from '../engine/performanceFacing.ts';
 import { Modal } from './shared.tsx';
 
 type Result = {keys:PerformanceKey[];duration:number;framesAccepted:number;framesDropped:number};
@@ -23,6 +24,8 @@ type Status='idle'|'loading'|'ready'|'recording'|'processing'|'review';
 const maxDuration=18;
 export function PerformanceStudio({scene,characters,selectedActor,start,close,commit,saveActingDNA}:Props) {
   const [actor,setActor]=useState(selectedActor??scene.actors[0]?.id??'');
+  const [facing,setFacing]=useState<PerformanceFacing>(()=>initialPerformanceFacing(
+    scene.actors.find(item=>item.id===(selectedActor??scene.actors[0]?.id))));
   const [status,setStatus]=useState<Status>('idle');
   const [message,setMessage]=useState('Nothing leaves your device during tracking. With installed local models, MediaPipe works without internet.');
   const [intensity,setIntensity]=useState(100);
@@ -44,6 +47,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const overlay=useRef<HTMLCanvasElement>(null);
   const preview=useRef<PerformancePreview|undefined>(undefined);
   const actorRef=useRef(actor);actorRef.current=actor;
+  const facingRef=useRef(facing);facingRef.current=facing;
+  const lastDrawn=useRef<PerformanceKey|undefined>(undefined);
   const statusRef=useRef<Status>(status);statusRef.current=status;
   const smoothingRef=useRef(smoothing);smoothingRef.current=smoothing;
   const intensityRef=useRef(intensity);intensityRef.current=intensity;
@@ -59,8 +64,9 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const interval=useRef(70);
   const updateStatus=(next:Status)=>{statusRef.current=next;setStatus(next);};
   function drawPose(key?:PerformanceKey){
+    lastDrawn.current=key;
     if(!preview.current||!actorRef.current)return;
-    try{preview.current.draw(actorRef.current,key);}
+    try{preview.current.draw(actorRef.current,key,facingRef.current);}
     catch(error){setPreviewError('Character preview error: '+String(error));}
   }
   function takeDown(){
@@ -88,7 +94,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       preview.current?.destroy();preview.current=undefined;
     };
   },[]);
-  useEffect(()=>{drawPose(lastPreview.current);},[actor]);
+  useEffect(()=>{drawPose(lastDrawn.current);},[actor,facing]);
   const dismiss=()=>{takeDown();close();};
   function loop(at:number){
     if(!alive.current||!tracker.current)return;
@@ -256,7 +262,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       const length=clamp(result.duration,.1,180-startAt);
       const motion:Extract<Clip,{track:'performance'}>={
         id:uid(),track:'performance',actor,name:takeName.trim().slice(0,72)||'Webcam take',
-        start:startAt,length,performance:result.keys,performanceOrigin:'mocap'
+        start:startAt,length,performance:result.keys,performanceOrigin:'mocap',facing
       };
       const clips:Clip[]=[motion];
       if(recordedAudio){
@@ -313,9 +319,28 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         <strong>{status==='recording'?trackedFrames+' frames captured':tracking==='live'?'Live motion connected':'Local tracking'}</strong>
       </div>
       <div className="performance-controls">
-        <label>Perform as <select aria-label="Perform as" value={actor} onChange={e=>setActor(e.target.value)} disabled={status==='recording'||status==='processing'}>
+        <label>Perform as <select aria-label="Perform as" value={actor} onChange={e=>{
+          const next=e.target.value;
+          setActor(next);
+          setFacing(initialPerformanceFacing(scene.actors.find(item=>item.id===next)));
+        }} disabled={status==='recording'||status==='processing'}>
           {scene.actors.map(a=><option key={a.id} value={a.id}>{characters.find(c=>c.id===a.characterId)?.name??'Character'}</option>)}
         </select></label>
+        <div className="performance-facing-section">
+          <span className="performance-facing-title">Character facing direction</span>
+          <div className="performance-facing-picker" role="group" aria-label="Character facing direction">
+            <button type="button" className={facing==='front'?'active':''} aria-pressed={facing==='front'}
+              disabled={status==='recording'||status==='processing'}
+              onClick={()=>setFacing('front')}><UserRound size={15}/> Front</button>
+            <button type="button" className={facing==='left'?'active':''} aria-pressed={facing==='left'}
+              disabled={status==='recording'||status==='processing'}
+              onClick={()=>setFacing('left')}><ArrowLeft size={15}/> Face left</button>
+            <button type="button" className={facing==='right'?'active':''} aria-pressed={facing==='right'}
+              disabled={status==='recording'||status==='processing'}
+              onClick={()=>setFacing('right')}><ArrowRight size={15}/> Face right</button>
+          </div>
+          <small>Choose a front or side profile for this take. The live character and saved timeline use the same direction. You can change it later in the Inspector.</small>
+        </div>
         <div className="performance-values">
           <label>Exaggeration {intensity}%<input type="range" min="50" max="180" step="10" value={intensity} disabled={status==='recording'} onChange={e=>setIntensity(Number(e.target.value))}/></label>
           <label>Smoothing {smoothing}%<input type="range" min="0" max="95" step="5" value={smoothing} disabled={status==='recording'} onChange={e=>setSmoothing(Number(e.target.value))}/></label>

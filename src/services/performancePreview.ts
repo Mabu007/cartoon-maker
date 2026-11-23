@@ -6,7 +6,8 @@
 import { createRenderer } from '../engine/renderer.ts';
 import { LIVE_PREVIEW_TIME,livePerformanceScene } from '../engine/livePerformanceScene.ts';
 import type { PerformanceKey } from '../engine/performanceCapture.ts';
-import type { Character, Scene } from '../engine/schema.ts';
+import type { Character, Scene, PerformanceFacing } from '../engine/schema.ts';
+import { performanceFacesCamera } from '../engine/performanceFacing.ts';
 
 export async function createPerformancePreview(
   host:HTMLElement,scene:Scene,characters:Character[]
@@ -19,10 +20,10 @@ export async function createPerformancePreview(
   host.appendChild(renderer.canvas);
   let closed=false;
   return {
-    draw(actorId:string,key?:PerformanceKey) {
+    draw(actorId:string,key?:PerformanceKey,facing:PerformanceFacing='front') {
       if(closed)return;
-      renderer.draw(livePerformanceScene(scene,actorId,key),characters,LIVE_PREVIEW_TIME,{
-        characterPreview:true,previewCamera:true
+      renderer.draw(livePerformanceScene(scene,actorId,key,facing),characters,LIVE_PREVIEW_TIME,{
+        characterPreview:true,previewCamera:performanceFacesCamera(facing)
       });
     },
     destroy(){

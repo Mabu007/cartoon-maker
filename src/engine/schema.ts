@@ -30,6 +30,9 @@ const propImageData = z.union([z.string().regex(/^data:image\/webp;base64,[A-Za-
 const num = (min: number, max: number) => z.number().finite().min(min).max(max);
 const position = { x: num(-2000, 3000), y: num(-2000, 3000), scale: num(.2, 4), rotation: num(-360, 360), depth: num(-1000, 1000) };
 export const CharacterView = z.enum(views);
+/** Fixed view direction chosen by the director for an individual MoCap take. */
+export const PerformanceFacingSchema=z.enum(['front','left','right']);
+export type PerformanceFacing=z.infer<typeof PerformanceFacingSchema>;
 export const VoicePreset = z.enum(['warm','bright','deep']);
 export const HostedVoiceId = z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9_.:-]+$/);
 export const personalityPresets = ['balanced','confident','shy','nervous','relaxed','hyperactive','funny','serious','arrogant','mysterious','dramatic','grumpy','playful'] as const;
@@ -129,6 +132,8 @@ const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, 
 /** Dedicated lane for captured and reusable performance takes. Legacy captured body clips remain valid. */
 const PerformanceClip = z.strictObject({ ...time, track: z.literal('performance'), actor: id,
   name:z.string().trim().min(1).max(72).optional(),
+  /** Optional for compatibility with older takes: default to actor's authored view. */
+  facing:PerformanceFacingSchema.optional(),
   performance:z.array(CapturedPoseKey).min(2).max(240),
   performanceOrigin:z.enum(['mocap','choreography']).optional() });
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });

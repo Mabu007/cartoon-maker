@@ -79,3 +79,24 @@ dialog.modal-wide:has(.performance-studio){width:min(1090px,calc(100vw - 28px));
   position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
   transform:scaleX(-1);pointer-events:none;z-index:2;
 }
+
+/* Clip-scoped performance view direction: compact controls beside the webcam. */
+.performance-facing-section{display:flex;flex-direction:column;gap:7px;min-width:0}
+.performance-facing-title{font-size:12px;font-weight:700;letter-spacing:.01em}
+.performance-facing-section small{font-size:11px;line-height:1.5;opacity:.73}
+.performance-facing-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.performance-facing-picker button{
+  min-width:0;min-height:36px;border:1px solid rgba(174,153,203,.28);
+  border-radius:9px;background:rgba(130,102,160,.09);
+  color:inherit;font:inherit;font-size:12px;font-weight:650;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 5px;cursor:pointer;white-space:nowrap
+}
+.performance-facing-picker button:hover:not(:disabled){border-color:rgba(191,154,255,.68);background:rgba(148,102,205,.18)}
+.performance-facing-picker button.active{background:rgba(151,93,230,.24);border-color:#ab79ed;color:#f4eaff}
+.performance-facing-picker button:disabled{opacity:.53;cursor:not-allowed}
+@media(max-width:430px){
+  .performance-facing-picker{gap:4px}
+  .performance-facing-picker button{font-size:11px;gap:3px;padding:7px 3px}
+  .performance-facing-picker svg{width:13px;height:13px}
+}
