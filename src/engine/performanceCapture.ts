@@ -11,11 +11,14 @@ import type { HandPose } from './handRig.ts';
 import { measuredFingerCurls, observedHandPose, detectedHandContact,
   type FingerCurls, type CapturedContact } from './performanceHandIntelligence.ts';
 import { blendFacialControls, facialFromBlendshapes, capturedEyeFocus, type FacialControls } from './facialIntelligence.ts';
+import { constrainCapturedHead } from './performanceHeadEye.ts';
 
 export type Landmark = { x: number; y: number; z?: number; visibility?: number };
 export type CaptureFrame = {
   t: number; pose: Landmark[]; world?: Landmark[]; leftHand?: Landmark[]; rightHand?: Landmark[];
   face?: Record<string, number>;
+  /** Independent pupil gaze from Face Landmarker iris points when available. */
+  eyeFocus?:{x:number;y:number};
   /** Elapsed milliseconds since each tracked hand was last truly detected. */
   handAgeMs?:{left?:number;right?:number};
 };
@@ -134,7 +137,8 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   // Optional eye blendshapes distinguish an eye roll/glance from a head
   // turn. Pose-only capture still works when detailed face tracking is off.
   const gaze=capturedEyeFocus(frame.face);
-  if(gaze)focus={x:gaze.x,y:gaze.y};
+  if(frame.eyeFocus)focus={x:clamp(frame.eyeFocus.x,-1,1),y:clamp(frame.eyeFocus.y,-1,1)};
+  else if(gaze)focus={x:gaze.x,y:gaze.y};
   // Legs are included only when observed; never fabricate missing knees/feet.
   for(const side of ['left','right'] as const){
     const a=side==='left'?23:24,b=side==='left'?25:26,c=side==='left'?27:28;
@@ -145,7 +149,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     }
   }
   const emotion=facialExpression(frame.face);
-  return {time:frame.t,pose,...(focus?{focus}:{}),
+  return {time:frame.t,pose:constrainCapturedHead(pose),...(focus?{focus}:{}),
     ...(arms.targets.left||arms.targets.right?{armTargets:arms.targets}:{}),
     ...(arms.bends.left!==undefined||arms.bends.right!==undefined?{armBend:arms.bends}:{}),
     ...(arms.depths.left!==undefined||arms.depths.right!==undefined?{armDepth:arms.depths}:{}),
