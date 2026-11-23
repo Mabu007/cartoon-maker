@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react';
-import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2, ArrowUpToLine, ArrowDownToLine } from 'lucide-react';
+import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2, ArrowUpToLine, ArrowDownToLine, ZoomIn, ZoomOut, Scan, Eye } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
-import { type Project, type Scene } from '../engine/schema.ts';
+import { type Project, type Scene, type Prop } from '../engine/schema.ts';
 import { pathNodes,smoothPath } from '../engine/stagePath.ts';
+import { defaultStageViewport,zoomStageAt,moveStageViewport } from '../engine/stageViewport.ts';
 import { evaluate } from '../engine/evaluate.ts';
 import { clamp } from '../engine/animation.ts';
 import { prepareDialoguePreview, type Mixer } from '../services/audio.ts';
@@ -12,15 +13,24 @@ import type { Selection } from '../studio.ts';
 type Position = { x: number; y: number };
 type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
 export type PreviewTime = { scene: Scene; local: number; movie: number };
-export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, editPath, smoothGuide, movePathPoint, removePathPoint, edgePlacement, flipEntity, duplicateEntity, removeEntity, reorderEntity }: {
+export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, editPath, smoothGuide, movePathPoint, removePathPoint, edgePlacement, flipEntity, duplicateEntity, removeEntity, reorderEntity, dropProp, recoverActor, finishPathPoint }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
   selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
   onDestination?: (position: Position, waypoint?: boolean) => void; pathPoints?: Position[]; editPath?:boolean; smoothGuide?:boolean; movePathPoint?:(index:number,point:Position)=>void; removePathPoint?:(index:number)=>void; edgePlacement?: boolean; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
   reorderEntity?:(id:string,move:LayerMove)=>void;
+  dropProp?:(kind:Prop['kind'],position:Position)=>void;
+  recoverActor?:(id:string,position:Position)=>void;
+  finishPathPoint?:(index:number,position:Position)=>void;
   flipEntity?: (id: string) => void; duplicateEntity?: (id: string) => void; removeEntity?: (id: string) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), hover = useRef<string | undefined>(undefined), repaint = useRef<() => void>(() => {});
   const nodeDrag=useRef<{index:number;pointerId:number;offset:Position}|undefined>(undefined);
+  const stage=useRef<HTMLDivElement>(null);
+  const [viewport,setViewport]=useState(defaultStageViewport);
+  const pan=useRef<{pointerId:number;x:number;y:number}|undefined>(undefined);
+  const [draggedPath,setDraggedPath]=useState<{index:number;position:Position}|undefined>();
+  const screenTransform={transform:`translate(${viewport.panX}px,${viewport.panY}px) scale(${viewport.zoom})`,
+    transformOrigin:'center center'} as const;
   const guide=useRef<SVGSVGElement>(null);
   const currentPath=useRef({points:pathPoints,smooth:smoothGuide});
   currentPath.current={points:pathPoints,smooth:smoothGuide};
@@ -119,7 +129,8 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     };
   }, [format, quality, restart]);
   function drawGuide(renderer:Renderer){
-    const overlay=guide.current, {points:path,smooth}=currentPath.current;
+    const overlay=guide.current, {points:original,smooth}=currentPath.current;
+    const path=original?.map((point,index)=>draggedPath&&draggedPath.index===index?draggedPath.position:point);
     if(!overlay||!path?.length)return;
     overlay.setAttribute('viewBox',`0 0 ${renderer.width} ${renderer.height}`);
     const points=path.map(renderer.projectPoint);
@@ -133,7 +144,8 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       }
     });
   }
-  useEffect(()=>{if(engine.current)drawGuide(engine.current);},[pathPoints,editPath,smoothGuide,playing]);
+  useEffect(()=>{if(engine.current)drawGuide(engine.current);},[pathPoints,editPath,smoothGuide,playing,draggedPath]);
+  useEffect(()=>{setViewport(defaultStageViewport);setDraggedPath(undefined);},[scene.id]);
   useEffect(() => { if (!playing) repaint.current(); }, [project, scene, playing, edit, selection, subtitles]);
   useEffect(() => { const refresh = () => repaint.current(); window.addEventListener('toonroom-seek', refresh); return () => window.removeEventListener('toonroom-seek', refresh); }, []);
   const selectedActor = selection?.kind === 'actor' ? scene.actors.find(item=>item.id===selection.id) : undefined;
@@ -146,14 +158,66 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     if (!box.width || !box.height) return;
     return renderer.pick((event.clientX - box.left) * renderer.width / box.width, (event.clientY - box.top) * renderer.height / box.height);
   }
-  return <div className={`stage-format format-${format.replace(':', '-')}`} onDoubleClick={event=>{
+  const zoom=(factor:number,x?:number,y?:number)=>{
+    const box=stage.current?.getBoundingClientRect();
+    if(!box)return;
+    setViewport(previous=>zoomStageAt(previous,previous.zoom*factor,
+      {x:x??box.left+box.width/2,y:y??box.top+box.height/2},
+      {x:box.left+box.width/2,y:box.top+box.height/2}));
+  };
+  useEffect(()=>{
+    const element=stage.current;
+    if(!element||playing)return;
+    // Browser wheel listeners may be passive by default; a native
+    // nonpassive handler keeps canvas zoom from scrolling the entire page.
+    const onWheel=(event:WheelEvent)=>{
+      event.preventDefault();
+      const rect=element.getBoundingClientRect();
+      const center={x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+      setViewport(previous=>zoomStageAt(previous,
+        previous.zoom*(event.deltaY<0?1.14:1/1.14),
+        {x:event.clientX,y:event.clientY},center));
+    };
+    element.addEventListener('wheel',onWheel,{passive:false});
+    return ()=>element.removeEventListener('wheel',onWheel);
+  },[playing]);
+  const displayPath=pathPoints?.map((point,index)=>
+    draggedPath&&draggedPath.index===index?draggedPath.position:point);
+  const offstageActors=!playing?evaluate(scene,time.current.local).actors.filter(actor=>{
+    if(!actor.visible||actor.x<0||actor.x>960||actor.y<0||actor.y>540)return true;
+    // Actors outside an active camera shot are still selectable through this
+    // list even though the renderer cannot create an on-canvas hit target.
+    const renderer=engine.current;
+    if(!renderer)return false;
+    const point=renderer.projectPoint({x:actor.x,y:actor.y-115*actor.scale});
+    return point.x< -45||point.x>renderer.width+45||
+      point.y< -45||point.y>renderer.height+45;
+  }):[];
+  const hiddenSelected=selectedActor&&offstageActors.some(actor=>actor.id===selectedActor.id);
+  return <div ref={stage} className={`stage-format format-${format.replace(':', '-')}`}
+    onDoubleClick={event=>{
     if(!editPath||(event.target as Element).closest('.stage-path-handle,button'))return;
     const hit=pointer(event);
     if(hit)onDestination?.({x:hit.x,y:hit.y},true);
   }}>
-    <div className={`canvas-mount ${edit ? 'place-mode' : ''} ${onDestination?'stage-destination':''}`} ref={mount}
+    <div className={`canvas-mount ${edit ? 'place-mode' : ''} ${onDestination?'stage-destination':''}`}
+      style={screenTransform} ref={mount}
+      onDragOver={event=>{if(event.dataTransfer.types.includes('application/x-toonroom-prop'))event.preventDefault();}}
+      onDrop={event=>{
+        const kind=event.dataTransfer.getData('application/x-toonroom-prop');
+        if(!kind)return;
+        event.preventDefault();event.stopPropagation();
+        const point=pointer(event);
+        if(point)dropProp?.(kind as Prop['kind'],{x:point.x,y:point.y});
+      }}
       onPointerDown={event => {
-        if (playing || event.button !== 0) return;
+        if (playing) return;
+        if(event.button===1||event.altKey){
+          event.preventDefault();
+          pan.current={pointerId:event.pointerId,x:event.clientX,y:event.clientY};
+          event.currentTarget.setPointerCapture(event.pointerId);return;
+        }
+        if (event.button !== 0) return;
         const hit = pointer(event);
         if(hit && onDestination){onDestination({x:hit.x,y:hit.y},event.shiftKey);return;}
         if (!hit?.id) { selected(null); return; }
@@ -168,6 +232,11 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         drag.current = { sceneId: scene.id, id: entity.id, origin, pointer: hit, current: origin, moved: false };
         event.currentTarget.setPointerCapture(event.pointerId);
       }} onPointerMove={event => {
+        if(pan.current?.pointerId===event.pointerId){
+          const dx=event.clientX-pan.current.x,dy=event.clientY-pan.current.y;
+          pan.current={pointerId:event.pointerId,x:event.clientX,y:event.clientY};
+          setViewport(value=>moveStageViewport(value,dx,dy));return;
+        }
         const item = drag.current, hit = pointer(event);
          if(onDestination)return;
          if (!item) {
@@ -182,15 +251,15 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         item.moved = true;
         item.current = { x: clamp(Math.round((item.origin.x + dx) / grid) * grid, -2000, 3000), y: clamp(Math.round((item.origin.y + dy) / grid) * grid, -2000, 3000) };
         repaint.current();
-      }} onPointerUp={() => { const item = drag.current; drag.current = null; if (item?.moved && item.sceneId === scene.id) { const source=scene.actors.find(a=>a.id===item.id)??scene.objects.find(o=>o.id===item.id);if(source)move(item.id,{x:source.x+item.current.x-item.origin.x,y:source.y+item.current.y-item.origin.y}); } repaint.current(); }}
+      }} onPointerUp={() => {if(pan.current){pan.current=undefined;return;} const item = drag.current; drag.current = null; if (item?.moved && item.sceneId === scene.id) { const source=scene.actors.find(a=>a.id===item.id)??scene.objects.find(o=>o.id===item.id);if(source)move(item.id,{x:source.x+item.current.x-item.origin.x,y:source.y+item.current.y-item.origin.y}); } repaint.current(); }}
       onPointerLeave={event => { if (!drag.current) { hover.current = undefined; event.currentTarget.dataset.hoverEntity = 'false'; repaint.current(); } }}
-       onPointerCancel={() => { drag.current = null; repaint.current(); }}
-      onLostPointerCapture={() => { drag.current = null; repaint.current(); }} />
-    {!playing && !!pathPoints?.length && <svg className="stage-path-guide" ref={guide} aria-hidden={editPath?undefined:true}>
-      <polyline/><g>{pathPoints.map((point,index)=>{
-        const removable=index>0&&index<pathPoints.length-1;
+       onPointerCancel={() => { drag.current = null;pan.current=undefined; repaint.current(); }}
+      onLostPointerCapture={() => { drag.current = null;pan.current=undefined; repaint.current(); }} />
+    {!playing && !!displayPath?.length && <svg className="stage-path-guide" style={screenTransform} ref={guide} aria-hidden={editPath?undefined:true}>
+      <polyline/><g>{displayPath!.map((point,index)=>{
+        const removable=index>0&&index<displayPath!.length-1;
         const label=index===0?'Start of path':removable?'Waypoint '+index:'End of path';
-        return <circle key={index} r={editPath?12:removable?4:7}
+        return <circle key={index} r={editPath?17:removable?4:7}
           className={editPath?'stage-path-handle':undefined} role={editPath?'button':undefined} tabIndex={editPath?0:undefined}
           aria-label={editPath?label:undefined}
           onPointerDown={editPath?event=>{
@@ -205,9 +274,22 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
             const drag=nodeDrag.current;
             if(drag?.pointerId!==event.pointerId||drag.index!==index)return;
             const hit=pointer(event);
-            if(hit)movePathPoint?.(index,{x:hit.x+drag.offset.x,y:hit.y+drag.offset.y});
+            if(hit){
+              const next={x:hit.x+drag.offset.x,y:hit.y+drag.offset.y};
+              setDraggedPath({index,position:next});
+              if(movePathPoint)movePathPoint(index,next);
+            }
           }:undefined}
-          onLostPointerCapture={()=>{nodeDrag.current=undefined;}}
+          onPointerUp={editPath?event=>{
+            const held=nodeDrag.current;
+            if(held?.pointerId!==event.pointerId||held.index!==index)return;
+            const hit=pointer(event);
+            const next=hit?{x:hit.x+held.offset.x,y:hit.y+held.offset.y}:draggedPath?.position??point;
+            finishPathPoint?.(index,next);
+            setDraggedPath(undefined);
+            nodeDrag.current=undefined;
+          }:undefined}
+          onLostPointerCapture={()=>{nodeDrag.current=undefined;setDraggedPath(undefined);}}
           onContextMenu={editPath&&removable?event=>{event.preventDefault();removePathPoint?.(index);}:undefined}
           onKeyDown={editPath?event=>{
             if(removable&&(event.key==='Delete'||event.key==='Backspace')){
@@ -221,6 +303,25 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
           }:undefined}>{editPath&&<title>{label}{removable?' · Right-click to remove':''}</title>}</circle>;
       })}</g>
     </svg>}
+    <div className="stage-zoom-tools" role="group" aria-label="Canvas zoom and pan">
+      <button type="button" title="Zoom out" aria-label="Zoom canvas out" onClick={()=>zoom(1/1.25)}><ZoomOut size={16}/></button>
+      <span aria-live="polite">{Math.round(viewport.zoom*100)}%</span>
+      <button type="button" title="Zoom in" aria-label="Zoom canvas in" onClick={()=>zoom(1.25)}><ZoomIn size={16}/></button>
+      <button type="button" title="Reset stage zoom and pan" aria-label="Reset stage zoom" onClick={()=>setViewport(defaultStageViewport)}><Scan size={16}/></button>
+      <small>Wheel: zoom · Alt-drag: pan</small>
+    </div>
+    {!playing&&offstageActors.length>0&&<details className="stage-hidden-actors">
+      <summary><Eye size={14}/> Offstage actors · {offstageActors.length}</summary>
+      <div>{offstageActors.map(actor=>{
+        const name=project.characters.find(character=>character.id===actor.characterId)?.name??'Actor';
+        return <button type="button" key={actor.id} onClick={()=>{
+          selected({kind:'actor',id:actor.id});
+          recoverActor?.(actor.id,{x:480,y:450});
+        }}>Show {name} on canvas</button>;
+      })}</div>
+    </details>}
+    {hiddenSelected && selectedActor && !playing && <button type="button" className="stage-recover-actor"
+      onClick={()=>recoverActor?.(selectedActor.id,{x:480,y:450})}><Eye size={15}/> Show {selectedName} in view</button>}
     {edgePlacement&&!status&&<div className="stage-edge-tools" role="group" aria-label="Place offstage">
       {(['left','right'] as const).map(side=><button key={side} className="quiet" type="button" onClick={()=>{
         const renderer=engine.current;

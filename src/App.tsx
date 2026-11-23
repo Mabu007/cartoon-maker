@@ -13,6 +13,7 @@ import { evaluate, locate, MOVIE_FRAME_RATE, projectDuration } from './engine/ev
 import { makeProject, makeProp, makeScene, soundNames } from './engine/presets.ts';
 import { makeActingDemoProject } from './engine/actingDemo.ts';
 import { compatibleObject, compatibleObjects, objectDependencies, removeObjectWithDecisions, repairOrphanedObjectActions, replaceWorldObjects, type ObjectDependencyDecision } from './engine/interactions.ts';
+import { pickupFeedback,actorPositionAt,assessHandReach,propLocationAt } from './engine/objectInteractionEngine.ts';
 import { label, shotLabel, SceneDefinition, props as propKinds, uid, type Action, type ActorData, type Character, type Clip, type Project, type Prop, type Scene, type Track } from './engine/schema.ts';
 import { formatLabel, type Format } from './engine/videoFormats.ts';
 import { cloudAudio, cloudEnabled, cloudProjects, uploadProject, listenAccount, login, logout, type Account } from './services/cloud.ts';
@@ -425,6 +426,12 @@ export default function App() {
   function patchObject(value: Prop) { editScene(current => repairOrphanedObjectActions({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
   function patchClip(value: Clip, original?: Clip) {
     if (scene.trackSettings?.[value.track]?.locked) { tell('Unlock the track before editing this clip.',true); return; }
+    if((value.track==='body'&&value.action==='pick-up'&&value.target)||
+       (value.track==='props'&&value.interaction==='equip')){
+      const at=value.track==='body'?value.start+value.length*.5:value.start;
+      const reason=pickupFeedback(scene,value.actor,value.target!,at);
+      if(reason){tell(reason,true);return;}
+    }
     if('offset' in value&&(livePlaying.current||livePreparing.current))pause();
     let updated: Clip = value;
     // Moving or repositioning a keyed clip in the visual inspector should not
@@ -476,6 +483,12 @@ export default function App() {
         value={...value,target:prop.id};
       }
       const clip = value.track === 'camera' ? value : changeClipTiming(value, value.start, value.length, current.duration);
+      if((clip.track==='body'&&clip.action==='pick-up'&&clip.target)||
+         (clip.track==='props'&&clip.interaction==='equip')){
+        const contact=clip.track==='body'?clip.start+clip.length*.5:clip.start;
+        const reason=pickupFeedback({...current,objects},clip.actor,clip.target!,contact);
+        if(reason)throw Error(reason);
+      }
       return { ...current, objects, clips: clip.track === 'camera' ? insertCameraShot(current.clips, clip, [...current.actors, ...current.objects].map(item => item.id)) : [...current.clips, clip] };
     });
     setArrange(true); select({ kind: 'clip', id: value.id }); close();
@@ -629,9 +642,9 @@ export default function App() {
     setCompact(false);
     setTimelineTall(value=>!value);
   }
-  function addObject(kind: Prop['kind']) {
+  function addObject(kind: Prop['kind'],placed?:Point) {
     if (scene.objects.length >= 100) { tell('A scene can have up to 100 props.', true); return; }
-    const value = makeProp(kind, 475 + (scene.objects.length % 5) * 25, 430, {depth:nextLayerDepth(scene)});
+    const value = makeProp(kind, clamp(placed?.x??(475 + (scene.objects.length % 5) * 25),-2000,3000), clamp(placed?.y??430,-2000,3000), {depth:nextLayerDepth(scene)});
     editScene(current => ({ ...current, objects: [...current.objects, value] }));
     select({ id: value.id, kind: 'object' }); setMobilePanel('stage'); setArrange(true);
   }
@@ -1107,7 +1120,7 @@ export default function App() {
       // Text fields keep their native keyboard behavior. The preview range
       // is a timeline control and shares the same playhead shortcuts.
       if (!transportFocused && (el?.isContentEditable || el?.closest('input,textarea,select,[role="textbox"],.monaco-editor,.cm-editor,[contenteditable]'))) return;
-      if (transportFocused && !isArrowShortcut && !isHeightShortcut) return;
+      if (transportFocused && !isArrowShortcut && !isHeightShortcut && event.code!=='Space') return;
       if (el?.closest('[role="separator"]') && !isHeightShortcut) return;
       const inClip = !!el?.closest('.clip,.timeline-keyframe');
       const inTimeline = !!el?.closest('.professional-timeline');
@@ -1133,8 +1146,16 @@ export default function App() {
         }
         return;
       }
-      if(el?.closest('button,[role="button"]')&&!inClip&&event.code==='Space')return;
-      if (event.code === 'Space' && !command && !event.altKey) { event.preventDefault(); void play(); return; }
+      // Space always operates the movie transport when not typing. Ignore
+      // OS key-repeat, which otherwise rapidly toggles play/pause and causes
+      // overlapping WebAudio starts. Buttons and timeline clips are safe.
+      if(event.code==='Space'&&!command&&!event.altKey){
+        if(el?.closest('input,textarea,select,[contenteditable],[role="textbox"]'))return;
+        event.preventDefault();
+        if(!event.repeat)void play();
+        return;
+      }
+
       if (command && key === 'a' && (inTimeline || hasTimelineSelection)) { event.preventDefault(); state.selectClips(currentScene(state).clips.map(clip=>clip.id)); return; }
       if (command && key === 'c' && hasTimelineSelection) { event.preventDefault(); copyTimelineSelection(); return; }
       if (command && key === 'x' && hasTimelineSelection) { event.preventDefault(); cutTimelineSelection(); return; }
@@ -1315,13 +1336,45 @@ export default function App() {
 
           <Stage key={session} project={project} scene={scene} time={time}
           playing={playing} onDestination={placement ? stagePlacement:undefined}
-          editPath={placement?.kind==='path'&&!!placement.editing}
+          editPath={(placement?.kind==='path'&&!!placement.editing)||(!placement&&!!pathClip)}
           smoothGuide={placement?.kind==='path'||!!pathClip?.style}
           movePathPoint={(index,point)=>setPlacement(draft=>draft?.kind==='path'&&draft.editing?{...draft,
             points:draft.points.map((item,at)=>at===index?point:item)}:draft)}
           removePathPoint={index=>setPlacement(draft=>draft?.kind==='path'&&draft.editing&&index>0&&index<draft.points.length-1
             ?{...draft,points:draft.points.filter((_,at)=>at!==index)}:draft)}
           pathPoints={placement ? placement.kind==='path'?placement.points:undefined : selectedPath}
+          finishPathPoint={(index,point)=>{
+            if(placement?.kind==='path'&&placement.editing)return;
+            const current=currentScene(useStudio.getState());
+            const clip=current.clips.find((item):item is MoveClip=>item.track==='movement'&&item.id===pathClip?.id);
+            if(!clip)return;
+            const points=(clip.keyframes??[{x:clip.fromX,y:clip.fromY},{x:clip.toX,y:clip.toY}])
+              .map(({x,y})=>({x,y}));
+            if(!points[index])return;
+            points[index]={x:clamp(point.x,-2000,3000),y:clamp(point.y,-2000,3000)};
+            run(()=>{
+              const updated=stagePath(current,clip.actor,clip.start,points,clip.gait??'walk',
+                clip.style??'natural','move',clip);
+              commitScene(()=>updated.scene);
+            });
+          }}
+          recoverActor={(id,position)=>{
+            run(()=>{
+              const current=currentScene(useStudio.getState());
+              if(current.trackSettings?.actors?.locked||current.trackSettings?.movement?.locked)
+                throw Error('Unlock Actors and Movement to bring this character into view.');
+              const at=clamp(time.current.local,0,current.duration-.1);
+              const visible=setActorVisibleAt(current,id,at,true);
+              const fixed:MoveClip={id:uid(),track:'movement',actor:id,start:at,length:.1,
+                fromX:position.x,fromY:position.y,toX:position.x,toY:position.y};
+              commitScene(()=>({...visible,clips:[...visible.clips,fixed]}));
+              select({kind:'actor',id});seek(at);
+            });
+          }}
+          dropProp={(kind,position)=>{
+            if(!(propKinds as readonly string[]).includes(kind)||kind==='image')return;
+            addObject(kind,position);
+          }}
           edgePlacement={placement?.kind==='path'&&((placement.mode==='enter'&&!placement.points.length)||(placement.mode==='exit'&&placement.points.length>0))} edit={true} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot}
          reorderEntity={reorderSceneLayer}
          flipEntity={id=>{const actor=scene.actors.find(item=>item.id===id);if(actor)patchActor({...actor,flip:!actor.flip});else{const object=scene.objects.find(item=>item.id===id);if(object)patchObject({...object,flip:!object.flip});}}}
@@ -1333,7 +1386,38 @@ export default function App() {
         }}/></div>
         <div className="transport"><div className="transport-buttons"><button className="play-button" title={playing || preparing ? 'Pause movie' : 'Play movie'} aria-label={playing || preparing ? 'Pause movie' : 'Play movie'} onClick={() => void play()}>{playing || preparing ? <Pause size={17} fill="currentColor"/> : <Play size={17} fill="currentColor"/>}</button><IconButton title="Stop movie" onClick={() => seekMovie(0)}><Square size={14}/></IconButton><IconButton title="Loop scene" active={loop} onClick={() => { if (livePlaying.current || livePreparing.current) pause(); setLoop(value => !value); }}><Repeat2 size={17}/></IconButton></div><span className="timecode"><span ref={counter}>00:00.00</span><i>/</i><span>{clock(movie.duration)}</span></span><input className="preview-range" aria-label="Seek movie" ref={range} type="range" min={0} max={movie.duration} step={.01} defaultValue={0} onChange={e => seekMovie(Number(e.target.value))}/><div className="transport-end"><details className="playback-range-controls"><summary title="Play a selected time range in this scene">Scene range</summary><div><label>From<input aria-label="Playback range start" type="number" step=".1" min={0} max={scene.duration-.1} value={playbackRange?.start??0} onChange={e=>{pause();setPlaybackRange({start:clamp(Number(e.target.value),0,(playbackRange?.end??scene.duration)-.1),end:playbackRange?.end??scene.duration});}}/></label><label>To<input aria-label="Playback range end" type="number" step=".1" min={(playbackRange?.start??0)+.1} max={scene.duration} value={playbackRange?.end??scene.duration} onChange={e=>{pause();setPlaybackRange({start:playbackRange?.start??0,end:clamp(Number(e.target.value),(playbackRange?.start??0)+.1,scene.duration)});}}/></label><button className="quiet" onClick={()=>{pause();setPlaybackRange(undefined);}}>Whole film</button></div></details><span className="shot-pill">{arrange ? 'Arrange mode' : shotLabel(shot)}</span><IconButton title={muted ? 'Unmute preview' : 'Mute preview'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={17}/> : <Volume2 size={17}/>}</IconButton><IconButton title="Toggle subtitles" active={subtitles} onClick={() => setSubtitles(value => !value)}><Captions size={18}/></IconButton></div></div>
       </section>
-      {<Inspector onLayer={reorderSceneLayer} onUseProp={choosePropAction} onLanding={clip=>pickPropLanding(clip,undefined,true)} onPresence={actorPresence} scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} setDestination={()=>{if(pathClip)beginPath(pathClip.gait??'walk',pathClip.actor,'move',undefined,pathClip.start,pathClip);}}
+      {<Inspector onLayer={reorderSceneLayer} onUseProp={choosePropAction}
+         onPickUpProp={id=>{
+           const current=currentScene(useStudio.getState());
+           const target=current.objects.find(item=>item.id===id);
+           if(!target)return;
+           const start=clamp(time.current.local,0,current.duration-.2);
+           const location=propLocationAt(current,id,start)??target;
+           const choices=current.actors.map(actor=>{
+             const at=actorPositionAt(current,actor.id,start+.3)??actor;
+             return {actor,reach:assessHandReach({...actor,...at},location)};
+           }).sort((a,b)=>a.reach.distance-b.reach.distance);
+           const chosen=choices.find(item=>item.reach.canReach);
+           if(!chosen){
+             tell(choices.length?'Walk a character closer to '+target.name+' before picking it up.':'Add a character to the scene first.',true);
+             return;
+           }
+           const held=evaluate(current,start).actors.find(item=>item.id===chosen.actor.id)?.heldItems;
+           const hand=held?.right&&!held.left?'left':!held?.right?'right':undefined;
+           if(!hand){tell('Both hands are occupied. Release an object before picking up another.',true);return;}
+           run(()=>addClip({id:uid(),track:'body',actor:chosen.actor.id,
+             action:'pick-up',layer:'gesture',target:id,hand,
+             start,length:Math.min(1.1,current.duration-start)}));
+         }}
+         onReleaseHand={(id,hand)=>{
+           const current=currentScene(useStudio.getState());
+           const held=evaluate(current,time.current.local).actors.find(item=>item.id===id)?.heldItems?.[hand];
+           if(!held){tell('This hand is already empty.',true);return;}
+           const at=clamp(time.current.local,0,current.duration-.1);
+           run(()=>addClip({id:uid(),track:'props',actor:id,target:held.id,
+             interaction:'release',hand,start:at,length:.1}));
+         }}
+         onLanding={clip=>pickPropLanding(clip,undefined,true)} onPresence={actorPresence} scene={scene} actors={actorNames} characters={project.characters} selection={selection} select={select} patchActor={patchActor} patchObject={patchObject} patchClip={patchClip} patchScene={patch => editScene(value => ({ ...value, ...patch }))} editCharacter={editCharacter} addDialogue={() => showAudio('dialogue')} addAction={() => showClip('body')} scenes={project.scenes.length} sceneIndex={sceneIndex} openScenes={() => showDialog('scenes')} remove={removeSelection} duplicate={duplicateSelection} snap={snap} setSnap={setSnap} subtitles={subtitles} setSubtitles={setSubtitles} quality={quality} setQuality={setQuality} setDestination={()=>{if(pathClip)beginPath(pathClip.gait??'walk',pathClip.actor,'move',undefined,pathClip.start,pathClip);}}
         previewPath={()=>{if(pathClip){seek(pathClip.start);void play({start:pathClip.start,end:pathClip.start+pathClip.length});}}}
         onWalk={id=>beginPath('walk',id)} onRecover={id=>beginPlacement({kind:'recover',sceneId:scene.id,start:time.current.local,id})}
         onOverlay={id=>beginPlacement({kind:'overlay',sceneId:scene.id,start:time.current.local,id})} getPlayhead={getPlayhead} alignVoiceClip={alignVoiceClip} precision={() => showDialog('lipsync')} rerecord={() => { const clip=scene.clips.find(c=>c.id===selection?.id); if(clip?.track==='dialogue'){pause();setRequestedAudio({track:'dialogue',actor:clip.actor,start:clip.start,replaceId:clip.id});setDialog('audio');} }}/>}

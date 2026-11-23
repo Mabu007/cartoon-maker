@@ -183,7 +183,7 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
     if (!inherited.visible) schedule({ id: eventId(line.id, `presence-${actor.id}`), track: 'actors', actor: actor.id, start: 0, length: .1, visible: false }, line);
     if (inherited.held && objectById(inherited.held)) {
       held.set(inherited.held, actor.id);
-      schedule({ id: eventId(line.id, `hold-${actor.id}`), track: 'props', actor: actor.id, target: inherited.held, start: 0, length: .1, interaction: 'equip' }, line);
+      schedule({ id: eventId(line.id, `hold-${actor.id}`), track: 'props', actor: actor.id, target: inherited.held, start: 0, length: .1, interaction: 'equip', inherited:true }, line);
     }
   }
   for (const line of source.elements) {
@@ -193,7 +193,7 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
     let end = cursor;
     const slots = new Map<string, number>();
     for (const direction of line.directions) {
-      const start = round((direction.parallel ? onset : end) + direction.delay);
+      let start = round((direction.parallel ? onset : end) + direction.delay);
       let length = direction.seconds;
       const key = direction.id ?? direction.kind + ('actor' in direction ? ':' + direction.actor : '');
       const duplicate = slots.get(key) ?? 0;
@@ -233,7 +233,38 @@ async function compileScene(project: Project, source: ScriptSceneData, previous:
           if (!target || anchorFor(target)?.action !== 'hold') { issue(line, `Prop ${direction.target} is missing or cannot be held.`); continue; }
           if (direction.interaction === 'equip' && [...held.values()].includes(performer.actor)) { issue(line, 'The character is already holding a prop. Release it first.'); continue; }
           if (held.get(target.id) !== (direction.interaction === 'release' ? performer.actor : undefined)) { issue(line, 'Prop ownership conflicts with this cue. Check the preceding pickup or release.'); continue; }
-          clip = { ...base, ...performer, track: 'props', target: target.id, interaction: direction.interaction };
+          if(direction.interaction==='equip'&&actor){
+            const from=positions.get(actor.id)??{x:actor.x,y:actor.y};
+            const distance=Math.abs(from.x-target.x);
+            const limit=95*actor.scale;
+            if(Math.abs(from.y-target.y)>100*actor.scale){
+              issue(line,'Move this prop closer vertically before the character can reach it.');
+              continue;
+            }
+            if(distance>limit){
+              // Screenplay directions may request an object before the actor
+              // has approached it. Insert a walk to arm's-reach rather than
+              // teleporting it through the scene or silently failing.
+              const sign=Math.sign(target.x-from.x)||1;
+              const nearX=target.x-sign*Math.min(75*actor.scale,limit*.8);
+              const seconds=Math.max(.1,round(Math.abs(nearX-from.x)/
+                (gaitSpeeds.walk*actor.scale)));
+              const approach:Clip={
+                id:eventId(line.id,'approach-'+id),track:'movement',
+                actor:actor.id,start,length:seconds,
+                fromX:from.x,fromY:from.y,toX:nearX,toY:from.y,
+                gait:'walk'
+              };
+              if(!schedule(approach,line)){
+                issue(line,'Walk closer to '+target.name+' before picking it up.');
+                continue;
+              }
+              positions.set(actor.id,{x:nearX,y:from.y});
+              start=round(start+seconds);
+            }
+          }
+          clip = { ...base, start, ...performer, track: 'props',
+            target: target.id, interaction: direction.interaction };
           break;
         }
         case 'presence': clip = { ...base, ...performer, track: 'actors', visible: direction.visible }; break;

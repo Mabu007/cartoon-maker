@@ -6,7 +6,7 @@ export async function finishOptionalAudio(
 ):Promise<Blob|undefined>{
   if(!writer)return undefined;
   if(writer.state==='inactive'){
-    const audio=new Blob(chunks,{type:writer.mimeType||'audio/webm'});
+    const audio=new Blob([...chunks],{type:writer.mimeType||'audio/webm'});
     return audio.size?audio:undefined;
   }
   return new Promise(resolve=>{
@@ -16,7 +16,7 @@ export async function finishOptionalAudio(
       settled=true;clearTimeout(timer);
       writer.removeEventListener('stop',finish);
       writer.removeEventListener('error',finish);
-      const blob=new Blob(chunks,{type:writer.mimeType||'audio/webm'});
+      const blob=new Blob([...chunks],{type:writer.mimeType||'audio/webm'});
       resolve(blob.size?blob:undefined);
     };
     const timer=setTimeout(finish,Math.max(100,timeoutMs));

@@ -10,7 +10,7 @@ import { drawActor, heldPropPose } from './actorArt.ts';
 import { cameraViewport, screenToWorld, worldToScreen, worldEntityBounds, pointHitsEntity, renderDepth, type WorldEntityRect } from './cameraTransform.ts';
 import { drawProp, drawWorld, ellipse, propSize, rect } from './art.ts';
 import { evaluate } from './evaluate.ts';
-import { HEIGHT, WIDTH, type Character, type Scene } from './schema.ts';
+import { HEIGHT, WIDTH, type Character, type Scene, type Prop } from './schema.ts';
 import { videoFormats, type Format } from './videoFormats.ts';
 
 export type { Format } from './videoFormats.ts';
@@ -20,7 +20,7 @@ export const dimensions = (format: Format, scale = 1): [number, number] => {
 };
 
 type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; gestureArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
-  foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; heldArt?:Graphics; heldArtKey?:string; imageData?: string };
+  foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; heldArt?:Graphics; heldArtKey?:string; heldSpriteLeft?:Sprite;heldArtLeft?:Graphics;heldArtKeyLeft?:string; imageData?: string };
 export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: number; y: number };
   previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
@@ -181,7 +181,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     guides.clear(); fade.clear(); hitboxes.length = 0;
     lastSelectedId = options.selected;
     const used = new Set<string>();
-    const carrying = new Set(actors.flatMap(actor => actor.held && actor.visible ? [actor.held.id] : []));
+    const carrying = new Set(actors.flatMap(actor => actor.visible
+    ?[actor.heldItems?.left?.id,actor.heldItems?.right?.id,actor.held?.id].filter((value):value is string=>Boolean(value))
+    :[]));
     const sourceActorById = new Map(scene.actors.map(actor => [actor.id, actor]));
     for (const prop of options.edit ? scene.objects : lastFrame.objects) {
       const key = entityKey(prop.id, false);
@@ -275,48 +277,65 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         resolvePreviewFocus(Boolean(options.characterPreview), options.previewFocus, targetFocus), options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedContact:actor.capturedContact,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
+        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
       entity.face!.y -= lift;
-      if(actor.held&&!options.edit){
-        const prop=actor.held;
-        const grip=heldPropPose(character,view,actor.pose,prop,actor.propPose??{action:actor.action,time:actor.actionTime,weight:1});
+      // Props are children of the same character Container as the hands:
+      // the IK grip and object share one transform and move as one until
+      // their Release event. Left and right use independent persistent art.
+      const heldByHand:{left?:Prop;right?:Prop}=actor.heldItems??(actor.held?{right:actor.held}:{});
+      for(const side of ['right','left'] as const){
+        const prop=!options.edit?heldByHand[side]:undefined;
+        const left=side==='left';
+        let sprite=left?entity.heldSpriteLeft:entity.heldSprite;
+        let art=left?entity.heldArtLeft:entity.heldArt;
+        if(!prop){
+          if(sprite)sprite.visible=false;
+          if(art)art.visible=false;
+          continue;
+        }
+        const grip=heldPropPose(character,view,actor.pose,prop,
+          actor.propPose??{action:actor.action,time:actor.actionTime,weight:1},side);
         if(prop.imageData){
-          const url=prop.imageData;
-          if(entity.heldArt)entity.heldArt.visible=false;
-          if(!entity.heldSprite){
-            entity.heldSprite=new Sprite(Texture.EMPTY);
-            entity.heldSprite.anchor.set(.28,.74);
-            entity.group.addChild(entity.heldSprite);
+          if(art)art.visible=false;
+          if(!sprite){
+            sprite=new Sprite(Texture.EMPTY);
+            sprite.anchor.set(.28,.74);
+            entity.group.addChild(sprite);
+            if(left)entity.heldSpriteLeft=sprite;else entity.heldSprite=sprite;
           }
-          const holder=entity.heldSprite, texture=textures.get(url);
+          const texture=textures.get(prop.imageData);
           if(texture){
-            holder.texture=texture;
+            sprite.texture=texture;
             const ratio=(prop.imageWidth??80)/Math.max(1,prop.imageHeight??80);
-            holder.width=Math.min(62,52*ratio)*grip.scale;
-            holder.height=holder.width/ratio;
-            holder.position.set(grip.x,grip.y-lift);
-            holder.angle=grip.angle;
-            holder.visible=true;
+            sprite.width=Math.min(62,52*ratio)*grip.scale;
+            sprite.height=sprite.width/ratio;
+            sprite.position.set(grip.x,grip.y-lift);
+            sprite.angle=grip.angle;
+            sprite.visible=true;
           }else{
-            holder.visible=false;
+            sprite.visible=false;
             const waitingFrame=lastFrame;
-            void loadImage(url).then(()=>{
+            void loadImage(prop.imageData).then(()=>{
               if(!destroyed&&lastFrame===waitingFrame)draw(scene,characters,time,options);
             }).catch(error=>console.warn('Could not render held prop:',error));
           }
         }else{
-          if(entity.heldSprite)entity.heldSprite.visible=false;
-          if(!entity.heldArt){entity.heldArt=new Graphics();entity.group.addChild(entity.heldArt);}
+          if(sprite)sprite.visible=false;
+          if(!art){
+            art=new Graphics();entity.group.addChild(art);
+            if(left)entity.heldArtLeft=art;else entity.heldArt=art;
+          }
           const key=prop.kind+'/'+prop.color;
-          if(entity.heldArtKey!==key){drawProp(entity.heldArt.clear(),prop);entity.heldArtKey=key;}
-          entity.heldArt.position.set(grip.x,grip.y-lift);
-          entity.heldArt.angle=grip.angle;
-          entity.heldArt.scale.set(grip.scale);
-          entity.heldArt.visible=true;
+          const previous=left?entity.heldArtKeyLeft:entity.heldArtKey;
+          if(previous!==key){
+            drawProp(art.clear(),prop);
+            if(left)entity.heldArtKeyLeft=key;else entity.heldArtKey=key;
+          }
+          art.position.set(grip.x,grip.y-lift);
+          art.angle=grip.angle;
+          art.scale.set(grip.scale);
+          art.visible=true;
         }
-      }else{
-        if(entity.heldSprite)entity.heldSprite.visible=false;
-        if(entity.heldArt)entity.heldArt.visible=false;
       }
       const rect: WorldEntityRect = { x: point.x, y: point.y, scaleX: (directionFlip ? -1 : 1) * actor.scale,
         scaleY: actor.scale, angle: actor.rotation, left: -55, right: 64,
