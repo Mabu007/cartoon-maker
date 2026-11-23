@@ -104,6 +104,16 @@ async function resolveRuntime() {
   const wasm=localVision?'/mediapipe/wasm':`${cdn}/wasm`;
   return {module,files:await module.FilesetResolver.forVisionTasks(wasm)};
 }
+/** Treat mesh and facial action coefficients as independent observations. */
+export function freshFaceSignals(
+  blendshapes:Record<string,number>|undefined,blendshapeAt:number,
+  landmarks:Landmark[]|undefined,landmarksAt:number,now:number,maxAge=600
+){
+  return {
+    blendshapes:blendshapes&&now-blendshapeAt<=maxAge?blendshapes:undefined,
+    landmarks:landmarks&&now-landmarksAt<=maxAge?landmarks:undefined
+  };
+}
 const posePoints=(result:PoseLandmarkerResult):Landmark[]|undefined=>result?.landmarks?.[0];
 export async function startPerformanceTracker(options:TrackerOptions={}):Promise<PerformanceTracker> {
   const warnings:string[]=[];
@@ -191,8 +201,10 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
         if(result.landmarks){previousFaceLandmarks=result.landmarks;lastFaceLandmarksAt=atMs;}
       }
       if(atMs-lastHandsAt>450){previousLeft=undefined;previousRight=undefined;}
-      if(atMs-lastFaceBlendshapesAt>600)previousFace=undefined;
-      if(atMs-lastFaceLandmarksAt>600)previousFaceLandmarks=undefined;
+      const fresh=freshFaceSignals(previousFace,lastFaceBlendshapesAt,
+        previousFaceLandmarks,lastFaceLandmarksAt,atMs);
+      previousFace=fresh.blendshapes;
+      previousFaceLandmarks=fresh.landmarks;
       if((!pose?.length||!((pose[2]?.visibility??0)>=.55&&(pose[5]?.visibility??0)>=.55))&&previousFaceLandmarks?.length){
         const points=previousFaceLandmarks;
         const nose=points[1],a=points[33],b=points[263];
