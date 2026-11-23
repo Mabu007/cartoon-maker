@@ -71,6 +71,7 @@ function facialExpression(face?: Record<string, number>): Expression | undefined
 }
 export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | undefined {
   const p=frame.pose;
+  const left=handShape(frame.leftHand),right=handShape(frame.rightHand);
   // A webcam can show just a face, one arm, or the full body. Do not reject
   // legitimate facial movement because the performer's hips or shoulders
   // were cropped. Never invent joints the camera cannot see.
@@ -78,8 +79,9 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const visibleArms=shouldersVisible&&[13,14,15,16].some(i=>confidence(p[i]));
   const visibleEyes=confidence(p[2])&&confidence(p[5]);
   const visibleFace=visibleEyes||Boolean(frame.face);
-  const visibleLegs=[23,24,25,26].some(i=>confidence(p[i]));
-  if(!visibleArms&&!visibleFace&&!visibleLegs)return undefined;
+  const visibleLegs=(confidence(p[23])&&confidence(p[25]))||
+    (confidence(p[24])&&confidence(p[26]));
+  if(!visibleArms&&!visibleFace&&!visibleLegs&&!left&&!right)return undefined;
   const world=worldBodyProjector(frame.world);
   // MediaPipe labels the *performer's* left/right. Front-facing cartoon rigs
   // display that performer like a mirror, so horizontal arm angles must also
@@ -141,7 +143,6 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
       if(confidence(p[c]))pose[`${side}Knee`]=clamp(degrees(angleOf(b,c)-thigh),-135,135);
     }
   }
-  const left=handShape(frame.leftHand),right=handShape(frame.rightHand);
   return {time:frame.t,pose,...(focus?{focus}:{}),
     ...(left||right?{hands:{left:left??'relaxed',right:right??'relaxed'}}:{}),
     ...(facialExpression(frame.face)?{expression:facialExpression(frame.face)}:{}),
