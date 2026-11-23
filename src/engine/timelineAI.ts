@@ -15,6 +15,7 @@ const allowedClipPatch:Readonly<Record<Clip['track'],readonly string[]>>={
   actors:['start','length','visible'],
   movement:['start','length','fromX','fromY','toX','toY','gait','style','keyframes'],
   body:['start','length','action','layer','target','pointAt'],
+  performance:['start','length','name'],
   face:['start','length','expression'],
   gaze:['start','length','target'],
   props:['start','length','target','interaction'],
