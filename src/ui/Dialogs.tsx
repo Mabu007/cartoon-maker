@@ -148,7 +148,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio,
         </label>}
       </div>
       <p className="camera-direction-hint">{cameraDirectionHint(shot,cameraAngle,cameraMovement,composition==='none'?undefined:composition)}</p>
-    </div>
+    </div>}
     {track === 'transition' && <label className="field">Effect<Select aria="Effect" value={effect} onChange={setEffect} options={transitionNames}/></label>}
     {(track === 'audio') && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={value=>{setSound(value);setLength(soundDurations[value]);}} options={soundNames}/></label>}
     <div className="field-row"><label className="field">Start (seconds)<input aria-label="Clip start" type="number" value={Math.round(start * 100) / 100} min={0} max={scene.duration - .1} step="any" onChange={e => setStart(Number(e.target.value))}/></label>{track !== 'dialogue' && !drawsPath && !placesPoint && <label className="field">Length (seconds)<input aria-label="Clip length" type="number" value={length} min={.1} max={180} step="any" onChange={e => setLength(Number(e.target.value))}/></label>}</div></div>
