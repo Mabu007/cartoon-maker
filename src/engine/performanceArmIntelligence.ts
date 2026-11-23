@@ -108,3 +108,20 @@ export function contactHysteresis(
   return {contact:count>=2?observed:previous,candidate:count>=2?undefined:observed,
     count:count>=2?0:count};
 }
+
+export type ArmPaintPass={side:ArmSide;part:'upper'|'lower'|'hand'};
+/** A renderer-independent painter order that keeps nearer forearms and hands
+ * together. Upper arms tuck behind the shirt; far lower arm then hand are
+ * painted before the near lower arm then hand. */
+export function observedArmPaintOrder(
+  observed:{left:boolean;right:boolean},nearest:ArmSide
+):ArmPaintPass[]{
+  const available=(['left','right'] as const).filter(side=>observed[side]);
+  const ordered=available.sort((a,b)=>a===nearest?1:b===nearest?-1:0);
+  return [
+    ...ordered.map(side=>({side,part:'upper' as const})),
+    ...ordered.flatMap(side=>[
+      {side,part:'lower' as const},{side,part:'hand' as const}
+    ])
+  ];
+}
