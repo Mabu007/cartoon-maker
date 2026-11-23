@@ -21,6 +21,21 @@ export type FacialControls = {
   lipPress: number; lipRound: number;
   jawTension: number; noseWrinkle: number;
 };
+/** MediaPipe's optional face blendshapes contain actual eye-direction
+ * coefficients. Unlike nose-based head yaw, these respond when the performer
+ * looks up, rolls their eyes, or glances sideways without moving the head.
+ * No additional inference is needed beyond the already enabled face model. */
+export function capturedEyeFocus(face?:Record<string,number>):{x:number;y:number}|undefined{
+  if(!face)return undefined;
+  const signal=(name:string)=>clamp(face[name]??0);
+  const up=Math.max(signal('eyeLookUpLeft'),signal('eyeLookUpRight'));
+  const down=Math.max(signal('eyeLookDownLeft'),signal('eyeLookDownRight'));
+  const toLeft=Math.max(signal('eyeLookOutLeft'),signal('eyeLookInRight'));
+  const toRight=Math.max(signal('eyeLookInLeft'),signal('eyeLookOutRight'));
+  if(Math.max(up,down,toLeft,toRight)<.18)return undefined;
+  return {x:clamp((toRight-toLeft)*1.65,-.95,.95),
+    y:clamp((down-up)*1.55,-.8,.8)};
+}
 export const neutralFacialControls: Readonly<FacialControls> = Object.freeze({
   browLeft:0,browRight:0,browTiltLeft:0,browTiltRight:0,
   eyeNarrowLeft:0,eyeNarrowRight:0,blinkLeft:0,blinkRight:0,eyeWideLeft:0,eyeWideRight:0,
