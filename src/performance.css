@@ -100,3 +100,110 @@ dialog.modal-wide:has(.performance-studio){width:min(1090px,calc(100vw - 28px));
   .performance-facing-picker button{font-size:11px;gap:3px;padding:7px 3px}
   .performance-facing-picker svg{width:13px;height:13px}
 }
+
+/* Performance Studio desktop polish: dedicated breathing room, stable sticky
+   header and its own scroll context rather than edge-to-edge form controls. */
+dialog.modal-wide:has(>.modal-content>.performance-studio){
+  width:min(1080px,calc(100vw - 40px));
+  max-width:1080px;
+  max-height:min(92dvh,900px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  border-radius:20px;
+  border-color:rgba(177,149,220,.32);
+  box-shadow:0 28px 100px rgba(10,8,22,.78);
+}
+dialog.modal-wide:has(.performance-studio)>.modal-content{
+  box-sizing:border-box;
+  padding:0 clamp(16px,2.8vw,30px) clamp(20px,3vw,34px);
+}
+dialog.modal-wide:has(.performance-studio)>.modal-content>header{
+  position:sticky;
+  top:0;
+  z-index:10;
+  margin:0;
+  padding:20px 0 18px;
+  background:#211e2c;
+  border-bottom:1px solid rgba(177,149,220,.20);
+}
+dialog.modal-wide:has(.performance-studio)>.modal-content>header h2{font-size:21px}
+dialog.modal-wide:has(.performance-studio)>.modal-content>header p{line-height:1.5}
+.performance-studio{padding-top:20px;gap:18px}
+.performance-studio .performance-views{gap:18px}
+.performance-studio .performance-view{
+  border-radius:15px;
+  border-color:rgba(169,142,208,.25);
+  box-shadow:0 6px 24px rgba(7,6,15,.18)
+}
+.performance-studio .performance-view-heading{padding:12px 15px}
+.performance-studio .performance-live-description{
+  border:1px solid rgba(164,139,192,.2);
+  border-radius:11px;
+  background:rgba(150,102,192,.06);
+  padding:11px 14px;
+  min-height:20px;
+}
+.performance-studio .performance-live-description strong{color:#d7afff}
+.performance-studio .performance-controls{
+  box-sizing:border-box;
+  min-width:0;
+  padding:clamp(16px,2.3vw,24px);
+  border:1px solid rgba(169,142,208,.22);
+  border-radius:15px;
+  background:rgba(36,28,48,.72);
+  gap:18px;
+}
+.performance-studio .performance-controls>label{gap:9px}
+.performance-studio .performance-controls select,
+.performance-studio .performance-controls input[type=text]{
+  min-height:43px;padding:9px 12px;border-radius:10px;
+  background:rgba(10,9,22,.28);border:1px solid rgba(180,153,215,.35)
+}
+.performance-studio .performance-facing-picker{gap:10px}
+.performance-studio .performance-facing-picker button{min-height:43px;padding:9px 6px}
+.performance-studio .performance-facing-section{gap:10px}
+.performance-studio .performance-values{column-gap:22px;row-gap:14px}
+.performance-studio .performance-values label{gap:12px}
+.performance-studio .performance-values input[type=range]{height:22px;accent-color:#b67ef6}
+.performance-studio .performance-toggles{gap:9px 11px}
+.performance-studio .performance-toggles label{
+  display:inline-flex;flex-direction:row;align-items:center;
+  gap:8px;min-height:34px;margin:0;
+  padding:5px 10px;border:1px solid rgba(179,158,201,.2);
+  background:rgba(18,15,29,.26);border-radius:9px;
+  font-weight:500;line-height:1.35
+}
+.performance-studio .performance-toggles input[type=checkbox]{margin:0;flex:0 0 auto;accent-color:#b97bfb}
+.performance-studio .performance-actions{padding-top:15px;border-top:1px solid rgba(165,141,198,.2)}
+.performance-studio .performance-actions button{min-height:39px;padding:9px 15px;border-radius:9px}
+.performance-studio .performance-help{font-size:11px;line-height:1.6;opacity:.75}
+.performance-studio .performance-privacy{padding-top:12px;border-top:1px solid rgba(165,141,198,.2)}
+.performance-gesture-guide{
+  border:1px solid rgba(164,128,207,.25);
+  background:rgba(170,111,227,.06);
+  border-radius:10px;
+  padding:11px 13px;
+  font-size:12px;
+  line-height:1.55
+}
+.performance-gesture-guide summary{cursor:pointer;font-weight:650;list-style-position:inside}
+.performance-gesture-guide[open]{padding-bottom:14px}
+.performance-gesture-guide p{font-size:12px;line-height:1.6;margin:9px 0 0;opacity:.86}
+@media(max-width:700px){
+  dialog.modal-wide:has(>.modal-content>.performance-studio){
+    width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:14px
+  }
+  dialog.modal-wide:has(.performance-studio)>.modal-content{padding:0 13px 20px}
+  dialog.modal-wide:has(.performance-studio)>.modal-content>header{padding:16px 0 14px}
+  .performance-studio{padding-top:14px;gap:12px}
+  .performance-studio .performance-views{gap:11px}
+  .performance-studio .performance-controls{padding:15px;gap:14px}
+  .performance-studio .performance-view-heading{padding:9px 11px}
+  .performance-studio .performance-facing-picker{gap:6px}
+}
+@media(max-width:420px){
+  .performance-studio .performance-values{grid-template-columns:1fr}
+  .performance-studio .performance-controls{padding:12px}
+  .performance-studio .performance-toggles label{width:100%}
+}

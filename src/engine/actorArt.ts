@@ -12,8 +12,9 @@ import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, d
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
+import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
 import { handRotation, handRotationParams, handSize, handWidthScale,
-  sampleHandRig, sampleLayeredHandRig, type HandPose } from './handRig.ts';
+  sampleHandRig, sampleLayeredHandRig, applyCapturedFingerCurls, type HandPose } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
 import type { ActingIntent, EmotionSpace, Action, Character, Expression, JointPose, Prop, View } from './schema.ts';
 
@@ -42,7 +43,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number};capturedArms?:{left:boolean;right:boolean};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number}},
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number};capturedArms?:{left:boolean;right:boolean};
+    capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number};
+    capturedContact?:{type:CapturedContact;influence:number};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number;observed?:{left:boolean;right:boolean}}},
   handGesture?: GestureSample) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
@@ -63,7 +66,34 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const joint = r[side];
     const propPose=appearance?.propPose??{action,time:actionTime,weight:appearance?.actionWeight??1};
     let [elbow, hand]=propArm(c,r,side,propPose,carrying,art.rear);
+    const costumeHand=c.wardrobe?.hand??'right';
+    const holdsCostume=side===costumeHand&&!carrying&&
+      Boolean(c.wardrobe?.handheld&&c.wardrobe.handheld!=='none');
     const reachesFace=cryHand(side);
+    // Screen-space hand contact is not reconstructed by synthesizing limbs.
+    // Only observed MoCap arms may receive the small deterministic IK snap.
+    const contact=appearance?.capturedContact;
+    if(contact&&appearance?.capturedArms?.[side]&&!carrying&&!held&&!holdsCostume){
+      const sign=side==='left'?-1:1;
+      const headX=r.head.x,headY=r.head.y;
+      let goal:{x:number;y:number}|undefined;
+      switch(contact.type){
+        case 'prayer':goal={x:r.neck.x+sign*5.8,y:r.neck.y+27};break;
+        case 'hands-on-head':goal={x:headX+sign*15*c.head,y:headY-15*c.head};break;
+        case 'guard':goal={x:headX+sign*25*c.head,y:headY+22*c.head};break;
+        case 'punch-left':
+        case 'punch-right':
+          if(contact.type===`punch-${side}`)
+            goal={x:joint.shoulder.x+sign*52*c.arms,y:joint.shoulder.y-11*c.arms};
+          break;
+      }
+      if(goal){
+        const [targetElbow,targetHand]=armIK(joint.shoulder,goal,28*c.arms,28*c.arms,sign);
+        const weight=Math.min(.86,Math.max(0,contact.influence)*.78);
+        elbow={x:mix(elbow.x,targetElbow.x,weight),y:mix(elbow.y,targetElbow.y,weight)};
+        hand={x:mix(hand.x,targetHand.x,weight),y:mix(hand.y,targetHand.y,weight)};
+      }
+    }
     if(reachesFace){
       const sign=side==='right'?1:-1, weight=appearance?.actionWeight??1;
       const eyeX=r.head.x+(art.profile?15:art.face*.38+sign*12)*c.head;
@@ -86,22 +116,24 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       stroke(g,upper?[joint.shoulder,cuff]:[joint.shoulder,elbow,cuff],limbWidth*build.arm+4,c.shirt);
       segment(g,cuff.x-3,cuff.y,cuff.x+3,cuff.y+1,c.wardrobe?.trim??shade(c.shirt,-.27),1.45);
     }
-    const costumeHand = c.wardrobe?.hand ?? 'right';
-    const holdsCostume = side===costumeHand && !carrying && Boolean(c.wardrobe?.handheld && c.wardrobe.handheld!=='none');
     const performance = handPerformance({
       action, locomotion, side, carrying: carrying || holdsCostume || (action === 'drive' && !!held),
       gesture: handGesture, actionWeight: appearance?.actionWeight
     });
     if(side===costumeHand && !carrying && !holdsCostume) drawBag(g,c,art,r.neck,r.hip,hand,costume);
     if(holdsCostume) drawHandheld(g,c,hand);
-    const observed=!(carrying||holdsCostume) ? appearance?.handOverride : undefined;
-    const geometry=observed
+    const observed=!(carrying||holdsCostume)&&appearance?.handOverride?.observed?.[side]!==false
+      ? appearance?.handOverride : undefined;
+    const presetGeometry=observed
       ? sampleLayeredHandRig(performance.pose,performance.blend,
         observed.from[side],observed[side],observed.progress,observed.influence)
       : sampleHandRig(performance.pose,performance.blend);
+    const geometry=applyCapturedFingerCurls(presetGeometry,
+      !carrying&&!holdsCostume?appearance?.capturedFingers?.[side]:undefined,
+      appearance?.capturedFingers?.influence??0);
     const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
     const wristDegrees = pose[`${side}Wrist`] ?? 0;
-    const rotation = observed
+    const rotation = observed||appearance?.capturedFingers?.[side]
       ? handRotationParams(forearm,wristDegrees,geometry.params.wristBend,side)
       : handRotation(forearm,wristDegrees,performance.pose,performance.blend,side);
     const scale = handSize(c.thickness);

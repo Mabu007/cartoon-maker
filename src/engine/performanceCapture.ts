@@ -7,7 +7,9 @@ import { clamp, ease, mix } from './animation.ts';
 import { fuseWorldAngle, mixDegrees, worldBodyProjector, wrapDegrees } from './worldRetarget.ts';
 import type { Character, Expression, JointPose } from './schema.ts';
 import type { HandPose } from './handRig.ts';
-import { blendFacialControls, facialFromBlendshapes, type FacialControls } from './facialIntelligence.ts';
+import { measuredFingerCurls, observedHandPose, detectedHandContact,
+  type FingerCurls, type CapturedContact } from './performanceHandIntelligence.ts';
+import { blendFacialControls, facialFromBlendshapes, capturedEyeFocus, type FacialControls } from './facialIntelligence.ts';
 
 export type Landmark = { x: number; y: number; z?: number; visibility?: number };
 export type CaptureFrame = {
@@ -20,6 +22,8 @@ export type PerformanceKey = {
   /** 0 for a genuine tracking gap; optional for backward-compatible clips. */
   presence?: number;
   hands?: { left: HandPose; right: HandPose }; expression?: Expression;
+  fingerCurls?:{left?:FingerCurls;right?:FingerCurls};
+  contact?:CapturedContact;
   /** Screen-space eye direction, normalized and independent of the authored gaze track. */
   focus?: { x:number; y:number };
   /** Reduced and editable face blendshapes; never raw webcam imagery. */
@@ -34,31 +38,9 @@ const tracked = ['torso','neck','head','leftShoulder','leftElbow','leftWrist','r
   'leftHip','leftKnee','rightHip','rightKnee'] as const;
 const confidence = (p?: Landmark) => p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility ?? 1) >= .55;
 const midpoint = (a: Landmark, b: Landmark): Landmark => ({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
-const distance = (a: Landmark,b:Landmark) => Math.hypot(a.x-b.x,a.y-b.y);
 const angle = (a: Landmark,b:Landmark) => Math.atan2(b.x-a.x,b.y-a.y)*180/Math.PI;
 function degrees(value:number) {
   return ((value+180)%360+360)%360-180;
-}
-function handShape(hand?: Landmark[]): HandPose | undefined {
-  if(!hand || hand.length<21 || !confidence(hand[0]))return undefined;
-  const wrist=hand[0];
-  const bend=[4,8,12,16,20].map((tip,i)=>{
-    const base=hand[[2,5,9,13,17][i]];
-    const middle=hand[[3,6,10,14,18][i]];
-    const end=hand[tip];
-    if(!base||!middle||!end)return .5;
-    const reach=distance(end,wrist)/Math.max(.001,distance(base,wrist)+distance(middle,base));
-    return clamp((1.25-reach)/.7);
-  });
-  const extended=bend.slice(1).map(v=>v<.48);
-  const count=extended.filter(Boolean).length;
-  if(count===4)return 'open';
-  if(count===0)return 'fist';
-  if(extended[0]&&!extended[1]&&!extended[2]&&!extended[3])return 'point';
-  if(extended[0]&&extended[1]&&!extended[2]&&!extended[3])return 'count-two';
-  if(extended[0]&&extended[1]&&extended[2]&&!extended[3])return 'count-three';
-  if(count===3||count===4)return 'loose-open';
-  return 'relaxed';
 }
 function facialExpression(face?: Record<string, number>): Expression | undefined {
   if(!face)return undefined;
@@ -73,7 +55,10 @@ function facialExpression(face?: Record<string, number>): Expression | undefined
 }
 export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | undefined {
   const p=frame.pose;
-  const left=handShape(frame.leftHand),right=handShape(frame.rightHand);
+  const leftCurls=measuredFingerCurls(frame.leftHand),rightCurls=measuredFingerCurls(frame.rightHand);
+  const left=leftCurls?observedHandPose(leftCurls):undefined;
+  const right=rightCurls?observedHandPose(rightCurls):undefined;
+  const contact=detectedHandContact(p,frame.leftHand,frame.rightHand,leftCurls,rightCurls);
   // A webcam can show just a face, one arm, or the full body. Do not reject
   // legitimate facial movement because the performer's hips or shoulders
   // were cropped. Never invent joints the camera cannot see.
@@ -136,6 +121,10 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     const horizontal=(p[0].x-shoulders.x)/Math.max(.1,Math.abs(p[11].x-p[12].x));
     pose.head=clamp(-horizontal*13-torso*.25,-18,18);
   }
+  // Optional eye blendshapes distinguish an eye roll/glance from a head
+  // turn. Pose-only capture still works when detailed face tracking is off.
+  const gaze=capturedEyeFocus(frame.face);
+  if(gaze)focus={x:gaze.x,y:gaze.y};
   // Legs are included only when observed; never fabricate missing knees/feet.
   for(const side of ['left','right'] as const){
     const a=side==='left'?23:24,b=side==='left'?25:26,c=side==='left'?27:28;
@@ -145,9 +134,13 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
       if(confidence(p[c]))pose[`${side}Knee`]=clamp(degrees(angleOf(b,c)-thigh),-135,135);
     }
   }
+  const emotion=facialExpression(frame.face);
   return {time:frame.t,pose,...(focus?{focus}:{}),
     ...(left||right?{hands:{left:left??'relaxed',right:right??'relaxed'}}:{}),
-    ...(facialExpression(frame.face)?{expression:facialExpression(frame.face)}:{}),
+    ...(leftCurls||rightCurls?{fingerCurls:{...(leftCurls?{left:leftCurls}:{}),
+      ...(rightCurls?{right:rightCurls}:{})}}:{}),
+    ...(contact?{contact}:{}),
+    ...(emotion?{expression:emotion}:{}),
     ...(frame.face?{facial:facialFromBlendshapes(frame.face)}:{})};
 }
 function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey {
@@ -182,7 +175,16 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     // observed wrist/arm position for the remainder of a performance.
     pose[joint]=mixDegrees(left??0,right??0,ease(phase));
   }
+  const fingerCurls:PerformanceKey['fingerCurls']={};
+  for(const side of ['left','right'] as const){
+    const first=a.fingerCurls?.[side],second=b.fingerCurls?.[side];
+    if(first&&second)fingerCurls[side]=first.map((v,i)=>
+      Math.round(mix(v,second[i],fraction)*1000)/1000) as FingerCurls;
+    else fingerCurls[side]=fraction<.5?first:second;
+  }
   return {time:at,pose,
+    ...(fingerCurls.left||fingerCurls.right?{fingerCurls}:{}),
+    ...(fraction<.5?a.contact?{contact:a.contact}:{}:b.contact?{contact:b.contact}:{}),
     ...((a.presence!==undefined||b.presence!==undefined)?{presence:mix(aPresent,bPresent,fraction)}:{}),
     hands: fraction<.5 ? a.hands : b.hands,
     ...((a.focus||b.focus)?{focus:a.focus&&b.focus
@@ -264,8 +266,14 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
           joint.endsWith('Wrist')?.7:1;
         error=Math.max(error,delta*emphasis);
       }
-      for(const side of ['left','right'] as const)
+      for(const side of ['left','right'] as const){
         if(observed.hands?.[side]!==estimated.hands?.[side])error=Math.max(error,20);
+        const raw=observed.fingerCurls?.[side],interpolated=estimated.fingerCurls?.[side];
+        if(Boolean(raw)!==Boolean(interpolated))error=Math.max(error,24);
+        else if(raw&&interpolated)for(let digit=0;digit<5;digit++)
+          error=Math.max(error,Math.abs(raw[digit]-interpolated[digit])*62);
+      }
+      if(observed.contact!==estimated.contact)error=Math.max(error,28);
       if(observed.expression!==estimated.expression)error=Math.max(error,20);
       // Force explicit tracking gaps into the key set before other compression.
       if(Math.abs((observed.presence??1)-(estimated.presence??1))>.05)
