@@ -36,6 +36,22 @@ test('unreliable body tracking is not converted into a fabricated pose',()=>{
   assert.equal(retargetCaptureFrame(missing),undefined);
   assert.throws(()=>compilePerformance([missing,missing]),/Capture at least two/);
 });
+test('seated webcam tracking accepts upper-body-only frames without fabricating legs',()=>{
+  const upper=frame(1);
+  for(const i of [23,24,25,26,27,28])upper.pose[i].visibility=0;
+  const captured=retargetCaptureFrame(upper);
+  assert(captured,'observed shoulders and arms should drive live puppeteering');
+  assert(captured.pose.rightShoulder!==undefined);
+  assert(captured.pose.rightElbow!==undefined);
+  assert.equal(captured.pose.leftHip,undefined);
+  assert.equal(captured.pose.rightKnee,undefined);
+  const partial=frame(2);
+  partial.pose[16].visibility=0;
+  const pose=retargetCaptureFrame(partial);
+  assert(pose,'one hand outside the webcam should not invalidate the whole body');
+  assert.equal(pose.pose.rightElbow,undefined);
+  assert(pose.pose.leftElbow!==undefined);
+});
 test('captured clips survive schema validation and editing',()=>{
   const project=makeProject(true);
   const scene=project.scenes[0];
