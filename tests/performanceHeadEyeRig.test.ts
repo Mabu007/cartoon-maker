@@ -60,6 +60,11 @@ test('one captured head cannot exceed the combined neck/torso/head roll envelope
   assert((heavilyTilted.torso??0)>0&&(heavilyTilted.neck??0)>0&&
     (heavilyTilted.head??0)>0,
     'overrotation must not reverse a head in the direction of the actor lean');
+  const torsoOnly=constrainCapturedHead({torso:27,leftShoulder:34});
+  assert.equal(torsoOnly.torso,18);
+  assert.equal(torsoOnly.head,undefined);
+  assert.equal(torsoOnly.neck,undefined,
+    'cropped face should not produce invented skull observations');
   const authored={rightShoulder:91,rightElbow:-20};
   assert.equal(constrainCapturedHead(authored),authored,
     'ordinary non-facial action poses are untouched');
