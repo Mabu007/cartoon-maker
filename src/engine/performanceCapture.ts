@@ -340,6 +340,11 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
         else if(arm&&estimate)error=Math.max(error,Math.hypot(arm.x-estimate.x,arm.y-estimate.y)*1.5);
         if(observed.armBend?.[side]!==estimated.armBend?.[side])
           error=Math.max(error,20);
+        const armWeight=observed.armConfidence?.[side],estimateWeight=estimated.armConfidence?.[side];
+        if(Boolean(armWeight!==undefined)!==Boolean(estimateWeight!==undefined))
+          error=Math.max(error,25);
+        else if(armWeight!==undefined&&estimateWeight!==undefined)
+          error=Math.max(error,Math.abs(armWeight-estimateWeight)*35);
         const actualDepth=observed.armDepth?.[side],estimatedDepth=estimated.armDepth?.[side];
         if(actualDepth!==undefined&&estimatedDepth!==undefined)
           error=Math.max(error,Math.abs(actualDepth-estimatedDepth)*24);
