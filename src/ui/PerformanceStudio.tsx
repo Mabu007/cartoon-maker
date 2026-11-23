@@ -218,7 +218,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   function begin(){
     if(statusRef.current!=='ready'||!tracker.current)return;
     if(!lastSeen.current||!lastPreview.current){
-      setMessage('Move into the webcam view until the character responds, then press Record movement.');
+      setTracking('searching');
+      setMessage('Camera connected but no body tracked yet. Sit or stand so your face and shoulders are visible, then press Record movement.');
       return;
     }
     frames.current=[];chunks.current=[];stopping.current=false;recording.current=true;
@@ -331,7 +332,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <strong>{status==='review'?'3 · Review your take':status==='recording'?'2 · Recording movement':status==='ready'?'2 · Perform and record':'1 · Connect your webcam'}</strong>
           <span>{status==='review'?result?.duration.toFixed(1)+'s captured · replay or add to timeline':
             status==='recording'?recordSeconds.toFixed(1)+' / '+maxDuration+' seconds':
-            status==='ready'?'Your character is live. Record when ready.':
+            status==='ready'?(tracking==='live'?'Your character is live. Record when ready.':'Move your face and shoulders into the webcam view.'):
             'Record movement locally. Microphone is optional.'}</span>
         </div>
         <div className="performance-command-actions">
