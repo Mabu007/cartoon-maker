@@ -145,8 +145,11 @@ test('new arm metadata round trips through performance keys and releases at scen
     start:0,length:2,performance:[first,gap,last]};
   const document=ProjectDocument.parse({...project,
     scenes:[{...scene,clips:[clip]},...project.scenes.slice(1)]});
-  const serialized=ProjectDocument.parse(JSON.parse(JSON.stringify(document)));
-  assert.deepEqual(serialized.scenes[0].clips[0],document.scenes[0].clips[0]);
+  // JSON intentionally canonicalizes -0 to 0. Compare the revalidated
+  // project with the actual serialized on-disk form, not its pre-JSON source.
+  const onDisk=JSON.parse(JSON.stringify(document));
+  const serialized=ProjectDocument.parse(onDisk);
+  assert.deepEqual(serialized.scenes[0].clips[0],onDisk.scenes[0].clips[0]);
   const frame=evaluate(serialized.scenes[0],.2,new Map(project.characters.map(c=>[c.id,c]))).actors[0];
   assert(frame.capturedRig?.targets.left);
   assert.equal(frame.capturedRig?.near,'left');

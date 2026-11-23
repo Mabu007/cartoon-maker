@@ -6,7 +6,7 @@
  * associated palm location with a short temporal history as a tie-breaker.
  * Hands are never invented when the detector returns fewer than two.
  */
-import type { Landmark } from './performanceCapture.ts';
+import type { Landmark } from '../engine/performanceCapture.ts';
 type Side='left'|'right';
 export type HandAssignment={left?:Landmark[];right?:Landmark[]};
 const good=(p?:Landmark)=>Boolean(p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&
