@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles, ArrowLeft, ArrowRight, UserRound } from 'lucide-react';
+import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles, ArrowLeft, ArrowRight, UserRound, Play, RotateCcw, Check, Square, Mic } from 'lucide-react';
 import { actingDNA, retargetCaptureFrame, samplePerformance,
   type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
 import { compileResolvedPerformance, type ResolvedObservation } from '../engine/resolvedPerformance.ts';
@@ -10,6 +10,7 @@ import { clamp } from '../engine/animation.ts';
 import { createPerformanceStabilizer } from '../engine/performanceStabilizer.ts';
 import { constrainCapturedHead } from '../engine/performanceHeadEye.ts';
 import { createPerformancePreview, type PerformancePreview } from '../services/performancePreview.ts';
+import { finishOptionalAudio } from '../services/performanceRecording.ts';
 import { drawPerformanceLandmarks } from '../services/performanceOverlay.ts';
 import { uid, type Character, type Clip, type Scene, type PerformanceFacing } from '../engine/schema.ts';
 import { initialPerformanceFacing } from '../engine/performanceFacing.ts';
@@ -35,6 +36,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   // Start with body + hands on modest devices; facial capture stays one click away.
   const [face,setFace]=useState(()=>((navigator as Navigator & {deviceMemory?:number}).deviceMemory??8)>4);
   const [hands,setHands]=useState(true);
+  const [recordVoice,setRecordVoice]=useState(false);
+  const [recordSeconds,setRecordSeconds]=useState(0);
   const [trackingOverlay,setTrackingOverlay]=useState(true);
   const [transcript,setTranscript]=useState('');
   const [takeName,setTakeName]=useState('Webcam take');
@@ -64,7 +67,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const stopping=useRef(false),recording=useRef(false);
   const lastSeen=useRef(0),lastUi=useRef(0),lastPreview=useRef<PerformanceKey|undefined>(undefined);
   const playback=useRef<{keys:PerformanceKey[];duration:number;start:number}|undefined>(undefined);
-  const interval=useRef(70);
+  const interval=useRef(70),lastClock=useRef(0);
   const updateStatus=(next:Status)=>{statusRef.current=next;setStatus(next);};
   function drawPose(key?:PerformanceKey){
     lastDrawn.current=key;
@@ -103,6 +106,10 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   function loop(at:number){
     if(!alive.current||!tracker.current)return;
     if(statusRef.current==='recording'&&at-started.current>=maxDuration*1000)void stop();
+    if(statusRef.current==='recording'&&at-lastClock.current>=110){
+      setRecordSeconds(Math.min(maxDuration,(at-started.current)/1000));
+      lastClock.current=at;
+    }
     const state=statusRef.current;
     if(state==='review'&&playback.current){
       const playing=playback.current;
@@ -144,15 +151,15 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             lastUi.current=at;
           }
         }else{
-          if(recording.current)frames.current.push({elapsed:Math.max(0,(at-started.current)/1000)});
-          // An unavailable frame must not keep the actor permanently in its
-          // last hand or face pose. Return to the native rig while tracking
-          // is lost; reacquisition starts a new filtered segment.
-          if(!lastSeen.current||at-lastSeen.current>180){
-            lastPreview.current=undefined;
-            motionStabilizer.current.reset();
-            drawPose();
-          }
+          // Brief occlusion is not a new neutral pose. The same predicted,
+          // confidence-faded sample is shown and recorded, so replay matches
+          // the live puppeteering instead of flickering to default animation.
+          const recovered=motionStabilizer.current.recover(at/1000);
+          lastPreview.current=recovered;
+          if(recording.current)frames.current.push({
+            elapsed:Math.max(0,(at-started.current)/1000),sample:recovered
+          });
+          drawPose(recovered);
           if(at-lastUi.current>700){
             setTracking(lastSeen.current&&at-lastSeen.current>2200?'lost':'searching');
             setObservedGesture('');
@@ -181,9 +188,10 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     try{
       try{media=await navigator.mediaDevices.getUserMedia({
         video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},
-        audio:{echoCancellation:true,noiseSuppression:true}});}
+        audio:recordVoice?{echoCancellation:true,noiseSuppression:true}:false});}
       catch{media=await navigator.mediaDevices.getUserMedia({
-        video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},audio:false});}
+        video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},audio:false});
+        if(recordVoice)setMessage('Microphone unavailable. Motion recording will still work.');}
       vision=await startPerformanceTracker({hands,face});
       if(!alive.current){vision.close();media.getTracks().forEach(track=>track.stop());return;}
       stream.current=media;tracker.current=vision;
@@ -208,8 +216,13 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     updateStatus('idle');setObservedGesture('');setMessage('Choose hand and face tracking options, then enable the camera again.');
   }
   function begin(){
-    if(statusRef.current!=='ready'||!tracker.current||!lastSeen.current)return;
+    if(statusRef.current!=='ready'||!tracker.current)return;
+    if(!lastSeen.current||!lastPreview.current){
+      setMessage('Move into the webcam view until the character responds, then press Record movement.');
+      return;
+    }
     frames.current=[];chunks.current=[];stopping.current=false;recording.current=true;
+    setRecordSeconds(0);lastClock.current=0;
     playback.current=undefined;setRecordedAudio(undefined);setResult(undefined);setTrackedFrames(0);
     let writer:MediaRecorder|undefined;
     const audio=stream.current?.getAudioTracks();
@@ -225,6 +238,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     // time zero. Audio starts against this same clock, not first detection.
     frames.current.push({elapsed:0,sample:lastPreview.current});
     updateStatus('recording');
+    setMessage('Recording motion now. Perform naturally, then press Stop & review.');
   }
   async function stop(){
     if(stopping.current||statusRef.current!=='recording')return;
@@ -240,14 +254,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     updateStatus('processing');
     setMessage('Compiling exactly the motion you saw, preserving tracking gaps and voice timing…');
     const writer=recorder.current;recorder.current=undefined;
-    let audio:Blob|undefined;
-    if(writer?.state==='recording')audio=await new Promise<Blob|undefined>(resolve=>{
-      writer.addEventListener('stop',()=>{
-        const blob=new Blob(chunks.current,{type:writer.mimeType||'audio/webm'});
-        resolve(blob.size>0?blob:undefined);
-      },{once:true});
-      try{writer.stop();}catch{resolve(undefined);}
-    });
+    // A broken microphone must not prevent motion capture from compiling.
+    const audio=await finishOptionalAudio(writer,chunks.current);
     if(audio)setRecordedAudio(audio);
     try{
       const compiled=compileResolvedPerformance(frames.current,duration);
@@ -302,8 +310,33 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     }catch(error){updateStatus('review');setMessage('Could not save performance: '+String(error));}
   }
   const style=result?actingDNA(result.keys):undefined;
+  const retake=()=>{
+    playback.current=undefined;setReplaying(false);setResult(undefined);
+    setRecordedAudio(undefined);stopping.current=false;frames.current=[];
+    setRecordSeconds(0);updateStatus('ready');
+    setMessage('Ready for another take. Your previous take was not added.');
+  };
   return <Modal title="Performance Studio" description="Record natural talking, expressive gestures and personality-driven micro movements." close={dismiss} wide>
     <div className="performance-studio">
+      <div className="performance-commandbar" role="region" aria-label="Recording controls">
+        <div className="performance-command-copy">
+          <strong>{status==='review'?'3 · Review your take':status==='recording'?'2 · Recording movement':status==='ready'?'2 · Perform and record':'1 · Connect your webcam'}</strong>
+          <span>{status==='review'?result?.duration.toFixed(1)+'s captured · replay or add to timeline':
+            status==='recording'?recordSeconds.toFixed(1)+' / '+maxDuration+' seconds':
+            status==='ready'?'Your character is live. Record when ready.':
+            'Record movement locally. Microphone is optional.'}</span>
+        </div>
+        <div className="performance-command-actions">
+          {status==='idle'&&<button type="button" className="primary" disabled={!actor} onClick={()=>void prepare()}><Camera size={16}/> Enable camera</button>}
+          {status==='ready'&&<button type="button" className="primary" onClick={begin}><Circle size={15}/> Record movement</button>}
+          {status==='ready'&&<button type="button" className="quiet" onClick={resetCamera}>Camera settings</button>}
+          {status==='recording'&&<button type="button" className="primary performance-stop" onClick={()=>void stop()}><Square size={14} fill="currentColor"/> Stop &amp; review</button>}
+          {status==='review'&&<button type="button" className="quiet" disabled={replaying||!!previewError} onClick={replay}><Play size={15}/> Replay</button>}
+          {status==='review'&&<button type="button" className="quiet" onClick={retake}><RotateCcw size={15}/> Retake</button>}
+          {status==='review'&&<button type="button" className="primary" onClick={()=>void save()}><Check size={16}/> Add to timeline</button>}
+          {(status==='loading'||status==='processing')&&<span className="performance-busy" role="status">{status==='loading'?'Starting webcam…':'Finishing take…'}</span>}
+        </div>
+      </div>
       <div className="performance-views">
         <section className="performance-view" aria-label="Your webcam">
           <div className="performance-view-heading"><span>YOU · CAMERA</span><span className="performance-view-badge">{status==='recording'?'Recording':status==='review'?'Take finished':status==='ready'?'Camera active':'Camera off'}</span></div>
@@ -362,6 +395,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track finger poses (extra CPU)</label>
           <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track actual pupils + eyes + face (extra CPU)</label>
           <label><input type="checkbox" checked={trackingOverlay} onChange={e=>setTrackingOverlay(e.target.checked)}/> Show tracking points</label>
+          <label><input type="checkbox" checked={recordVoice} disabled={status!=='idle'} onChange={e=>setRecordVoice(e.target.checked)}/> <Mic size={14}/> Also record voice (optional)</label>
         </div>
         <details className="performance-gesture-guide">
           <summary>Gesture guide · fists, pointing, prayer and more</summary>
@@ -370,13 +404,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         </details>
         <p className="performance-help">Arms and bounded head tilt use the lightweight pose model. Actual eyeball direction requires the optional face model (iris landmarks), which also captures eyebrows, eyelids and mouth. Without it, eye direction is only approximate.</p>
         <p className="performance-help" role="status">{message}</p>
-        <div className="performance-actions">
-          {status==='idle'&&<button type="button" className="primary" disabled={!actor} onClick={()=>void prepare()}><Camera size={16}/> Enable camera</button>}
-          {status==='ready'&&<button type="button" className="primary" disabled={tracking!=='live'} onClick={begin}><Circle size={15}/> Record acting</button>}
-          {status==='ready'&&<button type="button" className="quiet" onClick={resetCamera}>Change tracking options</button>}
-          {status==='recording'&&<button type="button" className="primary" onClick={()=>void stop()}><VideoOff size={15}/> Stop & compile</button>}
-          {(status==='loading'||status==='processing')&&<span>Processing on your device…</span>}
-        </div>
+        <p className="performance-help">Use the recording toolbar above the camera preview to start, stop, replay, retake or save. No microphone is needed for movement.</p>
         {status==='review'&&result&&<>
           <div className="performance-summary">
             <strong>{result.duration.toFixed(1)}s performance · {result.keys.length} editable poses</strong>
@@ -393,9 +421,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             <span>Energy {style.energy}% · Gesture size {style.gestureAmplitude}% · Dominant {style.dominantHand} hand</span>
             <button type="button" className="quiet" onClick={()=>saveActingDNA(actor,style)}><WandSparkles size={14}/> Apply motion style to character</button>
           </div>}
-          <button type="button" className="quiet" disabled={replaying||!!previewError} onClick={replay}>Replay on character</button>
-          <button className="primary" type="button" onClick={()=>void save()}>Add performance to timeline{recordedAudio?' + recorded voice':''}</button>
-          <button className="quiet" type="button" onClick={()=>{playback.current=undefined;setReplaying(false);setResult(undefined);stopping.current=false;frames.current=[];updateStatus('ready');}}>Retake</button>
+          <p className="performance-help">Name your performance here, then use <strong>Add to timeline</strong> in the toolbar above. Your movement will appear on the Performance track.</p>
         </>}
         <div className="performance-privacy"><ShieldAlert size={15}/> Raw camera video is not stored. The character is controlled locally; only compact pose keys and an optional voice recording are saved. Face tracking can be disabled for slower computers.</div>
       </div>
