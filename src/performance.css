@@ -33,3 +33,41 @@
 @media(max-width:760px){.track-record span{display:none}.performance-track-empty{max-width:calc(100% - 16px);text-align:left}}
 
 .performance-keyframe{position:absolute;z-index:2;top:50%;width:4px;height:4px;border-radius:50%;transform:translate(-50%,-50%);background:rgba(224,231,255,.95);box-shadow:0 0 0 1px rgba(49,46,129,.75);pointer-events:none}
+
+/* Performance Studio: human and the actual animation rig in equal, simultaneous viewports. */
+dialog.modal-wide:has(.performance-studio){width:min(1090px,calc(100vw - 28px));max-width:1090px;max-height:calc(100dvh - 28px);overflow:auto}
+.performance-studio{display:flex;flex-direction:column;gap:14px;min-width:0}
+.performance-views{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+.performance-view{min-width:0;overflow:hidden;background:#151823;border:1px solid rgba(140,137,179,.25);border-radius:13px}
+.performance-view-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;font-size:11px;letter-spacing:.045em;font-weight:750;color:#c9c7e5}
+.performance-view-badge{font-size:10px;letter-spacing:0;color:#b2b5ca;border:1px solid rgba(160,162,198,.22);border-radius:20px;padding:3px 8px;white-space:nowrap}
+.performance-status-live{color:#7de6b5;background:rgba(13,131,93,.15);border-color:rgba(23,184,125,.38)}
+.performance-status-lost{color:#f4b5ac}
+.performance-status-searching{color:#f2d19b}
+.performance-studio .performance-camera,.performance-character{position:relative;width:100%;aspect-ratio:16/9;border-radius:0;border:0;background:#10121e;overflow:hidden}
+.performance-studio .performance-camera video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transform:scaleX(-1)}
+.performance-character canvas.performance-character-canvas{display:block;width:100%;height:100%;object-fit:contain}
+.performance-character:empty:after{content:'Preparing cartoon character…';position:absolute;inset:0;display:grid;place-items:center;color:#a8a9c0;font-size:12px}
+.performance-preview-error{position:absolute;z-index:3;inset:auto 8px 8px;max-height:65%;overflow:auto;color:#fecaca;font-size:11px;background:rgba(65,13,24,.92);padding:9px;border-radius:7px}
+.performance-live-description{display:flex;gap:14px;align-items:center;justify-content:space-between;line-height:1.5;font-size:12px;color:inherit}
+.performance-live-description strong{white-space:nowrap;color:#b2a8ff;font-size:11px}
+.performance-studio .performance-controls{display:flex;flex-direction:column;gap:11px}
+.performance-studio .performance-controls .performance-actions{flex-wrap:wrap}
+.performance-studio .performance-controls .performance-values{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* Keep every control within the label column: no Record word can spill over a clip. */
+.professional-timeline .track-name:has(.track-record){gap:4px;padding-left:6px;padding-right:6px;overflow:hidden}
+.professional-timeline .track-name:has(.track-record) button{margin-left:0;flex:0 0 auto}
+.professional-timeline .track-name:has(.track-record) .timeline-track-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.professional-timeline .track-record{display:grid;place-items:center;padding:3px;margin:0;min-width:20px;height:23px;flex:0 0 20px}
+.professional-timeline .performance-track-empty{position:absolute;left:8px;top:3px;z-index:1;box-sizing:border-box;max-width:calc(100% - 16px);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 9px}
+@media(max-width:700px){
+  dialog.modal-wide:has(.performance-studio){width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+  .performance-views{grid-template-columns:1fr;gap:9px}
+  .performance-studio .performance-camera,.performance-character{aspect-ratio:16/8.5}
+  .performance-live-description{flex-direction:column;align-items:start;gap:3px}
+  .performance-studio .performance-controls .performance-values{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:390px){
+  .performance-studio .performance-controls .performance-values{grid-template-columns:1fr}
+  .performance-view-heading{font-size:10px;padding:8px}
+}
