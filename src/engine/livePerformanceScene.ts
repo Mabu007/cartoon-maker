@@ -43,7 +43,16 @@ export function smoothLivePerformance(
     facial:current.facial&&previous.facial
       ?blendFacialControls(previous.facial,current.facial,alpha)
       :current.facial,
-    // Discrete hand poses switch immediately so gestures read on the preview.
+    fingerCurls:current.fingerCurls&&previous.fingerCurls?{
+      left:current.fingerCurls.left&&previous.fingerCurls.left
+        ?current.fingerCurls.left.map((v,i)=>mix(previous.fingerCurls!.left![i],v,alpha)) as import('./performanceHandIntelligence.ts').FingerCurls
+        :current.fingerCurls.left,
+      right:current.fingerCurls.right&&previous.fingerCurls.right
+        ?current.fingerCurls.right.map((v,i)=>mix(previous.fingerCurls!.right![i],v,alpha)) as import('./performanceHandIntelligence.ts').FingerCurls
+        :current.fingerCurls.right
+    }:current.fingerCurls,
+    // Discrete contacts/hand poses switch immediately for expressive acting.
+    contact:current.contact,
     hands:current.hands
   };
 }
