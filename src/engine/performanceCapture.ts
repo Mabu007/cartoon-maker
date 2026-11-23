@@ -7,6 +7,7 @@ import { clamp, ease, mix } from './animation.ts';
 import { fuseWorldAngle, mixDegrees, worldBodyProjector, wrapDegrees } from './worldRetarget.ts';
 import type { Character, Expression, JointPose } from './schema.ts';
 import type { HandPose } from './handRig.ts';
+import { blendFacialControls, facialFromBlendshapes, type FacialControls } from './facialIntelligence.ts';
 
 export type Landmark = { x: number; y: number; z?: number; visibility?: number };
 export type CaptureFrame = {
@@ -17,6 +18,8 @@ export type CaptureOptions = { exaggeration?: number; smoothing?: number; maxKey
 export type PerformanceKey = {
   time: number; pose: JointPose; lift?: number;
   hands?: { left: HandPose; right: HandPose }; expression?: Expression;
+  /** Reduced and editable face blendshapes; never raw webcam imagery. */
+  facial?: FacialControls;
 };
 export type PerformanceIntent = 'rest' | 'point' | 'open-hands' | 'emphasis' | 'guard' | 'strike';
 export type MotionDNA = {
@@ -108,7 +111,8 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const left=handShape(frame.leftHand),right=handShape(frame.rightHand);
   return {time:frame.t,pose,
     ...(left||right?{hands:{left:left??'relaxed',right:right??'relaxed'}}:{}),
-    ...(facialExpression(frame.face)?{expression:facialExpression(frame.face)}:{})};
+    ...(facialExpression(frame.face)?{expression:facialExpression(frame.face)}:{}),
+    ...(frame.face?{facial:facialFromBlendshapes(frame.face)}:{})};
 }
 function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey {
   const fraction=clamp((at-a.time)/Math.max(.000001,b.time-a.time));
@@ -126,7 +130,10 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
   }
   return {time:at,pose,
     hands: fraction<.5 ? a.hands??b.hands : b.hands??a.hands,
-    expression: fraction<.5?a.expression??b.expression:b.expression??a.expression};
+    expression: fraction<.5?a.expression??b.expression:b.expression??a.expression,
+    ...((a.facial||b.facial)?{facial:a.facial&&b.facial
+      ? blendFacialControls(a.facial,b.facial,ease(fraction))
+      : a.facial??b.facial}: {})};
 }
 export function samplePerformance(keys:readonly PerformanceKey[],normalized:number):PerformanceKey {
   if(!keys.length)return {time:normalized,pose:{}};
@@ -188,6 +195,11 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
       for(const side of ['left','right'] as const)
         if(observed.hands?.[side]!==estimated.hands?.[side])error=Math.max(error,20);
       if(observed.expression!==estimated.expression)error=Math.max(error,20);
+      if(observed.facial){
+        if(!estimated.facial)error=Math.max(error,20);
+        else for(const channel of Object.keys(observed.facial) as (keyof FacialControls)[])
+          error=Math.max(error,Math.abs(observed.facial[channel]-estimated.facial[channel])*48);
+      }
       if(error>largest){largest=error;candidate=index;}
     }
     if(candidate<0)continue;
@@ -234,7 +246,10 @@ export function compilePerformance(frames: readonly CaptureFrame[], options:Capt
       pose[joint]=round(clamp(mixDegrees(from,target,response*deadband),-165,165));
     }
     keys.push({time:Math.round((elapsed/duration)*10000)/10000,pose,
-      ...(source.hands?{hands:source.hands}:{}),...(source.expression?{expression:source.expression}:{})});
+      ...(source.hands?{hands:source.hands}:{}),...(source.expression?{expression:source.expression}:{}),
+      ...(source.facial?{facial:prev?.facial
+        ? blendFacialControls(prev.facial,source.facial,1-smoothing*.6)
+        : source.facial}:{})});
   }
   keys[0].time=0;keys[keys.length-1].time=1;
   return {keys:reducePerformanceKeys(keys),duration:Math.round(duration*100)/100,
