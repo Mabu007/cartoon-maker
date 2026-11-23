@@ -5,7 +5,7 @@
  * *directions*, not frame-based sprites. This module is pure: previews, reverse
  * timeline scrubbing, and exports produce identical facial controls.
  */
-import type { Expression, Character, ActingIntent } from './schema.ts';
+import type { Expression, Character, ActingIntent, EmotionSpace } from './schema.ts';
 import { clamp, mix } from './animation.ts';
 import { resolvePersonality } from './livingCharacter.ts';
 
@@ -156,4 +156,29 @@ export function facialFromBlendshapes(blendshapes:Record<string,number>):FacialC
     jawTension:Math.max(value('mouthPressLeft'),value('mouthPressRight')),
     noseWrinkle:Math.max(value('noseSneerLeft'),value('noseSneerRight'))
   };
+}
+
+/** Apply continuous affect on top of directed facial acting. Explicit values
+ * remain artist-controlled; no claim of inferring psychology from voice. */
+export function emotionFacialControls(base:FacialControls, emotion?:EmotionSpace):FacialControls {
+  if(!emotion)return base;
+  const valence=clamp(emotion.valence??0,-1,1);
+  const arousal=clamp(emotion.arousal??.5);
+  const dominance=clamp(emotion.dominance??.5);
+  const tension=clamp(emotion.tension??.2);
+  const positive=Math.max(0,valence),negative=Math.max(0,-valence);
+  const out={...base};
+  out.smileLeft=clamp(out.smileLeft+positive*.38);
+  out.smileRight=clamp(out.smileRight+positive*.4);
+  out.frownLeft=clamp(out.frownLeft+negative*.36);
+  out.frownRight=clamp(out.frownRight+negative*.39);
+  out.browLeft=clamp(out.browLeft+(arousal-.5)*.31-(dominance-.5)*.16,-1,1);
+  out.browRight=clamp(out.browRight+(arousal-.5)*.33-(dominance-.5)*.18,-1,1);
+  out.eyeWideLeft=clamp(out.eyeWideLeft+Math.max(0,arousal-.5)*.28);
+  out.eyeWideRight=clamp(out.eyeWideRight+Math.max(0,arousal-.5)*.30);
+  out.eyeNarrowLeft=clamp(out.eyeNarrowLeft+Math.max(0,.45-arousal)*.18);
+  out.eyeNarrowRight=clamp(out.eyeNarrowRight+Math.max(0,.45-arousal)*.19);
+  out.lipPress=clamp(out.lipPress+tension*.38);
+  out.jawTension=clamp(out.jawTension+tension*.38);
+  return out;
 }
