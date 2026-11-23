@@ -128,6 +128,34 @@ test('camera rotation and its inverse match across portrait, square and landscap
     assert(cameraViewport(pose,viewport,format).rotation>0);
   }
 });
+test('shot size, subject composition, angle and movement can be combined independently',()=>{
+  const camera=shot('medium-close-up',{
+    composition:'over-shoulder',angle:'low-angle',
+    movement:'dolly-in',strength:1.25,focus:actor.id
+  });
+  const mid=cameraFraming(camera,targets,[],2);
+  const plain=cameraFraming(shot('medium-close-up'),targets,[],2);
+  assert.equal(mid.zoom,plain.zoom,'composition does not discard chosen size');
+  assert(mid.x>plain.x,'OTS compositional bias includes the conversation partner');
+  assert(mid.y<plain.y,'low angle independently reframes the shot');
+  const start=directCamera(camera,undefined,targets,[],0);
+  const finish=directCamera(camera,undefined,targets,[],5);
+  assert(finish.zoom>start.zoom,'dolly push-in is still active');
+  const saved=ProjectDocument.parse({...demo,scenes:[scene(camera)]});
+  const persisted=saved.scenes[0].clips[0];
+  assert(persisted.track==='camera');
+  assert.equal(persisted.composition,'over-shoulder');
+  assert.equal(persisted.movement,'dolly-in');
+
+  const propInsert=shot('close-up',{composition:'insert',focus:prop.id});
+  const propFrame=cameraFraming(propInsert,targets,source.objects,1);
+  assert(Math.abs(propFrame.x-prop.x)<150,'insert may focus on a real prop');
+
+  const reverse=shot('medium',{composition:'shot-reverse-shot',length:6});
+  assert(cameraFraming(reverse,targets,[],1).x<
+    cameraFraming(reverse,targets,[],4).x,'compositional reverse works with a size preset');
+  assert.match(cameraDirectionHint('medium','eye-level','none','over-shoulder'),/2D perspective/);
+});
 test('older camera clips and optional new fields round trip and remain camera-exclusive',()=>{
   const old=shot('medium',{id:'classic',start:0,length:4});
   const newShot=shot('reaction',{id:'new',start:4,length:3,
