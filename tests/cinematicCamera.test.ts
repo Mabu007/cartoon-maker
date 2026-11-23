@@ -32,7 +32,7 @@ test('cinematic categories cover the requested filmmaking vocabulary',()=>{
     assert(cameraAngles.includes(angle as typeof cameraAngles[number]));
   for(const motion of ['pan-left','pan-right','tilt-up','tilt-down','dolly-in',
     'dolly-out','truck-left','pedestal-up','zoom-in','zoom-out','dolly-zoom',
-    'whip-pan-right','crane-up','handheld','gimbal','follow'])
+    'whip-pan-right','crane-up','handheld','steadicam','gimbal','follow'])
     assert(cameraMovements.includes(motion as typeof cameraMovements[number]));
   assert(shots.includes('pan')&&shots.includes('hold')&&shots.includes('front'),
     'old shot IDs remain valid');
@@ -84,6 +84,9 @@ test('angles use deterministic 2D reframing; Dutch angle produces true screen ro
   assert(low.y<basic.y);
   const dutch=cameraFraming({...close,angle:'dutch-angle',roll:-14},targets,[],2);
   assert.equal(dutch.roll,-14);
+  assert.equal(cameraFraming({...shot('wide'),angle:'dutch-angle'},targets,[],2).roll,12);
+  assert.equal(cameraFraming({...shot('wide'),angle:'dutch-angle'},[],[],2).roll,12);
+  assert(cameraFraming({...shot('wide'),angle:'dutch-angle'},[],[],2).zoom>1);
   assert.equal(cameraFraming({...close,angle:'aerial'},targets,[],2).zoom,1);
   assert.match(cameraDirectionHint('medium','birds-eye','none'),/2D framing/);
   assert.match(cameraDirectionHint('medium','eye-level','dolly-zoom'),/2D dolly-zoom/);
