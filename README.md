@@ -65,6 +65,25 @@ HTTP 200; then refresh the browser with Ctrl+Shift+R. A 404 indicates
 that the local model assets were not installed correctly. Only the browser
 can authorize camera and microphone access; this is not a Firebase login.
 
+## Cinematic Camera Director
+
+From **Movie timeline → Add → Camera**, select your shot from the grouped
+**Shot size / composition** menu. Pick an actor or prop as the focus, then
+choose a **Camera angle**, **Camera movement**, and **Cut / Glide**. Edit any
+camera clip afterward in its Inspector; movement intensity and Dutch tilt
+are adjustable there. Only one camera clip is active at any instant.
+
+Shot sizes include Extreme Wide, Wide, Full, Medium Long, Cowboy, Medium,
+Medium Close-Up, Close-Up, Big Close-Up and Extreme Close-Up. Subject framing
+includes Establishing, Master, Two/Three/Group, OTS, POV, Insert, Cutaway,
+Reaction and Shot / Reverse Shot. Camera motions include pan, tilt, dolly,
+truck, pedestal, zoom, whip pan, crane, handheld, Steadicam and gimbal.
+
+**2D limitation:** overhead / low / high aerial viewpoints and dolly zoom
+are stylized reframing effects in the existing flat cartoon universe, not
+literal 3D perspective or physical lens optics. No additional renderer or
+AI model is required. Existing camera clips remain compatible.
+
 ## How it works
 1. Open the local studio without signing in, or visit the public landing page and optionally create a Firebase account for online backup.
 2. Start a project with eight customizable starter characters (including Bra Sbu, Zee, Naledi, Milo and others) and a scene.
