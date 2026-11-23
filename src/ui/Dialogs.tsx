@@ -7,7 +7,7 @@ import { animations, clamp } from '../engine/animation.ts';
 import { soundNames } from '../engine/presets.ts';
 import { actionLayer, actionUsesProp, propActions, usesSeat, soundDurations, transitionNames, vfxNames } from '../engine/performanceCatalog.ts';
 import { anchorFor, compatibleObject, compatibleObjects } from '../engine/interactions.ts';
-import { actions, expressions, label, shots, cameraAngles, cameraMovements, trackNames, tracks, uid, type Action, type Clip, type Project, type Prop, type Scene, type Track, type Character } from '../engine/schema.ts';
+import { actions, expressions, label, shots, shotCompositions, shotLabel, cameraAngles, cameraMovements, trackNames, tracks, uid, type Action, type Clip, type Project, type Prop, type Scene, type Track, type Character } from '../engine/schema.ts';
 import { exportFormatLabel, type Format } from '../engine/videoFormats.ts';
 import { projectDuration } from '../engine/evaluate.ts';
 import type { Account } from '../services/cloud.ts';
@@ -32,6 +32,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio,
   const [layer, setLayer] = useState<'body' | 'gesture'>(actionLayer(request.action??'idle'));
   const [target, setTarget] = useState(request.target??''), [expression, setExpression] = useState<typeof expressions[number]>('happy');
   const [shot, setShot] = useState<typeof shots[number]>('medium'), [transition, setTransition] = useState<'cut' | 'glide'>('cut');
+  const [composition,setComposition]=useState<'none'|typeof shotCompositions[number]>('none');
   const [cameraAngle,setCameraAngle]=useState<typeof cameraAngles[number]>('eye-level');
   const [cameraMovement,setCameraMovement]=useState<typeof cameraMovements[number]>('none');
   const [cameraStrength,setCameraStrength]=useState(1);
@@ -63,6 +64,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio,
     if (track === 'dialogue' || track === 'music') { audio(track, actor, at); return; }
     if (track === 'camera') return add({
       ...base, track, shot, transition,
+      ...(composition!=='none'?{composition}:{}),
       ...(actor?{focus:actor}:{}),
       ...(cameraAngle!=='eye-level'?{angle:cameraAngle}:{}),
       ...(cameraMovement!=='none'?{movement:cameraMovement,strength:cameraStrength}:{})
@@ -120,8 +122,13 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio,
     {track==='vfx'&&<label className="field">Visual effect<Select aria="Visual effect" value={vfx} onChange={setVfx} options={vfxNames}/></label>}
     {track === 'face' && <label className="field">Expression<Select aria="Expression" value={expression} onChange={setExpression} options={expressions}/></label>}
     {track==='camera'&&<div className="camera-direction-fields">
-      <label className="field">Shot size / composition
-        <CameraShotSelect aria="Shot size and composition" value={shot} onChange={setShot}/>
+      <label className="field">Shot size / classic preset
+        <CameraShotSelect aria="Shot size or classic preset" value={shot} onChange={setShot}/>
+      </label>
+      <label className="field">Subject framing / perspective
+        <Select aria="Camera subject composition" value={composition}
+          onChange={setComposition} options={['none',...shotCompositions] as const}
+          render={value=>value==='none'?'None · use shot size':shotLabel(value)}/>
       </label>
       <div className="field-row">
         <label className="field">Camera angle
@@ -140,7 +147,7 @@ export function AddClipDialog({ close, request, scene, actors, time, add, audio,
             value={cameraStrength} onChange={event=>setCameraStrength(clamp(Number(event.target.value)||1,.25,2.5))}/>
         </label>}
       </div>
-      <p className="camera-direction-hint">{cameraDirectionHint(shot,cameraAngle,cameraMovement)}</p>
+      <p className="camera-direction-hint">{cameraDirectionHint(shot,cameraAngle,cameraMovement,composition==='none'?undefined:composition)}</p>
     </div>
     {track === 'transition' && <label className="field">Effect<Select aria="Effect" value={effect} onChange={setEffect} options={transitionNames}/></label>}
     {(track === 'audio') && <label className="field">Sound effect<Select aria="Sound effect" value={sound} onChange={value=>{setSound(value);setLength(soundDurations[value]);}} options={soundNames}/></label>}
