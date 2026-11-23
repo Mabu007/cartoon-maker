@@ -217,7 +217,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   }
   async function save(){
     if(!result||!actor)return;
-    setStatus('processing');
+    playback.current=undefined;setReplaying(false);
+    updateStatus('processing');
     try{
       const startAt=clamp(start,0,180-result.duration);
       const length=clamp(result.duration,.1,180-startAt);
@@ -244,7 +245,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
 
       await commit(clips);
       dismiss();
-    }catch(error){setStatus('review');setMessage('Could not save performance: '+String(error));}
+    }catch(error){updateStatus('review');setMessage('Could not save performance: '+String(error));}
   }
   const style=result?actingDNA(result.keys):undefined;
   return <Modal title="Performance Studio" description="Record natural talking, expressive gestures and personality-driven micro movements." close={dismiss} wide>
