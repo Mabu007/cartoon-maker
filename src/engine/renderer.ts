@@ -10,7 +10,7 @@ import { drawActor, heldPropPose } from './actorArt.ts';
 import { cameraViewport, screenToWorld, worldToScreen, worldEntityBounds, pointHitsEntity, renderDepth, type WorldEntityRect } from './cameraTransform.ts';
 import { drawProp, drawWorld, ellipse, propSize, rect } from './art.ts';
 import { evaluate } from './evaluate.ts';
-import { HEIGHT, WIDTH, type Character, type Scene } from './schema.ts';
+import { HEIGHT, WIDTH, type Character, type Scene, type Prop } from './schema.ts';
 import { videoFormats, type Format } from './videoFormats.ts';
 
 export type { Format } from './videoFormats.ts';
@@ -282,7 +282,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       // Props are children of the same character Container as the hands:
       // the IK grip and object share one transform and move as one until
       // their Release event. Left and right use independent persistent art.
-      const heldByHand=actor.heldItems??(actor.held?{right:actor.held}:{});
+      const heldByHand:{left?:Prop;right?:Prop}=actor.heldItems??(actor.held?{right:actor.held}:{});
       for(const side of ['right','left'] as const){
         const prop=!options.edit?heldByHand[side]:undefined;
         const left=side==='left';
