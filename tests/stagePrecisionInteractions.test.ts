@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { defaultStageViewport, zoomStageAt, moveStageViewport } from '../src/engine/stageViewport.ts';
-import { assessHandReach,actorPositionAt,mayAttachProp,pickupFeedback,resolveHandCustody } from '../src/engine/objectInteractionEngine.ts';
+import { assessHandReach,actorPositionAt,mayAttachProp,pickupFeedback,resolveHandCustody,propLocationAt } from '../src/engine/objectInteractionEngine.ts';
 import { makeProp,makeScene } from '../src/engine/presets.ts';
 import { addSceneActor } from '../src/engine/actorPresence.ts';
 import { stagePath } from '../src/engine/stagePath.ts';
@@ -135,4 +135,30 @@ test('new hand choices, reach actions and camera zoom remain JSON-schema compati
       zoomMultiplier:6}
   ]};
   assert.equal(SceneDefinition.safeParse(JSON.parse(JSON.stringify(value))).success,true);
+});
+
+test('release at a walked-to location enables a second actor to pick up there, not at the old spot',()=>{
+  const {scene,actorId,actor,prop}=sceneWithActor();
+  const added=addSceneActor(scene,'second-character',0,'place');
+  const second=added.actorId;
+  const origin=actor.x;
+  const otherX=origin+355;
+  const actors=added.scene.actors.map(value=>value.id===second?
+    {...value,x:otherX,y:actor.y}:value);
+  const walk:Clip={id:'walk-with-cup',track:'movement',actor:actorId,
+    start:1,length:1,fromX:origin,fromY:actor.y,toX:origin+310,toY:actor.y,gait:'walk'};
+  const clips:Clip[]=[
+    {id:'initial-equip',track:'props',actor:actorId,target:prop.id,interaction:'equip',start:.2,length:.1,hand:'right'},
+    walk,
+    {id:'put-down',track:'props',actor:actorId,target:prop.id,interaction:'release',start:2.5,length:.1,hand:'right'},
+    {id:'second-pick',track:'props',actor:second,target:prop.id,interaction:'equip',start:3.2,length:.1,hand:'left'}
+  ];
+  const movie={...scene,actors,clips};
+  const released=propLocationAt(movie,prop.id,2.8)!;
+  assert(released.x>origin+300,'release must happen at the walked-to hand location');
+  assert(Math.abs(released.x-prop.x)>200);
+  assert(mayAttachProp(movie,second,prop.id,3.2));
+  const ownership=resolveHandCustody(movie,3.5);
+  assert.equal(ownership.get(prop.id)?.actor,second);
+  assert.equal(ownership.get(prop.id)?.hand,'left');
 });
