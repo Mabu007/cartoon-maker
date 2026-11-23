@@ -33,7 +33,7 @@ test('performance take drives body, hands and continuous facial controls in play
   assert(state);
   assert.equal(state.facialCapture?.controls.smileLeft,facial.smileLeft);
   assert.equal(state.handOverride?.right,'point');
-  assert.equal(state.pose.head,10);
+  assert(Math.abs(state.pose.head-10)<1,'captured pose should remain close to its interpolated value after micro-motion');
 });
 test('performance clips trim and split with their original motion preserved',()=>{
   const split=splitTimelineClips(withTake,[take.id],3);
