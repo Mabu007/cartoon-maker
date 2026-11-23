@@ -6,6 +6,7 @@ import { armIK, gaitLeg, mix, rig, seatedLeg, viewForward, type Point } from './
 import { ellipse, INK, line, rect, segment } from './art.ts';
 import { drawIllustratedHair, drawIllustratedHand, shade } from './illustration.ts';
 import { facialPerformance, type FacialPerformance } from './facialAnimation.ts';
+import { blendFacialControls, neutralFacialControls, type FacialControls } from './facialIntelligence.ts';
 import { at, drawBag, drawHandheld, drawShoe, drawTop, drawWatch, sleeveCoverage, vector, type CostumeTexture } from './wardrobeArt.ts';
 import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
@@ -41,7 +42,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number}},
+  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;facialCapture?:{controls:FacialControls;influence:number};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number}},
   handGesture?: GestureSample) {
   const costume=appearance?.texture;
   const lookAtCamera=appearance?.camera??false;
@@ -159,6 +160,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   face.scale.set(c.head*turnScale,c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
   const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus, c.personality,appearance?.expressionIntensity??1);
+  if(appearance?.facialCapture) mood.controls=blendFacialControls(
+    mood.controls??{...neutralFacialControls},appearance.facialCapture.controls,appearance.facialCapture.influence);
   if(isSleep(action)&&!speaking){
     const p=actionTime*.54%1;
     const x=r.head.x+27+p*16, y=r.head.y-54-p*34, size=4+p*4;
