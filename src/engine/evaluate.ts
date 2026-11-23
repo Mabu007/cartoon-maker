@@ -1,6 +1,6 @@
 import { smoothPath } from './stagePath.ts';
 import { propPlacement, throwArc, transferFraction, type PropPose } from './propMotion.ts';
-import { resolveHandCustody,mayAttachProp,type HandSide } from './objectInteractionEngine.ts';
+import { resolveHandInteractions,mayAttachProp,type HandSide } from './objectInteractionEngine.ts';
 import { gaitProfiles, usesSeat, type GaitStyle } from './performanceCatalog.ts';
 import { animations, armIK, blend, clamp, ease, mix, rig, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
 import { actorWorldPoint, eyeWorldPoint, aimEyes } from './gaze.ts';
@@ -71,7 +71,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(group)group.push(clip);else byActor.set(clip.actor,[clip]);
   }
   const objectsById=new Map(scene.objects.map(object=>[object.id,object]));
-  const handCustody=resolveHandCustody(scene,t);
+  const {owned:handCustody,locations:propLocations}=resolveHandInteractions(scene,t);
   type BodyClip=Extract<Clip,{track:'body'}>;
   type PropEvent={clip:BodyClip;at:number};
   const propEvents=new Map<string,PropEvent>();
@@ -408,7 +408,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       }else{focusX=actor.held.x;focusY=actor.held.y;}
     } else if (targetProp) {
       const dropped=propDrops.get(targetProp.id);
-      const seen=dropped?placedProp(targetProp,dropped):targetProp;
+      const seen=dropped?placedProp(targetProp,dropped):{...targetProp,...(propLocations.get(targetProp.id)??{})};
       // Aim at the actual interaction anchor or object's visible center.
       // This makes pupils naturally look down at a floor object and to the
       // side at an object elsewhere, while retaining the existing gaze math.
