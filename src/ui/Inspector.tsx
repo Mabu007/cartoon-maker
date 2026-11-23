@@ -215,7 +215,7 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
           </label>
           <p className="camera-direction-hint">{cameraDirectionHint(clip.shot,clip.angle??'eye-level',clip.movement??'none',clip.composition)}</p>
           <p className="small-text">Camera: {clip.start.toFixed(2)}–{(clip.start+clip.length).toFixed(2)}s · {clip.transition==='glide'?'Smooth glide':'Instant cut'}.</p>
-        </div>
+        </div>}
         {clip.track === 'transition' && <label className="field">Transition<Select aria="Scene transition" value={clip.effect} onChange={effect => patchClip({ ...clip, effect })} options={transitionNames}/></label>}
       </details></>}
       {object && objectDependencies(scene, object.id, actors).length > 0 && <p className="small-text" role="status">This object supports {objectDependencies(scene, object.id, actors).length} timeline action(s). Deleting it will let you choose replacements.</p>}
