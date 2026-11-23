@@ -129,6 +129,18 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
         {clip.track === 'performance' && <>
           <label className="field">Take name<input aria-label="Performance take name" key={clip.id+'/'+clip.name} defaultValue={clip.name??'Performance take'} maxLength={72}
             onBlur={event=>{const name=event.currentTarget.value.trim().slice(0,72)||'Performance take';if(name!==clip.name)patchClip({...clip,name});}}/></label>
+          <label className="field">Facing for this take
+            <Select aria="Performance facing direction" value={clip.facing??'inherit'}
+              options={['inherit','front','left','right'] as const}
+              onChange={value=>{
+                if(value==='inherit'){
+                  const {facing: _previous, ...unchanged}=clip;
+                  patchClip(unchanged);
+                } else patchClip({...clip,facing:value});
+              }}
+              render={value=>value==='inherit'?'Use actor facing':value==='front'?'Front · camera':
+                value==='left'?'Face left':'Face right'}/>
+          </label>
           <div className="performance-summary">
             <strong>{clip.performance.length} editable pose keys</strong>
             <span>{clip.performanceOrigin==='mocap'?'Recorded with webcam':'Authored performance'} · body and hand movement{clip.performance.some(key=>!!key.facial)?' · facial controls':''}</span>
