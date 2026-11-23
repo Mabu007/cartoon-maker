@@ -42,6 +42,7 @@ export function createPerformanceStabilizer(){
     right:{current?:NonNullable<PerformanceKey['hands']>['right'];candidate?:string;count:number}
   }={left:{count:0},right:{count:0}};
   let nearArm:ArmSide|undefined;
+  let nearCandidate:ArmSide|undefined,nearFrames=0;
   let lastTime=-Infinity;
   let activeContact:string|undefined;
   let candidateContact:string|undefined;
@@ -129,7 +130,13 @@ export function createPerformanceStabilizer(){
       hands[side]=state.current??key.hands?.[side]??'relaxed';
     }
     if(depths.left!==undefined||depths.right!==undefined){
-      nearArm=decideFrontArm(depths,nearArm);
+      const proposed=decideFrontArm(depths,nearArm);
+      if(!nearArm)nearArm=proposed;
+      else if(proposed!==nearArm){
+        nearFrames=nearCandidate===proposed?nearFrames+1:1;
+        nearCandidate=proposed;
+        if(nearFrames>=3){nearArm=proposed;nearCandidate=undefined;nearFrames=0;}
+      }else{nearCandidate=undefined;nearFrames=0;}
     }
     const observedContact=key.contact;
     if(observedContact)lastContactSeen=time;
@@ -165,7 +172,8 @@ export function createPerformanceStabilizer(){
       handState[side].candidate=undefined;
       handState[side].count=0;
     }
-    nearArm=undefined;activeContact=undefined;candidateContact=undefined;
+    nearArm=undefined;nearCandidate=undefined;nearFrames=0;
+    activeContact=undefined;candidateContact=undefined;
     candidateFrames=0;lastContactSeen=-Infinity;
     lastTime=-Infinity;
   }
