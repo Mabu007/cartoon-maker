@@ -109,6 +109,15 @@ export function contactHysteresis(
     count:count>=2?0:count};
 }
 
+/** A captured arm must stay one connected piece in the same Pixi Graphics
+ * layer. Segment-splitting between bodyArt and gestureArt made the elbow
+ * disappear behind the shirt while its forearm remained in front. */
+export function connectedCapturedArmOrder(
+  observed:{left:boolean;right:boolean},near:ArmSide
+):ArmSide[]{
+  const sides=(['left','right'] as const).filter(side=>observed[side]);
+  return sides.sort((a,b)=>a===near?1:b===near?-1:0);
+}
 export type ArmPaintPass={side:ArmSide;part:'upper'|'lower'|'hand'};
 /** A renderer-independent painter order that keeps nearer forearms and hands
  * together. Upper arms tuck behind the shirt; far lower arm then hand are
