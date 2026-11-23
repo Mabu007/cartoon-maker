@@ -59,6 +59,31 @@ Studio *before* starting the camera if you need recorded facial expressions.
 The hand and face models are staggered across frames to avoid simultaneous
 CPU spikes.
 
+### Crossed arms, elbow bending and hand stability
+
+The Performance Studio automatically stabilizes visible wrist targets, elbows,
+individual fingers and eye direction with timestamped adaptive filtering. When
+hands cross, it compares webcam 3D depth (when available) with screen-space
+evidence, then requires sustained evidence before changing which hand draws
+in front. This is a **best-effort 2D depth estimate**, not true 3D occlusion.
+
+A two-bone arm solver preserves upper-arm and forearm proportions, including
+hands near the head and across the chest. Prayer, guard, head-touch and punch
+contacts are held briefly to prevent flicker. Authored prop grips take
+precedence over automatic contact corrections.
+
+For the most reliable result, place both shoulders and wrists inside the
+camera, improve lighting, keep fingers clear, and avoid extreme hand overlap.
+The system stops owning an unobserved hand after its short confidence fade,
+rather than manufacturing an unseen pose. Tracking runs fully on-device.
+
+For a focused local regression check:
+
+```bash
+node --experimental-strip-types --test tests/performanceArmStability.test.ts
+npx tsc --noEmit && npx vite build
+```
+
 If the tracker still reports a missing bundle, run
 `curl -I http://localhost:5173/mediapipe/vision_bundle.mjs` and confirm
 HTTP 200; then refresh the browser with Ctrl+Shift+R. A 404 indicates
