@@ -24,7 +24,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [status,setStatus]=useState<Status>('idle');
   const [message,setMessage]=useState('Nothing leaves your device during tracking. With installed local models, MediaPipe works without internet.');
   const [intensity,setIntensity]=useState(100);
-  const [smoothing,setSmoothing]=useState(55);
+  const [smoothing,setSmoothing]=useState(25);
   // A typical 4 GB laptop struggles with three synchronous vision models.
   // Start with body + hands on modest devices; facial capture stays one click away.
   const [face,setFace]=useState(()=>((navigator as Navigator & {deviceMemory?:number}).deviceMemory??8)>4);
@@ -51,7 +51,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const stopping=useRef(false),recording=useRef(false);
   const lastSeen=useRef(0),lastUi=useRef(0),lastPreview=useRef<PerformanceKey|undefined>(undefined);
   const playback=useRef<{keys:PerformanceKey[];duration:number;start:number}|undefined>(undefined);
-  const interval=useRef(100);
+  const interval=useRef(70);
   const updateStatus=(next:Status)=>{statusRef.current=next;setStatus(next);};
   function drawPose(key?:PerformanceKey){
     if(!preview.current||!actorRef.current)return;
@@ -130,7 +130,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         }
       }
       const elapsed=performance.now()-before;
-      interval.current=elapsed>95?Math.min(280,Math.ceil(elapsed*1.22)):100;
+      // Prevent the former 280ms stall after expensive inference.
+      interval.current=clamp(Math.ceil(elapsed*1.05),58,155);
     }
     raf.current=requestAnimationFrame(loop);
   }
@@ -143,15 +144,15 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     let media:MediaStream|undefined;let vision:PerformanceTracker|undefined;
     try{
       try{media=await navigator.mediaDevices.getUserMedia({
-        video:{width:{ideal:480},height:{ideal:360},frameRate:{ideal:15,max:20}},
+        video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},
         audio:{echoCancellation:true,noiseSuppression:true}});}
       catch{media=await navigator.mediaDevices.getUserMedia({
-        video:{width:{ideal:480},height:{ideal:360},frameRate:{ideal:15,max:20}},audio:false});}
+        video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},audio:false});}
       vision=await startPerformanceTracker({hands,face});
       if(!alive.current){vision.close();media.getTracks().forEach(track=>track.stop());return;}
       stream.current=media;tracker.current=vision;
       if(camera.current){camera.current.srcObject=media;await camera.current.play();}
-      last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=100;
+      last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=70;
       updateStatus('ready');
       setMessage(vision.warnings.length?vision.warnings.join(' ') :
         'Live puppeteering is active. Move your head, shoulders and hands; the character responds alongside you. Record up to 18 seconds.');
