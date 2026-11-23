@@ -13,7 +13,7 @@ import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
 import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
-import { solveCapturedArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
+import { solveAnatomicalArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import { handRotation, handRotationParams, handSize, handWidthScale,
   sampleHandRig, sampleLayeredHandRig, applyCapturedFingerCurls, type HandPose } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
@@ -82,7 +82,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         // Solve in the existing character's shoulder-local coordinate system,
         // not by forcing raw MediaPipe angles onto the elbow.
         const pole=guidance.bends[side]??(side==='left'?-1:1);
-        const solved=solveCapturedArm(joint.shoulder,target,c.arms,pole,joint.elbow);
+        const solved=solveAnatomicalArm(joint.shoulder,target,c.arms,side,pole,joint.elbow);
         const weight=Math.max(0,Math.min(1,guidance.influence));
         elbow={x:mix(elbow.x,solved.elbow.x,weight),y:mix(elbow.y,solved.elbow.y,weight)};
         hand={x:mix(hand.x,solved.hand.x,weight),y:mix(hand.y,solved.hand.y,weight)};
@@ -106,10 +106,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         if(goal){
           const weight=Math.min(.82,Math.max(0,contact.influence)*.76);
           const blended={x:mix(hand.x,goal.x,weight),y:mix(hand.y,goal.y,weight)};
-          const solved=solveCapturedArm(joint.shoulder,{
+          const solved=solveAnatomicalArm(joint.shoulder,{
             x:(blended.x-joint.shoulder.x)/c.arms,
             y:(blended.y-joint.shoulder.y)/c.arms
-          },c.arms,guidance?.bends[side]??sign,elbow);
+          },c.arms,side,guidance?.bends[side]??sign,elbow);
           elbow=solved.elbow;hand=solved.hand;
         }
       }
