@@ -199,6 +199,14 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   const eyes=profile?[center+facialOffset]:[center-spacing+facialOffset,Math.min(w-8,center+spacing*(art.face?.81:1)-facialOffset)];
   const eyeY=-5*yScale;
   eyes.forEach((x,i)=>drawEye(g,layers.eyes[i],c,mood,x,eyeY,i?1:-1,Boolean(i&&art.face),camera,art.face));
+  // Raised cheeks follow the asymmetric expression without changing face geometry.
+  if(!profile&&mood.controls){
+    eyes.forEach((x,i)=>{
+      const lift=i?mood.controls!.cheekRight:mood.controls!.cheekLeft;
+      if(lift>.05)g.ellipse(x+(i?3:-3),eyeY+12-lift*1.5,5.7,2.3+lift*.8)
+        .fill({color:'#a95d5e',alpha:lift*.12});
+    });
+  }
   if(q?.unibrow&&eyes.length>1)segment(g,eyes[0]+7,eyeY-12+(q.browOffset??0),eyes[1]-7,eyeY-12+(q.browOffset??0),c.hairColor,2);
   if(!profile&&['happy','excited','sad'].includes(mood.expression)) {
     for(const x of eyes)g.ellipse(Math.max(-w+9,Math.min(w-9,x+(x<center?-8:8))),14,5,2.7)
