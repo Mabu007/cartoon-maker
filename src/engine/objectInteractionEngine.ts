@@ -4,6 +4,7 @@
 import { clamp, ease, mix, travelProgress } from './animation.ts';
 import { smoothPath } from './stagePath.ts';
 import type { ActorData, Prop, Scene } from './schema.ts';
+import { anchorFor } from './interactions.ts';
 
 export type Point={x:number;y:number};
 export type HandSide='left'|'right';
@@ -43,13 +44,14 @@ export function actorPositionAt(scene:Scene,actorId:string,time:number):Point|un
 export function mayAttachProp(scene:Scene,actorId:string,propId:string,time:number){
   const actor=scene.actors.find(a=>a.id===actorId);
   const prop=scene.objects.find(o=>o.id===propId);
-  if(!actor||!prop)return false;
+  if(!actor||!prop||anchorFor(prop)?.action!=='hold')return false;
   const position=actorPositionAt(scene,actorId,time);
   return Boolean(position&&assessHandReach({...actor,...position},prop).canReach);
 }
 export function pickupFeedback(scene:Scene,actorId:string,propId:string,time:number):string|undefined{
   const actor=scene.actors.find(a=>a.id===actorId),prop=scene.objects.find(o=>o.id===propId);
   if(!actor||!prop)return 'Choose an actor and a holdable prop.';
+  if(anchorFor(prop)?.action!=='hold')return prop.name+' is scenery, not an object a character can pick up.';
   const at=actorPositionAt(scene,actorId,time);
   if(!at)return 'Place your actor in this scene.';
   const reach=assessHandReach({...actor,...at},prop);
