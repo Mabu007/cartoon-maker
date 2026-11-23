@@ -62,7 +62,7 @@ export function Timeline({
   addScene:()=>void; deleteScene:(scene:Scene)=>void; manageScenes:()=>void; add: (track?:Track) => void;
   remove: () => void; duplicate: () => void; copy: () => void; cut: () => void; paste: () => void; split: () => void;
   apply: (next:Scene, ids?:string[]) => void; compact:boolean; playing:boolean; onCompact:()=>void;
-  onResizeScene:(duration:number)=>void; playhead:number; onPerformance:()=>void; onPerformance:()=>void;
+  onResizeScene:(duration:number)=>void; playhead:number; onPerformance:()=>void;
 }) {
   const [zoom,setZoom]=useState(1), [viewport,setViewport]=useState(900), [scrollLeft,setScrollLeft]=useState(0);
   const [snap,setSnap]=useState(true),[shortcuts,setShortcuts]=useState(false);
