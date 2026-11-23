@@ -196,6 +196,8 @@ export const CameraShot = z.strictObject({
   ...time, track:z.literal('camera'), shot:z.enum(shots),
   /** Any staged actor or prop can become a framing target. */
   focus:id.optional(), transition:z.enum(['cut','glide']),
+  /** A subject composition can be layered onto an independent shot size. */
+  composition:z.enum(shotCompositions).optional(),
   /** Optional direction layers retain old shot behaviour when omitted. */
   angle:z.enum(cameraAngles).optional(),
   movement:z.enum(cameraMovements).optional(),
