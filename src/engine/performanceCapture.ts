@@ -93,7 +93,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const hipsVisible=shouldersVisible&&confidence(p[23])&&confidence(p[24]);
   const shoulders=shouldersVisible?midpoint(p[11],p[12]):undefined;
   const screenTorso=hipsVisible
-    ?degrees(180-angle(midpoint(p[23],p[24]),shoulders))
+    ?-degrees(180-angle(midpoint(p[23],p[24]),shoulders!))
     :0;
   const worldTorso=hipsVisible && world && world.angle(23,11)!==undefined && world.angle(24,12)!==undefined
     ? degrees(180-mixDegrees(world.angle(23,11)!,world.angle(24,12)!,.5))
