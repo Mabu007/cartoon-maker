@@ -166,7 +166,7 @@ export const CapturedPoseKey = z.strictObject({
   armConfidence:z.strictObject({left:num(0,1).optional(),right:num(0,1).optional()}).optional(),
   facial:CapturedFacialControls.optional()
 });
-const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional(), pointAt: z.strictObject({ x: position.x, y: position.y }).optional(),
+const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional(), hand:z.enum(['left','right']).optional(), pointAt: z.strictObject({ x: position.x, y: position.y }).optional(),
   performance:z.array(CapturedPoseKey).min(2).max(240).optional(),
   performanceOrigin:z.enum(['mocap','choreography']).optional()
 });
@@ -178,7 +178,7 @@ const PerformanceClip = z.strictObject({ ...time, track: z.literal('performance'
   performance:z.array(CapturedPoseKey).min(2).max(240),
   performanceOrigin:z.enum(['mocap','choreography']).optional() });
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });
-const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']) });
+const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']), hand:z.enum(['left','right']).optional() });
 /** Four editable emotion axes; independent from expression and character personality. */
 export const EmotionSpaceSchema=z.strictObject({
   valence:num(-1,1).optional(),arousal:num(0,1).optional(),
@@ -217,6 +217,8 @@ export const CameraShot = z.strictObject({
   movement:z.enum(cameraMovements).optional(),
   /** Strength of a stylized 2D move, 1 by default. */
   strength:num(.25,2.5).optional(),
+  /** Director's multiplicative zoom; editor canvas zoom is separate. */
+  zoomMultiplier:num(.5,8).optional(),
   /** Optional Dutch tilt in degrees; only rotates the 2D stage. */
   roll:num(-30,30).optional()
 });
