@@ -103,6 +103,20 @@ test('capture, interpolation, saved project and playback retain five curls and b
   assert.equal(state.capturedContact?.type,'prayer');
   assert(state.capturedFingers?.left);
 });
+test('only observed fingers own their hand; a missing right hand retains authored animation',()=>{
+  const project=makeProject(true),scene=project.scenes[0],actor=scene.actors[0];
+  const capture=retargetCaptureFrame({t:1,pose:body(),
+    leftHand:hand([false,true,false,false,false])});
+  assert(capture?.fingerCurls?.left);
+  assert.equal(capture.fingerCurls.right,undefined);
+  const clip={id:'single-hand',track:'performance' as const,actor:actor.id,
+    start:0,length:2,performance:[{...capture,time:0},{...capture,time:1}]};
+  const state=evaluate({...scene,clips:[clip]},.8,
+    new Map(project.characters.map(c=>[c.id,c]))).actors[0];
+  assert.equal(state.handOverride?.observed?.left,true);
+  assert.equal(state.handOverride?.observed?.right,false);
+  assert.equal(state.capturedFingers?.right,undefined);
+});
 test('captured hand ownership releases during tracking loss without stale finger poses',()=>{
   const project=makeProject(true),scene=project.scenes[0],actor=scene.actors[0];
   const visible={time:0,pose:{leftShoulder:45,rightShoulder:-45},
