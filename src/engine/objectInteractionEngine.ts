@@ -66,10 +66,23 @@ function resolveHandState(scene:Scene,time:number){
   events.sort((a,b)=>a.at-b.at||(a.kind==='drop'?-1:1));
   const owned=new Map<string,{actor:string;hand:HandSide;at:number}>();
   const locations=new Map(scene.objects.map(item=>[item.id,{x:item.x,y:item.y}]));
+  const actors=new Map(scene.actors.map(actor=>[actor.id,actor]));
+  const props=new Map(scene.objects.map(prop=>[prop.id,prop]));
+  const movementByActor=new Map<string,Extract<Scene['clips'][number],{track:'movement'}>[]>();
+  for(const clip of scene.clips)if(clip.track==='movement'&&!scene.trackSettings?.movement?.muted){
+    const group=movementByActor.get(clip.actor)??[];
+    group.push(clip);movementByActor.set(clip.actor,group);
+  }
+  const atPosition=(actorId:string,time:number)=>{
+    const actor=actors.get(actorId);
+    if(!actor)return undefined;
+    const list=movementByActor.get(actorId)??[];
+    return actorPositionAt({...scene,clips:list},actorId,time);
+  };
   for(const event of events){
-    const actor=scene.actors.find(a=>a.id===event.actor);
-    const prop=scene.objects.find(o=>o.id===event.prop);
-    const at=actorPositionAt(scene,event.actor,event.at);
+    const actor=actors.get(event.actor);
+    const prop=props.get(event.prop);
+    const at=atPosition(event.actor,event.at);
     if(!actor||!prop||!at)continue;
     if(event.kind==='drop'){
       const current=owned.get(event.prop);
@@ -120,7 +133,11 @@ export function pickupFeedback(scene:Scene,actorId:string,propId:string,time:num
   return reach.canReach?undefined:
     `Walk closer to ${prop.name} before picking it up (${Math.round(reach.distance)} units away; hand reach ${Math.round(reach.limit)}).`;
 }
-/** At most one owner per object and one object per anatomical hand. */
+/** At most one owner per object and one object per anatomical hand.
+ * Export the complete state to avoid repeated frame scans in the renderer. */
+export function resolveHandInteractions(scene:Scene,time:number){
+  return resolveHandState(scene,time);
+}
 export function resolveHandCustody(scene:Scene,time:number){
-  return resolveHandState(scene,time).owned;
+  return resolveHandInteractions(scene,time).owned;
 }
