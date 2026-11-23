@@ -319,6 +319,14 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   return <Modal title="Performance Studio" description="Record natural talking, expressive gestures and personality-driven micro movements." close={dismiss} wide>
     <div className="performance-studio">
       <div className="performance-commandbar" role="region" aria-label="Recording controls">
+        <label className="performance-actor-picker">Perform as
+          <select aria-label="Perform as" value={actor} onChange={e=>{
+            const next=e.target.value;
+            setActor(next);setFacing(initialPerformanceFacing(scene.actors.find(item=>item.id===next)));
+          }} disabled={status==='recording'||status==='processing'}>
+            {scene.actors.map(a=><option key={a.id} value={a.id}>{characters.find(c=>c.id===a.characterId)?.name??'Character'}</option>)}
+          </select>
+        </label>
         <div className="performance-command-copy">
           <strong>{status==='review'?'3 · Review your take':status==='recording'?'2 · Recording movement':status==='ready'?'2 · Perform and record':'1 · Connect your webcam'}</strong>
           <span>{status==='review'?result?.duration.toFixed(1)+'s captured · replay or add to timeline':
@@ -365,13 +373,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           status==='recording'?trackedFrames+' frames captured':tracking==='live'?'Live motion connected':'Local tracking'}</strong>
       </div>
       <div className="performance-controls">
-        <label>Perform as <select aria-label="Perform as" value={actor} onChange={e=>{
-          const next=e.target.value;
-          setActor(next);
-          setFacing(initialPerformanceFacing(scene.actors.find(item=>item.id===next)));
-        }} disabled={status==='recording'||status==='processing'}>
-          {scene.actors.map(a=><option key={a.id} value={a.id}>{characters.find(c=>c.id===a.characterId)?.name??'Character'}</option>)}
-        </select></label>
+
         <div className="performance-facing-section">
           <span className="performance-facing-title">Character facing direction</span>
           <div className="performance-facing-picker" role="group" aria-label="Character facing direction">
