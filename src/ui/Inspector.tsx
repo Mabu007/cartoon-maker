@@ -126,6 +126,15 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
           options={['', ...compatibleObjects(scene, clip.action).map(item => item.id)]}
           render={id => id==='' ? usesSeat(clip.action)?'Keep current position':'No object' : scene.objects.find(item => item.id === id)?.name ?? 'No object'}/></label></>}
         {clip.track==='body'&&clip.action==='throw-prop'&&clip.target&&<button type="button" className="quiet full" onClick={()=>onLanding(clip)}>Set landing point on stage</button>}
+        {clip.track === 'performance' && <>
+          <label className="field">Take name<input aria-label="Performance take name" key={clip.id+'/'+clip.name} defaultValue={clip.name??'Performance take'} maxLength={72}
+            onBlur={event=>{const name=event.currentTarget.value.trim().slice(0,72)||'Performance take';if(name!==clip.name)patchClip({...clip,name});}}/></label>
+          <div className="performance-summary">
+            <strong>{clip.performance.length} editable pose keys</strong>
+            <span>{clip.performanceOrigin==='mocap'?'Recorded with webcam':'Authored performance'} · body and hand movement{clip.performance.some(key=>!!key.facial)?' · facial controls':''}</span>
+          </div>
+          <p className="small-text">Move, trim, split, duplicate or copy this take like any other timeline clip. Its captured poses stay retimed with the clip.</p>
+        </>}
         {clip.track === 'face' && <><label className="field">Expression<Select aria="Clip expression" value={clip.expression} onChange={expression => patchClip({ ...clip, expression })} options={expressions}/></label>
           <label className="field">Acting intention<Select aria="Acting intention" value={clip.intent??'none'} onChange={intent=>patchClip({...clip,intent})} options={actingIntents}/></label>
           <NumberField text="Acting intensity" value={clip.intensity??1} min={0} max={1.5} step={.05} onChange={intensity=>patchClip({...clip,intensity})}/>
