@@ -33,6 +33,33 @@ workflow.
 For optional fully offline webcam performance tracking, install models while
 online with `npm run assets:performance`, then restart the dev server.
 
+## Local MediaPipe performance capture troubleshooting
+
+SIRVIBE loads `public/mediapipe/vision_bundle.mjs` as a **static asset**
+rather than importing it as a Vite source module. This is necessary because
+Vite 7 rejects direct JavaScript imports from the `public/` directory.
+
+For fully local capture (body, hands, optional facial expressions):
+
+```bash
+npm run assets:performance
+# Stop the running dev server with Ctrl+C, then restart:
+npm run dev -- --host 127.0.0.1
+```
+
+Open `http://localhost:5173/` and use **Performance → camera icon**.
+The character and webcam appear side by side. On 4 GB laptops facial tracking
+starts **off** to reduce inference load; enable `Track face` in Performance
+Studio *before* starting the camera if you need recorded facial expressions.
+The hand and face models are staggered across frames to avoid simultaneous
+CPU spikes.
+
+If the tracker still reports a missing bundle, run
+`curl -I http://localhost:5173/mediapipe/vision_bundle.mjs` and confirm
+HTTP 200; then refresh the browser with Ctrl+Shift+R. A 404 indicates
+that the local model assets were not installed correctly. Only the browser
+can authorize camera and microphone access; this is not a Firebase login.
+
 ## How it works
 1. Open the local studio without signing in, or visit the public landing page and optionally create a Firebase account for online backup.
 2. Start a project with eight customizable starter characters (including Bra Sbu, Zee, Naledi, Milo and others) and a scene.
