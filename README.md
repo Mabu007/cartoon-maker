@@ -68,8 +68,10 @@ can authorize camera and microphone access; this is not a Firebase login.
 ## Cinematic Camera Director
 
 From **Movie timeline → Add → Camera**, select your shot from the grouped
-**Shot size / composition** menu. Pick an actor or prop as the focus, then
-choose a **Camera angle**, **Camera movement**, and **Cut / Glide**. Edit any
+**Shot size / classic preset** menu, optionally layer a separate
+**Subject framing / perspective** (for example, Medium Close-Up + OTS).
+Pick an actor or prop as the focus, then choose a **Camera angle**,
+**Camera movement**, and **Cut / Glide**. Edit any
 camera clip afterward in its Inspector; movement intensity and Dutch tilt
 are adjustable there. Only one camera clip is active at any instant.
 
