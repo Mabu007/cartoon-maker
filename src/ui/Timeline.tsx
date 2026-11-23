@@ -339,6 +339,7 @@ export function Timeline({
             </span>}
             {!locked&&<span className="clip-handle" data-edge="in" title="Trim start"/>}
             {!tiny&&(clip.track==='dialogue'||((clip.track==='audio'||clip.track==='music')&&clip.asset.startsWith('asset:')))&&<AudioWaveform asset={clip.asset} offset={clip.offset} length={clip.length}/>}<Icon size={11}/><span className="clip-label-text">{clipLabel(clip,names)}{clip.track==='camera'&&<small className="camera-clip-mode"> {clip.transition === 'glide' ? '↝' : '│'}</small>}</span>
+            {clip.track==='performance'&&clip.performance.map((key,index)=><i key={index} className="performance-keyframe" style={{left:key.time*100+'%'}} title={`Captured pose ${index+1} · ${(span.start+clip.start+clip.length*key.time).toFixed(2)}s`}/>)}
             {clip.track==='movement'&&clip.keyframes?.map((key,index)=><span key={index} role="button" tabIndex={0}
               className={`timeline-keyframe ${active&&selectedKeyframe?.clipId===clip.id&&selectedKeyframe.index===index?'selected':''}`}
               style={{left:key.time*100+'%'}} title={`Keyframe ${index+1} · ${(span.start+clip.start+clip.length*key.time).toFixed(2)}s`}
