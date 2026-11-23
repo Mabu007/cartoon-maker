@@ -8,7 +8,7 @@
 import type { JointName } from './schema.ts';
 import type { PerformanceKey } from './performanceCapture.ts';
 import { decideFrontArm, contactHysteresis, type ArmSide } from './performanceArmIntelligence.ts';
-import type { FingerCurls } from './performanceHandIntelligence.ts';
+import { observedHandPose, type FingerCurls } from './performanceHandIntelligence.ts';
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
 type FilterState={time:number;value:number;derivative:number};
 function coefficient(cutoff:number,dt:number){
@@ -37,6 +37,10 @@ export function createPerformanceStabilizer(){
   const bend:{left?:number;right?:number}={};
   const pendingBend:{left?:number;right?:number}={};
   const counts:{left:number;right:number}={left:0,right:0};
+  const handState:{
+    left:{current?:NonNullable<PerformanceKey['hands']>['left'];candidate?:string;count:number};
+    right:{current?:NonNullable<PerformanceKey['hands']>['right'];candidate?:string;count:number}
+  }={left:{count:0},right:{count:0}};
   let nearArm:ArmSide|undefined;
   let lastTime=-Infinity;
   let activeContact:string|undefined;
@@ -67,6 +71,7 @@ export function createPerformanceStabilizer(){
     const bends:PerformanceKey['armBend']={};
     const curls:PerformanceKey['fingerCurls']={};
     const confidence:PerformanceKey['handConfidence']={};
+    const hands:NonNullable<PerformanceKey['hands']>={left:'relaxed',right:'relaxed'};
     for(const side of ['left','right'] as const){
       const point=key.armTargets?.[side];
       if(point){
@@ -109,6 +114,19 @@ export function createPerformanceStabilizer(){
           ) as FingerCurls;
         }
       }
+      const state=handState[side];
+      if(curls[side]&&(confidence[side]??0)>.1){
+        const classified=observedHandPose(curls[side]!);
+        if(state.current===undefined){state.current=classified;}
+        else if(classified!==state.current){
+          state.count=state.candidate===classified?state.count+1:1;
+          state.candidate=classified;
+          if(state.count>=2){
+            state.current=classified;state.count=0;state.candidate=undefined;
+          }
+        }else{state.count=0;state.candidate=undefined;}
+      }else{state.candidate=undefined;state.count=0;}
+      hands[side]=state.current??key.hands?.[side]??'relaxed';
     }
     if(depths.left!==undefined||depths.right!==undefined){
       nearArm=decideFrontArm(depths,nearArm);
@@ -125,7 +143,7 @@ export function createPerformanceStabilizer(){
       y:clamp(filter('eyes:y',key.focus.y,time,4,.15),-1,1)
     }:undefined;
     const result:PerformanceKey={
-      ...key,pose,focus,
+      ...key,pose,focus,hands,
       armTargets:targets.left||targets.right?targets:undefined,
       armDepth:depths.left!==undefined||depths.right!==undefined?depths:undefined,
       armBend:bends.left!==undefined||bends.right!==undefined?bends:undefined,
@@ -142,6 +160,11 @@ export function createPerformanceStabilizer(){
     bend.left=undefined;bend.right=undefined;
     pendingBend.left=undefined;pendingBend.right=undefined;
     counts.left=0;counts.right=0;
+    for(const side of ['left','right'] as const){
+      handState[side].current=undefined;
+      handState[side].candidate=undefined;
+      handState[side].count=0;
+    }
     nearArm=undefined;activeContact=undefined;candidateContact=undefined;
     candidateFrames=0;lastContactSeen=-Infinity;
     lastTime=-Infinity;
