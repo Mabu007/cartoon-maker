@@ -7,7 +7,8 @@
 import { clamp, mix } from './animation.ts';
 import { blendFacialControls } from './facialIntelligence.ts';
 import type { PerformanceKey } from './performanceCapture.ts';
-import type { Scene, Clip } from './schema.ts';
+import type { Scene, Clip, PerformanceFacing } from './schema.ts';
+import { performanceFacingView, performanceFacesCamera } from './performanceFacing.ts';
 
 export const LIVE_PREVIEW_TIME = 2;
 export const LIVE_PREVIEW_DURATION = 4;
@@ -50,14 +51,16 @@ export function smoothLivePerformance(
 /** Isolated one-actor scene. Evaluate this at LIVE_PREVIEW_TIME, with a
  * two-key constant performance, to reuse the same facial/hand/body engine.
  * The existing project and its timeline remain unchanged. */
-export function livePerformanceScene(scene:Scene,actorId:string,key?:PerformanceKey):Scene {
+export function livePerformanceScene(scene:Scene,actorId:string,key?:PerformanceKey,facing:PerformanceFacing='front'):Scene {
   const source=scene.actors.find(actor=>actor.id===actorId);
   if(!source)throw Error('Select an actor in the current scene to perform as.');
   const actor={...source,x:480,y:524,scale:clamp(source.scale*1.9,1.7,2.3),
-    rotation:0,depth:0,view:'front' as const,flip:false,gazeTarget:'camera'};
+    rotation:0,depth:0,...performanceFacingView(facing),
+    // A side-facing actor should not turn the head toward the webcam.
+    gazeTarget:performanceFacesCamera(facing)?'camera':undefined};
   const performance:Clip[] = key ? [{
     id:'__live-performance-preview',track:'performance',actor:actorId,
-    start:0,length:LIVE_PREVIEW_DURATION, name:'Live',
+    start:0,length:LIVE_PREVIEW_DURATION, name:'Live',facing,
     performance:[{...key,time:0},{...key,time:1}],
     performanceOrigin:'mocap'
   }] : [];
