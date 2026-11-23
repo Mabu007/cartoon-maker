@@ -13,7 +13,7 @@ import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
 import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
-import { solveCapturedArm, decideFrontArm, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
+import { solveCapturedArm, decideFrontArm, observedArmPaintOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import { handRotation, handRotationParams, handSize, handWidthScale,
   sampleHandRig, sampleLayeredHandRig, applyCapturedFingerCurls, type HandPose } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
@@ -225,10 +225,17 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   leg(art.rear?'right':'left'); leg(art.rear?'left':'right');
   const rearArm=art.rear?'right':'left';
   if(!cryHand(rearArm)&&!mocapFront(rearArm))arm(rearArm,art.rear&&!!held);
-  // The sleeve starts underneath the shirt rather than being pasted on top.
-  // Captured elbows remain owned by the same measured limb on both passes.
-  if(mocapFront('left'))arm('left',false,bodyArt,'upper');
-  if(mocapFront('right'))arm('right',false,bodyArt,'upper');
+  const frontArm=art.rear?'left':'right';
+  const nearest=appearance?.capturedRig?.near??decideFrontArm(
+    appearance?.capturedRig?.depths??{},undefined,frontArm
+  );
+  const passes=observedArmPaintOrder({
+    left:mocapFront('left'),right:mocapFront('right')
+  },nearest);
+  // The shoulder/sleeve enters underneath the shirt; foreground forearms
+  // are drawn only after the torso and in stable far/near painter order.
+  for(const pass of passes)
+    if(pass.part==='upper')arm(pass.side,false,bodyArt,'upper');
   if(c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
     const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
@@ -238,19 +245,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   drawTop(g,c,art,r.neck,r.hip,costume);
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
-  const frontArm=art.rear?'left':'right';
   if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,!art.rear&&!!held);
-  const measuredArms=(['left','right'] as const).filter(side=>mocapFront(side));
-  // Both forearm AND hand are painted in one depth-ordered pass. Previously
-  // the right arm always painted last, hiding the upper left hand in crosses.
-  const near=appearance?.capturedRig?.near??decideFrontArm(
-    appearance?.capturedRig?.depths??{},undefined,frontArm
-  );
-  const orderedArms=measuredArms.sort((a,b)=>a===near?1:b===near?-1:0);
-  for(const side of orderedArms){
-    arm(side,false,appearance?.gestureArt??g,'lower');
-    arm(side,false,appearance?.gestureArt??g,'hand');
-  }
+  for(const pass of passes)
+    if(pass.part!=='upper')arm(pass.side,false,appearance?.gestureArt??g,pass.part);
   if(cryHand('left'))arm('left',false,appearance?.gestureArt??g);
   if(cryHand('right'))arm('right',false,appearance?.gestureArt??g);
   face.position.set(r.head.x, r.head.y);
