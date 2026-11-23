@@ -80,7 +80,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       let [elbow,hand]=propArm(c,r,side,propPose,carrying,art.rear);
       const guidance=appearance?.capturedRig;
       const target=guidance?.targets[side];
-      if(target&&guidance&&mocapFront(side)&&!carrying&&!held&&!holdsCostume){
+      if(target&&guidance&&mocapFront(side)&&!carrying&&!holdsCostume){
         // Solve in the existing character's shoulder-local coordinate system,
         // not by forcing raw MediaPipe angles onto the elbow.
         const pole=guidance.bends[side]??(side==='left'?-1:1);
@@ -92,7 +92,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       // Correct contact points by moving the wrist TARGET and re-solving
       // both arm bones. Lerp of unrelated elbows creates impossible lengths.
       const contact=appearance?.capturedContact;
-      if(contact&&appearance?.capturedArms?.[side]&&!carrying&&!held&&!holdsCostume){
+      if(contact&&appearance?.capturedArms?.[side]&&!carrying&&!holdsCostume){
         const sign=side==='left'?-1:1;
         const headX=r.head.x,headY=r.head.y;
         let goal:Point|undefined;
