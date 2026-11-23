@@ -19,6 +19,8 @@ export type CaptureFrame = {
   face?: Record<string, number>;
   /** Independent pupil gaze from Face Landmarker iris points when available. */
   eyeFocus?:{x:number;y:number};
+  /** Face model enabled: never treat nose motion as actual pupil detection. */
+  faceTracking?:boolean;
   /** Elapsed milliseconds since each tracked hand was last truly detected. */
   handAgeMs?:{left?:number;right?:number};
 };
@@ -139,6 +141,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const gaze=capturedEyeFocus(frame.face);
   if(frame.eyeFocus)focus={x:clamp(frame.eyeFocus.x,-1,1),y:clamp(frame.eyeFocus.y,-1,1)};
   else if(gaze)focus={x:gaze.x,y:gaze.y};
+  else if(frame.faceTracking)focus=undefined;
   // Legs are included only when observed; never fabricate missing knees/feet.
   for(const side of ['left','right'] as const){
     const a=side==='left'?23:24,b=side==='left'?25:26,c=side==='left'?27:28;
