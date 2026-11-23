@@ -27,7 +27,7 @@ export function propArm(character:Character, joints:ReturnType<typeof rig>, side
       break;
     case 'throw-prop':case 'cartoon-stab':break;
     default:
-      if(carrying)target={x:head.x+(rear?-26:45),y:head.y+43};break;
+      if(carrying)target={x:head.x+(side==='left'?-1:1)*(rear?26:45),y:head.y+43};break;
   }
   if(!target)return [joint.elbow,joint.hand] as const;
   const weight=pose.weight;
@@ -35,8 +35,8 @@ export function propArm(character:Character, joints:ReturnType<typeof rig>, side
     28*character.arms,28*character.arms,side==='right'?1:-1);
 }
 
-export function propPlacement(character:Character, joints:ReturnType<typeof rig>, pose:PropPose, prop:Prop, rear:boolean) {
-  const [,hand]=propArm(character,joints,'right',pose,true,rear);
+export function propPlacement(character:Character, joints:ReturnType<typeof rig>, pose:PropPose, prop:Prop, rear:boolean,side:'left'|'right'='right') {
+  const [,hand]=propArm(character,joints,side,pose,true,rear);
   const phase=cycle(pose);
   const scale=clamp(prop.scale,.25,2);
   if(pose.action==='drive'){
