@@ -7,16 +7,18 @@ import { evaluate } from '../src/engine/evaluate.ts';
 import { ProjectDocument, type Clip } from '../src/engine/schema.ts';
 import { splitTimelineClips, trimTimelineClip } from '../src/engine/timelineEditing.ts';
 
-test('front, left and right use the existing front/side rigs and side mirroring',()=>{
+test('front, left and right use front or mirrored three-quarter front rigs, never full side profiles',()=>{
   assert.deepEqual(performanceFacingOptions,['front','left','right']);
   assert.deepEqual(performanceFacingView('front'),{view:'front',flip:false});
-  assert.deepEqual(performanceFacingView('left'),{view:'side',flip:true});
-  assert.deepEqual(performanceFacingView('right'),{view:'side',flip:false});
+  assert.deepEqual(performanceFacingView('left'),{view:'three-quarter',flip:true});
+  assert.deepEqual(performanceFacingView('right'),{view:'three-quarter',flip:false});
   assert(performanceFacesCamera('front'));
   assert(!performanceFacesCamera('left')&&!performanceFacesCamera('right'));
   assert.equal(initialPerformanceFacing({view:'side',flip:true}),'left');
   assert.equal(initialPerformanceFacing({view:'side',flip:false}),'right');
-  assert.equal(initialPerformanceFacing({view:'three-quarter',flip:true}),'front');
+  assert.equal(initialPerformanceFacing({view:'three-quarter',flip:true}),'left');
+  assert.equal(initialPerformanceFacing({view:'three-quarter',flip:false}),'right');
+  assert.equal(initialPerformanceFacing({view:'front',flip:true}),'front');
 });
 
 test('live studio preview honors the director facing while reusing the same captured pose',()=>{
@@ -62,9 +64,9 @@ test('opposing dialogue performances own facing only within their clip intervals
   const names=new Map(parsed.characters.map(c=>[c.id,c]));
   const evaluated=(at:number)=>evaluate(parsed.scenes[0],at,names).actors.find(a=>a.id===actor.id)!;
   const before=evaluated(.5),a=evaluated(1.5),b=evaluated(3.5),after=evaluated(6);
-  assert.equal(a.view,'side');assert.equal(a.flip,true);
+  assert.equal(a.view,'three-quarter');assert.equal(a.flip,true);
   assert.equal(a.capturedFacing,'left');
-  assert.equal(b.view,'side');assert.equal(b.flip,false);
+  assert.equal(b.view,'three-quarter');assert.equal(b.flip,false);
   assert.equal(b.capturedFacing,'right');
   assert.equal(before.view,actor.view);
   assert.equal(after.view,actor.view);
@@ -113,7 +115,7 @@ test('tracking gaps preserve the staged direction without inventing a gesture',(
     ]
   };
   const frame=evaluate({...scene,clips:[take]},1.5,new Map(project.characters.map(c=>[c.id,c]))).actors[0];
-  assert.equal(frame.view,'side');
+  assert.equal(frame.view,'three-quarter');
   assert.equal(frame.flip,false);
   assert.equal(frame.capturedFacing,'right');
   assert.equal(frame.capturedFocus,undefined);
