@@ -290,7 +290,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         <div className="performance-actions">
           {status==='idle'&&<button type="button" className="primary" disabled={!actor} onClick={()=>void prepare()}><Camera size={16}/> Enable camera</button>}
           {status==='ready'&&<button type="button" className="primary" disabled={tracking!=='live'} onClick={begin}><Circle size={15}/> Record acting</button>}
-          {status==='ready'&&<button type="button" className="quiet" onClick={resetCamera}>Change tracking options</button>
+          {status==='ready'&&<button type="button" className="quiet" onClick={resetCamera}>Change tracking options</button>}
           {status==='recording'&&<button type="button" className="primary" onClick={()=>void stop()}><VideoOff size={15}/> Stop & compile</button>}
           {(status==='loading'||status==='processing')&&<span>Processing on your device…</span>}
         </div>
