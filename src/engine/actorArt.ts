@@ -65,14 +65,14 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const mocapFront=(side:'left'|'right')=>Boolean(!art.rear&&freeHand(side)&&appearance?.capturedArms?.[side]);
   const cryHand=(side:'left'|'right')=>crying&&freeHand(side);
   type ArmParts='all'|'upper'|'lower'|'hand';
-  const armEndpoints=new Map<ArmSide,{elbow:Point;hand:Point}>();
+  const armEndpoints:Partial<Record<ArmSide,{elbow:Point;hand:Point}>>={};
   const arm = (side:ArmSide,carrying=false,g:Graphics=bodyArt,part:ArmParts='all') => {
     const joint=r[side];
     const costumeHand=c.wardrobe?.hand??'right';
     const holdsCostume=side===costumeHand&&!carrying&&
       Boolean(c.wardrobe?.handheld&&c.wardrobe.handheld!=='none');
     const reachesFace=cryHand(side);
-    let endpoint=armEndpoints.get(side);
+    let endpoint=armEndpoints[side];
     if(!endpoint){
       const propPose=appearance?.propPose??{action,time:actionTime,weight:appearance?.actionWeight??1};
       let [elbow,hand]=propArm(c,r,side,propPose,carrying,art.rear);
@@ -123,7 +123,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         },28*c.arms,28*c.arms,sign);
       }
       endpoint={elbow,hand};
-      armEndpoints.set(side,endpoint);
+      armEndpoints[side]=endpoint;
     }
     const {elbow,hand}=endpoint;
     const coverage=sleeveCoverage(c);
