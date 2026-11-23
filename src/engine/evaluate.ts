@@ -71,7 +71,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(group)group.push(clip);else byActor.set(clip.actor,[clip]);
   }
   const objectsById=new Map(scene.objects.map(object=>[object.id,object]));
-  const {owned:handCustody,locations:propLocations}=resolveHandInteractions(scene,t);
+  const {owned:handCustody,locations:propLocations,successfulReleases}=resolveHandInteractions(scene,t);
   type BodyClip=Extract<Clip,{track:'body'}>;
   type PropEvent={clip:BodyClip;at:number};
   const propEvents=new Map<string,PropEvent>();
@@ -441,7 +441,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   const objects = scene.objects.map(object => {
     const cue = latest(timelineClips.filter(clip => clip.track === 'props' && clip.target === object.id && clip.start <= t));
     const lastDrop=propDrops.get(object.id);
-    if(lastDrop&&lastDrop.at>=(cue?.start??-1))
+    if(lastDrop&&lastDrop.at>=(cue?.start??-1)&&successfulReleases.has(lastDrop.clip.id))
       return placedProp(object,lastDrop);
     if(cue?.track==='props' && (cue.interaction==='open'||cue.interaction==='close')) {const progress=ease(clamp((t-cue.start)/Math.min(.7,cue.length)));return {...object,doorOpen:cue.interaction==='open'?progress:1-progress};}
     if (cue?.track !== 'props' || cue.interaction !== 'release') return object;
