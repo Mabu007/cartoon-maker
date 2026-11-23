@@ -629,9 +629,9 @@ export default function App() {
     setCompact(false);
     setTimelineTall(value=>!value);
   }
-  function addObject(kind: Prop['kind']) {
+  function addObject(kind: Prop['kind'],placed?:Point) {
     if (scene.objects.length >= 100) { tell('A scene can have up to 100 props.', true); return; }
-    const value = makeProp(kind, 475 + (scene.objects.length % 5) * 25, 430, {depth:nextLayerDepth(scene)});
+    const value = makeProp(kind, clamp(placed?.x??(475 + (scene.objects.length % 5) * 25),-2000,3000), clamp(placed?.y??430,-2000,3000), {depth:nextLayerDepth(scene)});
     editScene(current => ({ ...current, objects: [...current.objects, value] }));
     select({ id: value.id, kind: 'object' }); setMobilePanel('stage'); setArrange(true);
   }
@@ -1133,8 +1133,16 @@ export default function App() {
         }
         return;
       }
-      if(el?.closest('button,[role="button"]')&&!inClip&&event.code==='Space')return;
-      if (event.code === 'Space' && !command && !event.altKey) { event.preventDefault(); void play(); return; }
+      // Space always operates the movie transport when not typing. Ignore
+      // OS key-repeat, which otherwise rapidly toggles play/pause and causes
+      // overlapping WebAudio starts. Buttons and timeline clips are safe.
+      if(event.code==='Space'&&!command&&!event.altKey){
+        if(el?.closest('input,textarea,select,[contenteditable],[role="textbox"]'))return;
+        event.preventDefault();
+        if(!event.repeat)void play();
+        return;
+      }
+
       if (command && key === 'a' && (inTimeline || hasTimelineSelection)) { event.preventDefault(); state.selectClips(currentScene(state).clips.map(clip=>clip.id)); return; }
       if (command && key === 'c' && hasTimelineSelection) { event.preventDefault(); copyTimelineSelection(); return; }
       if (command && key === 'x' && hasTimelineSelection) { event.preventDefault(); cutTimelineSelection(); return; }
@@ -1315,13 +1323,45 @@ export default function App() {
 
           <Stage key={session} project={project} scene={scene} time={time}
           playing={playing} onDestination={placement ? stagePlacement:undefined}
-          editPath={placement?.kind==='path'&&!!placement.editing}
+          editPath={(placement?.kind==='path'&&!!placement.editing)||(!placement&&!!pathClip)}
           smoothGuide={placement?.kind==='path'||!!pathClip?.style}
           movePathPoint={(index,point)=>setPlacement(draft=>draft?.kind==='path'&&draft.editing?{...draft,
             points:draft.points.map((item,at)=>at===index?point:item)}:draft)}
           removePathPoint={index=>setPlacement(draft=>draft?.kind==='path'&&draft.editing&&index>0&&index<draft.points.length-1
             ?{...draft,points:draft.points.filter((_,at)=>at!==index)}:draft)}
           pathPoints={placement ? placement.kind==='path'?placement.points:undefined : selectedPath}
+          finishPathPoint={(index,point)=>{
+            if(placement?.kind==='path'&&placement.editing)return;
+            const current=currentScene(useStudio.getState());
+            const clip=current.clips.find((item):item is MoveClip=>item.track==='movement'&&item.id===pathClip?.id);
+            if(!clip)return;
+            const points=(clip.keyframes??[{x:clip.fromX,y:clip.fromY},{x:clip.toX,y:clip.toY}])
+              .map(({x,y})=>({x,y}));
+            if(!points[index])return;
+            points[index]={x:clamp(point.x,-2000,3000),y:clamp(point.y,-2000,3000)};
+            run(()=>{
+              const updated=stagePath(current,clip.actor,clip.start,points,clip.gait??'walk',
+                clip.style??'natural','move',clip);
+              commitScene(()=>updated.scene);
+            });
+          }}
+          recoverActor={(id,position)=>{
+            run(()=>{
+              const current=currentScene(useStudio.getState());
+              if(current.trackSettings?.actors?.locked||current.trackSettings?.movement?.locked)
+                throw Error('Unlock Actors and Movement to bring this character into view.');
+              const at=clamp(time.current.local,0,current.duration-.1);
+              const visible=setActorVisibleAt(current,id,at,true);
+              const fixed:MoveClip={id:uid(),track:'movement',actor:id,start:at,length:.1,
+                fromX:position.x,fromY:position.y,toX:position.x,toY:position.y};
+              commitScene(()=>({...visible,clips:[...visible.clips,fixed]}));
+              select({kind:'actor',id});seek(at);
+            });
+          }}
+          dropProp={(kind,position)=>{
+            if(!(propKinds as readonly string[]).includes(kind)||kind==='image')return;
+            addObject(kind,position);
+          }}
           edgePlacement={placement?.kind==='path'&&((placement.mode==='enter'&&!placement.points.length)||(placement.mode==='exit'&&placement.points.length>0))} edit={true} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot}
          reorderEntity={reorderSceneLayer}
          flipEntity={id=>{const actor=scene.actors.find(item=>item.id===id);if(actor)patchActor({...actor,flip:!actor.flip});else{const object=scene.objects.find(item=>item.id===id);if(object)patchObject({...object,flip:!object.flip});}}}
