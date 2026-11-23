@@ -43,6 +43,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [trackedFrames,setTrackedFrames]=useState(0);
   const [previewError,setPreviewError]=useState('');
   const [replaying,setReplaying]=useState(false);
+  const [observedGesture,setObservedGesture]=useState('');
   const camera=useRef<HTMLVideoElement>(null),characterHost=useRef<HTMLDivElement>(null);
   const overlay=useRef<HTMLCanvasElement>(null);
   const preview=useRef<PerformancePreview|undefined>(undefined);
@@ -131,7 +132,13 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           });
           drawPose(lastPreview.current);
           if(at-lastUi.current>350){
-            setTracking('live');setTrackedFrames(frames.current.length);lastUi.current=at;
+            setTracking('live');setTrackedFrames(frames.current.length);
+            setObservedGesture(lastPreview.current?.contact?
+              ({'prayer':'Hands together','hands-on-head':'Hands on head','guard':'Guard stance',
+                'punch-left':'Left punch','punch-right':'Right punch'}[lastPreview.current.contact]??''):
+              lastPreview.current?.hands?.right==='fist'||lastPreview.current?.hands?.left==='fist'?'Fist':
+              lastPreview.current?.hands?.right==='point'||lastPreview.current?.hands?.left==='point'?'Pointing':'');
+            lastUi.current=at;
           }
         }else{
           if(recording.current)frames.current.push({elapsed:Math.max(0,(at-started.current)/1000)});
@@ -144,6 +151,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           }
           if(at-lastUi.current>700){
             setTracking(lastSeen.current&&at-lastSeen.current>2200?'lost':'searching');
+            setObservedGesture('');
             lastUi.current=at;
           }
         }
@@ -163,7 +171,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     if(!navigator.mediaDevices?.getUserMedia){
       setMessage('Use HTTPS and a browser with camera permissions to capture a performance.');return;
     }
-    updateStatus('loading');setResult(undefined);setPreviewError('');
+    updateStatus('loading');setResult(undefined);setPreviewError('');setObservedGesture('');
     setTracking('searching');setMessage('Requesting camera permission and loading on-device MediaPipe models…');
     let media:MediaStream|undefined;let vision:PerformanceTracker|undefined;
     try{
@@ -193,7 +201,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   function resetCamera(){
     if(statusRef.current!=='ready')return;
     takeDown();setTracking('off');setTrackedFrames(0);
-    updateStatus('idle');setMessage('Choose hand and face tracking options, then enable the camera again.');
+    updateStatus('idle');setObservedGesture('');setMessage('Choose hand and face tracking options, then enable the camera again.');
   }
   function begin(){
     if(statusRef.current!=='ready'||!tracker.current||!lastSeen.current)return;
@@ -316,7 +324,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           status==='review'?'Replay your take on the cartoon before adding it to the timeline.':
           status==='ready'?'Move in front of your camera. The cartoon responds live — recording is optional.':
           'A live side-by-side view of you and the character you control.'}</span>
-        <strong>{status==='recording'?trackedFrames+' frames captured':tracking==='live'?'Live motion connected':'Local tracking'}</strong>
+        <strong>{observedGesture&&tracking==='live'?'✦ '+observedGesture:
+          status==='recording'?trackedFrames+' frames captured':tracking==='live'?'Live motion connected':'Local tracking'}</strong>
       </div>
       <div className="performance-controls">
         <label>Perform as <select aria-label="Perform as" value={actor} onChange={e=>{
@@ -350,7 +359,12 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track eyebrows + mouth (extra CPU)</label>
           <label><input type="checkbox" checked={trackingOverlay} onChange={e=>setTrackingOverlay(e.target.checked)}/> Show tracking points</label>
         </div>
-        <p className="performance-help">Fast eye direction, head tilt and visible arm movement use the lightweight pose model. Detailed eyebrows, mouth corners and finger shapes use additional optional models.</p>
+        <details className="performance-gesture-guide">
+          <summary>Gesture guide · fists, pointing, prayer and more</summary>
+          <p>Close your fingers for a <b>fist</b>, extend just the index finger to <b>point</b>, or bend individual fingers to control their cartoon equivalents. Bring both open hands together at chest height for <b>prayer</b>; move them to your head for <b>hands on head</b>. Keep two fists near your face for a <b>guard stance</b>, or extend one clenched arm for a <b>punch pose</b>.</p>
+          <p>Keep hands and wrists visible and well lit. Two-hand interactions require both wrists and usable body tracking; the system does not invent gestures from hidden hands.</p>
+        </details>
+        <p className="performance-help">Arms, eyes and head use the lightweight body model. Optional hand tracking adds independent finger bends; optional face tracking adds eyebrows and mouth.</p>
         <p className="performance-help" role="status">{message}</p>
         <div className="performance-actions">
           {status==='idle'&&<button type="button" className="primary" disabled={!actor} onClick={()=>void prepare()}><Camera size={16}/> Enable camera</button>}
