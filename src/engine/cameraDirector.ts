@@ -49,7 +49,12 @@ function angleFrame(camera:DirectedCamera,clip:DirectedCameraClip,width:number):
     case 'aerial':result.zoom=1;result.y=HEIGHT/2;result.x=WIDTH/2;break;
   }
   const roll=clip.roll??(clip.angle==='dutch-angle'?12:0);
-  if(roll)result.roll=roll;
+  if(roll){
+    result.roll=roll;
+    // A slight overscan keeps Dutch tilt from revealing triangular gaps at
+    // the edges of a 960×540 background, without a second render pass.
+    result.zoom=Math.max(result.zoom,1+Math.abs(Math.sin(roll*Math.PI/180))*.95);
+  }
   return clampCamera(result,width);
 }
 function nearest(subject:Subject,candidates:CameraActor[]) {
@@ -68,7 +73,7 @@ export function cameraFraming(
   const focusedProp=props.find(prop=>prop.id===clip.focus);
   const defaultActor=focusedActor??visible[0];
   const defaultSubject=focusedProp?asProp(focusedProp):defaultActor?asSubject(defaultActor):undefined;
-  if(!defaultSubject)return baseCamera();
+  if(!defaultSubject)return angleFrame(baseCamera(),clip,viewportWidth);
   const shot=clip.shot;
   const partner=defaultActor?nearest(asSubject(defaultActor),visible):undefined;
   if(shot==='wide'||shot==='establishing'||shot==='extreme-wide'||shot==='master'){
@@ -160,7 +165,7 @@ export function directCamera(
     case 'whip-pan-right':end.x+=260*strength;end.zoom=Math.max(end.zoom,1.4);speed*=3.7;break;
     case 'crane-up':end.x+=65*strength;end.y-=120*strength;end.zoom*=1.1;break;
     case 'crane-down':end.x-=65*strength;end.y+=120*strength;end.zoom*=1.1;break;
-    case 'handheld':case 'gimbal':case 'follow':break;
+    case 'handheld':case 'steadicam':case 'gimbal':case 'follow':break;
   }
   const target=clampCamera(end,viewportWidth);
   const result=interpolate(before,target,ease(speed));
