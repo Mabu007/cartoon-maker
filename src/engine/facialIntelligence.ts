@@ -77,6 +77,17 @@ export function actingFacialControls(
   const face=facialExpressionControls(expression,strength);
   if(traits.autoActing==='off')return facialExpressionControls(expression,clamp(intensity,0,1.5));
   const subtle=traits.autoActing==='subtle'?.4:1;
+  // Temperament modifies the *same* authored emotion, not just idle motion.
+  // An anxious actor holds more lip tension and opens their eyes slightly more.
+  if(expression==='nervous'){
+    face.lipPress=clamp(face.lipPress+nervousness*.18*subtle);
+    face.eyeWideLeft=clamp(face.eyeWideLeft+nervousness*.1*subtle);
+    face.eyeWideRight=clamp(face.eyeWideRight+nervousness*.12*subtle);
+  }
+  if(expression==='smug'){
+    const confidence=traits.confidence/100;
+    face.smileLeft=clamp(face.smileLeft+confidence*.08*subtle);
+  }
   const seed=hash(actorId);
   const t=Number.isFinite(time)?Math.max(0,time):0;
   const micro=pulse(t,seed,4.2+seed*2.3)*subtle*(.05+.075*nervousness);
