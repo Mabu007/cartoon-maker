@@ -139,7 +139,7 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
                 } else patchClip({...clip,facing:value});
               }}
               render={value=>value==='inherit'?'Use actor facing':value==='front'?'Front · camera':
-                value==='left'?'Face left':'Face right'}/>
+                value==='left'?'¾ Front Left':'¾ Front Right'}/>
           </label>
           <div className="performance-summary">
             <strong>{clip.performance.length} editable pose keys</strong>
