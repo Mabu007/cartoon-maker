@@ -167,8 +167,16 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   };
   const displayPath=pathPoints?.map((point,index)=>
     draggedPath&&draggedPath.index===index?draggedPath.position:point);
-  const offstageActors=!playing?evaluate(scene,time.current.local).actors.filter(actor=>
-    !actor.visible||actor.x<0||actor.x>960||actor.y<0||actor.y>540):[];
+  const offstageActors=!playing?evaluate(scene,time.current.local).actors.filter(actor=>{
+    if(!actor.visible||actor.x<0||actor.x>960||actor.y<0||actor.y>540)return true;
+    // Actors outside an active camera shot are still selectable through this
+    // list even though the renderer cannot create an on-canvas hit target.
+    const renderer=engine.current;
+    if(!renderer)return false;
+    const point=renderer.projectPoint({x:actor.x,y:actor.y-115*actor.scale});
+    return point.x< -45||point.x>renderer.width+45||
+      point.y< -45||point.y>renderer.height+45;
+  }):[];
   const hiddenSelected=selectedActor&&offstageActors.some(actor=>actor.id===selectedActor.id);
   return <div ref={stage} className={`stage-format format-${format.replace(':', '-')}`}
     onWheel={event=>{if(!playing){event.preventDefault();zoom(event.deltaY<0?1.14:1/1.14,event.clientX,event.clientY);}}}
