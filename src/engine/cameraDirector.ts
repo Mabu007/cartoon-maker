@@ -78,13 +78,15 @@ export function cameraFraming(
   const defaultSubject=focusedProp?asProp(focusedProp):defaultActor?asSubject(defaultActor):undefined;
   if(!defaultSubject)return angleFrame(baseCamera(),clip,viewportWidth);
   const shot=clip.shot;
+  const composition=clip.composition??shot;
   const partner=defaultActor?nearest(asSubject(defaultActor),visible):undefined;
-  if(shot==='wide'||shot==='establishing'||shot==='extreme-wide'||shot==='master'){
+  if((!clip.composition&&(shot==='wide'||shot==='establishing'||shot==='extreme-wide'||shot==='master'))||
+    composition==='establishing'||composition==='master'){
     const center=clip.focus?defaultSubject.x:WIDTH/2;
     return angleFrame({x:center,y:HEIGHT/2,zoom:1},clip,viewportWidth);
   }
-  if(['two-shot','three-shot','group-shot'].includes(shot)){
-    const count=shot==='two-shot'?2:shot==='three-shot'?3:visible.length;
+  if(['two-shot','three-shot','group-shot'].includes(composition)){
+    const count=composition==='two-shot'?2:composition==='three-shot'?3:visible.length;
     const selected=defaultActor
       ?[defaultActor,...visible.filter(a=>a.id!==defaultActor.id)
         .sort((a,b)=>Math.abs(a.x-defaultActor.x)-Math.abs(b.x-defaultActor.x))].slice(0,count)
@@ -93,22 +95,22 @@ export function cameraFraming(
       const left=Math.min(...selected.map(a=>a.x-72*a.scale));
       const right=Math.max(...selected.map(a=>a.x+72*a.scale));
       const spread=right-left;
-      const limit=shot==='two-shot'?1.55:shot==='three-shot'?1.42:1.3;
+      const limit=composition==='two-shot'?1.55:composition==='three-shot'?1.42:1.3;
       const zoom=clamp((viewportWidth-160)/(spread+78),1,limit);
       const y=selected.reduce((sum,a)=>sum+a.y-120*a.scale-a.lift,0)/selected.length;
       return angleFrame({x:(left+right)/2,y,zoom},clip,viewportWidth);
     }
   }
   let subject=defaultSubject;
-  if(shot==='point-of-view'&&defaultActor&&partner)subject=asSubject(partner);
-  if(shot==='shot-reverse-shot'&&defaultActor&&partner &&
+  if(composition==='point-of-view'&&defaultActor&&partner)subject=asSubject(partner);
+  if(composition==='shot-reverse-shot'&&defaultActor&&partner &&
     (t-clip.start)/clip.length>=.5)subject=asSubject(partner);
-  const close=['close-up','big-close-up','extreme-close-up','medium-close-up',
-    'reaction','insert','point-of-view','shot-reverse-shot'].includes(shot);
+  const close=['close-up','big-close-up','extreme-close-up','medium-close-up'].includes(shot)||
+    ['reaction','insert','point-of-view','shot-reverse-shot'].includes(composition);
   let zoom=zooms[shot]??1.28;
   let x=subject.x,y=heightAt(subject,close);
-  if(shot==='over-shoulder'&&partner)x+=.24*(partner.x-subject.x);
-  if(shot==='shot-reverse-shot'&&defaultActor&&partner){
+  if(composition==='over-shoulder'&&partner)x+=.24*(partner.x-subject.x);
+  if(composition==='shot-reverse-shot'&&defaultActor&&partner){
     const other=subject.id===defaultActor.id?partner:defaultActor;
     x+=(other.x-subject.x)*.12;
   }
