@@ -356,7 +356,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         </div>
         <div className="performance-toggles">
           <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track finger poses (extra CPU)</label>
-          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track eyebrows + mouth (extra CPU)</label>
+          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track eye rolls + face (extra CPU)</label>
           <label><input type="checkbox" checked={trackingOverlay} onChange={e=>setTrackingOverlay(e.target.checked)}/> Show tracking points</label>
         </div>
         <details className="performance-gesture-guide">
@@ -364,7 +364,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <p>Close your fingers for a <b>fist</b>, extend just the index finger to <b>point</b>, or bend individual fingers to control their cartoon equivalents. Bring both open hands together at chest height for <b>prayer</b>; move them to your head for <b>hands on head</b>. Keep two fists near your face for a <b>guard stance</b>, or extend one clenched arm for a <b>punch pose</b>.</p>
           <p>Keep hands and wrists visible and well lit. Two-hand interactions require both wrists and usable body tracking; the system does not invent gestures from hidden hands.</p>
         </details>
-        <p className="performance-help">Arms, eyes and head use the lightweight body model. Optional hand tracking adds independent finger bends; optional face tracking adds eyebrows and mouth.</p>
+        <p className="performance-help">Arms, head tilt and approximate gaze use the lightweight pose model. Optional hand tracking captures all five finger bends; optional face tracking captures real eye rolls, eyebrows and mouth.</p>
         <p className="performance-help" role="status">{message}</p>
         <div className="performance-actions">
           {status==='idle'&&<button type="button" className="primary" disabled={!actor} onClick={()=>void prepare()}><Camera size={16}/> Enable camera</button>}
