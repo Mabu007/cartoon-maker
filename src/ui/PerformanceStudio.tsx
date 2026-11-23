@@ -48,6 +48,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [previewError,setPreviewError]=useState('');
   const [replaying,setReplaying]=useState(false);
   const [observedGesture,setObservedGesture]=useState('');
+  const [liveHeadFacing,setLiveHeadFacing]=useState<'front'|'left'|'right'>('front');
   const camera=useRef<HTMLVideoElement>(null),characterHost=useRef<HTMLDivElement>(null);
   const overlay=useRef<HTMLCanvasElement>(null);
   const preview=useRef<PerformancePreview|undefined>(undefined);
@@ -143,6 +144,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           drawPose(lastPreview.current);
           if(at-lastUi.current>350){
             setTracking('live');setTrackedFrames(frames.current.length);
+            setLiveHeadFacing(lastPreview.current?.headFacing??'front');
             setObservedGesture(lastPreview.current?.contact?
               ({'prayer':'Hands together','hands-on-head':'Hands on head','guard':'Guard stance',
                 'punch-left':'Left punch','punch-right':'Right punch'}[lastPreview.current.contact]??''):
@@ -388,7 +390,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
               disabled={status==='recording'||status==='processing'}
               onClick={()=>setFacing('right')}><ArrowRight size={15}/> ¾ Front Right</button>
           </div>
-          <small>Choose straight ahead or a slight three-quarter turn for dialogue — never a full side profile. Preview, recording and timeline playback use the same angle. You can change it later in the Inspector.</small>
+          <small>Choose which way the body faces. The head can now turn independently between front, ¾ left and ¾ right as you act. Your recorded body direction stays editable in the Inspector.</small>
         </div>
         <div className="performance-values">
           <label>Exaggeration {intensity}%<input type="range" min="50" max="180" step="10" value={intensity} disabled={status==='recording'} onChange={e=>setIntensity(Number(e.target.value))}/></label>
@@ -405,7 +407,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <p>Close your fingers for a <b>fist</b>, extend just the index finger to <b>point</b>, or bend individual fingers to control their cartoon equivalents. Bring both open hands together at chest height for <b>prayer</b>; move them to your head for <b>hands on head</b>. Keep two fists near your face for a <b>guard stance</b>, or extend one clenched arm for a <b>punch pose</b>.</p>
           <p>Keep hands and wrists visible and well lit. Two-hand interactions require both wrists and usable body tracking; the system does not invent gestures from hidden hands.</p>
         </details>
-        <p className="performance-help">Arms and bounded head tilt use the lightweight pose model. Actual eyeball direction requires the optional face model (iris landmarks), which also captures eyebrows, eyelids and mouth. Without it, eye direction is only approximate.</p>
+        <p className="performance-help">Natural left/front/right head turns and restrained head tilt use the lightweight pose model. Actual eyeball direction requires the optional face model (iris landmarks), which also captures eyebrows, eyelids and mouth. Without it, eye direction is only approximate. Live head pose: <strong>{liveHeadFacing==='front'?'Front':liveHeadFacing==='left'?'¾ Left':'¾ Right'}</strong>.</p>
         <p className="performance-help" role="status">{message}</p>
         <p className="performance-help">Use the recording toolbar above the camera preview to start, stop, replay, retake or save. No microphone is needed for movement.</p>
         {status==='review'&&result&&<>
