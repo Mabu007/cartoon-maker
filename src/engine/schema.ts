@@ -178,7 +178,7 @@ const PerformanceClip = z.strictObject({ ...time, track: z.literal('performance'
   performance:z.array(CapturedPoseKey).min(2).max(240),
   performanceOrigin:z.enum(['mocap','choreography']).optional() });
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });
-const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']), hand:z.enum(['left','right']).optional() });
+const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']), hand:z.enum(['left','right']).optional(), inherited:z.boolean().optional() });
 /** Four editable emotion axes; independent from expression and character personality. */
 export const EmotionSpaceSchema=z.strictObject({
   valence:num(-1,1).optional(),arousal:num(0,1).optional(),
