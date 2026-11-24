@@ -126,7 +126,7 @@ const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: 
 const CapturedHand = z.enum(['relaxed','loose-open','open','point','count-one','count-two','count-three','pinch','fist','grip','palm-up','palm-out','shrug','self-reference','thumbs-up','count']);
 /** Compact per-digit flexion: thumb, index, middle, ring, pinky. */
 const FingerCurls=z.tuple([num(0,1),num(0,1),num(0,1),num(0,1),num(0,1)]);
-export const CapturedContactSchema=z.enum(['prayer','hands-on-head','guard','punch-left','punch-right']);
+export const CapturedContactSchema=z.enum(['prayer','hands-on-head','guard','punch-left','punch-right','chin-left','chin-right','forehead-left','forehead-right','hip-left','hip-right']);
 /** Compact validated 2D facial coefficients: expressive data, never camera imagery. */
 const CapturedFacialControls = z.strictObject({
   browLeft:num(-1,1),browRight:num(-1,1),browTiltLeft:num(-1,1),browTiltRight:num(-1,1),
