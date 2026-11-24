@@ -72,6 +72,8 @@ export function mirrorCapturedRig(key:PerformanceKey):PerformanceKey{
   return {...key,pose,
     armTargets:mirrorPairs(key.armTargets,p=>({x:-p.x,y:p.y})),
     armBend:mirrorPairs(key.armBend,v=>-v),
+    armExtension:mirrorPairs(key.armExtension),
+    armEvidence:mirrorPairs(key.armEvidence,v=>({...v,elbow:{x:-v.elbow.x,y:v.elbow.y}})),
     armDepth:mirrorPairs(key.armDepth),
     armConfidence:mirrorPairs(key.armConfidence),
     handConfidence:mirrorPairs(key.handConfidence),
