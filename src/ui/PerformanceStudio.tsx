@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles, ArrowLeft, ArrowRight, UserRound, Play, RotateCcw, Check, Square, Mic } from 'lucide-react';
 import { actingDNA, retargetCaptureFrame, samplePerformance,
   type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
+import { refinePerformance, combineCaptureEvidence } from '../engine/performanceRefinement.ts';
 import { compileResolvedPerformance, type ResolvedObservation } from '../engine/resolvedPerformance.ts';
 import { startAsyncPerformanceTracker, type AsyncPerformanceTracker } from '../services/asyncPerformanceTracker.ts';
 import { putAudio } from '../services/audio.ts';
@@ -86,6 +87,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const raf=useRef(0),last=useRef(0),started=useRef(0),alive=useRef(true);
   const frames=useRef<ResolvedObservation[]>([]);
   const rawFrames=useRef<ResolvedObservation[]>([]);
+  const timedFrames=useRef<ResolvedObservation[]>([]);
   const recorder=useRef<MediaRecorder|undefined>(undefined),chunks=useRef<Blob[]>([]);
   const stopping=useRef(false),recording=useRef(false);
   const lastSeen=useRef(0),lastUi=useRef(0),lastPreview=useRef<PerformanceKey|undefined>(undefined);
@@ -101,7 +103,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   function takeDown(){
     captureGeneration.current++;inferenceBusy.current=false;
     motionStabilizer.current.reset();presentation.current=undefined;
-    recording.current=false;playback.current=undefined;rawFrames.current=[];
+    recording.current=false;playback.current=undefined;rawFrames.current=[];timedFrames.current=[];
     cancelAnimationFrame(raf.current);raf.current=0;
     try{if(recorder.current?.state==='recording')recorder.current.stop();}catch{/* cleanup */}
     recorder.current=undefined;
@@ -173,6 +175,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           }
           const target=motionStabilizer.current.update({...key,pose:constrainCapturedHead(pose)},smoothingRef.current/100);
           if(!autoFacingRef.current){delete target.bodyFacing;delete target.bodyYaw;}
+          if(recording.current&&at>=started.current)timedFrames.current.push({elapsed:(at-started.current)/1000,sample:combineCaptureEvidence({...key,pose:constrainCapturedHead(pose)},target)});
           presentTarget(target,performance.now());
           lastPreview.current=target;
           if(at-lastUi.current>350){
@@ -190,6 +193,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           // confidence-faded sample is shown and recorded, so replay matches
           // the live puppeteering instead of flickering to default animation.
           const recovered=motionStabilizer.current.recover(at/1000);
+          if(recording.current&&at>=started.current)timedFrames.current.push({elapsed:(at-started.current)/1000});
           presentTarget(recovered,performance.now());
           lastPreview.current=recovered;
           if(at-lastUi.current>700){
@@ -275,7 +279,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       setMessage('Camera connected but no body tracked yet. Sit or stand so your face and shoulders are visible, then press Record movement.');
       return;
     }
-    frames.current=[];rawFrames.current=[];chunks.current=[];stopping.current=false;recording.current=true;
+    frames.current=[];rawFrames.current=[];timedFrames.current=[];chunks.current=[];stopping.current=false;recording.current=true;
     setRecordSeconds(0);lastClock.current=0;
     playback.current=undefined;setRecordedAudio(undefined);setResult(undefined);setTrackedFrames(0);
     let writer:MediaRecorder|undefined;
@@ -292,6 +296,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     // time zero. Audio starts against this same clock, not first detection.
     lastRecordFrame.current=started.current;
     frames.current.push({elapsed:0,sample:presented(started.current)});
+    timedFrames.current.push({elapsed:0,sample:lastPreview.current});
     updateStatus('recording');
     setMessage('Recording motion now. Perform naturally, then press Stop & review.');
   }
@@ -312,7 +317,10 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     const audio=await finishOptionalAudio(writer,chunks.current);
     if(audio)setRecordedAudio(audio);
     try{
-      const compiled=compileResolvedPerformance(frames.current,duration,{cleanMotion:true});
+      // Source timestamps avoid baking live presentation lag into the final take.
+      const timed=timedFrames.current.filter(event=>event.elapsed<=duration);
+      const usable=timed.filter(event=>event.sample).length;
+      const compiled=compileResolvedPerformance(usable>=2?refinePerformance(timed):frames.current,duration,{cleanMotion:true});
       setResult(compiled);updateStatus('review');
       drawPose(samplePerformance(compiled.keys,1));
       setMessage('Captured '+compiled.framesAccepted+' frames ('+compiled.framesDropped+
@@ -372,7 +380,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const style=result?actingDNA(result.keys):undefined;
   const retake=()=>{
     playback.current=undefined;setReplaying(false);setResult(undefined);
-    setRecordedAudio(undefined);stopping.current=false;frames.current=[];rawFrames.current=[];presentation.current=undefined;
+    setRecordedAudio(undefined);stopping.current=false;frames.current=[];rawFrames.current=[];timedFrames.current=[];presentation.current=undefined;
     setRecordSeconds(0);updateStatus('ready');
     setMessage('Ready for another take. Your previous take was not added.');
   };
