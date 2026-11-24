@@ -11,6 +11,7 @@ import { createMotionIntent } from './motionIntent.ts';
 import type { JointName } from './schema.ts';
 import type { PerformanceKey } from './performanceCapture.ts';
 import { interpolateArmTarget, createObedientArm, decideFrontArm, contactHysteresis, type ArmSide } from './performanceArmIntelligence.ts';
+import { createThumbStabilizer, type ThumbPair } from './thumbIntelligence.ts';
 import { observedHandPose, type FingerCurls } from './performanceHandIntelligence.ts';
 import { constrainCapturedHead, headFacingForYaw } from './performanceHeadEye.ts';
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
@@ -48,6 +49,7 @@ export function createPerformanceStabilizer(){
     return gate.update(values,time,threshold);
   }
   function clearSignal(name:string){filters.delete(name);intents.delete(name);}
+  const thumbFilters={left:createThumbStabilizer(),right:createThumbStabilizer()};
   const lastGoodHand:{left?:{time:number;curls:FingerCurls};right?:{time:number;curls:FingerCurls}}={};
   const bend:{left?:number;right?:number}={};
   const pendingBend:{left?:number;right?:number}={};
@@ -159,6 +161,7 @@ export function createPerformanceStabilizer(){
     const bends:PerformanceKey['armBend']={};
     const extensions:PerformanceKey['armExtension']={};
     const curls:PerformanceKey['fingerCurls']={};
+    const thumbs:ThumbPair={};
     const confidence:PerformanceKey['handConfidence']={};
     const armConfidence:PerformanceKey['armConfidence']={};
     const hands:NonNullable<PerformanceKey['hands']>={left:'relaxed',right:'relaxed'};
@@ -249,9 +252,11 @@ export function createPerformanceStabilizer(){
           ) as FingerCurls;
         }
       }
+      const thumb=thumbFilters[side].update(key.thumbs?.[side],time,quality);
+      if(thumb&&curls[side]){thumbs[side]=thumb;curls[side]![0]=thumb.curl;}
       const state=handState[side];
       if(curls[side]&&(confidence[side]??0)>.1){
-        const classified=observedHandPose(curls[side]!);
+        const classified=observedHandPose(curls[side]!,thumbs[side]);
         if(state.current===undefined){state.current=classified;}
         else if(classified!==state.current){
           state.count=state.candidate===classified?state.count+1:1;
@@ -325,6 +330,7 @@ export function createPerformanceStabilizer(){
       armBend:bends.left!==undefined||bends.right!==undefined?bends:undefined,
       nearArm,
       fingerCurls:curls.left||curls.right?curls:undefined,
+      thumbs:thumbs.left||thumbs.right?thumbs:undefined,
       handConfidence:confidence.left!==undefined||confidence.right!==undefined?confidence:undefined,
       contact:activeContact as PerformanceKey['contact']
     };
@@ -370,6 +376,7 @@ export function createPerformanceStabilizer(){
     lastOutput=undefined;lastObservation=-Infinity;recentYaw=undefined;
     trackedHead='front';headCandidate=undefined;headFrames=0;
     reacquire=undefined;
+    thumbFilters.left.reset();thumbFilters.right.reset();
     lastGoodHand.left=undefined;lastGoodHand.right=undefined;
     bend.left=undefined;bend.right=undefined;
     pendingBend.left=undefined;pendingBend.right=undefined;
