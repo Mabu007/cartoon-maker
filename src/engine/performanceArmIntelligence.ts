@@ -28,7 +28,7 @@ export function observedArmGuidance(
   const torsoX=(pose[11].x+pose[12].x)/2;
   for(const side of ['left','right'] as const){
     const s=side==='left'?11:12,e=side==='left'?13:14,w=side==='left'?15:16;
-    if(!visible(pose[s])||!visible(pose[w])||!visible(pose[e]))continue;
+    if(!visible(pose[s])||!visible(pose[w]))continue;
     const shoulder=pose[s],elbow=pose[e],wrist=pose[w];
     const raw={x:-(wrist.x-shoulder.x)*scale,
       y:(wrist.y-shoulder.y)*scale/Math.max(.75,aspect)};
@@ -38,10 +38,14 @@ export function observedArmGuidance(
     const length=clamp(reach,12,55);
     targets[side]={x:raw.x/Math.max(.001,reach)*length,
       y:raw.y/Math.max(.001,reach)*length};
-    const elbowLocal={x:-(elbow.x-shoulder.x)*scale,
-      y:(elbow.y-shoulder.y)*scale/Math.max(.75,aspect)};
-    const cross=raw.x*elbowLocal.y-raw.y*elbowLocal.x;
-    if(Math.abs(cross)>28)bends[side]=cross>0?1:-1;
+    // The wrist target is still valid if only the elbow is occluded.
+    // Preserve the previous bend pole in the stabilizer until it is seen.
+    if(visible(elbow)){
+      const elbowLocal={x:-(elbow.x-shoulder.x)*scale,
+        y:(elbow.y-shoulder.y)*scale/Math.max(.75,aspect)};
+      const cross=raw.x*elbowLocal.y-raw.y*elbowLocal.x;
+      if(Math.abs(cross)>28)bends[side]=cross>0?1:-1;
+    }
     const metricShoulder=world?.[s],metricWrist=world?.[w];
     const metricDepth=visible(metricShoulder)&&visible(metricWrist)&&
       finite(metricShoulder.z)&&finite(metricWrist.z)
