@@ -2,7 +2,8 @@
  * A single camera cannot recover hidden depth; preserve observed evidence rather
  * than inventing joints. Fresh hand landmarks can rescue a low-confidence wrist.
  */
-import type { CaptureFrame,Landmark } from './performanceCapture.ts';
+import type { JointName } from './schema.ts';
+import type { CaptureFrame,Landmark,PerformanceKey } from './performanceCapture.ts';
 const valid=(p?:Landmark):p is Landmark=>!!p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&(p.visibility??1)>=.55;
 const clamp=(v:number,a:number,b:number)=>Math.min(b,Math.max(a,v));
 const distance=(a:Landmark,b:Landmark,aspect:number)=>Math.hypot(a.x-b.x,(a.y-b.y)/aspect);
@@ -46,4 +47,40 @@ export function facingForBodyYaw(yaw:number,previous:BodyFacing):BodyFacing{
   if(previous==='left'&&yaw>.17)return previous;
   if(previous==='right'&&yaw<-.17)return previous;
   return 'front';
+}
+
+/** The existing left three-quarter artwork mirrors the whole local rig.
+ * Re-express captured SCREEN-relative limbs in that local frame first,
+ * so changing facing cannot swap the performer's two hands on screen.
+ * The recorded key is immutable and retains original tracking coordinates.
+ */
+export function mirrorCapturedRig(key:PerformanceKey):PerformanceKey{
+  const swap=(side:'left'|'right')=>side==='left'?'right':'left';
+  const mirrorPairs=<T,>(pair:{left?:T;right?:T}|undefined,convert:(v:T)=>T=(v=>v))=>pair?{
+    ...(pair.right!==undefined?{left:convert(pair.right)}:{}),
+    ...(pair.left!==undefined?{right:convert(pair.left)}:{})
+  }:undefined;
+  const pose:PerformanceKey['pose']={};
+  for(const [name,value] of Object.entries(key.pose)){
+    if(value===undefined)continue;
+    const swapped=name.startsWith('left')?'right'+name.slice(4):name.startsWith('right')?'left'+name.slice(5):name;
+    pose[swapped as JointName]=-value;
+  }
+  const contact=key.contact;
+  const contactMirrored=contact?.endsWith('-left')?contact.slice(0,-5)+'-right':
+    contact?.endsWith('-right')?contact.slice(0,-6)+'-left':contact;
+  return {...key,pose,
+    armTargets:mirrorPairs(key.armTargets,p=>({x:-p.x,y:p.y})),
+    armBend:mirrorPairs(key.armBend,v=>-v),
+    armDepth:mirrorPairs(key.armDepth),
+    armConfidence:mirrorPairs(key.armConfidence),
+    handConfidence:mirrorPairs(key.handConfidence),
+    fingerCurls:mirrorPairs(key.fingerCurls),
+    hands:key.hands?{left:key.hands.right,right:key.hands.left}:undefined,
+    nearArm:key.nearArm?swap(key.nearArm):undefined,
+    contact:contactMirrored as PerformanceKey['contact'],
+    headFacing:key.headFacing&&key.headFacing!=='front'?swap(key.headFacing):key.headFacing,
+    headYaw:key.headYaw===undefined?undefined:-key.headYaw,
+    focus:key.focus?{x:-key.focus.x,y:key.focus.y}:undefined
+  };
 }
