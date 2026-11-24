@@ -144,6 +144,49 @@ export function solveAnatomicalArm(
   return score(left,-1)<=score(right,1)?left:right;
 }
 
+/** Strict dialogue-mode envelope. In screen coordinates positive Y is down.
+ * Never draw an upper arm above horizontal, or fold it deep into the chest.
+ * If the measured wrist is unreachable inside this envelope, move the wrist
+ * to the nearest feasible pose instead of violating the elbow constraint.
+ * This is pure and identical during live preview, timeline and export. */
+export function solveStrictCapturedArm(shoulder:Point,target:Point,scale:number,side:ArmSide,pole?:number){
+  const bone=Math.max(8,28*scale),sign=side==='left'?-1:1;
+  const minInward=-bone*.22, maxFlex=142*Math.PI/180;
+  const legal=(elbow:Point)=>elbow.y>=shoulder.y-1e-7&&sign*(elbow.x-shoulder.x)>=minInward-1e-7;
+  const requested={x:shoulder.x+target.x*scale,y:shoulder.y+target.y*scale};
+  const desiredReach=clamp(distance(requested,shoulder),bone*2*Math.cos(maxFlex/2),bone*2-.01);
+  const preferred=pole===-1?-1:pole===1?1:sign;
+  const exact=solveCapturedArm(shoulder,target,scale,preferred);
+  const alternate=solveCapturedArm(shoulder,target,scale,-preferred);
+  const valid=(s:typeof exact)=>legal(s.elbow)&&s.reach>=bone*2*Math.cos(maxFlex/2)-1e-7;
+  if(valid(exact))return {...exact,pole:preferred,restricted:false};
+  if(valid(alternate))return {...alternate,pole:-preferred,restricted:true};
+  // Both branches violate the hard envelope. Search the short allowed
+  // shoulder arc and solve the nearest permitted forearm angle analytically.
+  const angleMin=side==='left'?Math.acos(.22):0;
+  const angleMax=side==='right'?Math.acos(-.22):Math.PI;
+  let best:{elbow:Point;hand:Point;reach:number;pole:number;restricted:boolean}|undefined;
+  let bestCost=Infinity;
+  const angleWrap=(n:number)=>Math.atan2(Math.sin(n),Math.cos(n));
+  const consider=(a:number)=>{
+    const elbow={x:shoulder.x+Math.cos(a)*bone,y:shoulder.y+Math.sin(a)*bone};
+    const desired=Math.atan2(requested.y-elbow.y,requested.x-elbow.x);
+    const flex=clamp(angleWrap(desired-a),-maxFlex,maxFlex);
+    const forearm=a+flex;
+    const hand={x:elbow.x+Math.cos(forearm)*bone,y:elbow.y+Math.sin(forearm)*bone};
+    const reach=distance(shoulder,hand);
+    const actualPole=flex<0?1:-1;
+    const cost=distance(requested,hand)**2+1.4*(reach-desiredReach)**2+(actualPole!==preferred?bone*.2:0);
+    if(cost<bestCost){bestCost=cost;best={elbow,hand,reach,pole:actualPole,restricted:true};}
+  };
+  for(let i=0;i<=32;i++)consider(angleMin+(angleMax-angleMin)*i/32);
+  // Refine the minimum between samples to avoid stepwise shoulder movement.
+  const a=Math.atan2(best!.elbow.y-shoulder.y,best!.elbow.x-shoulder.x);
+  const step=(angleMax-angleMin)/32;
+  for(let i=-8;i<=8;i++)consider(clamp(a+step*i/8,angleMin,angleMax));
+  return best!;
+}
+
 /** Pure scoring in canonical 28+28 rig units. A stable pole is selected at
  * capture time and stored in the key; renderer playback has no history. */
 export function scoreArmPoles(target:Point,side:ArmSide,evidence?:ArmEvidence,previous?:number,previousElbow?:Point){
@@ -198,9 +241,11 @@ export function createObedientArm(side:ArmSide){
           if(count>=3){pole=score.pole;count=0;candidate=undefined;}else blocked=true;
         }else{candidate=undefined;count=0;blocked=true;}
       }else{candidate=undefined;count=0;}
-      previousElbow=solveCapturedArm({x:0,y:0},adjusted,1,pole).elbow;
-      diagnostics={...score,blocked,chosen:pole};
-      return {target:adjusted,pole,extension:clamp(extension,.32,1)};
+      const safe=solveStrictCapturedArm({x:0,y:0},adjusted,1,side,pole);
+      previousElbow=safe.elbow;
+      pole=safe.pole;
+      diagnostics={...score,blocked:blocked||safe.restricted,chosen:pole};
+      return {target:safe.hand,pole,extension:clamp(safe.reach/56,0,1)};
     },
     debug:()=>diagnostics,
     reset(){pole=candidate=undefined;count=0;previousElbow=undefined;lastExtension=undefined;pendingExtension=undefined;diagnostics=undefined;}
