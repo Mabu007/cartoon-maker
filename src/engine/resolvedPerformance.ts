@@ -33,10 +33,21 @@ function keyAt(observation:ResolvedObservation,duration:number):PerformanceKey {
 /** Capture compression protects visibility transitions; the maximum remains
  * compatible with the bounded long-take key schema. */
 function limitKeys(keys:PerformanceKey[],maximum:number):PerformanceKey[] {
-  let reduced=reducePerformanceKeys(keys);
+  // Long takes are reduced in overlapping bounded windows, avoiding a
+  // quadratic whole-take scan on low-end devices. Each boundary is retained.
+  const reduce=(tolerance=1.7)=>{
+    if(keys.length<=320)return reducePerformanceKeys(keys,tolerance);
+    const output:PerformanceKey[]=[];
+    for(let start=0;start<keys.length-1;start+=239){
+      const window=reducePerformanceKeys(keys.slice(start,start+240),tolerance);
+      output.push(...(start?window.slice(1):window));
+    }
+    return output;
+  };
+  let reduced=reduce();
   for(const tolerance of [2.8,4.5,7,10,15,25,40,70]){
     if(reduced.length<=maximum)break;
-    reduced=reducePerformanceKeys(keys,tolerance);
+    reduced=reduce(tolerance);
   }
   if(reduced.length<=maximum)return reduced;
   const mandatory=new Set<number>([0,reduced.length-1]);
