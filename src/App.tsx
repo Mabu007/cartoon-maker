@@ -1166,8 +1166,9 @@ export default function App() {
       }
       if (!command && !event.altKey && key === 's' && hasTimelineSelection) { event.preventDefault(); splitTimelineSelection(); return; }
       if (!command && !event.altKey && (key === '+' || key === '=' || key === '-' || key === '_')) {
-        event.preventDefault(); window.dispatchEvent(new CustomEvent('toonroom-zoom', {detail:key==='+'||key==='='?'in':'out'})); return;
+        event.preventDefault(); window.dispatchEvent(new CustomEvent('sirvibe-stage-zoom', {detail:key==='+'||key==='='?'in':'out'})); return;
       }
+      if (!command && !event.altKey && key==='0' && !inTimeline) {event.preventDefault();window.dispatchEvent(new CustomEvent('sirvibe-stage-zoom',{detail:'reset'}));return;}
       if (event.key === 'Escape') { if(placement){setPlacement(undefined);return;} if(timelineTall){setTimelineTall(false);return;} state.select(null); setFocus(false); return; }
       if (event.altKey && arrange && selection && selection.kind !== 'clip' && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
         event.preventDefault(); const step = event.shiftKey ? 10 : 1;
@@ -1309,7 +1310,7 @@ export default function App() {
             </div>
             <IconButton title={project.scenes.length===1?'Clear current scene':'Delete current scene'} onClick={()=>dropDirectScene(scene)}><Trash2 size={15}/></IconButton>
           </div>
-        </div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><IconButton title="Zoom canvas out" disabled={playing} onClick={()=>window.dispatchEvent(new CustomEvent('sirvibe-stage-zoom',{detail:'out'}))}><Minus size={16}/></IconButton><IconButton title="Zoom canvas in" disabled={playing} onClick={()=>window.dispatchEvent(new CustomEvent('sirvibe-stage-zoom',{detail:'in'}))}><Plus size={16}/></IconButton><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats} render={formatLabel}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
+        </div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><IconButton title="Zoom canvas out (0 to fit)" disabled={playing} onClick={()=>window.dispatchEvent(new CustomEvent('sirvibe-stage-zoom',{detail:'out'}))}><Minus size={16}/></IconButton><IconButton title="Zoom canvas in" disabled={playing} onClick={()=>window.dispatchEvent(new CustomEvent('sirvibe-stage-zoom',{detail:'in'}))}><Plus size={16}/></IconButton><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats} render={formatLabel}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
         {placement&&<div className="stage-placement-tools" role="group" aria-label="Stage placement">
           <strong>{placement.kind==='path' ? placement.editing
             ? placement.waypoint?'Click to place a waypoint':'Drag the path handles · Double-click to add a waypoint'
