@@ -185,7 +185,7 @@ export function createPerformanceStabilizer(){
       }
       const depth=key.armDepth?.[side];
       if(depth!==undefined)
-        depths[side]=clamp(filter(side+':depth',intentional(side+':depth',[depth],time,amount*.14)[0],time,2.5,.012),-1,1);
+        depths[side]=clamp(filter(side+':depth',depth,time,2.5,.012),-1,1);
       const measuredBend=key.armBend?.[side];
       if(measuredBend!==undefined){
         if(bend[side]===undefined) bend[side]=measuredBend;
