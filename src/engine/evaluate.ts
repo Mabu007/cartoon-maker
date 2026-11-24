@@ -256,13 +256,13 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     let capturedHeadYaw:CharacterState['capturedHeadYaw'];
     // A take owns its chosen facing throughout its interval, including
     // temporary tracking gaps. This does not mutate the source scene actor.
-    let capturedFacing=captured?.track==='performance'?captured.facing:undefined;
+    let capturedFacing=captured?.track==='performance'&&captured.performance[0]?.tracking?.torso!==false?captured.facing:undefined;
     if(capturedFacing){({view,flip}=performanceFacingView(capturedFacing));}
     const authoredGesture=Boolean(gesture && !gesture.performance && gesture.id!==captured?.id);
     if(captured?.performance && !authoredGesture){
       const progress=(t-captured.start)/captured.length;
       const observedKey=samplePerformance(captured.performance,progress);
-      const mirror=(observedKey.bodyFacing??capturedFacing)==='left';
+      const mirror=(observedKey.bodyFacing??capturedFacing)==='left'||(!capturedFacing&&!observedKey.bodyFacing&&flip);
       const key=mirror?mirrorCapturedRig(observedKey):observedKey;
       const weight=frameWeight(captured,t)*clamp(key.presence??1);
       if(key.bodyFacing&&weight>.02){capturedFacing=key.bodyFacing;({view,flip}=performanceFacingView(capturedFacing));}
