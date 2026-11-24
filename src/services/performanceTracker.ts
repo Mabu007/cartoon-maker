@@ -35,7 +35,7 @@ export function extractFaceObservation(result:FaceLandmarkerResultLike|undefined
   ) as Record<string,number>:undefined;
   return {landmarks:landmarks?.length?landmarks:undefined,blendshapes};
 }
-export type TrackerOptions={hands?:boolean;face?:boolean};
+export type TrackerOptions={pose?:boolean;hands?:boolean;face?:boolean};
 export type PerformanceTracker={
   detect:(video:VisionFrame,atMs:number)=>CaptureFrame|undefined;
   close:()=>void;
@@ -118,13 +118,12 @@ export function freshFaceSignals(
     landmarks:landmarks&&now-landmarksAt<=maxAge?landmarks:undefined
   };
 }
-const posePoints=(result:PoseLandmarkerResult):Landmark[]|undefined=>result?.landmarks?.[0];
+const posePoints=(result:PoseLandmarkerResult|undefined):Landmark[]|undefined=>result?.landmarks?.[0];
 export async function startPerformanceTracker(options:TrackerOptions={}):Promise<PerformanceTracker> {
   const warnings:string[]=[];
   const {module,files}=await resolveRuntime();
   const baseOptions=(modelAssetPath:string)=>({baseOptions:{modelAssetPath,delegate:'CPU'},runningMode:'VIDEO',numPoses:1});
-  const pose=await module.PoseLandmarker.createFromOptions(files,baseOptions(
-    modelPath('pose')));
+  const pose=options.pose===false?undefined:await module.PoseLandmarker.createFromOptions(files,baseOptions(modelPath('pose')));
   let hands:Detector|undefined,face:Detector|undefined;
   if(options.hands!==false){
     try{hands=await module.HandLandmarker.createFromOptions(files,{
@@ -144,10 +143,10 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
   let lastLeftHandAt=-Infinity,lastRightHandAt=-Infinity;
   let lastFaceLandmarksAt=0,lastFaceBlendshapesAt=0;
   const close=()=>{for(const detector of [pose,hands,face])try{detector?.close();}catch{/* already closed */}};
-  return {features:{pose:true,hands:!!hands,face:!!face},warnings,close,
+  return {features:{pose:!!pose,hands:!!hands,face:!!face},warnings,close,
     detect(video,atMs) {
       if('readyState' in video?(video.readyState<2||!video.videoWidth):!video.width)return undefined;
-      const output=poseDetector(video,atMs) as PoseLandmarkerResult;
+      const output=pose?.detectForVideo(video,atMs) as PoseLandmarkerResult|undefined;
       const measuredPose=posePoints(output);
       // A face-only crop need not be rejected if the dedicated face tracker
       // still sees a nose/eyes; unknown shoulder/leg joints stay unobserved.
@@ -159,7 +158,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       // Arm position comes from the light pose model every frame. Finger
       // classification and high-detail eyebrows/lips are much slower and
       // need not run on each frame. Stagger them so they never compete.
-      if(hands&&tick%(face?3:2)===0){
+      if(hands&&(!face||tick%2===0)){
         const result=hands.detectForVideo(video,atMs) as HandLandmarkerResult;
         const association=associateObservedHands(result.landmarks??[],pose??[],{
           left:previousLeft,right:previousRight
@@ -169,13 +168,13 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
         if(association.left){previousLeft=association.left;lastLeftHandAt=atMs;}
         if(association.right){previousRight=association.right;lastRightHandAt=atMs;}
       }
-      if(face&&tick%3===1){
+      if(face&&(!hands||tick%2===1)){
         const result=extractFaceObservation(face.detectForVideo(video,atMs) as FaceLandmarkerResultLike);
         if(result.blendshapes){previousFace=result.blendshapes;lastFaceBlendshapesAt=atMs;}
         if(result.landmarks){previousFaceLandmarks=result.landmarks;lastFaceLandmarksAt=atMs;}
       }
-      if(atMs-lastLeftHandAt>260)previousLeft=undefined;
-      if(atMs-lastRightHandAt>260)previousRight=undefined;
+      if(atMs-lastLeftHandAt>650)previousLeft=undefined;
+      if(atMs-lastRightHandAt>650)previousRight=undefined;
       const fresh=freshFaceSignals(previousFace,lastFaceBlendshapesAt,
         previousFaceLandmarks,lastFaceLandmarksAt,atMs);
       previousFace=fresh.blendshapes;
@@ -211,5 +210,4 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
         face:previousFace};
     }
   };
-  function poseDetector(video:VisionFrame,t:number){return pose.detectForVideo(video,t);}
 }
