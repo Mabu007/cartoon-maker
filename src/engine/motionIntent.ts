@@ -14,7 +14,7 @@ export function createMotionIntent(){
   }
   function update(raw:readonly number[],time:number,threshold:number):number[]{
     if(raw.some(v=>!Number.isFinite(v))||!Number.isFinite(time))return anchor??[...raw];
-    if(!anchor||time<=lastTime||time-lastTime>.45||anchor.length!==raw.length){
+    if(!anchor||time<=lastTime||time-lastTime>1.1||anchor.length!==raw.length){
       reset();anchor=[...raw];previous=anchor;lastTime=time;return anchor;
     }
     const dt=time-lastTime;lastTime=time;
@@ -27,7 +27,7 @@ export function createMotionIntent(){
       // Require two coherent observations outside the hold deadband. An
       // isolated spike, even a large one, can never release a locked pose.
       const coherent=candidate&&input.reduce((dot,v,i)=>dot+(v-anchor![i])*(candidate![i]-anchor![i]),0)>0;
-      if(!coherent||time-candidateAt>.32){candidate=input;candidateAt=time;return anchor;}
+      if(!coherent||time-candidateAt>.8){candidate=input;candidateAt=time;return anchor;}
       moving=true;candidate=undefined;quietAnchor=undefined;
       anchor=clean;return anchor;
     }
@@ -36,7 +36,7 @@ export function createMotionIntent(){
     const exit=threshold*.55;
     if(!quietAnchor||distance(clean,quietAnchor)>exit){
       quietAnchor=clean;quietAt=time;
-    }else if(time-quietAt>=.14&&dt<=.32){
+    }else if(time-quietAt>=.14&&dt<=.8){
       moving=false;candidate=undefined;anchor=clean;return anchor;
     }
     anchor=clean;return anchor;
