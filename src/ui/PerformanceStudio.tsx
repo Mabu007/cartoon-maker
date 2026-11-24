@@ -31,7 +31,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [status,setStatus]=useState<Status>('idle');
   const [message,setMessage]=useState('Nothing leaves your device during tracking. With installed local models, MediaPipe works without internet.');
   const [intensity,setIntensity]=useState(100);
-  const [smoothing,setSmoothing]=useState(25);
+  const [smoothing,setSmoothing]=useState(65);
   // A typical 4 GB laptop struggles with three synchronous vision models.
   // Start with body + hands on modest devices; facial capture stays one click away.
   const [face,setFace]=useState(()=>((navigator as Navigator & {deviceMemory?:number}).deviceMemory??8)>4);
@@ -55,6 +55,23 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const actorRef=useRef(actor);actorRef.current=actor;
   const facingRef=useRef(facing);facingRef.current=facing;
   const lastDrawn=useRef<PerformanceKey|undefined>(undefined);
+  // Render clock is independent of the camera inference clock. Transitions
+  // start at the actual presented pose, never an undisplayed previous target.
+  const presentation=useRef<{from:PerformanceKey;to:PerformanceKey;start:number;duration:number}|undefined>(undefined);
+  const lastRender=useRef(-Infinity),lastRecordFrame=useRef(-Infinity);
+  function presented(at:number):PerformanceKey|undefined{
+    const transition=presentation.current;
+    if(!transition)return lastPreview.current;
+    const progress=clamp((at-transition.start)/transition.duration);
+    const sample=samplePerformance([transition.from,transition.to],progress);
+    return sample.presence===0?undefined:sample;
+  }
+  function presentTarget(key:PerformanceKey|undefined,at:number){
+    const from=presented(at)??{time:0,pose:{},presence:0};
+    const to=key??{time:1,pose:{},presence:0};
+    presentation.current={from:{...from,time:0},to:{...to,time:1},start:at,
+      duration:Math.max(60,Math.min(150,interval.current))};
+  }
   const motionStabilizer=useRef(createPerformanceStabilizer());
   const statusRef=useRef<Status>(status);statusRef.current=status;
   const smoothingRef=useRef(smoothing);smoothingRef.current=smoothing;
@@ -77,7 +94,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     catch(error){setPreviewError('Character preview error: '+String(error));}
   }
   function takeDown(){
-    motionStabilizer.current.reset();
+    motionStabilizer.current.reset();presentation.current=undefined;
     recording.current=false;playback.current=undefined;
     cancelAnimationFrame(raf.current);raf.current=0;
     try{if(recorder.current?.state==='recording')recorder.current.stop();}catch{/* cleanup */}
@@ -114,7 +131,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     const state=statusRef.current;
     if(state==='review'&&playback.current){
       const playing=playback.current;
-      if(at-last.current>=75){
+      if(at-last.current>=33){
         last.current=at;
         const progress=clamp((at-playing.start)/Math.max(.1,playing.duration*1000));
         drawPose(samplePerformance(playing.keys,progress));
@@ -135,13 +152,9 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             const value=pose[joint];
             if(value!==undefined)pose[joint]=clamp(value*factor,-165,165);
           }
-          lastPreview.current=motionStabilizer.current.update({...key,pose:constrainCapturedHead(pose)},smoothingRef.current/100);
-          // The exact filtered frame shown to the actor is what we save.
-          // The shared Record clock also includes periods when tracking fails.
-          if(recording.current)frames.current.push({
-            elapsed:Math.max(0,(at-started.current)/1000),sample:lastPreview.current
-          });
-          drawPose(lastPreview.current);
+          const target=motionStabilizer.current.update({...key,pose:constrainCapturedHead(pose)},smoothingRef.current/100);
+          presentTarget(target,performance.now());
+          lastPreview.current=target;
           if(at-lastUi.current>350){
             setTracking('live');setTrackedFrames(frames.current.length);
             setLiveHeadFacing(lastPreview.current?.headFacing??'front');
@@ -157,11 +170,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           // confidence-faded sample is shown and recorded, so replay matches
           // the live puppeteering instead of flickering to default animation.
           const recovered=motionStabilizer.current.recover(at/1000);
+          presentTarget(recovered,performance.now());
           lastPreview.current=recovered;
-          if(recording.current)frames.current.push({
-            elapsed:Math.max(0,(at-started.current)/1000),sample:recovered
-          });
-          drawPose(recovered);
           if(at-lastUi.current>700){
             setTracking(lastSeen.current&&at-lastSeen.current>2200?'lost':'searching');
             setObservedGesture('');
@@ -169,6 +179,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           }
         }
       }catch(error){
+        const recovered=motionStabilizer.current.recover(at/1000);
+        presentTarget(recovered,performance.now());lastPreview.current=recovered;
         if(at-lastUi.current>1400){
           setMessage('Tracking interrupted: '+String(error));
           lastUi.current=at;
@@ -176,7 +188,22 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       }
       const elapsed=performance.now()-before;
       // Prevent the former 280ms stall after expensive inference.
-      interval.current=clamp(Math.ceil(elapsed*1.05),58,155);
+      // Leave time for rendering even on machines where inference is slow.
+      interval.current=clamp(Math.ceil(elapsed+24),70,180);
+    }
+    if(state==='ready'||state==='recording'){
+      const now=performance.now();
+      if(now-lastRender.current>=32){
+        lastRender.current=now;
+        const sample=presented(now);
+        drawPose(sample);
+        // Save the displayed pose at a bounded cadence. Rendering itself
+        // is never coupled to the recorder or detection FPS.
+        if(recording.current&&now-lastRecordFrame.current>=65){
+          lastRecordFrame.current=now;
+          frames.current.push({elapsed:Math.max(0,(now-started.current)/1000),sample});
+        }
+      }
     }
     raf.current=requestAnimationFrame(loop);
   }
@@ -199,7 +226,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       stream.current=media;tracker.current=vision;
       if(camera.current){camera.current.srcObject=media;await camera.current.play();}
       last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=70;
-      lastPreview.current=undefined;motionStabilizer.current.reset();
+      lastPreview.current=undefined;presentation.current=undefined;lastRender.current=-Infinity;motionStabilizer.current.reset();
       updateStatus('ready');
       setMessage(vision.warnings.length?vision.warnings.join(' ') :
         'Live puppeteering is active. Move your head, shoulders and hands; the character responds alongside you. Record up to 18 seconds.');
@@ -239,7 +266,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     recorder.current=writer;started.current=performance.now();
     // Preserve a leading tracking gap or the currently displayed pose at
     // time zero. Audio starts against this same clock, not first detection.
-    frames.current.push({elapsed:0,sample:lastPreview.current});
+    lastRecordFrame.current=started.current;
+    frames.current.push({elapsed:0,sample:presented(started.current)});
     updateStatus('recording');
     setMessage('Recording motion now. Perform naturally, then press Stop & review.');
   }
@@ -251,11 +279,10 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     const last=frames.current[frames.current.length-1];
     if(last && duration>last.elapsed+.0001)frames.current.push({
       elapsed:duration,
-      sample:lastPreview.current&&performance.now()-lastSeen.current<150
-        ?lastPreview.current:undefined
+      sample:presented(started.current+duration*1000)
     });
     updateStatus('processing');
-    setMessage('Compiling exactly the motion you saw, preserving tracking gaps and voice timing…');
+    setMessage('Cleaning and compressing stabilized motion, preserving tracking gaps and voice timing…');
     const writer=recorder.current;recorder.current=undefined;
     // A broken microphone must not prevent motion capture from compiling.
     const audio=await finishOptionalAudio(writer,chunks.current);
@@ -394,7 +421,11 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         </div>
         <div className="performance-values">
           <label>Exaggeration {intensity}%<input type="range" min="50" max="180" step="10" value={intensity} disabled={status==='recording'} onChange={e=>setIntensity(Number(e.target.value))}/></label>
-          <label>Smoothing {smoothing}%<input type="range" min="0" max="95" step="5" value={smoothing} disabled={status==='recording'} onChange={e=>setSmoothing(Number(e.target.value))}/></label>
+          <label>Movement sensitivity: {smoothing>=85?'Cinematic':smoothing>=50?'Natural':smoothing>0?'Expressive':'Raw'}<input aria-label="Movement sensitivity" type="range" min="0" max="95" step="5" value={95-smoothing} disabled={status==='recording'||status==='processing'} onChange={e=>setSmoothing(95-Number(e.target.value))}/></label>
+          <small>Stable ← movement sensitivity → Responsive. Natural ignores small tracking noise and keeps deliberate holds. Raw minimizes the intent gate.</small>
+          <div role="group" aria-label="Movement presets">
+            {([['Cinematic',95],['Natural',65],['Expressive',25],['Raw',0]] as const).map(([name,value])=><button key={name} type="button" aria-pressed={smoothing===value} disabled={status==='recording'||status==='processing'} onClick={()=>setSmoothing(value)}>{name}</button>)}
+          </div>
         </div>
         <div className="performance-toggles">
           <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track finger poses (extra CPU)</label>
