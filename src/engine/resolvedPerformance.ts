@@ -7,7 +7,7 @@
  * tracking loss. Audio and motion share the same origin and end time.
  */
 import { clamp } from './animation.ts';
-import { reducePerformanceKeys, type PerformanceKey } from './performanceCapture.ts';
+import { reducePerformanceKeys, samplePerformance, type PerformanceKey } from './performanceCapture.ts';
 
 export type ResolvedObservation = {
   /** Seconds since the shared Record clock, not wall-clock epoch time. */
@@ -57,6 +57,47 @@ function limitKeys(keys:PerformanceKey[],maximum:number):PerformanceKey[] {
   return [...mandatory].sort((a,b)=>a-b).map(i=>reduced[i]);
 }
 
+/** Optional post-take despiking. Only isolated, large departures between
+ * two mutually agreeing nearby samples are corrected. Preserve all timing,
+ * tracking gaps, contact changes, and discrete hand/head/expression beats.
+ * The caller's original observation array is never mutated.
+ */
+export function cleanResolvedObservations(observations:readonly ResolvedObservation[]):ResolvedObservation[]{
+  const angularDistance=(a:number,b:number)=>Math.abs(((a-b+540)%360)-180);
+  return observations.map((event,index)=>{
+    const left=observations[index-1],right=observations[index+1];
+    const a=left?.sample,b=event.sample,c=right?.sample;
+    if(!a||!b||!c||right.elapsed-left.elapsed>.28||
+      right.elapsed<=left.elapsed||event.elapsed<=left.elapsed||event.elapsed>=right.elapsed||
+      [a,b,c].some(key=>(key.presence??1)<.95))return event;
+    if(a.contact!==b.contact||b.contact!==c.contact||a.expression!==b.expression||
+      b.expression!==c.expression||a.headFacing!==b.headFacing||b.headFacing!==c.headFacing||
+      a.nearArm!==b.nearArm||b.nearArm!==c.nearArm)return event;
+    const fraction=(event.elapsed-left.elapsed)/(right.elapsed-left.elapsed);
+    const expected=samplePerformance([{...a,time:0},{...c,time:1}],fraction);
+    const pose={...b.pose},targets={...b.armTargets};
+    let changed=false;
+    for(const joint of Object.keys(pose) as (keyof typeof pose)[]){
+      const av=a.pose[joint],bv=b.pose[joint],cv=c.pose[joint],ev=expected.pose[joint];
+      if(av!==undefined&&bv!==undefined&&cv!==undefined&&ev!==undefined&&
+        angularDistance(av,cv)<3&&angularDistance(bv,ev)>15){
+        pose[joint]=ev;changed=true;
+      }
+    }
+    for(const side of ['left','right'] as const){
+      if(a.hands?.[side]!==b.hands?.[side]||b.hands?.[side]!==c.hands?.[side]||
+        a.armBend?.[side]!==b.armBend?.[side]||b.armBend?.[side]!==c.armBend?.[side]||
+        [a,b,c].some(key=>(key.armConfidence?.[side]??1)<.95))continue;
+      const first=a.armTargets?.[side],middle=b.armTargets?.[side],last=c.armTargets?.[side],predicted=expected.armTargets?.[side];
+      if(first&&middle&&last&&predicted&&Math.hypot(first.x-last.x,first.y-last.y)<2&&
+        Math.hypot(middle.x-predicted.x,middle.y-predicted.y)>8){
+        targets[side]=predicted;changed=true;
+      }
+    }
+    return changed?{...event,sample:{...b,pose,armTargets:targets.left||targets.right?targets:undefined}}:event;
+  });
+}
+
 /**
  * Unlike the legacy raw-landmark compiler, this path cannot silently change
  * joint timing: input samples were *already* retargeted and filtered for the
@@ -64,7 +105,7 @@ function limitKeys(keys:PerformanceKey[],maximum:number):PerformanceKey[] {
  */
 export function compileResolvedPerformance(
   observations:readonly ResolvedObservation[], takeDuration:number,
-  options:{maxKeys?:number}={}
+  options:{maxKeys?:number;cleanMotion?:boolean}={}
 ):ResolvedTake {
   if(!Number.isFinite(takeDuration)||takeDuration<.15||takeDuration>180)
     throw Error('Record a performance between 0.15 and 180 seconds.');
@@ -81,7 +122,7 @@ export function compileResolvedPerformance(
   if(accepted<2)throw Error(
     'At least two tracked moments are required. Improve lighting, face the webcam and try again.'
   );
-  const normalized=ordered.map(o=>keyAt(o,takeDuration));
+  const normalized=(options.cleanMotion?cleanResolvedObservations(ordered):ordered).map(o=>keyAt(o,takeDuration));
   const first=normalized[0];
   const keys:PerformanceKey[] = first.time>0 ? [absent(0),...normalized] : normalized;
   const last=keys[keys.length-1];
