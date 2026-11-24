@@ -22,7 +22,7 @@ export function maskPerformance(key:PerformanceKey|undefined,s:TrackingSelection
     delete result.armTargets;delete result.armBend;delete result.armDepth;delete result.armExtension;
     delete result.armEvidence;delete result.armConfidence;delete result.nearArm;delete result.contact;
   }
-  if(!s.hands){delete result.hands;delete result.fingerCurls;delete result.handConfidence;delete result.contact;delete result.pose.leftWrist;delete result.pose.rightWrist;}
+  if(!s.hands){delete result.hands;delete result.fingerCurls;delete result.thumbs;delete result.handConfidence;delete result.contact;delete result.pose.leftWrist;delete result.pose.rightWrist;}
   // With hand-only capture, the finger geometry owns the hand but cannot
   // rotate an unrelated authored arm using a missing elbow observation.
   if(!s.arms){delete result.pose.leftWrist;delete result.pose.rightWrist;}
