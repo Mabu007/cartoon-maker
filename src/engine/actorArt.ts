@@ -13,7 +13,7 @@ import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
 import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
-import { solveCapturedArm, solveAnatomicalArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
+import { solveStrictCapturedArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import { handRotation, handRotationParams, handSize, handWidthScale,
   sampleHandRig, sampleLayeredHandRig, applyCapturedFingerCurls, type HandPose } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
@@ -85,11 +85,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         // not by forcing raw MediaPipe angles onto the elbow.
         const pole=guidance.bends[side]??(side==='left'?-1:1);
         const weight=Math.max(0,Math.min(1,guidance.influence*(guidance.confidence?.[side]??1)));
-        const locked=guidance.extensions?.[side]!==undefined;
-        const solved=locked?solveCapturedArm(joint.shoulder,target,c.arms,pole):solveAnatomicalArm(joint.shoulder,target,c.arms,side,pole,joint.elbow);
+        const solved=solveStrictCapturedArm(joint.shoulder,target,c.arms,side,pole);
         // Blend wrist targets, then solve once to preserve both bone lengths.
         const blended={x:(mix(hand.x,solved.hand.x,weight)-joint.shoulder.x)/c.arms,y:(mix(hand.y,solved.hand.y,weight)-joint.shoulder.y)/c.arms};
-        const final=weight>=.999?solved:locked?solveCapturedArm(joint.shoulder,blended,c.arms,pole):solveAnatomicalArm(joint.shoulder,blended,c.arms,side,pole,joint.elbow);
+        const final=weight>=.999?solved:solveStrictCapturedArm(joint.shoulder,blended,c.arms,side,pole);
         elbow=final.elbow;hand=final.hand;
       }
       // Correct contact points by moving the wrist TARGET and re-solving
@@ -128,7 +127,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
           const blended={x:mix(hand.x,goal.x,weight),y:mix(hand.y,goal.y,weight)};
           const contactTarget={x:(blended.x-joint.shoulder.x)/c.arms,y:(blended.y-joint.shoulder.y)/c.arms};
           const pole=guidance?.bends[side]??sign;
-          const solved=guidance?.extensions?.[side]!==undefined?solveCapturedArm(joint.shoulder,contactTarget,c.arms,pole):solveAnatomicalArm(joint.shoulder,contactTarget,c.arms,side,pole,elbow);
+          const solved=solveStrictCapturedArm(joint.shoulder,contactTarget,c.arms,side,pole);
           elbow=solved.elbow;hand=solved.hand;
         }
       }
@@ -140,6 +139,12 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
           x:mix(hand.x,eyeX+sign*1.6,weight),
           y:mix(hand.y,r.head.y+(-3+rub)*c.head,weight)
         },28*c.arms,28*c.arms,sign);
+      }
+      // Final safety gate also covers old takes with joint angles only and
+      // contact/action overrides. Authored animations and held props remain intact.
+      if(appearance?.capturedArms?.[side]&&!carrying&&!holdsCostume){
+        const safe=solveStrictCapturedArm(joint.shoulder,{x:(hand.x-joint.shoulder.x)/c.arms,y:(hand.y-joint.shoulder.y)/c.arms},c.arms,side,guidance?.bends[side]);
+        elbow=safe.elbow;hand=safe.hand;
       }
       endpoint={elbow,hand};
       armEndpoints[side]=endpoint;
