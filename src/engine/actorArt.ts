@@ -206,7 +206,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const rotation = observed||appearance?.capturedFingers?.[side]
       ? handRotationParams(forearm,wristDegrees,geometry.params.wristBend,side)
       : handRotation(forearm,wristDegrees,performance.pose,performance.blend,side);
-    const scale = handSize(c.thickness);
+    const scale = handSize(c.thickness)*(appearance?.capturedFingers?.[side]?1.12:1);
     const width = handWidthScale(view, side, geometry.params.wristTwist);
     g.context.save().setTransform(at(hand.x, hand.y, scale * width, scale, rotation * 180 / Math.PI));
     drawIllustratedHand(g, c.skin, geometry);
