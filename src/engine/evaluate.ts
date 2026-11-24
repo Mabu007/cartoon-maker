@@ -18,6 +18,7 @@ import { constrainCapturedHead } from './performanceHeadEye.ts';
 import { capturedMicroMotion } from './performanceMicroMotion.ts';
 import { directedActingPosture } from './actingPosture.ts';
 import type { HandPose } from './handRig.ts';
+import type { ThumbPair } from './thumbIntelligence.ts';
 import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
 import type { ArmTargets, ArmBends, ArmDepths, ArmSide } from './performanceArmIntelligence.ts';
 import type { FacialControls } from './facialIntelligence.ts';
@@ -29,7 +30,7 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; heldHand?:HandSide; heldItems?:{left?:Prop;right?:Prop}; propPose?:PropPose; sitting:boolean; seat?:string;
   facialCapture?: {controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};
   handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number}; authoredGaze?:boolean;
-  capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
+  capturedFingers?:{left?:FingerCurls;right?:FingerCurls;thumbs?:ThumbPair;influence:number;confidence?:{left?:number;right?:number}};
   capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
   capturedHeadFacing?:import('./schema.ts').PerformanceFacing; capturedHeadYaw?:number;
   capturedContact?:{type:CapturedContact;influence:number};
@@ -269,7 +270,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       capturedArms={left:weight>.02&&(key.pose.leftShoulder!==undefined||!!key.armTargets?.left),
         right:weight>.02&&(key.pose.rightShoulder!==undefined||!!key.armTargets?.right)};
       if(weight>.02&&key.fingerCurls)capturedFingers={
-        ...key.fingerCurls,influence:weight,confidence:key.handConfidence};
+        ...key.fingerCurls,thumbs:key.thumbs,influence:weight,confidence:key.handConfidence};
       if(weight>.02&&key.armTargets)capturedRig={
         targets:key.armTargets,bends:key.armBend??{},extensions:key.armExtension,
         depths:key.armDepth??{},near:key.nearArm,influence:weight,confidence:key.armConfidence
