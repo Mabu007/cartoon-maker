@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react';
-import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2, ArrowUpToLine, ArrowDownToLine, ZoomIn, ZoomOut, Scan, Eye } from 'lucide-react';
+import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2, ArrowUpToLine, ArrowDownToLine, Eye } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
 import { type Project, type Scene, type Prop } from '../engine/schema.ts';
 import { pathNodes,smoothPath } from '../engine/stagePath.ts';
@@ -158,13 +158,18 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     if (!box.width || !box.height) return;
     return renderer.pick((event.clientX - box.left) * renderer.width / box.width, (event.clientY - box.top) * renderer.height / box.height);
   }
-  const zoom=(factor:number,x?:number,y?:number)=>{
-    const box=stage.current?.getBoundingClientRect();
-    if(!box)return;
-    setViewport(previous=>zoomStageAt(previous,previous.zoom*factor,
-      {x:x??box.left+box.width/2,y:y??box.top+box.height/2},
-      {x:box.left+box.width/2,y:box.top+box.height/2}));
-  };
+  useEffect(()=>{
+    const handle=(event:Event)=>{
+      if(playing)return;
+      const direction=(event as CustomEvent<'in'|'out'>).detail;
+      const box=stage.current?.getBoundingClientRect();
+      if(!box)return;
+      const center={x:box.left+box.width/2,y:box.top+box.height/2};
+      setViewport(previous=>zoomStageAt(previous,previous.zoom*(direction==='in'?1.25:1/1.25),center,center));
+    };
+    window.addEventListener('sirvibe-stage-zoom',handle);
+    return ()=>window.removeEventListener('sirvibe-stage-zoom',handle);
+  },[playing]);
   useEffect(()=>{
     const element=stage.current;
     if(!element||playing)return;
@@ -303,13 +308,6 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
           }:undefined}>{editPath&&<title>{label}{removable?' · Right-click to remove':''}</title>}</circle>;
       })}</g>
     </svg>}
-    <div className="stage-zoom-tools" role="group" aria-label="Canvas zoom and pan">
-      <button type="button" title="Zoom out" aria-label="Zoom canvas out" onClick={()=>zoom(1/1.25)}><ZoomOut size={16}/></button>
-      <span aria-live="polite">{Math.round(viewport.zoom*100)}%</span>
-      <button type="button" title="Zoom in" aria-label="Zoom canvas in" onClick={()=>zoom(1.25)}><ZoomIn size={16}/></button>
-      <button type="button" title="Reset stage zoom and pan" aria-label="Reset stage zoom" onClick={()=>setViewport(defaultStageViewport)}><Scan size={16}/></button>
-      <small>Wheel: zoom · Alt-drag: pan</small>
-    </div>
     {!playing&&offstageActors.length>0&&<details className="stage-hidden-actors">
       <summary><Eye size={14}/> Offstage actors · {offstageActors.length}</summary>
       <div>{offstageActors.map(actor=>{
