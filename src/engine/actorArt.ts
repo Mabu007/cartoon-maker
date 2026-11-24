@@ -13,6 +13,7 @@ import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, d
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
+import type { ThumbPair } from './thumbIntelligence.ts';
 import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
 import { solveStrictCapturedArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import { handRotation, handRotationParams, handSize, handWidthScale,
@@ -46,7 +47,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
   appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};capturedArms?:{left:boolean;right:boolean};
-    capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
+    capturedFingers?:{left?:FingerCurls;right?:FingerCurls;thumbs?:ThumbPair;influence:number;confidence?:{left?:number;right?:number}};
     capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
     capturedHeadFacing?:PerformanceFacing;capturedHeadYaw?:number;
     capturedContact?:{type:CapturedContact;influence:number};heldItems?:{left?:Prop;right?:Prop};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number;observed?:{left:boolean;right:boolean}}},
@@ -200,7 +201,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const confidence=appearance?.capturedFingers?.confidence?.[side]??1;
     const geometry=applyCapturedFingerCurls(presetGeometry,
       !carrying&&!holdsCostume?appearance?.capturedFingers?.[side]:undefined,
-      (appearance?.capturedFingers?.influence??0)*confidence);
+      (appearance?.capturedFingers?.influence??0)*confidence,
+      !carrying&&!holdsCostume?appearance?.capturedFingers?.thumbs?.[side]:undefined);
     const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
     const wristDegrees = pose[`${side}Wrist`] ?? 0;
     const rotation = observed||appearance?.capturedFingers?.[side]
