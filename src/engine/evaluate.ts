@@ -254,15 +254,16 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     let capturedHeadYaw:CharacterState['capturedHeadYaw'];
     // A take owns its chosen facing throughout its interval, including
     // temporary tracking gaps. This does not mutate the source scene actor.
-    const capturedFacing=captured?.track==='performance'?captured.facing:undefined;
+    let capturedFacing=captured?.track==='performance'?captured.facing:undefined;
     if(capturedFacing){({view,flip}=performanceFacingView(capturedFacing));}
     const authoredGesture=Boolean(gesture && !gesture.performance && gesture.id!==captured?.id);
     if(captured?.performance && !authoredGesture){
       const progress=(t-captured.start)/captured.length;
       const key=samplePerformance(captured.performance,progress);
       const weight=frameWeight(captured,t)*clamp(key.presence??1);
-      capturedArms={left:weight>.02&&key.pose.leftShoulder!==undefined,
-        right:weight>.02&&key.pose.rightShoulder!==undefined};
+      if(key.bodyFacing&&weight>.02){capturedFacing=key.bodyFacing;({view,flip}=performanceFacingView(capturedFacing));}
+      capturedArms={left:weight>.02&&(key.pose.leftShoulder!==undefined||!!key.armTargets?.left),
+        right:weight>.02&&(key.pose.rightShoulder!==undefined||!!key.armTargets?.right)};
       if(weight>.02&&key.fingerCurls)capturedFingers={
         ...key.fingerCurls,influence:weight,confidence:key.handConfidence};
       if(weight>.02&&key.armTargets)capturedRig={
