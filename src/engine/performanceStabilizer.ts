@@ -10,7 +10,7 @@ import { facingForBodyYaw,type BodyFacing } from './humanReconstruction.ts';
 import { createMotionIntent } from './motionIntent.ts';
 import type { JointName } from './schema.ts';
 import type { PerformanceKey } from './performanceCapture.ts';
-import { createObedientArm, decideFrontArm, contactHysteresis, type ArmSide } from './performanceArmIntelligence.ts';
+import { interpolateArmTarget, createObedientArm, decideFrontArm, contactHysteresis, type ArmSide } from './performanceArmIntelligence.ts';
 import { observedHandPose, type FingerCurls } from './performanceHandIntelligence.ts';
 import { constrainCapturedHead, headFacingForYaw } from './performanceHeadEye.ts';
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
@@ -205,7 +205,7 @@ export function createPerformanceStabilizer(){
       else if(targets[side]&&lastOutput?.armDepth?.[side]!==undefined)
         depths[side]=lastOutput.armDepth[side];
       const evidence=key.armEvidence?.[side];
-      if(evidence&&evidence.confidence>=.65)hasEvidence[side]=true;
+      if(evidence)hasEvidence[side]=true;
       if(targets[side]&&hasEvidence[side]){
         const solved=obedient[side].update(targets[side]!,evidence);
         targets[side]=solved.target;extensions[side]=solved.extension;bends[side]=solved.pole;
@@ -348,7 +348,7 @@ export function createPerformanceStabilizer(){
       if(prev.armTargets&&result.armTargets){
         for(const side of ['left','right'] as const){
           const old=prev.armTargets[side],next=result.armTargets[side];
-          if(old&&next)result.armTargets[side]={
+          if(old&&next)result.armTargets[side]=result.armExtension?.[side]!==undefined?interpolateArmTarget(old,next,t):{
             x:old.x+(next.x-old.x)*t,y:old.y+(next.y-old.y)*t
           };
         }
