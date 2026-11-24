@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {reconstructHumanFrame,observedBodyYaw,facingForBodyYaw} from '../src/engine/humanReconstruction.ts';
+import {reconstructHumanFrame,observedBodyYaw,facingForBodyYaw,mirrorCapturedRig} from '../src/engine/humanReconstruction.ts';
 import {refinePerformance,combineCaptureEvidence} from '../src/engine/performanceRefinement.ts';
 import {createPerformanceStabilizer} from '../src/engine/performanceStabilizer.ts';
 import {CapturedPoseKey} from '../src/engine/schema.ts';
@@ -50,4 +50,15 @@ test('recording evidence restores deliberate motion without changing small held 
   const stable=key(10);
   assert.equal(combineCaptureEvidence(key(11),stable).armTargets?.left?.x,10);
   assert((combineCaptureEvidence(key(30),stable).armTargets?.left?.x??0)>20);
+});
+
+test('left-facing artwork preserves the same screen wrist and hand identity',()=>{
+  const original:PerformanceKey={time:0,pose:{leftShoulder:30,rightShoulder:-10},armTargets:{left:{x:-25,y:-30},right:{x:15,y:10}},
+    hands:{left:'point',right:'fist'},contact:'chin-left',nearArm:'left'};
+  const mirrored=mirrorCapturedRig(original);
+  assert.deepEqual(mirrored.armTargets?.right,{x:25,y:-30});
+  assert.equal(mirrored.hands?.right,'point');
+  assert.equal(mirrored.contact,'chin-right');
+  assert.equal(mirrored.pose.rightShoulder,-30);
+  assert.equal(original.hands?.left,'point');
 });
