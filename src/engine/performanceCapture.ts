@@ -9,6 +9,7 @@ import { clamp, ease, mix } from './animation.ts';
 import { fuseWorldAngle, mixDegrees, worldBodyProjector, wrapDegrees } from './worldRetarget.ts';
 import { observedArmGuidance, interpolateArmTarget, type ArmEvidenceMap, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import type { Character, Expression, JointPose } from './schema.ts';
+import { measureThumb, blendThumb, thumbChannels, type ThumbPair } from './thumbIntelligence.ts';
 import type { HandPose } from './handRig.ts';
 import { measuredFingerCurls, observedHandPose, detectedHandContact,
   type FingerCurls, type CapturedContact } from './performanceHandIntelligence.ts';
@@ -36,6 +37,7 @@ export type PerformanceKey = {
   presence?: number;
   hands?: { left: HandPose; right: HandPose }; expression?: Expression;
   fingerCurls?:{left?:FingerCurls;right?:FingerCurls};
+  thumbs?:ThumbPair;
   contact?:CapturedContact;
   /** Optional shoulder-local wrist anchors, depth scores and stable bend pole. */
   armTargets?:ArmTargets;
@@ -85,8 +87,11 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   frame=reconstructHumanFrame(frame);
   const p=frame.pose;
   const leftCurls=measuredFingerCurls(frame.leftHand),rightCurls=measuredFingerCurls(frame.rightHand);
-  const left=leftCurls?observedHandPose(leftCurls):undefined;
-  const right=rightCurls?observedHandPose(rightCurls):undefined;
+  const leftThumb=leftCurls?measureThumb(frame.leftHand):undefined,rightThumb=rightCurls?measureThumb(frame.rightHand):undefined;
+  if(leftThumb&&leftCurls)leftCurls[0]=leftThumb.curl;
+  if(rightThumb&&rightCurls)rightCurls[0]=rightThumb.curl;
+  const left=leftCurls?observedHandPose(leftCurls,leftThumb):undefined;
+  const right=rightCurls?observedHandPose(rightCurls,rightThumb):undefined;
   const contact=detectedHandContact(p,(frame.handAgeMs?.left??0)<=160?frame.leftHand:undefined,(frame.handAgeMs?.right??0)<=160?frame.rightHand:undefined,(frame.handAgeMs?.left??0)<=160?leftCurls:undefined,(frame.handAgeMs?.right??0)<=160?rightCurls:undefined);
   const arms=observedArmGuidance(p,frame.world,frame.aspect);
   // A webcam can show just a face, one arm, or the full body. Do not reject
@@ -184,6 +189,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     ...(arms.evidence.left||arms.evidence.right?{armEvidence:arms.evidence}:{}),
     ...(arms.bends.left!==undefined||arms.bends.right!==undefined?{armBend:arms.bends}:{}),
     ...(arms.depths.left!==undefined||arms.depths.right!==undefined?{armDepth:arms.depths}:{}),
+    ...(leftThumb||rightThumb?{thumbs:{...(leftThumb?{left:leftThumb}:{}),...(rightThumb?{right:rightThumb}:{})}}:{}),
     ...(left||right?{hands:{left:left??'relaxed',right:right??'relaxed'}}:{}),
     ...(leftCurls||rightCurls?{fingerCurls:{...(leftCurls?{left:leftCurls}:{}),
       ...(rightCurls?{right:rightCurls}:{})}}:{}),
@@ -228,11 +234,15 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     pose[joint]=mixDegrees(left??0,right??0,ease(phase));
   }
   const fingerCurls:PerformanceKey['fingerCurls']={};
+  const thumbs:ThumbPair={};
   for(const side of ['left','right'] as const){
     const first=a.fingerCurls?.[side],second=b.fingerCurls?.[side];
     if(first&&second)fingerCurls[side]=first.map((v,i)=>
       Math.round(mix(v,second[i],fraction)*1000)/1000) as FingerCurls;
     else fingerCurls[side]=fraction<.5?first:second;
+    const from=a.thumbs?.[side],to=b.thumbs?.[side];
+    if(from&&to)thumbs[side]=blendThumb(from,to,fraction);
+    else {const value=fraction<.5?from:to;if(value)thumbs[side]=value;}
   }
   const armTargets:ArmTargets={},armDepth:ArmDepths={},armBend:ArmBends={},armExtension:ArmBends={};
   const handConfidence:PerformanceKey['handConfidence']={};
@@ -280,6 +290,7 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     ...(fraction<.5?a.headFacing?{headFacing:a.headFacing}:{}:
       b.headFacing?{headFacing:b.headFacing}:{}),
     ...(fingerCurls.left||fingerCurls.right?{fingerCurls}:{}),
+    ...(thumbs.left||thumbs.right?{thumbs}:{}),
     ...(fraction<.5?a.contact?{contact:a.contact}:{}:b.contact?{contact:b.contact}:{}),
     ...((a.presence!==undefined||b.presence!==undefined)?{presence:mix(aPresent,bPresent,fraction)}:{}),
     hands: fraction<.5 ? a.hands : b.hands,
@@ -388,6 +399,9 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
         const handWeight=observed.handConfidence?.[side],predictedWeight=estimated.handConfidence?.[side];
         if(handWeight!==undefined&&predictedWeight!==undefined)
           error=Math.max(error,Math.abs(handWeight-predictedWeight)*25);
+        const actualThumb=observed.thumbs?.[side],estimatedThumb=estimated.thumbs?.[side];
+        if(Boolean(actualThumb)!==Boolean(estimatedThumb))error=Math.max(error,30);
+        else if(actualThumb&&estimatedThumb)for(const channel of thumbChannels)error=Math.max(error,Math.abs(actualThumb[channel]-estimatedThumb[channel])*64);
         const raw=observed.fingerCurls?.[side],interpolated=estimated.fingerCurls?.[side];
         if(Boolean(raw)!==Boolean(interpolated))error=Math.max(error,24);
         else if(raw&&interpolated)for(let digit=0;digit<5;digit++)
