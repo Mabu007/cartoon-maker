@@ -264,7 +264,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       ellipse(entity.shadow!.clear(), 0, 3, 39 - Math.min(10, Math.max(0, lift / 5)), 7, '#816a61');
       // Respect staged three-quarter dialogue angles. An automatic camera gaze
       // must not override the director's chosen front-left/front-right angle.
-      const cameraGaze=actor.capturedFacing==='left'||actor.capturedFacing==='right'
+      const cameraGaze=actor.authoredGaze?actor.gazeTarget==='camera':actor.capturedFacing==='left'||actor.capturedFacing==='right'
         ? false
         : options.characterPreview?Boolean(options.previewCamera):actor.gazeTarget==='camera'&&actor.action!=='look-away';
       const projectedEyes=actor.gazePoint?eyeWorldPoint({...actor,...point,flip:directionFlip},character):undefined;
@@ -276,7 +276,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         time, actor.action, actor.id, actor.speaking || Boolean(options.characterPreview&&options.previewViseme),
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
-        resolvePreviewFocus(Boolean(options.characterPreview), options.previewFocus, targetFocus), options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
+        actor.authoredGaze?targetFocus:resolvePreviewFocus(Boolean(options.characterPreview), options.previewFocus, targetFocus), options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
         {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
       entity.face!.y -= lift;
       // Props are children of the same character Container as the hands:
