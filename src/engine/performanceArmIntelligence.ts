@@ -10,6 +10,8 @@ export type ArmSide='left'|'right';
 export type ArmTargets={left?:Point;right?:Point};
 export type ArmBends={left?:number;right?:number};
 export type ArmDepths={left?:number;right?:number};
+export type ArmEvidence={elbow:Point;confidence:number;extension:number};
+export type ArmEvidenceMap=Partial<Record<ArmSide,ArmEvidence>>;
 const finite=(v:number|undefined)=>v!==undefined&&Number.isFinite(v);
 const visible=(point?:Landmark):point is Landmark=>Boolean(point&&finite(point.x)&&finite(point.y)&&
   (point.visibility??1)>=.55);
@@ -19,11 +21,11 @@ const distance=(a:Point,b:Point)=>Math.hypot(a.x-b.x,a.y-b.y);
  * on 4:3 webcam frames, normalized Y spans fewer horizontal pixel units. */
 export function observedArmGuidance(
   pose:readonly Landmark[],world?:readonly Landmark[],aspect=4/3
-):{targets:ArmTargets;bends:ArmBends;depths:ArmDepths}{
-  const targets:ArmTargets={},bends:ArmBends={},depths:ArmDepths={};
+):{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;evidence:ArmEvidenceMap}{
+  const targets:ArmTargets={},bends:ArmBends={},depths:ArmDepths={},evidence:ArmEvidenceMap={};
   const shoulderSpan=visible(pose[11])&&visible(pose[12])
     ?Math.hypot(pose[11].x-pose[12].x,(pose[11].y-pose[12].y)/Math.max(.75,aspect)):undefined;
-  if(!shoulderSpan||shoulderSpan<.065)return {targets,bends,depths};
+  if(!shoulderSpan||shoulderSpan<.065)return {targets,bends,depths,evidence};
   // Compensate for the shoulder line foreshortening as the performer turns.
   // The inferred metric orientation is evidence, not a new limb measurement.
   const wl=world?.[11],wr=world?.[12];
@@ -48,8 +50,22 @@ export function observedArmGuidance(
     if(visible(elbow)){
       const elbowLocal={x:-(elbow.x-shoulder.x)*scale,
         y:(elbow.y-shoulder.y)*scale/Math.max(.75,aspect)};
-      const cross=raw.x*elbowLocal.y-raw.y*elbowLocal.x;
-      if(Math.abs(cross)>28)bends[side]=cross>0?1:-1;
+      const upper=Math.hypot(elbowLocal.x,elbowLocal.y),lower=distance(raw,elbowLocal);
+      if(upper>3&&lower>3&&reach>1){
+        // Normalize by THIS arm's observed segment lengths, not shoulder width.
+        // A projected straight human arm must remain straight on a cartoon
+        // even when its proportions, camera distance or yaw differ.
+        const extension=clamp(reach/(upper+lower),.32,1);
+        const ratio=clamp(upper/lower,.45,2.2);
+        const confidence=Math.min(shoulder.visibility??1,elbow.visibility??1,wrist.visibility??1)*(ratio===upper/lower?1:.35);
+        const corrected=extension>=.975?55.99:clamp(56*extension,18,55.99);
+        const f=corrected/reach;
+        if(confidence>=.65)targets[side]={x:raw.x*f,y:raw.y*f};
+        const observed={x:elbowLocal.x*56/(upper+lower),y:elbowLocal.y*56/(upper+lower)};
+        evidence[side]={elbow:observed,confidence:clamp(confidence,0,1),extension};
+        const cross=raw.x*elbowLocal.y-raw.y*elbowLocal.x;
+        if(Math.abs(cross)>28&&confidence>=.65&&extension<.975)bends[side]=cross>0?1:-1;
+      }
     }
     const metricShoulder=world?.[s],metricWrist=world?.[w];
     const metricDepth=visible(metricShoulder)&&visible(metricWrist)&&
@@ -62,7 +78,7 @@ export function observedArmGuidance(
     const lateral=crossed?.08:0;
     depths[side]=clamp((metricDepth??screenDepth??0)+visibleHeight+lateral,-1,1);
   }
-  return {targets,bends,depths};
+  return {targets,bends,depths,evidence};
 }
 /** Solve the actual shoulder-to-wrist reach using two fixed 28-unit arm
  * bones. Pole preference is continuous through noisy near-straight angles,
@@ -74,7 +90,7 @@ export function solveCapturedArm(
   const bone=Math.max(8,28*armScale);
   const dx=relativeTarget.x*armScale,dy=relativeTarget.y*armScale;
   const rawLength=Math.hypot(dx,dy);
-  const reach=clamp(rawLength,Math.max(5,bone*.32),2*bone-.35);
+  const reach=clamp(rawLength,Math.max(5,bone*.32),2*bone-.01);
   const a=Math.atan2(dy,dx);
   const hand={x:shoulder.x+Math.cos(a)*reach,
     y:shoulder.y+Math.sin(a)*reach};
@@ -125,6 +141,64 @@ export function solveAnatomicalArm(
     return cost;
   };
   return score(left,-1)<=score(right,1)?left:right;
+}
+
+/** Pure scoring in canonical 28+28 rig units. A stable pole is selected at
+ * capture time and stored in the key; renderer playback has no history. */
+export function scoreArmPoles(target:Point,side:ArmSide,evidence?:ArmEvidence,previous?:number,previousElbow?:Point){
+  const origin={x:0,y:0},sign=side==='left'?-1:1;
+  const quality=evidence?.confidence??0;
+  const extension=evidence?.extension??Math.hypot(target.x,target.y)/56;
+  const straight=extension>=.975;
+  const cost=(pole:number)=>{
+    const solved=solveCapturedArm(origin,target,1,pole),elbow=solved.elbow;
+    const reliable=quality>=.78&&!!evidence;
+    const inward=Math.max(0,-sign*elbow.x-(sign*target.x<0?12:5));
+    const high=Math.max(0,-elbow.y-(reliable&&evidence.elbow.y< -4?Math.abs(evidence.elbow.y)+5:Math.max(5,-target.y*.55)));
+    const observed=reliable&&!straight?distance(elbow,evidence.elbow):0;
+    return inward*inward*(reliable?.12:.55)+high*high*(reliable?.22:.85)+observed*observed*quality*.75+
+      (previousElbow?distance(elbow,previousElbow)*.65:0)+(previous!==undefined&&pole!==previous?22:0);
+  };
+  const negative=cost(-1),positive=cost(1);
+  return {negative,positive,pole:negative<=positive?-1:1,straight,quality,extension};
+}
+export function createObedientArm(side:ArmSide){
+  let pole:number|undefined,candidate:number|undefined,count=0,previousElbow:Point|undefined,lastExtension:number|undefined;
+  let diagnostics:ReturnType<typeof scoreArmPoles>&{blocked:boolean;chosen:number}|undefined;
+  return {
+    update(target:Point,evidence?:ArmEvidence){
+      const measured=evidence&&evidence.confidence>=.65?evidence.extension:undefined;
+      if(measured!==undefined)lastExtension=measured;
+      const length=Math.hypot(target.x,target.y);
+      const extension=lastExtension??length/56;
+      // Missing elbow must not invent a deeper flexion; maintain previous reach.
+      const desired=extension>=.975?55.99:clamp(extension*56,18,55.99);
+      const adjusted=length>.001?{x:target.x*desired/length,y:target.y*desired/length}:{x:0,y:desired};
+      const score=scoreArmPoles(adjusted,side,evidence,pole,previousElbow);
+      let blocked=false;
+      if(pole===undefined)pole=score.pole;
+      else if(score.pole!==pole&&!score.straight){
+        const advantage=Math.abs(score.negative-score.positive);
+        if(score.quality>=.78&&advantage>30){
+          count=candidate===score.pole?count+1:1;candidate=score.pole;
+          if(count>=3){pole=score.pole;count=0;candidate=undefined;}else blocked=true;
+        }else{candidate=undefined;count=0;blocked=true;}
+      }else{candidate=undefined;count=0;}
+      previousElbow=solveCapturedArm({x:0,y:0},adjusted,1,pole).elbow;
+      diagnostics={...score,blocked,chosen:pole};
+      return {target:adjusted,pole,extension:clamp(extension,.32,1)};
+    },
+    debug:()=>diagnostics,
+    reset(){pole=candidate=undefined;count=0;previousElbow=undefined;lastExtension=undefined;diagnostics=undefined;}
+  };
+}
+/** Polar interpolation avoids shrinking a straight arm when its direction
+ * changes. The reach channel controls actual elbow flexion. */
+export function interpolateArmTarget(a:Point,b:Point,t:number):Point{
+  const ar=Math.atan2(a.y,a.x),br=Math.atan2(b.y,b.x);
+  const delta=Math.atan2(Math.sin(br-ar),Math.cos(br-ar));
+  const angle=ar+delta*t,r=Math.hypot(a.x,a.y)*(1-t)+Math.hypot(b.x,b.y)*t;
+  return {x:Math.cos(angle)*r,y:Math.sin(angle)*r};
 }
 
 /** This score is strictly a 2D occlusion suggestion, not ground-truth depth.
