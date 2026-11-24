@@ -140,6 +140,7 @@ const CapturedFacialControls = z.strictObject({
 });
 export const CapturedPoseKey = z.strictObject({
   time:num(0,1),pose:z.partialRecord(Joint,num(-180,180)),
+  tracking:z.strictObject({head:z.boolean(),face:z.boolean(),eyes:z.boolean(),torso:z.boolean(),hips:z.boolean(),legs:z.boolean(),arms:z.boolean(),hands:z.boolean()}).optional(),
   lift:num(-100,100).optional(),
   hands:z.strictObject({left:CapturedHand,right:CapturedHand}).optional(),
   /** Optional: independent observed finger flexion, never fabricated for an unseen hand. */
