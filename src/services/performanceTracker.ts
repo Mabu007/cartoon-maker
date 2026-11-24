@@ -16,7 +16,8 @@ type VisionApi = {
   HandLandmarker:{createFromOptions:(files:unknown,options:unknown)=>Promise<Detector>};
   FaceLandmarker:{createFromOptions:(files:unknown,options:unknown)=>Promise<Detector>};
 };
-type Detector={detectForVideo:(video:HTMLVideoElement,at:number)=>unknown;close:()=>void};
+export type VisionFrame=HTMLVideoElement|ImageBitmap;
+type Detector={detectForVideo:(video:VisionFrame,at:number)=>unknown;close:()=>void};
 type PoseLandmarkerResult={landmarks?:Landmark[][];worldLandmarks?:Landmark[][]};
 type HandLandmarkerResult={landmarks?:Landmark[][]};
 export type FaceLandmarkerResultLike={
@@ -34,9 +35,9 @@ export function extractFaceObservation(result:FaceLandmarkerResultLike|undefined
   ) as Record<string,number>:undefined;
   return {landmarks:landmarks?.length?landmarks:undefined,blendshapes};
 }
-type TrackerOptions={hands?:boolean;face?:boolean};
+export type TrackerOptions={hands?:boolean;face?:boolean};
 export type PerformanceTracker={
-  detect:(video:HTMLVideoElement,atMs:number)=>CaptureFrame|undefined;
+  detect:(video:VisionFrame,atMs:number)=>CaptureFrame|undefined;
   close:()=>void;
   features:{pose:boolean;hands:boolean;face:boolean};
   warnings:string[];
@@ -52,12 +53,13 @@ const models={
 // Vite embeds this boolean from the actual public/ directory. No speculative
 // requests to missing /mediapipe routes; no misleading console 404s.
 const localVision=typeof __SIRVIBE_LOCAL_VISION__!=='undefined'&&__SIRVIBE_LOCAL_VISION__;
+const localUrl=(path:string)=>new URL(path,globalThis.location.origin).href;
 const modelPath=(name:'pose'|'hands'|'face')=>
-  localVision ? ({
+  localVision ? localUrl(({
     pose:'/mediapipe/models/pose_landmarker_lite.task',
     hands:'/mediapipe/models/hand_landmarker.task',
     face:'/mediapipe/models/face_landmarker.task'
-  })[name] : models[name];
+  })[name]) : models[name];
 /**
  * Vite 7 explicitly disallows dynamic imports of JS modules directly from
  * /public, even with @vite-ignore. Fetching the public asset as *data* and
@@ -83,7 +85,7 @@ export async function loadVisionModule():Promise<VisionApi> {
   if(!visionModule){
     visionModule=(async()=>{
       if(!localVision)return await import(/* @vite-ignore */ `${cdn}/vision_bundle.mjs`) as VisionApi;
-      const blob=await fetchLocalVisionBlob();
+      const blob=await fetchLocalVisionBlob((input,init)=>fetch(typeof input==='string'?localUrl(input):input,init));
       // Keep this object URL alive for the module lifetime: some MediaPipe
       // implementations may resolve delayed imports relative to import.meta.url.
       const moduleUrl=URL.createObjectURL(new Blob([blob],{type:'text/javascript'}));
@@ -103,7 +105,7 @@ export async function loadVisionModule():Promise<VisionApi> {
 }
 async function resolveRuntime() {
   const module=await loadVisionModule();
-  const wasm=localVision?'/mediapipe/wasm':`${cdn}/wasm`;
+  const wasm=localVision?localUrl('/mediapipe/wasm'):`${cdn}/wasm`;
   return {module,files:await module.FilesetResolver.forVisionTasks(wasm)};
 }
 /** Treat mesh and facial action coefficients as independent observations. */
@@ -144,7 +146,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
   const close=()=>{for(const detector of [pose,hands,face])try{detector?.close();}catch{/* already closed */}};
   return {features:{pose:true,hands:!!hands,face:!!face},warnings,close,
     detect(video,atMs) {
-      if(video.readyState<2||!video.videoWidth)return undefined;
+      if('readyState' in video?(video.readyState<2||!video.videoWidth):!video.width)return undefined;
       const output=poseDetector(video,atMs) as PoseLandmarkerResult;
       const measuredPose=posePoints(output);
       // A face-only crop need not be rejected if the dedicated face tracker
@@ -198,7 +200,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       const eyeFocus=observedIrisFocus(faceMesh);
       const headYaw=faceMesh
         ?estimateHeadYaw(faceMesh[1],faceMesh[33],faceMesh[263]):undefined;
-      return {t:atMs/1000,pose:pose??[],world:output?.worldLandmarks?.[0] as Landmark[]|undefined,
+      return {t:atMs/1000,aspect:'videoWidth' in video?video.videoWidth/Math.max(1,video.videoHeight):video.width/Math.max(1,video.height),pose:pose??[],world:output?.worldLandmarks?.[0] as Landmark[]|undefined,
         leftHand:previousLeft,rightHand:previousRight,
         ...(eyeFocus?{eyeFocus}:{}),
         ...(headYaw!==undefined?{headYaw}:{}),faceTracking:!!face,
@@ -209,5 +211,5 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
         face:previousFace};
     }
   };
-  function poseDetector(video:HTMLVideoElement,t:number){return pose.detectForVideo(video,t);}
+  function poseDetector(video:VisionFrame,t:number){return pose.detectForVideo(video,t);}
 }
