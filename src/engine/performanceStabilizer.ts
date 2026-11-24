@@ -21,7 +21,7 @@ export function oneEuroStep(
   minCutoff=2.1,beta=.035,derivativeCutoff=1.5,angular=false
 ):FilterState{
   if(!previous||!Number.isFinite(previous.value)||!Number.isFinite(time)||
-    time-previous.time>.45||time<=previous.time)
+    time-previous.time>1.1||time<=previous.time)
     return {time,value:measurement,derivative:0,raw:measurement};
   const dt=clamp(time-previous.time,.012,.2);
   const rawDelta=angular
@@ -55,6 +55,7 @@ export function createPerformanceStabilizer(){
   let nearArm:ArmSide|undefined;
   let nearCandidate:ArmSide|undefined,nearFrames=0;
   let lastTime=-Infinity,lastObservation=-Infinity;
+  let missingObservation=false;
   let lastOutput:PerformanceKey|undefined;
   const lastJoint=new Map<JointName,{time:number;value:number}>();
   const lastTarget:{
@@ -62,6 +63,7 @@ export function createPerformanceStabilizer(){
     right?:{time:number;x:number;y:number}
   }={};
   const missingArm:Partial<Record<ArmSide,number>>={};
+  const missedArmFrames:Record<ArmSide,number>={left:0,right:0};
   const returningArm:Partial<Record<ArmSide,{since:number;weight:number}>>={};
   let trackedHead:'front'|'left'|'right'='front';
   let headCandidate:'front'|'left'|'right'|undefined,headFrames=0;
@@ -84,6 +86,7 @@ export function createPerformanceStabilizer(){
   }
   function recover(time:number):PerformanceKey|undefined{
     if(!lastOutput||!Number.isFinite(time))return undefined;
+    missingObservation=true;
     const age=Math.max(0,time-lastObservation);
     if(age>=.72)return undefined;
     const fraction=clamp((age-.16)/.56,0,1);
@@ -104,7 +107,7 @@ export function createPerformanceStabilizer(){
     const time=key.time;
     if(!Number.isFinite(time))return key;
     if(time<=lastTime)reset();
-    else if(time-lastTime>.35){
+    else if(time-lastTime>1.1||(missingObservation&&time-lastTime>.35)){
       const previous=recover(time);
       const hadCapture=lastOutput!==undefined;
       reset();
@@ -112,7 +115,7 @@ export function createPerformanceStabilizer(){
         time,pose:{},presence:0
       }};
     }
-    lastTime=time;
+    lastTime=time;missingObservation=false;
     const amount=clamp(smoothing,0,1);
     const pose={...key.pose};
     // Missing landmarks are not evidence of a new neutral joint. Preserve
@@ -153,6 +156,7 @@ export function createPerformanceStabilizer(){
     for(const side of ['left','right'] as const){
       const point=key.armTargets?.[side];
       if(point&&Number.isFinite(point.x)&&Number.isFinite(point.y)){
+        missedArmFrames[side]=0;
         // Gate the whole shoulder-local wrist vector, not independent axes.
         // This preserves diagonal gestures and held hand positions.
         const [x,y]=intentional(side+':target',[point.x,point.y],time,amount===0?0:.6+amount*3.8);
@@ -173,10 +177,13 @@ export function createPerformanceStabilizer(){
         lastTarget[side]={time,...targets[side]!};
       }else{
         const observed=lastTarget[side],age=observed?time-observed.time:Infinity;
-        if(observed&&age<.6){
+        missedArmFrames[side]++;
+        // One failed inference is never enough to release an established arm.
+        // On slow devices a single observation can be hundreds of ms apart.
+        if(observed&&(age<.6||missedArmFrames[side]===1)){
           targets[side]={x:observed.x,y:observed.y};
           const fade=clamp((age-.12)/.48,0,1);
-          armConfidence[side]=1-fade*fade*(3-2*fade);
+          armConfidence[side]=missedArmFrames[side]===1?1:1-fade*fade*(3-2*fade);
           missingArm[side]=armConfidence[side];delete returningArm[side];
         }else if(observed){
           lastTarget[side]=undefined;missingArm[side]=0;delete returningArm[side];
@@ -318,6 +325,7 @@ export function createPerformanceStabilizer(){
   }
   function reset(){
     filters.clear();intents.clear();
+    missedArmFrames.left=0;missedArmFrames.right=0;
     delete missingArm.left;delete missingArm.right;delete returningArm.left;delete returningArm.right;
     lastJoint.clear();lastTarget.left=undefined;lastTarget.right=undefined;
     lastOutput=undefined;lastObservation=-Infinity;recentYaw=undefined;
@@ -335,7 +343,7 @@ export function createPerformanceStabilizer(){
     nearArm=undefined;nearCandidate=undefined;nearFrames=0;
     activeContact=undefined;candidateContact=undefined;
     candidateFrames=0;lastContactSeen=-Infinity;
-    lastTime=-Infinity;
+    lastTime=-Infinity;missingObservation=false;
   }
   return {update,recover,reset};
 }
