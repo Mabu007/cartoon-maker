@@ -61,6 +61,8 @@ export function createPerformanceStabilizer(){
     left?:{time:number;x:number;y:number};
     right?:{time:number;x:number;y:number}
   }={};
+  const missingArm:Partial<Record<ArmSide,number>>={};
+  const returningArm:Partial<Record<ArmSide,{since:number;weight:number}>>={};
   let trackedHead:'front'|'left'|'right'='front';
   let headCandidate:'front'|'left'|'right'|undefined,headFrames=0;
   let recentYaw:{time:number;value:number}|undefined;
@@ -151,8 +153,6 @@ export function createPerformanceStabilizer(){
     for(const side of ['left','right'] as const){
       const point=key.armTargets?.[side];
       if(point&&Number.isFinite(point.x)&&Number.isFinite(point.y)){
-        const previous=lastTarget[side];
-        const gap=previous?time-previous.time:Infinity;
         // Gate the whole shoulder-local wrist vector, not independent axes.
         // This preserves diagonal gestures and held hand positions.
         const [x,y]=intentional(side+':target',[point.x,point.y],time,amount===0?0:.6+amount*3.8);
@@ -160,9 +160,15 @@ export function createPerformanceStabilizer(){
           x:filter(side+':target-x',x,time,4.5-amount*2.6,.024),
           y:filter(side+':target-y',y,time,4.5-amount*2.6,.024)
         };
-        if(previous&&gap>.12&&gap<.6){
-          const t=clamp((gap-.12)/.48,0,1);
-          armConfidence[side]=Math.max(.15,1-t*t*(3-2*t));
+        if(missingArm[side]!==undefined){
+          returningArm[side]={since:time,weight:missingArm[side]!};
+          delete missingArm[side];
+        }
+        const returning=returningArm[side];
+        if(returning){
+          const t=clamp((time-returning.since)/.18,0,1);
+          armConfidence[side]=returning.weight+(1-returning.weight)*t*t*(3-2*t);
+          if(t>=1)delete returningArm[side];
         }else armConfidence[side]=1;
         lastTarget[side]={time,...targets[side]!};
       }else{
@@ -171,8 +177,9 @@ export function createPerformanceStabilizer(){
           targets[side]={x:observed.x,y:observed.y};
           const fade=clamp((age-.12)/.48,0,1);
           armConfidence[side]=1-fade*fade*(3-2*fade);
+          missingArm[side]=armConfidence[side];delete returningArm[side];
         }else if(observed){
-          lastTarget[side]=undefined;
+          lastTarget[side]=undefined;missingArm[side]=0;delete returningArm[side];
           clearSignal(side+':target');clearSignal(side+':target-x');clearSignal(side+':target-y');
         }
       }
@@ -311,6 +318,7 @@ export function createPerformanceStabilizer(){
   }
   function reset(){
     filters.clear();intents.clear();
+    delete missingArm.left;delete missingArm.right;delete returningArm.left;delete returningArm.right;
     lastJoint.clear();lastTarget.left=undefined;lastTarget.right=undefined;
     lastOutput=undefined;lastObservation=-Infinity;recentYaw=undefined;
     trackedHead='front';headCandidate=undefined;headFrames=0;
