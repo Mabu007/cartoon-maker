@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Copy, Download, Film, FolderOpen, LogOut, Moon, Plus, Sun, Trash2 } from 'lucide-react';
 import type { Welcome as PreviousWelcome } from './ParkedWelcome.tsx';
+import { filmAuthoringPrompt } from '../engine/filmAuthoringPrompt.ts';
 import { ProjectThumbnail } from './ProjectThumbnail.tsx';
 import { SirvibeLanding } from './SirvibeLanding.tsx';
 import type { Account } from '../services/cloud.ts';
@@ -14,6 +15,20 @@ type Props=Original & {
 };
 export function Welcome(props: Props){
   const [query,setQuery]=useState(''),[error,setError]=useState('');
+  const [copyStatus,setCopyStatus]=useState(''),[manualPrompt,setManualPrompt]=useState('');
+  async function copyFilmProtocol(){
+    setCopyStatus(''); setManualPrompt('');
+    let prompt:string;
+    try { prompt=filmAuthoringPrompt(); }
+    catch(err){setCopyStatus(err instanceof Error?err.message:'Could not build the film protocol.');return;}
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopyStatus('MCP Copy: film instructions copied. Paste into your AI assistant.');
+    } catch {
+      setManualPrompt(prompt);
+      setCopyStatus('Clipboard unavailable. Select and copy the instructions below.');
+    }
+  }
   if(props.screen==='landing')return <SirvibeLanding account={props.account} available={props.authAvailable} login={props.login} enter={props.enter} localStudio={props.localStudio}/>;
   return <main className="simple-home sv-projects-home">
     <header>
@@ -27,7 +42,9 @@ export function Welcome(props: Props){
     </header>
     <section className="simple-projects">
       <div className="projects-heading"><div><span className="eyebrow">{props.localStudio?'LOCAL WORKSPACE · NO ACCOUNT REQUIRED':'YOUR CREATOR UNIVERSE · FREE (BETA)'}</span><h1>My cartoons</h1><p>Every story starts somewhere. Pick up where you left off.</p></div><div className="home-tools"><button className="quiet" type="button" onClick={props.openActingDemo}><Film size={17}/>Acting demo</button><button className="primary" onClick={props.createManual}><Plus size={18}/>Create a Cartoon</button></div></div>
-      <div className="projects-tools"><input aria-label="Search cartoons" placeholder="Find a cartoon…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="quiet" onClick={props.restore}>Import backup</button></div>
+      <div className="projects-tools"><input aria-label="Search cartoons" placeholder="Find a cartoon…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="quiet" onClick={()=>void copyFilmProtocol()} title="Copy AI instructions for creating editable .sirvibe movies"><Copy size={16}/>MCP Copy</button><button className="quiet" onClick={props.restore}>Import backup</button></div>
+      {copyStatus&&<p role="status">{copyStatus}</p>}
+      {manualPrompt&&<div><textarea aria-label="AI film authoring instructions" readOnly value={manualPrompt} rows={6} style={{width:'100%'}} onFocus={event=>event.currentTarget.select()}/><button className="quiet" onClick={()=>setManualPrompt('')}>Close instructions</button></div>}
       {error&&<p role="alert" className="form-error">{error}</p>}
       <div className="simple-project-grid">{props.items.filter(item=>item.project.name.toLowerCase().includes(query.toLowerCase())).map(({project})=><article key={project.id}>
         <button className="project-cover" onClick={()=>props.openProject(project)}><ProjectThumbnail project={project}/></button>
