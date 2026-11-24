@@ -287,7 +287,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const trackedHead=art.rear?undefined:appearance?.capturedHeadFacing;
   face.scale.set(c.head*turnScale*(1-.09*Math.abs(headYaw))*(trackedHead==='left'?-1:1),c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
-  const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, focus, c.personality,appearance?.expressionIntensity??1,appearance?.actingIntent,appearance?.emotion);
+  const localFocus=trackedHead==='left'&&focus?{x:-focus.x,y:focus.y}:focus;
+  const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, localFocus, c.personality,appearance?.expressionIntensity??1,appearance?.actingIntent,appearance?.emotion);
   if(appearance?.facialCapture) mood.controls=blendSelectedFace(
     mood.controls??{...neutralFacialControls},appearance.facialCapture.controls,appearance.facialCapture.influence,appearance.facialCapture.tracking);
   if(isSleep(action)&&!speaking){
