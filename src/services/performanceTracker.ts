@@ -119,9 +119,9 @@ export function freshFaceSignals(
   };
 }
 const posePoints=(result:PoseLandmarkerResult|undefined):Landmark[]|undefined=>result?.landmarks?.[0];
-export async function startPerformanceTracker(options:TrackerOptions={}):Promise<PerformanceTracker> {
+export async function startPerformanceTracker(options:TrackerOptions={},runtime:typeof resolveRuntime=resolveRuntime):Promise<PerformanceTracker> {
   const warnings:string[]=[];
-  const {module,files}=await resolveRuntime();
+  const {module,files}=await runtime();
   const baseOptions=(modelAssetPath:string)=>({baseOptions:{modelAssetPath,delegate:'CPU'},runningMode:'VIDEO',numPoses:1});
   const poseDetector=options.pose===false?undefined:await module.PoseLandmarker.createFromOptions(files,baseOptions(modelPath('pose')));
   let hands:Detector|undefined,face:Detector|undefined;
