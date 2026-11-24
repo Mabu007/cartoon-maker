@@ -8,7 +8,7 @@ import {CapturedPoseKey} from '../src/engine/schema.ts';
 import {defaultStageViewport,zoomCanvasAt,boundStageViewport} from '../src/engine/stageViewport.ts';
 const origin={x:0,y:0};
 const magnitude=(p:{x:number;y:number})=>Math.hypot(p.x,p.y);
-const target={x:-40,y:10};
+const target={x:-20,y:45};
 const evidence=(pole:number,confidence=1)=>({elbow:solveCapturedArm(origin,target,1,pole).elbow,extension:magnitude(target)/56,confidence});
 test('short projected human arm that is actually straight is not rendered bent',()=>{
   const pose:Landmark[]=Array.from({length:33},()=>({x:0,y:0,visibility:0}));
