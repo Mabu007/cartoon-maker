@@ -244,6 +244,16 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     armBend[side]=fraction<.5?a.armBend?.[side]:b.armBend?.[side];
     const e1=a.armExtension?.[side],e2=b.armExtension?.[side];
     armExtension[side]=e1!==undefined&&e2!==undefined?mix(e1,e2,fraction):fraction<.5?e1:e2;
+    // A real pole switch must pass through extension rather than jump the
+    // elbow through the arm. Interpolate the signed flexion continuously.
+    const p1=a.armBend?.[side],p2=b.armBend?.[side];
+    const point=armTargets[side];
+    if(point&&e1!==undefined&&e2!==undefined&&p1&&p2&&p1!==p2){
+      const signed=mix(p1*Math.acos(clamp(e1)),p2*Math.acos(clamp(e2)),fraction);
+      const length=Math.hypot(point.x,point.y),reach=55.99*Math.cos(signed);
+      if(length>.001)armTargets[side]={x:point.x*reach/length,y:point.y*reach/length};
+      armExtension[side]=Math.cos(signed);armBend[side]=signed<0?-1:1;
+    }
     const armFrom=a.armConfidence?.[side],armTo=b.armConfidence?.[side];
     armConfidence[side]=armFrom!==undefined&&armTo!==undefined
       ?mix(armFrom,armTo,fraction):fraction<.5?armFrom:armTo;
