@@ -190,6 +190,9 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             setObservedGesture(lastPreview.current?.contact?
               ({'prayer':'Hands together','hands-on-head':'Hands on head','guard':'Guard stance',
                 'punch-left':'Left punch','punch-right':'Right punch','chin-left':'Chin touch','chin-right':'Chin touch','forehead-left':'Forehead touch','forehead-right':'Forehead touch','hip-left':'Hand on hip','hip-right':'Hand on hip'}[lastPreview.current.contact]??''):
+              lastPreview.current?.hands?.right==='thumbs-up'||lastPreview.current?.hands?.left==='thumbs-up'?'Thumbs up':
+              lastPreview.current?.hands?.right==='count-two'||lastPreview.current?.hands?.left==='count-two'?'Two fingers':
+              lastPreview.current?.hands?.right==='count-three'||lastPreview.current?.hands?.left==='count-three'?'Three fingers':
               lastPreview.current?.hands?.right==='fist'||lastPreview.current?.hands?.left==='fist'?'Fist':
               lastPreview.current?.hands?.right==='point'||lastPreview.current?.hands?.left==='point'?'Pointing':'');
             lastUi.current=at;
@@ -478,14 +481,14 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           </div>
         </div>
         <div className="performance-toggles">
-          <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track finger poses (extra CPU)</label>
+          <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track fingers · pointing, counting, thumbs up (extra CPU)</label>
           <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track actual pupils + eyes + face (extra CPU)</label>
           <label><input type="checkbox" checked={trackingOverlay} onChange={e=>setTrackingOverlay(e.target.checked)}/> Show tracking points</label>
           <label><input type="checkbox" checked={recordVoice} disabled={status!=='idle'} onChange={e=>setRecordVoice(e.target.checked)}/> <Mic size={14}/> Also record voice (optional)</label>
         </div>
         <details className="performance-gesture-guide">
           <summary>Gesture guide · fists, pointing, prayer and more</summary>
-          <p>Close your fingers for a <b>fist</b>, extend just the index finger to <b>point</b>, or bend individual fingers to control their cartoon equivalents. Bring both open hands together at chest height for <b>prayer</b>; move them to your head for <b>hands on head</b>. Keep two fists near your face for a <b>guard stance</b>, or extend one clenched arm for a <b>punch pose</b>.</p>
+          <p>Close your fingers for a <b>fist</b>, extend just the index finger to <b>point</b>, extend index and middle for <b>two</b>, extend index, middle and ring for <b>three</b>, or close four fingers and extend your thumb for <b>thumbs up</b>. Each of the five fingers is tracked independently. Keep your hands within the frame. Bring both open hands together at chest height for <b>prayer</b>; move them to your head for <b>hands on head</b>. Keep two fists near your face for a <b>guard stance</b>, or extend one clenched arm for a <b>punch pose</b>.</p>
           <p>Keep hands and wrists visible and well lit. Two-hand interactions require both wrists and usable body tracking; the system does not invent gestures from hidden hands.</p>
         </details>
         <p className="performance-help">Natural left/front/right head turns and restrained head tilt use the lightweight pose model. Actual eyeball direction requires the optional face model (iris landmarks), which also captures eyebrows, eyelids and mouth. Without it, eye direction is only approximate. Live head pose: <strong>{liveHeadFacing==='front'?'Front':liveHeadFacing==='left'?'¾ Left':'¾ Right'}</strong>.</p>
