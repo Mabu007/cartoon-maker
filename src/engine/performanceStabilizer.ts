@@ -196,6 +196,7 @@ export function createPerformanceStabilizer(){
           missingArm[side]=armConfidence[side];delete returningArm[side];
         }else if(observed){
           lastTarget[side]=undefined;missingArm[side]=0;delete returningArm[side];
+          obedient[side].reset();hasEvidence[side]=false;
           clearSignal(side+':target');clearSignal(side+':target-x');clearSignal(side+':target-y');
         }
       }
