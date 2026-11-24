@@ -30,7 +30,7 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
   facialCapture?: {controls:FacialControls;influence:number};
   handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number};
   capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
-  capturedRig?:{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
+  capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
   capturedHeadFacing?:import('./schema.ts').PerformanceFacing; capturedHeadYaw?:number;
   capturedContact?:{type:CapturedContact;influence:number};
   capturedFacing?:import('./schema.ts').PerformanceFacing; handOverride?: {
@@ -271,7 +271,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       if(weight>.02&&key.fingerCurls)capturedFingers={
         ...key.fingerCurls,influence:weight,confidence:key.handConfidence};
       if(weight>.02&&key.armTargets)capturedRig={
-        targets:key.armTargets,bends:key.armBend??{},
+        targets:key.armTargets,bends:key.armBend??{},extensions:key.armExtension,
         depths:key.armDepth??{},near:key.nearArm,influence:weight,confidence:key.armConfidence
       };
       if(weight>.02&&key.contact)capturedContact={type:key.contact,influence:weight};
