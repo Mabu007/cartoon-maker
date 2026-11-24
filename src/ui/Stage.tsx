@@ -3,7 +3,7 @@ import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2,
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
 import { type Project, type Scene, type Prop } from '../engine/schema.ts';
 import { pathNodes,smoothPath } from '../engine/stagePath.ts';
-import { defaultStageViewport,zoomStageAt,moveStageViewport } from '../engine/stageViewport.ts';
+import { defaultStageViewport,zoomCanvasAt,boundStageViewport,moveStageViewport } from '../engine/stageViewport.ts';
 import { evaluate } from '../engine/evaluate.ts';
 import { clamp } from '../engine/animation.ts';
 import { prepareDialoguePreview, type Mixer } from '../services/audio.ts';
@@ -145,7 +145,13 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     });
   }
   useEffect(()=>{if(engine.current)drawGuide(engine.current);},[pathPoints,editPath,smoothGuide,playing,draggedPath]);
-  useEffect(()=>{setViewport(defaultStageViewport);setDraggedPath(undefined);},[scene.id]);
+  useEffect(()=>{setViewport(defaultStageViewport);setDraggedPath(undefined);},[scene.id,format]);
+  useEffect(()=>{
+    const element=stage.current;
+    if(!element||typeof ResizeObserver==='undefined')return;
+    const observer=new ResizeObserver(()=>{const rect=element.getBoundingClientRect();setViewport(value=>boundStageViewport(value,rect.width,rect.height));});
+    observer.observe(element);return ()=>observer.disconnect();
+  },[]);
   useEffect(() => { if (!playing) repaint.current(); }, [project, scene, playing, edit, selection, subtitles]);
   useEffect(() => { const refresh = () => repaint.current(); window.addEventListener('toonroom-seek', refresh); return () => window.removeEventListener('toonroom-seek', refresh); }, []);
   const selectedActor = selection?.kind === 'actor' ? scene.actors.find(item=>item.id===selection.id) : undefined;
@@ -160,12 +166,14 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   }
   useEffect(()=>{
     const handle=(event:Event)=>{
-      if(playing)return;
-      const direction=(event as CustomEvent<'in'|'out'>).detail;
+      if(playing||drag.current||nodeDrag.current)return;
+      const direction=(event as CustomEvent<'in'|'out'|'reset'>).detail;
+      if(direction==='reset'){setViewport(defaultStageViewport);return;}
+      if(direction!=='in'&&direction!=='out')return;
       const box=stage.current?.getBoundingClientRect();
       if(!box)return;
       const center={x:box.left+box.width/2,y:box.top+box.height/2};
-      setViewport(previous=>zoomStageAt(previous,previous.zoom*(direction==='in'?1.25:1/1.25),center,center));
+      setViewport(previous=>zoomCanvasAt(previous,previous.zoom*(direction==='in'?1.2:1/1.2),center,box));
     };
     window.addEventListener('sirvibe-stage-zoom',handle);
     return ()=>window.removeEventListener('sirvibe-stage-zoom',handle);
@@ -176,12 +184,14 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     // Browser wheel listeners may be passive by default; a native
     // nonpassive handler keeps canvas zoom from scrolling the entire page.
     const onWheel=(event:WheelEvent)=>{
+      if((event.target as Element)?.closest('button,details,.stage-context-toolbar'))return;
       event.preventDefault();
+      if(drag.current||nodeDrag.current||pan.current)return;
       const rect=element.getBoundingClientRect();
-      const center={x:rect.left+rect.width/2,y:rect.top+rect.height/2};
-      setViewport(previous=>zoomStageAt(previous,
-        previous.zoom*(event.deltaY<0?1.14:1/1.14),
-        {x:event.clientX,y:event.clientY},center));
+      const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?rect.height:1);
+      if(!delta)return;
+      const factor=Math.exp(-Math.max(-180,Math.min(180,delta))*.0025);
+      setViewport(previous=>zoomCanvasAt(previous,previous.zoom*factor,{x:event.clientX,y:event.clientY},rect));
     };
     element.addEventListener('wheel',onWheel,{passive:false});
     return ()=>element.removeEventListener('wheel',onWheel);
@@ -205,8 +215,9 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     const hit=pointer(event);
     if(hit)onDestination?.({x:hit.x,y:hit.y},true);
   }}>
+    <div className="stage-zoom-world" style={screenTransform}>
     <div className={`canvas-mount ${edit ? 'place-mode' : ''} ${onDestination?'stage-destination':''}`}
-      style={screenTransform} ref={mount}
+      ref={mount}
       onDragOver={event=>{if(event.dataTransfer.types.includes('application/x-toonroom-prop'))event.preventDefault();}}
       onDrop={event=>{
         const kind=event.dataTransfer.getData('application/x-toonroom-prop');
@@ -240,7 +251,8 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         if(pan.current?.pointerId===event.pointerId){
           const dx=event.clientX-pan.current.x,dy=event.clientY-pan.current.y;
           pan.current={pointerId:event.pointerId,x:event.clientX,y:event.clientY};
-          setViewport(value=>moveStageViewport(value,dx,dy));return;
+          const rect=stage.current?.getBoundingClientRect();
+          if(rect)setViewport(value=>boundStageViewport(moveStageViewport(value,dx,dy),rect.width,rect.height));return;
         }
         const item = drag.current, hit = pointer(event);
          if(onDestination)return;
@@ -260,7 +272,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       onPointerLeave={event => { if (!drag.current) { hover.current = undefined; event.currentTarget.dataset.hoverEntity = 'false'; repaint.current(); } }}
        onPointerCancel={() => { drag.current = null;pan.current=undefined; repaint.current(); }}
       onLostPointerCapture={() => { drag.current = null;pan.current=undefined; repaint.current(); }} />
-    {!playing && !!displayPath?.length && <svg className="stage-path-guide" style={screenTransform} ref={guide} aria-hidden={editPath?undefined:true}>
+    {!playing && !!displayPath?.length && <svg className="stage-path-guide" ref={guide} aria-hidden={editPath?undefined:true}>
       <polyline/><g>{displayPath!.map((point,index)=>{
         const removable=index>0&&index<displayPath!.length-1;
         const label=index===0?'Start of path':removable?'Waypoint '+index:'End of path';
@@ -308,6 +320,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
           }:undefined}>{editPath&&<title>{label}{removable?' · Right-click to remove':''}</title>}</circle>;
       })}</g>
     </svg>}
+    </div>
     {!playing&&offstageActors.length>0&&<details className="stage-hidden-actors">
       <summary><Eye size={14}/> Offstage actors · {offstageActors.length}</summary>
       <div>{offstageActors.map(actor=>{
