@@ -121,7 +121,8 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     if(confidence(p[w])){
       pose[`${side}Elbow`]=clamp(degrees(angleOf(e,w)-upper),-160,160);
       const hand=side==='left'?frame.leftHand:frame.rightHand;
-      const palm=hand&&hand.length>9?angle(hand[0],hand[9]):angle(p[e],p[w]);
+      const fresh=(frame.handAgeMs?.[side]??0)<=120;
+      const palm=hand&&fresh&&hand.length>9?angle(hand[0],hand[9]):angle(p[e],p[w]);
       pose[`${side}Wrist`]=clamp(degrees(palm-angle(p[e],p[w])),-65,65);
     }
   }
