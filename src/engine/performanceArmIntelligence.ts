@@ -67,6 +67,7 @@ export function observedArmGuidance(
         if(Math.abs(cross)>28&&confidence>=.65&&extension<.975)bends[side]=cross>0?1:-1;
       }
     }
+    if(!evidence[side])evidence[side]={elbow:{x:0,y:0},confidence:0,extension:clamp(reach/56,.32,1)};
     const metricShoulder=world?.[s],metricWrist=world?.[w];
     const metricDepth=visible(metricShoulder)&&visible(metricWrist)&&
       finite(metricShoulder.z)&&finite(metricWrist.z)
@@ -164,11 +165,20 @@ export function scoreArmPoles(target:Point,side:ArmSide,evidence?:ArmEvidence,pr
 }
 export function createObedientArm(side:ArmSide){
   let pole:number|undefined,candidate:number|undefined,count=0,previousElbow:Point|undefined,lastExtension:number|undefined;
+  let pendingExtension:number|undefined;
   let diagnostics:ReturnType<typeof scoreArmPoles>&{blocked:boolean;chosen:number}|undefined;
   return {
     update(target:Point,evidence?:ArmEvidence){
       const measured=evidence&&evidence.confidence>=.65?evidence.extension:undefined;
-      if(measured!==undefined)lastExtension=measured;
+      if(measured!==undefined){
+        if(lastExtension===undefined){lastExtension=measured;}
+        else if(Math.abs(measured-lastExtension)>.025){
+          // A single spurious elbow observation cannot make a held arm fold.
+          const coherent=pendingExtension!==undefined&&(pendingExtension-lastExtension)*(measured-lastExtension)>0;
+          if(coherent){lastExtension=Math.abs(measured-lastExtension)>.12?measured:lastExtension+(measured-lastExtension)*.65;pendingExtension=undefined;}
+          else pendingExtension=measured;
+        }else pendingExtension=undefined;
+      }
       const length=Math.hypot(target.x,target.y);
       const extension=lastExtension??length/56;
       // Missing elbow must not invent a deeper flexion; maintain previous reach.
@@ -189,7 +199,7 @@ export function createObedientArm(side:ArmSide){
       return {target:adjusted,pole,extension:clamp(extension,.32,1)};
     },
     debug:()=>diagnostics,
-    reset(){pole=candidate=undefined;count=0;previousElbow=undefined;lastExtension=undefined;diagnostics=undefined;}
+    reset(){pole=candidate=undefined;count=0;previousElbow=undefined;lastExtension=undefined;pendingExtension=undefined;diagnostics=undefined;}
   };
 }
 /** Polar interpolation avoids shrinking a straight arm when its direction
