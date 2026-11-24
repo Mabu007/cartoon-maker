@@ -3,6 +3,7 @@
  * Deterministic, offline-capable retargeting from normalized landmark observations
  * to sparse, editable poses. No personal video is persisted by this module.
  */
+import type { TrackingSelection } from './trackingSelection.ts';
 import { reconstructHumanFrame, observedBodyYaw } from './humanReconstruction.ts';
 import { clamp, ease, mix } from './animation.ts';
 import { fuseWorldAngle, mixDegrees, worldBodyProjector, wrapDegrees } from './worldRetarget.ts';
@@ -30,6 +31,7 @@ export type CaptureFrame = {
 export type CaptureOptions = { exaggeration?: number; smoothing?: number; maxKeys?: number };
 export type PerformanceKey = {
   time: number; pose: JointPose; lift?: number;
+  tracking?:TrackingSelection;
   /** 0 for a genuine tracking gap; optional for backward-compatible clips. */
   presence?: number;
   hands?: { left: HandPose; right: HandPose }; expression?: Expression;
@@ -60,7 +62,7 @@ export type MotionDNA = {
   energy: number; gestureAmplitude: number; movementSmoothness: number;
   dominantHand: 'left' | 'right'; observations: number;
 };
-const tracked = ['torso','neck','head','leftShoulder','leftElbow','leftWrist','rightShoulder','rightElbow','rightWrist',
+const tracked = ['hips','torso','neck','head','leftShoulder','leftElbow','leftWrist','rightShoulder','rightElbow','rightWrist',
   'leftHip','leftKnee','rightHip','rightKnee'] as const;
 const confidence = (p?: Landmark) => p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility ?? 1) >= .55;
 const midpoint = (a: Landmark, b: Landmark): Landmark => ({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
@@ -93,10 +95,10 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const shouldersVisible=confidence(p[11])&&confidence(p[12]);
   const visibleArms=shouldersVisible&&[13,14,15,16].some(i=>confidence(p[i]));
   const visibleEyes=confidence(p[2])&&confidence(p[5]);
-  const visibleFace=visibleEyes||Boolean(frame.face);
+  const visibleFace=visibleEyes||Boolean(frame.face)||!!frame.eyeFocus||frame.headYaw!==undefined;
   const visibleLegs=(confidence(p[23])&&confidence(p[25]))||
     (confidence(p[24])&&confidence(p[26]));
-  if(!visibleArms&&!visibleFace&&!visibleLegs&&!left&&!right)return undefined;
+  if(!visibleArms&&!visibleFace&&!visibleLegs&&!shouldersVisible&&!confidence(p[23])&&!left&&!right)return undefined;
   const world=worldBodyProjector(frame.world);
   // MediaPipe labels the *performer's* left/right. Front-facing cartoon rigs
   // display that performer like a mirror, so horizontal arm angles must also
@@ -116,7 +118,10 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const torso=clamp(worldTorso===undefined?screenTorso:
     fuseWorldAngle(screenTorso,worldTorso,world!.frontness),-28,28);
   const shoulderRoll=shouldersVisible?clamp(Math.atan2(p[11].y-p[12].y,Math.max(.03,Math.abs(p[11].x-p[12].x)))*180/Math.PI,-14,14):0;
-  const pose:JointPose={torso:hipsVisible?torso:shoulderRoll};
+  const pose:JointPose=shouldersVisible?{torso:hipsVisible?torso:shoulderRoll}:{};
+  if(confidence(p[23])&&confidence(p[24])){
+    pose.hips=clamp(-Math.atan2(p[23].y-p[24].y,Math.max(.03,Math.abs(p[23].x-p[24].x)))*180/Math.PI,-18,18);
+  }
   for(const side of ['left','right'] as const) {
     const i=side==='left'?11:12, e=side==='left'?13:14, w=side==='left'?15:16;
     if(!confidence(p[i])||!confidence(p[e]))continue;
@@ -139,12 +144,11 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     const eyeMid=midpoint(leftEye,rightEye);
     const eyeRoll=-Math.atan2(leftEye.y-rightEye.y,eyeWidth)*180/Math.PI;
     const nose=confidence(p[0])?p[0]:eyeMid;
-    const yaw=clamp(-(nose.x-eyeMid.x)/eyeWidth*24,-22,22);
     // Looking left/right should turn the illustrated head, not fold the
     // neck sideways. Reserve only a tiny accompanying neck roll; actual
     // head tilt comes from the line between the eyes.
-    pose.neck=clamp(yaw*.22,-6,6);
-    pose.head=clamp(eyeRoll*.95-torso*.26-(pose.neck??0)*.45,-22,22);
+    pose.neck=0;
+    pose.head=clamp(eyeRoll*.95-(pose.torso??0)-(pose.hips??0),-22,22);
     focus={
       x:clamp(-(nose.x-eyeMid.x)/eyeWidth*1.75,-.85,.85),
       y:clamp((nose.y-eyeMid.y)/eyeWidth*-.4,-.6,.6)
@@ -262,7 +266,7 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
       ?mix(confidenceFrom,confidenceTo,fraction)
       :fraction<.5?confidenceFrom:confidenceTo;
   }
-  return {time:at,pose,
+  return {time:at,pose,tracking:a.tracking??b.tracking,
     ...(armTargets.left||armTargets.right?{armTargets}:{}),
     ...(armDepth.left!==undefined||armDepth.right!==undefined?{armDepth}:{}),
     ...(armBend.left!==undefined||armBend.right!==undefined?{armBend}:{}),
