@@ -29,7 +29,9 @@ export function createMotionIntent(){
       const coherent=candidate&&input.reduce((dot,v,i)=>dot+(v-anchor![i])*(candidate![i]-anchor![i]),0)>0;
       if(!coherent||time-candidateAt>.8){candidate=input;candidateAt=time;return anchor;}
       moving=true;candidate=undefined;quietAnchor=undefined;
-      anchor=clean;return anchor;
+      // A confirmed gesture on a slow camera must not wait another full
+      // inference interval merely to traverse the median history.
+      anchor=dt>.22?input:clean;return anchor;
     }
     // A causal three-sample median rejects single-frame excursions during
     // motion. A smaller exit band than entry band supplies hysteresis.
