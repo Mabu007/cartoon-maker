@@ -23,7 +23,7 @@ export function oneEuroStep(
   if(!previous||!Number.isFinite(previous.value)||!Number.isFinite(time)||
     time-previous.time>1.1||time<=previous.time)
     return {time,value:measurement,derivative:0,raw:measurement};
-  const dt=clamp(time-previous.time,.012,.2);
+  const dt=clamp(time-previous.time,.012,.8);
   const rawDelta=angular
     ?((measurement-previous.value+540)%360)-180
     :measurement-previous.value;
