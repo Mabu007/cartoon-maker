@@ -53,7 +53,9 @@ export function observedIrisFocus(
     // Resolve the pupil in the eye's own coordinate frame. Using raw
     // horizontal/vertical deltas made iris movement appear to change as
     // the person tilted their head, even with both pupils stationary.
-    const dx=b.x-a.x,dy=b.y-a.y;
+    // Both eye frames must run left-to-right in raw camera space.
+    const direction=b.x>=a.x?1:-1;
+    const dx=(b.x-a.x)*direction,dy=(b.y-a.y)*direction;
     const width=Math.hypot(dx,dy);
     if(width<.014)continue;
     const tx=dx/width,ty=dy/width;
