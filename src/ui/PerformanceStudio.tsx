@@ -3,7 +3,7 @@ import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkl
 import { actingDNA, retargetCaptureFrame, samplePerformance,
   type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
 import { compileResolvedPerformance, type ResolvedObservation } from '../engine/resolvedPerformance.ts';
-import { startPerformanceTracker, type PerformanceTracker } from '../services/performanceTracker.ts';
+import { startAsyncPerformanceTracker, type AsyncPerformanceTracker } from '../services/asyncPerformanceTracker.ts';
 import { putAudio } from '../services/audio.ts';
 import { analyzeLocalLipSync } from '../services/localLipSync.ts';
 import { clamp } from '../engine/animation.ts';
@@ -31,7 +31,9 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [status,setStatus]=useState<Status>('idle');
   const [message,setMessage]=useState('Nothing leaves your device during tracking. With installed local models, MediaPipe works without internet.');
   const [intensity,setIntensity]=useState(100);
-  const [smoothing,setSmoothing]=useState(65);
+  const [smoothing,setSmoothing]=useState(45);
+  const [diagnostics,setDiagnostics]=useState({mode:'—',inference:0,latency:0,fps:0,observations:0});
+  const inferenceBusy=useRef(false),captureGeneration=useRef(0),lastVideoTime=useRef(-1),observationCount=useRef(0),renderCount=useRef(0),diagnosticAt=useRef(0);
   // A typical 4 GB laptop struggles with three synchronous vision models.
   // Start with body + hands on modest devices; facial capture stays one click away.
   const [face,setFace]=useState(()=>((navigator as Navigator & {deviceMemory?:number}).deviceMemory??8)>4);
@@ -70,7 +72,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     const from=presented(at)??{time:0,pose:{},presence:0};
     const to=key??{time:1,pose:{},presence:0};
     presentation.current={from:{...from,time:0},to:{...to,time:1},start:at,
-      duration:Math.max(60,Math.min(150,interval.current))};
+      duration:Math.max(35,Math.min(85,interval.current*.55))};
   }
   const motionStabilizer=useRef(createPerformanceStabilizer());
   const statusRef=useRef<Status>(status);statusRef.current=status;
@@ -78,7 +80,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const intensityRef=useRef(intensity);intensityRef.current=intensity;
   const trackingOverlayRef=useRef(trackingOverlay);trackingOverlayRef.current=trackingOverlay;
   const stream=useRef<MediaStream|undefined>(undefined);
-  const tracker=useRef<PerformanceTracker|undefined>(undefined);
+  const tracker=useRef<AsyncPerformanceTracker|undefined>(undefined);
   const raf=useRef(0),last=useRef(0),started=useRef(0),alive=useRef(true);
   const frames=useRef<ResolvedObservation[]>([]);
   const rawFrames=useRef<ResolvedObservation[]>([]);
@@ -95,6 +97,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     catch(error){setPreviewError('Character preview error: '+String(error));}
   }
   function takeDown(){
+    captureGeneration.current++;inferenceBusy.current=false;
     motionStabilizer.current.reset();presentation.current=undefined;
     recording.current=false;playback.current=undefined;rawFrames.current=[];
     cancelAnimationFrame(raf.current);raf.current=0;
@@ -138,14 +141,25 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         drawPose(samplePerformance(playing.keys,progress));
         if(progress>=1){playback.current=undefined;setReplaying(false);}
       }
-    }else if((state==='ready'||state==='recording')&&at-last.current>=interval.current){
+    }else if((state==='ready'||state==='recording')&&!inferenceBusy.current&&camera.current&&camera.current.currentTime!==lastVideoTime.current&&at-last.current>=interval.current){
       last.current=at;
-      const before=performance.now();
-      try{
-        const observed=tracker.current.detect(camera.current!,at);
+      const before=performance.now(),source=tracker.current,video=camera.current;
+      const generation=captureGeneration.current;
+      lastVideoTime.current=video.currentTime;inferenceBusy.current=true;
+      void (async()=>{try{
+        const capture=await source.detect(video,at);
+        if(generation!==captureGeneration.current||!alive.current||!['ready','recording'].includes(statusRef.current))return;
+        const observed=capture.frame;
+        observationCount.current++;
+        const now=performance.now();
+        if(now-diagnosticAt.current>=1000){
+          const seconds=Math.max(.001,(now-diagnosticAt.current)/1000);
+          setDiagnostics({mode:source.mode,inference:Math.round(capture.inferenceMs),latency:Math.round(now-at),fps:Math.round(renderCount.current/seconds),observations:Math.round(observationCount.current/seconds)});
+          diagnosticAt.current=now;renderCount.current=0;observationCount.current=0;
+        }
         if(overlay.current)drawPerformanceLandmarks(overlay.current,trackingOverlayRef.current?observed:undefined);
         const key=observed&&retargetCaptureFrame(observed);
-        if(recording.current)rawFrames.current.push({elapsed:Math.max(0,(at-started.current)/1000),sample:key||undefined});
+        if(recording.current&&at>=started.current)rawFrames.current.push({elapsed:(at-started.current)/1000,sample:key||undefined});
         if(key){
           lastSeen.current=at;
           const factor=intensityRef.current/100;
@@ -181,22 +195,25 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           }
         }
       }catch(error){
+        if(generation!==captureGeneration.current||!alive.current)return;
         const recovered=motionStabilizer.current.recover(at/1000);
         presentTarget(recovered,performance.now());lastPreview.current=recovered;
         if(at-lastUi.current>1400){
           setMessage('Tracking interrupted: '+String(error));
           lastUi.current=at;
         }
-      }
-      const elapsed=performance.now()-before;
-      // Prevent the former 280ms stall after expensive inference.
-      // Leave time for rendering even on machines where inference is slow.
-      interval.current=clamp(Math.ceil(elapsed+24),70,180);
+      }finally{
+        if(generation===captureGeneration.current){
+          inferenceBusy.current=false;
+          const elapsed=performance.now()-before;
+          interval.current=source.mode==='worker'?45:clamp(Math.ceil(elapsed+24),70,180);
+        }
+      }})();
     }
     if(state==='ready'||state==='recording'){
       const now=performance.now();
       if(now-lastRender.current>=32){
-        lastRender.current=now;
+        lastRender.current=now;renderCount.current++;
         const sample=presented(now);
         drawPose(sample);
         // Save the displayed pose at a bounded cadence. Rendering itself
@@ -215,7 +232,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     }
     updateStatus('loading');setResult(undefined);setPreviewError('');setObservedGesture('');
     setTracking('searching');setMessage('Requesting camera permission and loading on-device MediaPipe models…');
-    let media:MediaStream|undefined;let vision:PerformanceTracker|undefined;
+    let media:MediaStream|undefined;let vision:AsyncPerformanceTracker|undefined;
     try{
       try{media=await navigator.mediaDevices.getUserMedia({
         video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},
@@ -223,11 +240,12 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       catch{media=await navigator.mediaDevices.getUserMedia({
         video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},audio:false});
         if(recordVoice)setMessage('Microphone unavailable. Motion recording will still work.');}
-      vision=await startPerformanceTracker({hands,face});
+      vision=await startAsyncPerformanceTracker({hands,face});
       if(!alive.current){vision.close();media.getTracks().forEach(track=>track.stop());return;}
       stream.current=media;tracker.current=vision;
       if(camera.current){camera.current.srcObject=media;await camera.current.play();}
-      last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=70;
+      last.current=0;lastSeen.current=0;lastUi.current=0;interval.current=45;
+      lastVideoTime.current=-1;diagnosticAt.current=performance.now();renderCount.current=0;observationCount.current=0;
       lastPreview.current=undefined;presentation.current=undefined;lastRender.current=-Infinity;motionStabilizer.current.reset();
       updateStatus('ready');
       setMessage(vision.warnings.length?vision.warnings.join(' ') :
@@ -410,6 +428,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         <strong>{observedGesture&&tracking==='live'?'✦ '+observedGesture:
           status==='recording'?trackedFrames+' frames captured':tracking==='live'?'Live motion connected':'Local tracking'}</strong>
       </div>
+      <details className="performance-gesture-guide"><summary>Performance diagnostics</summary><p>Capture: {diagnostics.mode} · inference {diagnostics.inference} ms · observation age {diagnostics.latency} ms · render {diagnostics.fps} FPS · tracking {diagnostics.observations} FPS. Observation age excludes display and camera sensor latency.</p></details>
       <div className="performance-controls">
 
         <div className="performance-facing-section">
