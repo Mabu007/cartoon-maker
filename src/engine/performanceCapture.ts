@@ -188,7 +188,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     ...(leftCurls||rightCurls?{fingerCurls:{...(leftCurls?{left:leftCurls}:{}),
       ...(rightCurls?{right:rightCurls}:{})}}:{}),
     ...((leftCurls||rightCurls)?{handConfidence:{
-      ...(leftCurls?{left:clamp(1-(frame.handAgeMs?.left??0)/300,0,1)}:{}),
+      ...(leftCurls?{left:clamp(1-(frame.handAgeMs?.left??0)/800,0,1)}:{}),
       ...(rightCurls?{right:clamp(1-(frame.handAgeMs?.right??0)/300,0,1)}:{})
     }}:{}),
     ...(contact?{contact}:{}),
