@@ -27,7 +27,7 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
   speaking: boolean; actionTime: number; actionWeight:number; expressionIntensity:number; actingIntent?:ActingIntent; emotion?:EmotionSpace; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; heldHand?:HandSide; heldItems?:{left?:Prop;right?:Prop}; propPose?:PropPose; sitting:boolean; seat?:string;
-  facialCapture?: {controls:FacialControls;influence:number};
+  facialCapture?: {controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};
   handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number};
   capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
   capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
@@ -262,7 +262,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(captured?.performance && !authoredGesture){
       const progress=(t-captured.start)/captured.length;
       const observedKey=samplePerformance(captured.performance,progress);
-      const mirror=observedKey.bodyFacing==='left';
+      const mirror=(observedKey.bodyFacing??capturedFacing)==='left';
       const key=mirror?mirrorCapturedRig(observedKey):observedKey;
       const weight=frameWeight(captured,t)*clamp(key.presence??1);
       if(key.bodyFacing&&weight>.02){capturedFacing=key.bodyFacing;({view,flip}=performanceFacingView(capturedFacing));}
@@ -294,7 +294,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       };
       if(key.expression&&!face&&weight>.45)expression=key.expression;
       // Explicit face clips retain ownership when captured facial acting overlaps.
-      if(key.facial&&!face)facialCapture={controls:key.facial,influence:weight};
+      if(key.facial&&!face)facialCapture={controls:key.facial,influence:weight,tracking:key.tracking};
     }
     if (face) expression = face.expression;
     const spoken = latest(sounds.filter((clip):clip is Extract<Clip,{track:'dialogue'}> =>
