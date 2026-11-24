@@ -3,6 +3,7 @@
  * Deterministic, offline-capable retargeting from normalized landmark observations
  * to sparse, editable poses. No personal video is persisted by this module.
  */
+import { reconstructHumanFrame, observedBodyYaw } from './humanReconstruction.ts';
 import { clamp, ease, mix } from './animation.ts';
 import { fuseWorldAngle, mixDegrees, worldBodyProjector, wrapDegrees } from './worldRetarget.ts';
 import { observedArmGuidance, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
@@ -15,7 +16,7 @@ import { constrainCapturedHead,estimateHeadYaw,headFacingForYaw } from './perfor
 
 export type Landmark = { x: number; y: number; z?: number; visibility?: number };
 export type CaptureFrame = {
-  t: number; pose: Landmark[]; world?: Landmark[]; leftHand?: Landmark[]; rightHand?: Landmark[];
+  t: number; aspect?:number; pose: Landmark[]; world?: Landmark[]; leftHand?: Landmark[]; rightHand?: Landmark[];
   face?: Record<string, number>;
   /** Independent pupil gaze from Face Landmarker iris points when available. */
   eyeFocus?:{x:number;y:number};
@@ -42,6 +43,8 @@ export type PerformanceKey = {
   handConfidence?:{left?:number;right?:number};
   /** Screen-space eye direction, normalized and independent of the authored gaze track. */
   focus?: { x:number; y:number };
+  bodyYaw?:number;
+  bodyFacing?:'front'|'left'|'right';
   headYaw?:number;
   headFacing?:'front'|'left'|'right';
   armConfidence?:{left?:number;right?:number};
@@ -73,12 +76,13 @@ function facialExpression(face?: Record<string, number>): Expression | undefined
   return undefined;
 }
 export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | undefined {
+  frame=reconstructHumanFrame(frame);
   const p=frame.pose;
   const leftCurls=measuredFingerCurls(frame.leftHand),rightCurls=measuredFingerCurls(frame.rightHand);
   const left=leftCurls?observedHandPose(leftCurls):undefined;
   const right=rightCurls?observedHandPose(rightCurls):undefined;
   const contact=detectedHandContact(p,frame.leftHand,frame.rightHand,leftCurls,rightCurls);
-  const arms=observedArmGuidance(p,frame.world);
+  const arms=observedArmGuidance(p,frame.world,frame.aspect);
   // A webcam can show just a face, one arm, or the full body. Do not reject
   // legitimate facial movement because the performer's hips or shoulders
   // were cropped. Never invent joints the camera cannot see.
@@ -107,7 +111,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     : undefined;
   const torso=clamp(worldTorso===undefined?screenTorso:
     fuseWorldAngle(screenTorso,worldTorso,world!.frontness),-28,28);
-  const pose:JointPose={torso};
+  const pose:JointPose=hipsVisible?{torso}:{};
   for(const side of ['left','right'] as const) {
     const i=side==='left'?11:12, e=side==='left'?13:14, w=side==='left'?15:16;
     if(!confidence(p[i])||!confidence(p[e]))continue;
@@ -163,7 +167,8 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const yaw=frame.headYaw??(visibleEyes
     ?estimateHeadYaw(confidence(p[0])?p[0]:undefined,p[2],p[5])
     :undefined);
-  return {time:frame.t,pose:constrainCapturedHead(pose),...(focus?{focus}:{}),
+  const bodyYaw=observedBodyYaw(frame.world);
+  return {time:frame.t,pose:constrainCapturedHead(pose),...(bodyYaw!==undefined?{bodyYaw}:{}),...(focus?{focus}:{}),
     ...(yaw!==undefined?{headYaw:yaw,headFacing:headFacingForYaw(yaw)}:{}),
     ...(arms.targets.left||arms.targets.right?{armTargets:arms.targets}:{}),
     ...(arms.bends.left!==undefined||arms.bends.right!==undefined?{armBend:arms.bends}:{}),
@@ -247,6 +252,8 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     ...(handConfidence.left!==undefined||handConfidence.right!==undefined?{handConfidence}:{}),
     ...(armConfidence.left!==undefined||armConfidence.right!==undefined?{armConfidence}:{}),
     ...((a.headYaw!==undefined||b.headYaw!==undefined)?{headYaw:mix(a.headYaw??0,b.headYaw??0,fraction)}:{}),
+    ...((a.bodyYaw!==undefined||b.bodyYaw!==undefined)?{bodyYaw:mix(a.bodyYaw??b.bodyYaw??0,b.bodyYaw??a.bodyYaw??0,fraction)}:{}),
+    ...((fraction<.5?a.bodyFacing:b.bodyFacing)?{bodyFacing:fraction<.5?a.bodyFacing:b.bodyFacing}:{}),
     ...(fraction<.5?a.headFacing?{headFacing:a.headFacing}:{}:
       b.headFacing?{headFacing:b.headFacing}:{}),
     ...(fingerCurls.left||fingerCurls.right?{fingerCurls}:{}),
@@ -333,6 +340,8 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
         error=Math.max(error,delta*emphasis);
       }
       if(observed.nearArm!==estimated.nearArm)error=Math.max(error,40);
+      if(observed.bodyFacing!==estimated.bodyFacing)error=Math.max(error,35);
+      if(observed.bodyYaw!==undefined&&estimated.bodyYaw!==undefined)error=Math.max(error,Math.abs(observed.bodyYaw-estimated.bodyYaw)*35);
       if(observed.headFacing!==estimated.headFacing)error=Math.max(error,28);
       if(observed.headYaw!==undefined&&estimated.headYaw!==undefined)
         error=Math.max(error,Math.abs(observed.headYaw-estimated.headYaw)*35);
