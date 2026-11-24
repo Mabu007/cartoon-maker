@@ -117,7 +117,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     : undefined;
   const torso=clamp(worldTorso===undefined?screenTorso:
     fuseWorldAngle(screenTorso,worldTorso,world!.frontness),-28,28);
-  const shoulderRoll=shouldersVisible?clamp(Math.atan2(p[11].y-p[12].y,Math.max(.03,Math.abs(p[11].x-p[12].x)))*180/Math.PI,-14,14):0;
+  const shoulderRoll=shouldersVisible?clamp(-Math.atan2(p[11].y-p[12].y,Math.max(.03,Math.abs(p[11].x-p[12].x)))*180/Math.PI,-14,14):0;
   const pose:JointPose=shouldersVisible?{torso:hipsVisible?torso:shoulderRoll}:{};
   if(confidence(p[23])&&confidence(p[24])){
     pose.hips=clamp(-Math.atan2(p[23].y-p[24].y,Math.max(.03,Math.abs(p[23].x-p[24].x)))*180/Math.PI,-18,18);
