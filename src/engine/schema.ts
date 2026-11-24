@@ -151,6 +151,7 @@ export const CapturedPoseKey = z.strictObject({
     right:z.strictObject({x:num(-180,180),y:num(-180,180)}).optional()}).optional(),
   /** Signed elbow bend preference and relative near-camera arm scores. */
   armBend:z.strictObject({left:num(-1,1).optional(),right:num(-1,1).optional()}).optional(),
+  armExtension:z.strictObject({left:num(0,1).optional(),right:num(0,1).optional()}).optional(),
   armDepth:z.strictObject({left:num(-1,1).optional(),right:num(-1,1).optional()}).optional(),
   nearArm:z.enum(['left','right']).optional(),
   /** A brief held hand is not equivalent to a freshly observed hand. */
@@ -169,7 +170,7 @@ export const CapturedPoseKey = z.strictObject({
   facial:CapturedFacialControls.optional()
 });
 const BodyClip = z.strictObject({ ...time, track: z.literal('body'), actor: id, action: z.enum(actions), layer: z.enum(['body', 'gesture']), target: id.optional(), hand:z.enum(['left','right']).optional(), pointAt: z.strictObject({ x: position.x, y: position.y }).optional(),
-  performance:z.array(CapturedPoseKey).min(2).max(240).optional(),
+  performance:z.array(CapturedPoseKey).min(2).max(2400).optional(),
   performanceOrigin:z.enum(['mocap','choreography']).optional()
 });
 /** Dedicated lane for captured and reusable performance takes. Legacy captured body clips remain valid. */
