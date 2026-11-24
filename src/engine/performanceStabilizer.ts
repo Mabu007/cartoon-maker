@@ -234,9 +234,9 @@ export function createPerformanceStabilizer(){
         // An old detector frame may remain visible briefly but never
         // restarts the hold timer. Its influence decays while the arm moves.
         if(quality>.92)lastGoodHand[side]={time,curls:detected};
-        confidence[side]=quality;
+        confidence[side]=clamp(quality*1.65,0,1);
         curls[side]=detected.map((value,index)=>
-          clamp(filter(side+':finger:'+index,intentional(side+':finger:'+index,[value],time,amount*.12)[0],time,2.3-amount*1.2,.22*quality),0,1)
+          clamp(filter(side+':finger:'+index,value,time,6-amount*2,.32*quality),0,1)
         ) as FingerCurls;
       }else{
         const held=lastGoodHand[side],age=held?time-held.time:Infinity;
@@ -260,7 +260,7 @@ export function createPerformanceStabilizer(){
             state.current=classified;state.count=0;state.candidate=undefined;
           }
         }else{state.count=0;state.candidate=undefined;}
-      }else{state.candidate=undefined;state.count=0;}
+      }else{state.candidate=undefined;state.count=0;state.current=undefined;}
       hands[side]=state.current??key.hands?.[side]??'relaxed';
     }
     if(depths.left!==undefined||depths.right!==undefined){
@@ -313,7 +313,7 @@ export function createPerformanceStabilizer(){
       jawTension:key.facial.jawTension,lipRound:key.facial.lipRound
     }:key.facial;
     const result:PerformanceKey={
-      ...key,pose:constrainCapturedHead(pose),focus,hands,facial,
+      ...key,pose:constrainCapturedHead(pose),focus,hands:curls.left||curls.right?hands:undefined,facial,
       ...(bodyYaw!==undefined?{bodyYaw}:{}),
       ...(time-bodySeen<.85?{bodyFacing}:{}),
       ...(headYaw!==undefined?{headYaw,headFacing:trackedHead}:{}),
