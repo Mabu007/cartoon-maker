@@ -150,7 +150,7 @@ export function scoreArmPoles(target:Point,side:ArmSide,evidence?:ArmEvidence,pr
   const origin={x:0,y:0},sign=side==='left'?-1:1;
   const quality=evidence?.confidence??0;
   const extension=evidence?.extension??Math.hypot(target.x,target.y)/56;
-  const straight=extension>=.975;
+  const straight=Math.hypot(target.x,target.y)>=55.9;
   const cost=(pole:number)=>{
     const solved=solveCapturedArm(origin,target,1,pole),elbow=solved.elbow;
     const reliable=quality>=.78&&!!evidence;
@@ -180,7 +180,11 @@ export function createObedientArm(side:ArmSide){
         }else pendingExtension=undefined;
       }
       const length=Math.hypot(target.x,target.y);
-      const extension=lastExtension??length/56;
+      // For an initially occluded elbow, default to a conservative modest
+      // bend rather than guessing a tightly folded arm. Hold that estimate
+      // until trustworthy geometry becomes available.
+      if(lastExtension===undefined)lastExtension=clamp(Math.max(.84,length/56),.32,1);
+      const extension=lastExtension;
       // Missing elbow must not invent a deeper flexion; maintain previous reach.
       const desired=extension>=.975?55.99:clamp(extension*56,18,55.99);
       const adjusted=length>.001?{x:target.x*desired/length,y:target.y*desired/length}:{x:0,y:desired};
