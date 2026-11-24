@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles, ArrowLeft, ArrowRight, UserRound, Play, RotateCcw, Check, Square, Mic } from 'lucide-react';
+import { Camera, Circle, ShieldAlert, VideoOff, WandSparkles, ArrowLeft, ArrowRight, UserRound, Play, RotateCcw, Check, Square, Mic } from 'lucide-react';
 import { defaultTrackingSelection, trackingModelPlan, maskPerformance, type TrackingSelection } from '../engine/trackingSelection.ts';
 import { actingDNA, retargetCaptureFrame, samplePerformance,
   type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
@@ -64,6 +64,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [previewError,setPreviewError]=useState('');
   const [replaying,setReplaying]=useState(false);
   const [observedGesture,setObservedGesture]=useState('');
+  const [handReadout,setHandReadout]=useState<{left:string;right:string}>({left:'Not visible',right:'Not visible'});
   const [liveHeadFacing,setLiveHeadFacing]=useState<'front'|'left'|'right'>('front');
   const camera=useRef<HTMLVideoElement>(null),characterHost=useRef<HTMLDivElement>(null);
   const overlay=useRef<HTMLCanvasElement>(null);
@@ -192,6 +193,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           lastPreview.current=target;
           if(at-lastUi.current>350){
             setTracking('live');setTrackedFrames(frames.current.length);
+            const handLabel=(side:'left'|'right')=>{const value=target.fingerCurls?.[side];return value?`${target.hands?.[side]??'Custom'} · ${value.slice(1).filter(v=>v<.46).length} fingers extended`:'Not visible';};
+            setHandReadout({left:handLabel('left'),right:handLabel('right')});
             setLiveHeadFacing(lastPreview.current?.headFacing??'front');
             setObservedGesture(lastPreview.current?.contact?
               ({'prayer':'Hands together','hands-on-head':'Hands on head','guard':'Guard stance',
@@ -213,7 +216,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           lastPreview.current=recovered;
           if(at-lastUi.current>700){
             setTracking(lastSeen.current&&at-lastSeen.current>2200?'lost':'searching');
-            setObservedGesture('');
+            setObservedGesture('');setHandReadout({left:'Not visible',right:'Not visible'});
             lastUi.current=at;
           }
         }
@@ -507,6 +510,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <p>Close your fingers for a <b>fist</b>, extend just the index finger to <b>point</b>, extend index and middle for <b>two</b>, extend index, middle and ring for <b>three</b>, or close four fingers and extend your thumb for <b>thumbs up</b>. Each of the five fingers is tracked independently. Keep your hands within the frame. Bring both open hands together at chest height for <b>prayer</b>; move them to your head for <b>hands on head</b>. Keep two fists near your face for a <b>guard stance</b>, or extend one clenched arm for a <b>punch pose</b>.</p>
           <p>Keep hands and wrists visible and well lit. Two-hand interactions require both wrists and usable body tracking; the system does not invent gestures from hidden hands.</p>
         </details>
+        {channels.hands&&<p className="performance-help" aria-live="polite">Left hand: <strong>{handReadout.left}</strong> · Right hand: <strong>{handReadout.right}</strong></p>}
         <p className="performance-help">Head: <strong>{channels.head?liveHeadFacing:'Off'}</strong> · Face and eyes can be tracked independently. Keep fingers visible and well lit.</p>
         <p className="performance-help" role="status">{message}</p>
         <p className="performance-help">Use the recording toolbar above the camera preview to start, stop, replay, retake or save. No microphone is needed for movement.</p>
