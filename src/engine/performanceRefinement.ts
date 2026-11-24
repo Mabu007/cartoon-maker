@@ -57,7 +57,7 @@ export function combineCaptureEvidence(raw:PerformanceKey,stable:PerformanceKey)
   const pose={...stable.pose};
   for(const joint of Object.keys(raw.pose) as (keyof typeof pose)[]){
     const x=raw.pose[joint],y=stable.pose[joint];
-    if(x!==undefined&&y!==undefined&&Math.abs(wrapDegrees(x-y))>7)pose[joint]=mixDegrees(y,x,.72);
+    if(x!==undefined&&y!==undefined&&Math.abs(wrapDegrees(x-y))>7)pose[joint]=wrapDegrees(mixDegrees(y,x,.72));
   }
   const targets={...stable.armTargets};
   for(const side of ['left','right'] as const){
