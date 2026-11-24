@@ -25,13 +25,13 @@ const precision=(n:number)=>Math.round(n*1e6)/1e6;
 const absent=(time:number):PerformanceKey=>({time,pose:{},presence:0});
 function keyAt(observation:ResolvedObservation,duration:number):PerformanceKey {
   const time=precision(clamp(observation.elapsed/duration));
-  return observation.sample
-    ? {...observation.sample,time,presence:clamp(observation.sample.presence??1)}
-    : absent(time);
+  if(!observation.sample)return absent(time);
+  const {armEvidence:_,...sample}=observation.sample;
+  return {...sample,time,presence:clamp(sample.presence??1)};
 }
 
 /** Capture compression protects visibility transitions; the maximum remains
- * compatible with the existing 240-key schema. */
+ * compatible with the bounded long-take key schema. */
 function limitKeys(keys:PerformanceKey[],maximum:number):PerformanceKey[] {
   let reduced=reducePerformanceKeys(keys);
   for(const tolerance of [2.8,4.5,7,10,15,25,40,70]){
@@ -89,7 +89,7 @@ export function cleanResolvedObservations(observations:readonly ResolvedObservat
         a.armBend?.[side]!==b.armBend?.[side]||b.armBend?.[side]!==c.armBend?.[side]||
         [a,b,c].some(key=>(key.armConfidence?.[side]??1)<.95))continue;
       const first=a.armTargets?.[side],middle=b.armTargets?.[side],last=c.armTargets?.[side],predicted=expected.armTargets?.[side];
-      if(first&&middle&&last&&predicted&&Math.hypot(first.x-last.x,first.y-last.y)<2&&
+      if(b.armExtension?.[side]===undefined&&first&&middle&&last&&predicted&&Math.hypot(first.x-last.x,first.y-last.y)<2&&
         Math.hypot(middle.x-predicted.x,middle.y-predicted.y)>8){
         targets[side]=predicted;changed=true;
       }
@@ -109,7 +109,7 @@ export function compileResolvedPerformance(
 ):ResolvedTake {
   if(!Number.isFinite(takeDuration)||takeDuration<.15||takeDuration>180)
     throw Error('Record a performance between 0.15 and 180 seconds.');
-  const max=Math.max(2,Math.min(240,Math.floor(options.maxKeys??240)));
+  const max=Math.max(2,Math.min(2400,Math.floor(options.maxKeys??Math.max(240,Math.ceil(takeDuration*13)))));
   let previous=-1;
   const ordered:ResolvedObservation[]=[];
   for(const event of observations){
