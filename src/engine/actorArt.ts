@@ -13,7 +13,7 @@ import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
 import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
-import { solveAnatomicalArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
+import { solveCapturedArm, solveAnatomicalArm, decideFrontArm, connectedCapturedArmOrder, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import { handRotation, handRotationParams, handSize, handWidthScale,
   sampleHandRig, sampleLayeredHandRig, applyCapturedFingerCurls, type HandPose } from './handRig.ts';
 import type { Viseme } from './visemes.ts';
@@ -46,7 +46,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
   appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number};capturedArms?:{left:boolean;right:boolean};
     capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
-    capturedRig?:{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
+    capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
     capturedHeadFacing?:PerformanceFacing;capturedHeadYaw?:number;
     capturedContact?:{type:CapturedContact;influence:number};heldItems?:{left?:Prop;right?:Prop};handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number;observed?:{left:boolean;right:boolean}}},
   handGesture?: GestureSample) {
@@ -84,10 +84,13 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         // Solve in the existing character's shoulder-local coordinate system,
         // not by forcing raw MediaPipe angles onto the elbow.
         const pole=guidance.bends[side]??(side==='left'?-1:1);
-        const solved=solveAnatomicalArm(joint.shoulder,target,c.arms,side,pole,joint.elbow);
         const weight=Math.max(0,Math.min(1,guidance.influence*(guidance.confidence?.[side]??1)));
-        elbow={x:mix(elbow.x,solved.elbow.x,weight),y:mix(elbow.y,solved.elbow.y,weight)};
-        hand={x:mix(hand.x,solved.hand.x,weight),y:mix(hand.y,solved.hand.y,weight)};
+        const locked=guidance.extensions?.[side]!==undefined;
+        const solved=locked?solveCapturedArm(joint.shoulder,target,c.arms,pole):solveAnatomicalArm(joint.shoulder,target,c.arms,side,pole,joint.elbow);
+        // Blend wrist targets, then solve once to preserve both bone lengths.
+        const blended={x:(mix(hand.x,solved.hand.x,weight)-joint.shoulder.x)/c.arms,y:(mix(hand.y,solved.hand.y,weight)-joint.shoulder.y)/c.arms};
+        const final=weight>=.999?solved:locked?solveCapturedArm(joint.shoulder,blended,c.arms,pole):solveAnatomicalArm(joint.shoulder,blended,c.arms,side,pole,joint.elbow);
+        elbow=final.elbow;hand=final.hand;
       }
       // Correct contact points by moving the wrist TARGET and re-solving
       // both arm bones. Lerp of unrelated elbows creates impossible lengths.
@@ -111,13 +114,17 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
               goal={x:joint.shoulder.x+sign*52*c.arms,y:joint.shoulder.y-11*c.arms};
             break;
         }
-        if(goal){
+        if(goal&&!(guidance?.extensions?.[side]!==undefined&&guidance.extensions[side]!>.94)){
+          // A heuristic contact may refine an observed bend, never manufacture
+          // one by moving a distant hand across the body.
+          if(guidance?.extensions?.[side]!==undefined&&Math.hypot(goal.x-hand.x,goal.y-hand.y)>24*c.arms)goal=undefined;
+        }
+        if(goal&&!(guidance?.extensions?.[side]!==undefined&&guidance.extensions[side]!>.94)){
           const weight=Math.min(1,Math.max(0,contact.influence)*.95);
           const blended={x:mix(hand.x,goal.x,weight),y:mix(hand.y,goal.y,weight)};
-          const solved=solveAnatomicalArm(joint.shoulder,{
-            x:(blended.x-joint.shoulder.x)/c.arms,
-            y:(blended.y-joint.shoulder.y)/c.arms
-          },c.arms,side,guidance?.bends[side]??sign,elbow);
+          const contactTarget={x:(blended.x-joint.shoulder.x)/c.arms,y:(blended.y-joint.shoulder.y)/c.arms};
+          const pole=guidance?.bends[side]??sign;
+          const solved=guidance?.extensions?.[side]!==undefined?solveCapturedArm(joint.shoulder,contactTarget,c.arms,pole):solveAnatomicalArm(joint.shoulder,contactTarget,c.arms,side,pole,elbow);
           elbow=solved.elbow;hand=solved.hand;
         }
       }
