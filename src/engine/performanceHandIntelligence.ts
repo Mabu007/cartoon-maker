@@ -14,11 +14,11 @@ const groups=[[2,3,4],[5,6,8],[9,10,12],[13,14,16],[17,18,20]] as const;
 const good=(p?:Landmark)=>Boolean(p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&(p.visibility??1)>=.5);
 const gap=(a:Landmark,b:Landmark)=>Math.hypot(a.x-b.x,a.y-b.y);
 function jointCurl(base:Landmark,middle:Landmark,tip:Landmark){
-  const a={x:base.x-middle.x,y:base.y-middle.y};
-  const b={x:tip.x-middle.x,y:tip.y-middle.y};
-  const denom=Math.hypot(a.x,a.y)*Math.hypot(b.x,b.y);
+  const a={x:base.x-middle.x,y:base.y-middle.y,z:(base.z??0)-(middle.z??0)};
+  const b={x:tip.x-middle.x,y:tip.y-middle.y,z:(tip.z??0)-(middle.z??0)};
+  const denom=Math.hypot(a.x,a.y,a.z)*Math.hypot(b.x,b.y,b.z);
   if(denom<1e-8)return 0;
-  const cos=clamp((a.x*b.x+a.y*b.y)/denom,-1,1);
+  const cos=clamp((a.x*b.x+a.y*b.y+a.z*b.z)/denom,-1,1);
   const angle=Math.acos(cos)*180/Math.PI;
   return clamp((165-angle)/105);
 }
@@ -28,9 +28,15 @@ export function measuredFingerCurls(hand?:Landmark[]):FingerCurls|undefined {
   for(const [baseIndex,middleIndex,tipIndex] of groups){
     const base=hand[baseIndex],middle=hand[middleIndex],tip=hand[tipIndex];
     if(!good(base)||!good(middle)||!good(tip))return undefined;
-    const reach=gap(tip,wrist)/Math.max(.001,gap(base,wrist)+gap(middle,base));
+    const distance3=(a:Landmark,b:Landmark)=>Math.hypot(a.x-b.x,a.y-b.y,(a.z??0)-(b.z??0));
+    const reach=distance3(tip,wrist)/Math.max(.001,distance3(base,wrist)+distance3(middle,base));
     const distanceCurl=clamp((1.25-reach)/.7);
-    curls.push(Math.round(clamp(distanceCurl*.74+jointCurl(base,middle,tip)*.26)*1000)/1000);
+    const segmentRatio=distance3(base,tip)/Math.max(.001,distance3(base,middle)+distance3(middle,tip));
+    // 3D segment geometry distinguishes a straight finger aimed toward
+    // the lens from one truly folded into the palm.
+    const bend=jointCurl(base,middle,tip);
+    const curl=segmentRatio>.96&&bend<.12?Math.min(.15,distanceCurl*.2):clamp(distanceCurl*.55+bend*.45);
+    curls.push(Math.round(curl*1000)/1000);
   }
   return curls as FingerCurls;
 }
