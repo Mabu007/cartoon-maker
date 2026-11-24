@@ -12,6 +12,7 @@ import { gestureAt, livingPose, type ActingContext, type GestureSample } from '.
 import { occupiedHands } from './handPerformance.ts';
 import { directCamera } from './cameraDirector.ts';
 import { samplePerformance, samplePerformanceHands } from './performanceCapture.ts';
+import { mirrorCapturedRig } from './humanReconstruction.ts';
 import { performanceFacingView } from './performanceFacing.ts';
 import { constrainCapturedHead } from './performanceHeadEye.ts';
 import { capturedMicroMotion } from './performanceMicroMotion.ts';
@@ -259,7 +260,9 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const authoredGesture=Boolean(gesture && !gesture.performance && gesture.id!==captured?.id);
     if(captured?.performance && !authoredGesture){
       const progress=(t-captured.start)/captured.length;
-      const key=samplePerformance(captured.performance,progress);
+      const observedKey=samplePerformance(captured.performance,progress);
+      const mirror=observedKey.bodyFacing==='left';
+      const key=mirror?mirrorCapturedRig(observedKey):observedKey;
       const weight=frameWeight(captured,t)*clamp(key.presence??1);
       if(key.bodyFacing&&weight>.02){capturedFacing=key.bodyFacing;({view,flip}=performanceFacingView(capturedFacing));}
       capturedArms={left:weight>.02&&(key.pose.leftShoulder!==undefined||!!key.armTargets?.left),
@@ -278,7 +281,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       // walk, sleep or driving animation. A recording owns only observed
       // upper-body joints in this case.
       pose=blend(pose,constrainCapturedHead(key.pose),weight,Boolean(body));
-      const transition=samplePerformanceHands(captured.performance,progress);
+      const sampledHands=samplePerformanceHands(captured.performance,progress);
+      const transition=mirror&&sampledHands?{...sampledHands,from:{left:sampledHands.from.right,right:sampledHands.from.left},to:{left:sampledHands.to.right,right:sampledHands.to.left}}:sampledHands;
       if(transition)handOverride={
         ...transition.to,from:transition.from,
         progress:transition.progress,influence:weight,
