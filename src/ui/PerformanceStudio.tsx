@@ -186,7 +186,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             if(value!==undefined)pose[joint]=clamp(value*factor,-165,165);
           }
           const stabilized=motionStabilizer.current.update({...key,pose:constrainCapturedHead(pose)},smoothingRef.current/100);
-          const target=maskPerformance(stabilized,channelsRef.current)??{time:key.time,pose:{},presence:0,tracking:channelsRef.current};
+          const target:PerformanceKey=maskPerformance(stabilized,channelsRef.current)??{time:key.time,pose:{},presence:0,tracking:channelsRef.current};
           if(!autoFacingRef.current){delete target.bodyFacing;delete target.bodyYaw;}
           if(recording.current&&at>=started.current)timedFrames.current.push({elapsed:(at-started.current)/1000,sample:maskPerformance(combineCaptureEvidence({...key,pose:constrainCapturedHead(pose)},target),channelsRef.current)});
           presentTarget(target,performance.now());
@@ -290,7 +290,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   }
   function resetCamera(){
     if(statusRef.current!=='ready')return;
-    takeDown();setTracking('off');setTrackedFrames(0);
+    takeDown();setTracking('off');setTrackedFrames(0);setHandReadout({left:'Not visible',right:'Not visible'});
     updateStatus('idle');setObservedGesture('');setMessage('Choose which body parts to track, then enable the camera again.');
   }
   function begin(){
@@ -298,7 +298,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     if(maxDurationRef.current<.15){setMessage('Move the playhead earlier or start another scene before recording.');return;}
     if(!lastSeen.current||!lastPreview.current){
       setTracking('searching');
-      setMessage('Camera connected but no body tracked yet. Sit or stand so your face and shoulders are visible, then press Record movement.');
+      setMessage('No selected body part is tracked yet. Keep the selected hands, face or body in the camera view, then press Record movement.');
       return;
     }
     frames.current=[];rawFrames.current=[];timedFrames.current=[];chunks.current=[];stopping.current=false;recording.current=true;
