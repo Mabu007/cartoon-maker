@@ -524,3 +524,10 @@
   border-radius:7px;text-align:left;padding:8px;font-size:11px;cursor:pointer}
 .stage-hidden-actors button:hover{background:#70549c}
 .stage-hidden-actors:has(+.stage-recover-actor) + .stage-recover-actor{display:none}
+
+.performance-tracking-parts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;border:1px solid var(--studio-outline,#665179);border-radius:10px;padding:12px;width:100%;min-width:0;box-sizing:border-box;}
+.performance-tracking-parts legend{font-weight:700;padding:0 5px;}
+.performance-tracking-parts label{display:flex;align-items:center;gap:7px;}
+.performance-tracking-presets,.performance-tracking-parts small{grid-column:1/-1;}
+.performance-tracking-presets{display:flex;flex-wrap:wrap;gap:5px;}
+.performance-tracking-presets button{padding:6px 9px;border-radius:6px;}
