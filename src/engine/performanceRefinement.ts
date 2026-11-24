@@ -45,7 +45,7 @@ export function refinePerformance(observations:readonly ResolvedObservation[]):R
     }
     for(const side of ['left','right'] as const){
       const x=a.armTargets?.[side],y=b.armTargets?.[side],z=c.armTargets?.[side];
-      if(x&&y&&z&&distance(x,z)<3&&distance(x,y)<7)
+      if(b.armExtension?.[side]===undefined&&x&&y&&z&&distance(x,z)<3&&distance(x,y)<7)
         targets[side]={x:y.x*.5+(x.x+z.x)*.25,y:y.y*.5+(x.y+z.y)*.25};
     }
     return {...event,sample:{...b,pose,armTargets:targets.left||targets.right?targets:undefined}};
@@ -62,7 +62,7 @@ export function combineCaptureEvidence(raw:PerformanceKey,stable:PerformanceKey)
   const targets={...stable.armTargets};
   for(const side of ['left','right'] as const){
     const x=raw.armTargets?.[side],y=stable.armTargets?.[side];
-    if(x&&y&&distance(x,y)>4)targets[side]={x:y.x*.25+x.x*.75,y:y.y*.25+x.y*.75};
+    if(stable.armExtension?.[side]===undefined&&x&&y&&distance(x,y)>4)targets[side]={x:y.x*.25+x.x*.75,y:y.y*.25+x.y*.75};
   }
   return {...stable,pose,armTargets:targets.left||targets.right?targets:undefined};
 }
