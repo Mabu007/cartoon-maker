@@ -31,7 +31,9 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [status,setStatus]=useState<Status>('idle');
   const [message,setMessage]=useState('Nothing leaves your device during tracking. With installed local models, MediaPipe works without internet.');
   const [intensity,setIntensity]=useState(100);
-  const [smoothing,setSmoothing]=useState(45);
+  const [smoothing,setSmoothing]=useState(50);
+  const [autoFacing,setAutoFacing]=useState(true);
+  const autoFacingRef=useRef(autoFacing);autoFacingRef.current=autoFacing;
   const [diagnostics,setDiagnostics]=useState({mode:'—',inference:0,latency:0,fps:0,observations:0});
   const inferenceBusy=useRef(false),captureGeneration=useRef(0),lastVideoTime=useRef(-1),observationCount=useRef(0),renderCount=useRef(0),diagnosticAt=useRef(0);
   // A typical 4 GB laptop struggles with three synchronous vision models.
@@ -159,6 +161,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         }
         if(overlay.current)drawPerformanceLandmarks(overlay.current,trackingOverlayRef.current?observed:undefined);
         const key=observed&&retargetCaptureFrame(observed);
+        if(key&&!autoFacingRef.current){delete key.bodyYaw;delete key.bodyFacing;}
         if(recording.current&&at>=started.current)rawFrames.current.push({elapsed:(at-started.current)/1000,sample:key||undefined});
         if(key){
           lastSeen.current=at;
@@ -169,6 +172,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             if(value!==undefined)pose[joint]=clamp(value*factor,-165,165);
           }
           const target=motionStabilizer.current.update({...key,pose:constrainCapturedHead(pose)},smoothingRef.current/100);
+          if(!autoFacingRef.current){delete target.bodyFacing;delete target.bodyYaw;}
           presentTarget(target,performance.now());
           lastPreview.current=target;
           if(at-lastUi.current>350){
@@ -176,7 +180,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             setLiveHeadFacing(lastPreview.current?.headFacing??'front');
             setObservedGesture(lastPreview.current?.contact?
               ({'prayer':'Hands together','hands-on-head':'Hands on head','guard':'Guard stance',
-                'punch-left':'Left punch','punch-right':'Right punch'}[lastPreview.current.contact]??''):
+                'punch-left':'Left punch','punch-right':'Right punch','chin-left':'Chin touch','chin-right':'Chin touch','forehead-left':'Forehead touch','forehead-right':'Forehead touch','hip-left':'Hand on hip','hip-right':'Hand on hip'}[lastPreview.current.contact]??''):
               lastPreview.current?.hands?.right==='fist'||lastPreview.current?.hands?.left==='fist'?'Fist':
               lastPreview.current?.hands?.right==='point'||lastPreview.current?.hands?.left==='point'?'Pointing':'');
             lastUi.current=at;
@@ -432,10 +436,10 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       <div className="performance-controls">
 
         <div className="performance-facing-section">
-          <span className="performance-facing-title">Character facing direction</span>
+          <span className="performance-facing-title">Character facing direction</span><label><input type="checkbox" checked={autoFacing} disabled={status==='recording'||status==='processing'||status==='review'} onChange={e=>{setAutoFacing(e.target.checked);motionStabilizer.current.reset();}}/> Automatically mirror body turns</label>
           <div className="performance-facing-picker" role="group" aria-label="Character facing direction">
             <button type="button" className={facing==='front'?'active':''} aria-pressed={facing==='front'}
-              disabled={status==='recording'||status==='processing'}
+              disabled={autoFacing||status==='recording'||status==='processing'}
               onClick={()=>setFacing('front')}><UserRound size={15}/> Front</button>
             <button type="button" className={facing==='left'?'active':''} aria-pressed={facing==='left'}
               disabled={status==='recording'||status==='processing'}
@@ -444,14 +448,14 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
               disabled={status==='recording'||status==='processing'}
               onClick={()=>setFacing('right')}><ArrowRight size={15}/> ¾ Front Right</button>
           </div>
-          <small>Choose which way the body faces. The head can now turn independently between front, ¾ left and ¾ right as you act. Your recorded body direction stays editable in the Inspector.</small>
+          <small>Automatic mode uses measured shoulder orientation. Switch it off to lock the body to your chosen direction. The head can turn independently.</small>
         </div>
         <div className="performance-values">
           <label>Exaggeration {intensity}%<input type="range" min="50" max="180" step="10" value={intensity} disabled={status==='recording'} onChange={e=>setIntensity(Number(e.target.value))}/></label>
           <label>Movement sensitivity: {smoothing>=85?'Cinematic':smoothing>=50?'Natural':smoothing>0?'Expressive':'Raw'}<input aria-label="Movement sensitivity" type="range" min="0" max="95" step="5" value={95-smoothing} disabled={status==='recording'||status==='processing'} onChange={e=>setSmoothing(95-Number(e.target.value))}/></label>
           <small>Stable ← movement sensitivity → Responsive. Natural ignores small tracking noise and keeps deliberate holds. Raw minimizes the intent gate.</small>
           <div role="group" aria-label="Movement presets">
-            {([['Cinematic',95],['Natural',65],['Expressive',25],['Raw',0]] as const).map(([name,value])=><button key={name} type="button" aria-pressed={smoothing===value} disabled={status==='recording'||status==='processing'} onClick={()=>setSmoothing(value)}>{name}</button>)}
+            {([['Cinematic',95],['Natural',50],['Expressive',25],['Raw',0]] as const).map(([name,value])=><button key={name} type="button" aria-pressed={smoothing===value} disabled={status==='recording'||status==='processing'} onClick={()=>setSmoothing(value)}>{name}</button>)}
           </div>
         </div>
         <div className="performance-toggles">
