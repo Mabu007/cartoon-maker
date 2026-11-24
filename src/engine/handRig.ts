@@ -1,4 +1,5 @@
 import type { View } from './schema.ts';
+import { thumbExtended, type ThumbMotion } from './thumbIntelligence.ts';
 import type { FingerCurls } from './performanceHandIntelligence.ts';
 
 export type HandPose = 'relaxed' | 'loose-open' | 'open' | 'point' |
@@ -12,6 +13,8 @@ export type HandPoseParams = {
   curl: [number, number, number, number, number];
   spread: number;
   thumbOpposition: number;
+  capturedThumb?:ThumbMotion;
+  thumbWeight?:number;
   wristBend: number;
   wristTwist: number;
 };
@@ -75,11 +78,45 @@ function buildHand(params: HandPoseParams) {
   });
   const thumbCurl = params.curl[0], opposition = params.thumbOpposition;
   const raised = Math.max(0, -opposition);
-  const thumb: FingerPath = [
+  let thumb: FingerPath = [
     [-5.7, .5],
     [-10.6 + opposition * 2.5, -4.5 + thumbCurl * 1.5],
     [-13.2 + opposition * 5.6 + raised * 8, -10.2 + thumbCurl * 5 - raised * 14]
   ];
+  const motion=params.capturedThumb;
+  if(motion){
+    // Three continuous, readable silhouettes sharing the same lower-palm
+    // attachment. Never let a folded thumb protrude like an extra finger.
+    const root:HandPoint=[-5.5,.15];
+    const closed=params.curl.slice(1).every(v=>v>.65);
+    const raised=closed&&thumbExtended(motion);
+    const folding=unit(Math.max(motion.opposition,motion.curl*.82));
+    const spread=unit(motion.abduction);
+    const openMid:HandPoint=[-9.6-spread*2.1,-4.2-spread*1.5];
+    const openTip:HandPoint=[-12.5-spread*4.8,-8.2-spread*3.4];
+    const foldedMid:HandPoint=[-5.8,-5.8];
+    const foldedTip:HandPoint=[1.2,-6.2];
+    const blendPoint=(a:HandPoint,b:HandPoint,t:number):HandPoint=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t)];
+    let mid=blendPoint(openMid,foldedMid,folding),tip=blendPoint(openTip,foldedTip,folding);
+    // Continuous transition into the thumbs-up silhouette, not a hard
+    // geometry swap. The thumb follows the long axis of the palm.
+    if(closed){
+      const up=unit((.58-motion.curl)/.38)*unit((.60-motion.opposition)/.40)*unit((spread-.12)/.40);
+      mid=blendPoint(mid,[-8.2,-7.4],up);tip=blendPoint(tip,[-8.1,-17.2],up);
+      if(raised){mid=blendPoint(mid,[-8.2,-7.4],.3);tip=blendPoint(tip,[-8.1,-17.2],.3);}
+    }
+    // Pinch uses the existing index silhouette as its target, never a
+    // detached thumb or an excessive reach. Other digits are unchanged.
+    if(!closed&&motion.pinch>.55&&motion.opposition>.35){
+      const indexTip=fingers[0][2],pinch=unit((motion.pinch-.55)/.45)*unit((motion.opposition-.35)/.4);
+      const delta:HandPoint=[indexTip[0]-mid[0],indexTip[1]-mid[1]];
+      const reach=Math.max(1,Math.hypot(...delta));
+      const goal:HandPoint=[mid[0]+delta[0]*Math.min(1,9/reach),mid[1]+delta[1]*Math.min(1,9/reach)];
+      tip=blendPoint(tip,goal,pinch);
+    }
+    const amount=unit(params.thumbWeight??1);
+    thumb=[blendPoint(thumb[0],root,amount),blendPoint(thumb[1],mid,amount),blendPoint(thumb[2],tip,amount)];
+  }
   return { wrist, palm, fingers, thumb, digitWidths, params };
 }
 
@@ -122,7 +159,7 @@ export function sampleLayeredHandRig(base:HandPose,baseWeight:number,
  * illustrated hand silhouette. Hands stay fully editable using the regular
  * pose presets when landmarks are absent; no extra renderer or ML model. */
 export function applyCapturedFingerCurls(
-  geometry:ReturnType<typeof sampleHandRig>,fingers:FingerCurls|undefined,influence:number
+  geometry:ReturnType<typeof sampleHandRig>,fingers:FingerCurls|undefined,influence:number,thumb?:ThumbMotion
 ){
   if(!fingers||influence<=0)return geometry;
   const weight=unit(influence),base=geometry.params;
@@ -130,7 +167,8 @@ export function applyCapturedFingerCurls(
     ...base,
     curl:base.curl.map((curl,index)=>lerp(curl,unit(fingers[index]),weight)) as FingerCurls,
     spread:lerp(base.spread,Math.max(.02,.32-(fingers[1]+fingers[2]+fingers[3]+fingers[4])*.065),weight),
-    thumbOpposition:lerp(base.thumbOpposition,fingers[0]<.36&&fingers.slice(1).every(curl=>curl>.65)?-.75:fingers[0]>.6?.7:.10,weight)
+    thumbOpposition:lerp(base.thumbOpposition,thumb?(thumbExtended(thumb)&&fingers.slice(1).every(curl=>curl>.65)?-.75:thumb.opposition):fingers[0]<.36&&fingers.slice(1).every(curl=>curl>.65)?-.75:fingers[0]>.6?.7:.10,weight),
+    ...(thumb?{capturedThumb:thumb,thumbWeight:weight}:{})
   };
   return buildHand(target);
 }
