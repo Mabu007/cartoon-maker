@@ -81,6 +81,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const tracker=useRef<PerformanceTracker|undefined>(undefined);
   const raf=useRef(0),last=useRef(0),started=useRef(0),alive=useRef(true);
   const frames=useRef<ResolvedObservation[]>([]);
+  const rawFrames=useRef<ResolvedObservation[]>([]);
   const recorder=useRef<MediaRecorder|undefined>(undefined),chunks=useRef<Blob[]>([]);
   const stopping=useRef(false),recording=useRef(false);
   const lastSeen=useRef(0),lastUi=useRef(0),lastPreview=useRef<PerformanceKey|undefined>(undefined);
@@ -95,7 +96,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   }
   function takeDown(){
     motionStabilizer.current.reset();presentation.current=undefined;
-    recording.current=false;playback.current=undefined;
+    recording.current=false;playback.current=undefined;rawFrames.current=[];
     cancelAnimationFrame(raf.current);raf.current=0;
     try{if(recorder.current?.state==='recording')recorder.current.stop();}catch{/* cleanup */}
     recorder.current=undefined;
@@ -144,6 +145,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         const observed=tracker.current.detect(camera.current!,at);
         if(overlay.current)drawPerformanceLandmarks(overlay.current,trackingOverlayRef.current?observed:undefined);
         const key=observed&&retargetCaptureFrame(observed);
+        if(recording.current)rawFrames.current.push({elapsed:Math.max(0,(at-started.current)/1000),sample:key||undefined});
         if(key){
           lastSeen.current=at;
           const factor=intensityRef.current/100;
@@ -251,7 +253,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       setMessage('Camera connected but no body tracked yet. Sit or stand so your face and shoulders are visible, then press Record movement.');
       return;
     }
-    frames.current=[];chunks.current=[];stopping.current=false;recording.current=true;
+    frames.current=[];rawFrames.current=[];chunks.current=[];stopping.current=false;recording.current=true;
     setRecordSeconds(0);lastClock.current=0;
     playback.current=undefined;setRecordedAudio(undefined);setResult(undefined);setTrackedFrames(0);
     let writer:MediaRecorder|undefined;
@@ -288,7 +290,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     const audio=await finishOptionalAudio(writer,chunks.current);
     if(audio)setRecordedAudio(audio);
     try{
-      const compiled=compileResolvedPerformance(frames.current,duration);
+      const compiled=compileResolvedPerformance(frames.current,duration,{cleanMotion:true});
       setResult(compiled);updateStatus('review');
       drawPose(samplePerformance(compiled.keys,1));
       setMessage('Captured '+compiled.framesAccepted+' frames ('+compiled.framesDropped+
@@ -298,10 +300,16 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       setMessage('Recording could not compile: '+String(error)+' Try a longer take with shoulders and arms visible.');
     }
   }
-  function replay(){
+  function replay(raw=false){
     if(!result||!preview.current)return;
-    playback.current={keys:result.keys,duration:result.duration,start:performance.now()};
+    let take=result;
+    if(raw){
+      try{take=compileResolvedPerformance(rawFrames.current,result.duration);}
+      catch{setMessage('Not enough reliable raw observations to compare this take. Your stabilized take is safe.');return;}
+    }
+    playback.current={keys:take.keys,duration:take.duration,start:performance.now()};
     last.current=0;setReplaying(true);
+    setMessage(raw?'Comparing unfiltered retargeted observations. Add to timeline still saves the stabilized take.':'Replaying stabilized and cleaned motion.');
   }
   async function save(){
     if(!result||!actor)return;
@@ -342,7 +350,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const style=result?actingDNA(result.keys):undefined;
   const retake=()=>{
     playback.current=undefined;setReplaying(false);setResult(undefined);
-    setRecordedAudio(undefined);stopping.current=false;frames.current=[];
+    setRecordedAudio(undefined);stopping.current=false;frames.current=[];rawFrames.current=[];presentation.current=undefined;
     setRecordSeconds(0);updateStatus('ready');
     setMessage('Ready for another take. Your previous take was not added.');
   };
@@ -369,7 +377,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           {status==='ready'&&<button type="button" className="primary" onClick={begin}><Circle size={15}/> Record movement</button>}
           {status==='ready'&&<button type="button" className="quiet" onClick={resetCamera}>Camera settings</button>}
           {status==='recording'&&<button type="button" className="primary performance-stop" onClick={()=>void stop()}><Square size={14} fill="currentColor"/> Stop &amp; review</button>}
-          {status==='review'&&<button type="button" className="quiet" disabled={replaying||!!previewError} onClick={replay}><Play size={15}/> Replay</button>}
+          {status==='review'&&<button type="button" className="quiet" disabled={replaying||!!previewError} onClick={()=>replay()}><Play size={15}/> Replay stabilized</button>}
           {status==='review'&&<button type="button" className="quiet" onClick={retake}><RotateCcw size={15}/> Retake</button>}
           {status==='review'&&<button type="button" className="primary" onClick={()=>void save()}><Check size={16}/> Add to timeline</button>}
           {(status==='loading'||status==='processing')&&<span className="performance-busy" role="status">{status==='loading'?'Starting webcam…':'Finishing take…'}</span>}
@@ -442,6 +450,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         <p className="performance-help" role="status">{message}</p>
         <p className="performance-help">Use the recording toolbar above the camera preview to start, stop, replay, retake or save. No microphone is needed for movement.</p>
         {status==='review'&&result&&<>
+          <button type="button" className="quiet" disabled={replaying||!!previewError} onClick={()=>replay(true)}>Compare unfiltered motion</button>
           <div className="performance-summary">
             <strong>{result.duration.toFixed(1)}s performance · {result.keys.length} editable poses</strong>
             <span>Captured body, hand{face?' and facial':''} acting · ready for the Performance track</span>
