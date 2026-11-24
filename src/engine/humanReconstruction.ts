@@ -78,6 +78,7 @@ export function mirrorCapturedRig(key:PerformanceKey):PerformanceKey{
     armConfidence:mirrorPairs(key.armConfidence),
     handConfidence:mirrorPairs(key.handConfidence),
     fingerCurls:mirrorPairs(key.fingerCurls),
+    thumbs:mirrorPairs(key.thumbs),
     hands:key.hands?{left:key.hands.right,right:key.hands.left}:undefined,
     nearArm:key.nearArm?swap(key.nearArm):undefined,
     contact:contactMirrored as PerformanceKey['contact'],
