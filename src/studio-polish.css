@@ -503,16 +503,6 @@
 /* Editing viewport only — no influence on camera clips or exported video. */
 .mode-direct .stage-format .canvas-mount,
 .mode-direct .stage-format .stage-path-guide{will-change:transform}
-.stage-zoom-tools{
-  position:absolute;bottom:10px;right:10px;z-index:8;display:flex;align-items:center;gap:5px;
-  padding:6px;border:1px solid #8c75a766;border-radius:12px;
-  background:#241b33ed;color:#f7f0ff;box-shadow:0 4px 20px #130c2399;
-}
-.stage-zoom-tools button{border:0;background:#48335e;color:inherit;min-width:29px;height:29px;
-  border-radius:7px;display:grid;place-items:center;cursor:pointer}
-.stage-zoom-tools button:hover{background:#7653a3}
-.stage-zoom-tools span{min-width:45px;text-align:center;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
-.stage-zoom-tools small{margin:0 5px;font-size:10px;white-space:nowrap;color:#d5bedf}
 .stage-recover-actor{
   position:absolute;z-index:7;top:12px;left:10px;display:flex;gap:8px;align-items:center;
   border:1px solid #a67cd8;background:#39244f;color:white;border-radius:10px;padding:9px 12px;
@@ -520,10 +510,7 @@
 }
 .stage-recover-actor:hover{background:#55327a}
 .stage-path-guide .stage-path-handle{filter:drop-shadow(0 1px 4px #1b102b);touch-action:none;}
-@media(max-width:690px){.stage-zoom-tools{right:4px;bottom:5px;padding:4px;gap:3px}
-.stage-zoom-tools small{display:none}
-.stage-zoom-tools button{min-width:25px;height:27px}
-.stage-zoom-tools span{min-width:36px;font-size:11px}}
+
 
 .stage-hidden-actors{position:absolute;z-index:8;top:10px;left:10px;
   max-width:min(240px,75%);border:1px solid #8964b5;background:#2b213cf2;
