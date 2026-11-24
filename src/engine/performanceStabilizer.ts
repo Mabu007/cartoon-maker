@@ -5,6 +5,7 @@
  * No React state updates, additional models, allocations of large arrays,
  * or frame-rate-dependent easing are required.
  */
+import { facingForBodyYaw,type BodyFacing } from './humanReconstruction.ts';
 import { createMotionIntent } from './motionIntent.ts';
 import type { JointName } from './schema.ts';
 import type { PerformanceKey } from './performanceCapture.ts';
@@ -65,6 +66,7 @@ export function createPerformanceStabilizer(){
   const missingArm:Partial<Record<ArmSide,number>>={};
   const missedArmFrames:Record<ArmSide,number>={left:0,right:0};
   const returningArm:Partial<Record<ArmSide,{since:number;weight:number}>>={};
+  let bodyFacing:BodyFacing='front',bodyCandidate:BodyFacing|undefined,bodyFrames=0,bodySeen=-Infinity;
   let trackedHead:'front'|'left'|'right'='front';
   let headCandidate:'front'|'left'|'right'|undefined,headFrames=0;
   let recentYaw:{time:number;value:number}|undefined;
@@ -284,8 +286,17 @@ export function createPerformanceStabilizer(){
       x:clamp(filter('eyes:x',intentional('eyes:x',[key.focus.x],time,amount*.09)[0],time,4,.15),-1,1),
       y:clamp(filter('eyes:y',intentional('eyes:y',[key.focus.y],time,amount*.09)[0],time,4,.15),-1,1)
     }:undefined;
+    const bodyYaw=key.bodyYaw===undefined?undefined:clamp(filter('body:yaw',key.bodyYaw,time,3.8,.12),-1,1);
+    if(bodyYaw!==undefined){
+      bodySeen=time;const next=facingForBodyYaw(bodyYaw,bodyFacing);
+      if(next===bodyFacing){bodyCandidate=undefined;bodyFrames=0;}
+      else{bodyFrames=bodyCandidate===next?bodyFrames+1:1;bodyCandidate=next;
+        if(bodyFrames>=2){bodyFacing=next;bodyCandidate=undefined;bodyFrames=0;}}
+    }
     const result:PerformanceKey={
       ...key,pose:constrainCapturedHead(pose),focus,hands,
+      ...(bodyYaw!==undefined?{bodyYaw}:{}),
+      ...(time-bodySeen<.85?{bodyFacing}:{}),
       ...(headYaw!==undefined?{headYaw,headFacing:trackedHead}:{}),
       armTargets:targets.left||targets.right?targets:undefined,
       armConfidence:armConfidence.left!==undefined||armConfidence.right!==undefined?armConfidence:undefined,
@@ -330,6 +341,7 @@ export function createPerformanceStabilizer(){
   }
   function reset(){
     filters.clear();intents.clear();
+    bodyFacing='front';bodyCandidate=undefined;bodyFrames=0;bodySeen=-Infinity;
     missedArmFrames.left=0;missedArmFrames.right=0;
     delete missingArm.left;delete missingArm.right;delete returningArm.left;delete returningArm.right;
     lastJoint.clear();lastTarget.left=undefined;lastTarget.right=undefined;
