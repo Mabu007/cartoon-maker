@@ -85,6 +85,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(fraction===undefined||!object||!compatibleObject(object,clip.action))continue;
     const at=clip.start+clip.length*fraction;
     if(at>t)continue;
+    if(clip.action!=='pick-up'&&!successfulReleases.has(clip.id))continue;
     const event={clip,at}, prior=propEvents.get(clip.target);
     if(!prior||at>=prior.at)propEvents.set(clip.target,event);
     if(clip.action!=='pick-up'&&at>=(propDrops.get(clip.target)?.at??-1))propDrops.set(clip.target,event);
@@ -449,7 +450,6 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(lastDrop&&lastDrop.at>=(cue?.start??-1)&&successfulReleases.has(lastDrop.clip.id))
       return placedProp(object,lastDrop);
     if(cue?.track==='props' && (cue.interaction==='open'||cue.interaction==='close')) {const progress=ease(clamp((t-cue.start)/Math.min(.7,cue.length)));return {...object,doorOpen:cue.interaction==='open'?progress:1-progress};}
-    if (cue?.track !== 'props' || cue.interaction !== 'release') return object;
     // Release location comes from the same validated custody state used by
     // pick-up and rendering; a non-owner cannot teleport a prop here.
     const place=propLocations.get(object.id);
