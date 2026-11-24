@@ -99,6 +99,12 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         switch(contact.type){
           case 'prayer':goal={x:r.neck.x+sign*5.8,y:r.neck.y+27};break;
           case 'hands-on-head':goal={x:headX+sign*15*c.head,y:headY-15*c.head};break;
+          case 'chin-left':case 'chin-right':
+            if(contact.type===`chin-${side}`)goal={x:headX+sign*7*c.head,y:headY+23*c.head};break;
+          case 'forehead-left':case 'forehead-right':
+            if(contact.type===`forehead-${side}`)goal={x:headX+sign*9*c.head,y:headY-15*c.head};break;
+          case 'hip-left':case 'hip-right':
+            if(contact.type===`hip-${side}`)goal={x:r.hip.x+sign*20,y:r.hip.y};break;
           case 'guard':goal={x:headX+sign*25*c.head,y:headY+22*c.head};break;
           case 'punch-left':case 'punch-right':
             if(contact.type===`punch-${side}`)
@@ -106,7 +112,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
             break;
         }
         if(goal){
-          const weight=Math.min(.82,Math.max(0,contact.influence)*.76);
+          const weight=Math.min(1,Math.max(0,contact.influence)*.95);
           const blended={x:mix(hand.x,goal.x,weight),y:mix(hand.y,goal.y,weight)};
           const solved=solveAnatomicalArm(joint.shoulder,{
             x:(blended.x-joint.shoulder.x)/c.arms,
