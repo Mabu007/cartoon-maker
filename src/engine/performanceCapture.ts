@@ -6,7 +6,7 @@
 import { reconstructHumanFrame, observedBodyYaw } from './humanReconstruction.ts';
 import { clamp, ease, mix } from './animation.ts';
 import { fuseWorldAngle, mixDegrees, worldBodyProjector, wrapDegrees } from './worldRetarget.ts';
-import { observedArmGuidance, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
+import { observedArmGuidance, interpolateArmTarget, type ArmEvidenceMap, type ArmTargets, type ArmBends, type ArmDepths, type ArmSide } from './performanceArmIntelligence.ts';
 import type { Character, Expression, JointPose } from './schema.ts';
 import type { HandPose } from './handRig.ts';
 import { measuredFingerCurls, observedHandPose, detectedHandContact,
@@ -37,6 +37,10 @@ export type PerformanceKey = {
   contact?:CapturedContact;
   /** Optional shoulder-local wrist anchors, depth scores and stable bend pole. */
   armTargets?:ArmTargets;
+  /** Transient elbow evidence used only by the capture solver. */
+  armEvidence?:ArmEvidenceMap;
+  /** Measured extension ratio and stable pole are saved for deterministic replay. */
+  armExtension?:ArmBends;
   armBend?:ArmBends;
   armDepth?:ArmDepths;
   nearArm?:ArmSide;
@@ -173,6 +177,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   return {time:frame.t,pose:constrainCapturedHead(pose),...(bodyYaw!==undefined?{bodyYaw}:{}),...(focus?{focus}:{}),
     ...(yaw!==undefined?{headYaw:yaw,headFacing:headFacingForYaw(yaw)}:{}),
     ...(arms.targets.left||arms.targets.right?{armTargets:arms.targets}:{}),
+    ...(arms.evidence.left||arms.evidence.right?{armEvidence:arms.evidence}:{}),
     ...(arms.bends.left!==undefined||arms.bends.right!==undefined?{armBend:arms.bends}:{}),
     ...(arms.depths.left!==undefined||arms.depths.right!==undefined?{armDepth:arms.depths}:{}),
     ...(left||right?{hands:{left:left??'relaxed',right:right??'relaxed'}}:{}),
@@ -225,19 +230,20 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
       Math.round(mix(v,second[i],fraction)*1000)/1000) as FingerCurls;
     else fingerCurls[side]=fraction<.5?first:second;
   }
-  const armTargets:ArmTargets={},armDepth:ArmDepths={},armBend:ArmBends={};
+  const armTargets:ArmTargets={},armDepth:ArmDepths={},armBend:ArmBends={},armExtension:ArmBends={};
   const handConfidence:PerformanceKey['handConfidence']={};
   const armConfidence:PerformanceKey['armConfidence']={};
   for(const side of ['left','right'] as const){
     const source=a.armTargets?.[side],destination=b.armTargets?.[side];
-    if(source&&destination)armTargets[side]={
-      x:mix(source.x,destination.x,fraction),
-      y:mix(source.y,destination.y,fraction)};
+    if(source&&destination)armTargets[side]=a.armExtension?.[side]!==undefined&&b.armExtension?.[side]!==undefined?interpolateArmTarget(source,destination,fraction):{
+      x:mix(source.x,destination.x,fraction),y:mix(source.y,destination.y,fraction)};
     else armTargets[side]=fraction<.5?source:destination;
     const first=a.armDepth?.[side],second=b.armDepth?.[side];
     armDepth[side]=first!==undefined&&second!==undefined
       ?mix(first,second,fraction):fraction<.5?first:second;
     armBend[side]=fraction<.5?a.armBend?.[side]:b.armBend?.[side];
+    const e1=a.armExtension?.[side],e2=b.armExtension?.[side];
+    armExtension[side]=e1!==undefined&&e2!==undefined?mix(e1,e2,fraction):fraction<.5?e1:e2;
     const armFrom=a.armConfidence?.[side],armTo=b.armConfidence?.[side];
     armConfidence[side]=armFrom!==undefined&&armTo!==undefined
       ?mix(armFrom,armTo,fraction):fraction<.5?armFrom:armTo;
@@ -250,6 +256,7 @@ function interpolate(a:PerformanceKey,b:PerformanceKey,at:number):PerformanceKey
     ...(armTargets.left||armTargets.right?{armTargets}:{}),
     ...(armDepth.left!==undefined||armDepth.right!==undefined?{armDepth}:{}),
     ...(armBend.left!==undefined||armBend.right!==undefined?{armBend}:{}),
+    ...(armExtension.left!==undefined||armExtension.right!==undefined?{armExtension}:{}),
     ...(fraction<.5?a.nearArm?{nearArm:a.nearArm}:{}:b.nearArm?{nearArm:b.nearArm}:{}),
     ...(handConfidence.left!==undefined||handConfidence.right!==undefined?{handConfidence}:{}),
     ...(armConfidence.left!==undefined||armConfidence.right!==undefined?{armConfidence}:{}),
@@ -352,6 +359,8 @@ export function reducePerformanceKeys(keys:readonly PerformanceKey[],tolerance=1
         const arm=observed.armTargets?.[side],estimate=estimated.armTargets?.[side];
         if(Boolean(arm)!==Boolean(estimate))error=Math.max(error,30);
         else if(arm&&estimate)error=Math.max(error,Math.hypot(arm.x-estimate.x,arm.y-estimate.y)*1.5);
+        const ext=observed.armExtension?.[side],pred=estimated.armExtension?.[side];
+        if(ext!==undefined&&pred!==undefined)error=Math.max(error,Math.abs(ext-pred)*65);
         if(observed.armBend?.[side]!==estimated.armBend?.[side])
           error=Math.max(error,20);
         const armWeight=observed.armConfidence?.[side],estimateWeight=estimated.armConfidence?.[side];
