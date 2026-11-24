@@ -159,7 +159,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       // Arm position comes from the light pose model every frame. Finger
       // classification and high-detail eyebrows/lips are much slower and
       // need not run on each frame. Stagger them so they never compete.
-      if(hands&&tick%3===0){
+      if(hands&&tick%(face?3:2)===0){
         const result=hands.detectForVideo(video,atMs) as HandLandmarkerResult;
         const association=associateObservedHands(result.landmarks??[],pose??[],{
           left:previousLeft,right:previousRight
