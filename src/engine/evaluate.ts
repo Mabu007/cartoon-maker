@@ -28,7 +28,7 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; heldHand?:HandSide; heldItems?:{left?:Prop;right?:Prop}; propPose?:PropPose; sitting:boolean; seat?:string;
   facialCapture?: {controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};
-  handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number};
+  handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number}; authoredGaze?:boolean;
   capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
   capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
   capturedHeadFacing?:import('./schema.ts').PerformanceFacing; capturedHeadYaw?:number;
@@ -369,7 +369,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, expressionIntensity:face?.intensity??1,actingIntent:face?.intent,emotion:face?.emotion, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, capturedHeadFacing, capturedHeadYaw, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,heldHand,heldItems,propPose,sitting,seat };
+      authoredGaze:Boolean(gaze),speaking, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, capturedHeadFacing, capturedHeadYaw, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,heldHand,heldItems,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
@@ -378,8 +378,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   for (const actor of actors) {
     actor.listening = !actor.speaking && activeSpeakers.some(other=>other.id!==actor.id&&other.visible);
     const targetId = actor.gazeTarget;
-    if(actor.capturedFocus){actor.focus=actor.capturedFocus;continue;}
-    if (actor.action === 'look-away') {
+    if(!actor.authoredGaze&&actor.capturedFocus){actor.focus=actor.capturedFocus;continue;}
+    if (!actor.authoredGaze && actor.action === 'look-away') {
       actor.focus = { x: -viewForward(actor.view), y: -.2 };
       continue;
     }
