@@ -36,7 +36,8 @@ export function measuredFingerCurls(hand?:Landmark[]):FingerCurls|undefined {
     // the lens from one truly folded into the palm.
     const bend=jointCurl(base,middle,tip);
     const curl=segmentRatio>.96&&bend<.12?Math.min(.15,distanceCurl*.2):clamp(distanceCurl*.55+bend*.45);
-    curls.push(Math.round(curl*1000)/1000);
+    // Expand clear open/closed evidence to the illustrated rig's full range.
+    curls.push(Math.round(clamp((curl-.12)/.68)*1000)/1000);
   }
   return curls as FingerCurls;
 }
