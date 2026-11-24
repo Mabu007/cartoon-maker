@@ -130,7 +130,7 @@ export function applyCapturedFingerCurls(
     ...base,
     curl:base.curl.map((curl,index)=>lerp(curl,unit(fingers[index]),weight)) as FingerCurls,
     spread:lerp(base.spread,Math.max(.02,.32-(fingers[1]+fingers[2]+fingers[3]+fingers[4])*.065),weight),
-    thumbOpposition:lerp(base.thumbOpposition,fingers[0]>.6?.7:.10,weight)
+    thumbOpposition:lerp(base.thumbOpposition,fingers[0]<.36&&fingers.slice(1).every(curl=>curl>.65)?-.75:fingers[0]>.6?.7:.10,weight)
   };
   return buildHand(target);
 }
