@@ -128,7 +128,7 @@ export async function startPerformanceTracker(options:TrackerOptions={},runtime:
   if(options.hands!==false){
     try{hands=await module.HandLandmarker.createFromOptions(files,{
       baseOptions:{modelAssetPath:modelPath('hands'),delegate:'CPU'},
-      runningMode:'VIDEO',numHands:2
+      runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.4,minHandPresenceConfidence:.4,minTrackingConfidence:.4
     });}catch(error){warnings.push('Hand tracking unavailable; body tracking will continue. '+String(error));}
   }
   if(options.face){
@@ -160,7 +160,10 @@ export async function startPerformanceTracker(options:TrackerOptions={},runtime:
       // need not run on each frame. Stagger them so they never compete.
       if(hands&&(!poseDetector&&!face||tick%(face?3:2)===0)){
         const result=hands.detectForVideo(video,atMs) as HandLandmarkerResult;
-        const association=associateObservedHands(result.landmarks??[],pose??[],{
+        // Strip the optional zero-filled visibility field only from hand data.
+        // Body landmark confidence remains unchanged.
+        const handLandmarks=(result.landmarks??[]).map(hand=>hand.map(({visibility:_,...point})=>point));
+        const association=associateObservedHands(handLandmarks,pose??[],{
           left:previousLeft,right:previousRight
         });
         // Retain recent anatomical identity through brief occlusion. Never
