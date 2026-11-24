@@ -125,6 +125,7 @@ const MoveClip = z.strictObject({ ...time, track: z.literal('movement'), actor: 
 /** Sparse sampled performance data shares the existing body timeline lane and actor IDs. */
 const CapturedHand = z.enum(['relaxed','loose-open','open','point','count-one','count-two','count-three','pinch','fist','grip','palm-up','palm-out','shrug','self-reference','thumbs-up','count']);
 /** Compact per-digit flexion: thumb, index, middle, ring, pinky. */
+const ThumbMotion=z.strictObject({curl:num(0,1),opposition:num(0,1),abduction:num(0,1),pinch:num(0,1)});
 const FingerCurls=z.tuple([num(0,1),num(0,1),num(0,1),num(0,1),num(0,1)]);
 export const CapturedContactSchema=z.enum(['prayer','hands-on-head','guard','punch-left','punch-right','chin-left','chin-right','forehead-left','forehead-right','hip-left','hip-right']);
 /** Compact validated 2D facial coefficients: expressive data, never camera imagery. */
@@ -145,6 +146,7 @@ export const CapturedPoseKey = z.strictObject({
   hands:z.strictObject({left:CapturedHand,right:CapturedHand}).optional(),
   /** Optional: independent observed finger flexion, never fabricated for an unseen hand. */
   fingerCurls:z.strictObject({left:FingerCurls.optional(),right:FingerCurls.optional()}).optional(),
+  thumbs:z.strictObject({left:ThumbMotion.optional(),right:ThumbMotion.optional()}).optional(),
   /** Optional observed interaction: hands together, head touch, guard, or clenched extension. */
   contact:CapturedContactSchema.optional(),
   /** Captured wrist targets in 2D character shoulder-local coordinates. */
