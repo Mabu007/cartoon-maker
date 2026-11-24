@@ -124,6 +124,9 @@ export function createPerformanceStabilizer(){
     for(const [joint,previous] of lastJoint){
       if(pose[joint]!==undefined)continue;
       const age=time-previous.time;
+      const side=joint.startsWith('left')?'left':joint.startsWith('right')?'right':undefined;
+      const arm=side&&(joint.endsWith('Shoulder')||joint.endsWith('Elbow')||joint.endsWith('Wrist'));
+      if(arm&&side&&key.armTargets?.[side]){pose[joint]=previous.value;continue;}
       if(age>=.58){lastJoint.delete(joint);clearSignal('joint:'+joint);continue;}
       const fade=clamp((age-.16)/.42,0,1);
       pose[joint]=previous.value*(1-fade*fade*(3-2*fade));
@@ -193,6 +196,8 @@ export function createPerformanceStabilizer(){
       const depth=key.armDepth?.[side];
       if(depth!==undefined)
         depths[side]=clamp(filter(side+':depth',depth,time,2.5,.012),-1,1);
+      else if(targets[side]&&lastOutput?.armDepth?.[side]!==undefined)
+        depths[side]=lastOutput.armDepth[side];
       const measuredBend=key.armBend?.[side];
       if(measuredBend!==undefined){
         if(bend[side]===undefined) bend[side]=measuredBend;
