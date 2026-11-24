@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createMotionIntent} from '../src/engine/motionIntent.ts';
 import {createPerformanceStabilizer} from '../src/engine/performanceStabilizer.ts';
-import {compileResolvedPerformance} from '../src/engine/resolvedPerformance.ts';
+import {cleanResolvedObservations,compileResolvedPerformance} from '../src/engine/resolvedPerformance.ts';
 import {samplePerformance,type PerformanceKey} from '../src/engine/performanceCapture.ts';
 
 test('a held wrist ignores small jitter and isolated large excursions',()=>{
@@ -58,4 +58,15 @@ test('stationary recording compresses to a stable held pose on the timeline',()=
   const take=compileResolvedPerformance(observations,59*.07);
   assert(take.keys.length<=3);
   assert.deepEqual(samplePerformance(take.keys,.5).armTargets?.left,observations[0].sample.armTargets?.left);
+});
+
+test('offline cleanup removes an isolated pose spike without mutating the source or filling gaps',()=>{
+  const make=(elapsed:number,x:number)=>({elapsed,sample:{time:elapsed,pose:{leftShoulder:x},armTargets:{left:{x,y:-20}}}});
+  const raw=[make(0,0),make(.07,40),make(.14,0)];
+  const cleaned=cleanResolvedObservations(raw);
+  assert.equal(cleaned[1].sample?.pose.leftShoulder,0);
+  assert.equal(cleaned[1].sample?.armTargets?.left?.x,0);
+  assert.equal(raw[1].sample.pose.leftShoulder,40);
+  const gap=[raw[0],{elapsed:.07},raw[2]];
+  assert.equal(cleanResolvedObservations(gap)[1].sample,undefined);
 });
