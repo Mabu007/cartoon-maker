@@ -9,7 +9,7 @@ import { clamp } from './animation.ts';
 import type { Landmark } from './performanceCapture.ts';
 
 export type FingerCurls=[number,number,number,number,number];
-export type CapturedContact='prayer'|'hands-on-head'|'guard'|'punch-left'|'punch-right';
+export type CapturedContact='prayer'|'hands-on-head'|'guard'|'punch-left'|'punch-right'|'chin-left'|'chin-right'|'forehead-left'|'forehead-right'|'hip-left'|'hip-right';
 const groups=[[2,3,4],[5,6,8],[9,10,12],[13,14,16],[17,18,20]] as const;
 const good=(p?:Landmark)=>Boolean(p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&(p.visibility??1)>=.5);
 const gap=(a:Landmark,b:Landmark)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -79,6 +79,23 @@ export function detectedHandContact(
        Math.abs(leftWrist.x-mid.x)<span*.85&&Math.abs(rightWrist.x-mid.x)<span*.85&&
        leftWrist.y<mid.y+span*.45&&rightWrist.y<mid.y+span*.45)
       return 'guard';
+  }
+  // Single-hand contacts require observed palm/fingertip proximity, not
+  // simply a wrist that happens to cross the face in projection.
+  for(const side of ['left','right'] as const){
+    const hand=side==='left'?left:right;
+    const wrist=side==='left'?leftWrist:rightWrist;
+    if(!hand||!good(hand[0])||!good(wrist)||gap(hand[0],wrist)>span*.28)continue;
+    const palm=hand[9],tip=hand[12],hip=pose[side==='left'?23:24];
+    const near=(point:Landmark,radius:number)=>[palm,tip].some(p=>good(p)&&gap(p,point)<span*radius);
+    if(good(head)){
+      const eyes=pose[2],other=pose[5];
+      const forehead={x:head.x,y:head.y-span*.26};
+      const chin={x:head.x,y:head.y+span*.19};
+      if(good(eyes)&&good(other)&&near(forehead,.16))return side==='left'?'forehead-left':'forehead-right';
+      if(near(chin,.14))return side==='left'?'chin-left':'chin-right';
+    }
+    if(good(hip)&&near(hip,.2))return side==='left'?'hip-left':'hip-right';
   }
   // A clenched, visibly extended arm can be a punch pose. No punching is
   // inferred from a raised palm or an unknown hand.
