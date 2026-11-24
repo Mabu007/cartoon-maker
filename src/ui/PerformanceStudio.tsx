@@ -24,12 +24,18 @@ type Props={
   saveActingDNA:(actorId:string,style:MotionDNA)=>void;
 };
 type Status='idle'|'loading'|'ready'|'recording'|'processing'|'review';
-const maxDuration=18;
+const recordingLimits=[60,120,150,180] as const;
+const recordingLimitKey='sirvibe.performance.maxDuration';
+function loadRecordingLimit(){try{const value=Number(localStorage.getItem(recordingLimitKey));return recordingLimits.find(limit=>limit===value)??120;}catch{return 120;}}
 export function PerformanceStudio({scene,characters,selectedActor,start,close,commit,saveActingDNA}:Props) {
   const [actor,setActor]=useState(selectedActor??scene.actors[0]?.id??'');
   const [facing,setFacing]=useState<PerformanceFacing>(()=>initialPerformanceFacing(
     scene.actors.find(item=>item.id===(selectedActor??scene.actors[0]?.id))));
   const [status,setStatus]=useState<Status>('idle');
+  const [recordingLimit,setRecordingLimit]=useState(loadRecordingLimit);
+  const maxDuration=Math.min(recordingLimit,Math.max(0,180-start));
+  const maxDurationRef=useRef(maxDuration);maxDurationRef.current=maxDuration;
+  useEffect(()=>{try{localStorage.setItem(recordingLimitKey,String(recordingLimit));}catch{/* private storage */}},[recordingLimit]);
   const [message,setMessage]=useState('Nothing leaves your device during tracking. With installed local models, MediaPipe works without internet.');
   const [intensity,setIntensity]=useState(100);
   const [smoothing,setSmoothing]=useState(50);
@@ -131,9 +137,9 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const dismiss=()=>{takeDown();close();};
   function loop(at:number){
     if(!alive.current||!tracker.current)return;
-    if(statusRef.current==='recording'&&at-started.current>=maxDuration*1000)void stop();
+    if(statusRef.current==='recording'&&at-started.current>=maxDurationRef.current*1000)void stop();
     if(statusRef.current==='recording'&&at-lastClock.current>=110){
-      setRecordSeconds(Math.min(maxDuration,(at-started.current)/1000));
+      setRecordSeconds(Math.min(maxDurationRef.current,(at-started.current)/1000));
       lastClock.current=at;
     }
     const state=statusRef.current;
@@ -258,7 +264,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       lastPreview.current=undefined;presentation.current=undefined;lastRender.current=-Infinity;motionStabilizer.current.reset();
       updateStatus('ready');
       setMessage(vision.warnings.length?vision.warnings.join(' ') :
-        'Live puppeteering is active. Move your head, shoulders and hands; the character responds alongside you. Record up to 18 seconds.');
+        'Live puppeteering is active. Move your head, shoulders and hands; the character responds alongside you. Record up to '+Math.floor(maxDurationRef.current)+' seconds.');
       cancelAnimationFrame(raf.current);
       raf.current=requestAnimationFrame(loop);
     }catch(error){
@@ -275,6 +281,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   }
   function begin(){
     if(statusRef.current!=='ready'||!tracker.current)return;
+    if(maxDurationRef.current<.15){setMessage('Move the playhead earlier or start another scene before recording.');return;}
     if(!lastSeen.current||!lastPreview.current){
       setTracking('searching');
       setMessage('Camera connected but no body tracked yet. Sit or stand so your face and shoulders are visible, then press Record movement.');
@@ -305,7 +312,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     if(stopping.current||statusRef.current!=='recording')return;
     stopping.current=true;recording.current=false;
     // Stop time is captured before MediaRecorder's asynchronous stop event.
-    const duration=(performance.now()-started.current)/1000;
+    const duration=Math.min(maxDurationRef.current,(performance.now()-started.current)/1000);
     const last=frames.current[frames.current.length-1];
     if(last && duration>last.elapsed+.0001)frames.current.push({
       elapsed:duration,
@@ -349,7 +356,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     playback.current=undefined;setReplaying(false);
     updateStatus('processing');
     try{
-      const startAt=clamp(start,0,180-result.duration);
+      const startAt=clamp(start,0,180);
       const length=clamp(result.duration,.1,180-startAt);
       const motion:Extract<Clip,{track:'performance'}>={
         id:uid(),track:'performance',actor,name:takeName.trim().slice(0,72)||'Webcam take',
@@ -443,8 +450,9 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         <strong>{observedGesture&&tracking==='live'?'✦ '+observedGesture:
           status==='recording'?trackedFrames+' frames captured':tracking==='live'?'Live motion connected':'Local tracking'}</strong>
       </div>
-      <details className="performance-gesture-guide"><summary>Performance diagnostics</summary><p>Capture: {diagnostics.mode} · inference {diagnostics.inference} ms · observation age {diagnostics.latency} ms · render {diagnostics.fps} FPS · tracking {diagnostics.observations} FPS. Observation age excludes display and camera sensor latency.</p></details>
+      <details className="performance-gesture-guide"><summary>Performance diagnostics</summary><p>Capture: {diagnostics.mode} · inference {diagnostics.inference} ms · observation age {diagnostics.latency} ms · render {diagnostics.fps} FPS · tracking {diagnostics.observations} FPS. Observation age excludes display and camera sensor latency.</p>{(['left','right'] as const).map(side=>{const arm=motionStabilizer.current.armDiagnostics()[side];return arm?<p key={side}>{side} arm: pole {arm.chosen} · scores {arm.negative.toFixed(1)} / {arm.positive.toFixed(1)} · reach {(arm.extension*100).toFixed(0)}% · elbow confidence {(arm.quality*100).toFixed(0)}%{arm.straight?' · straight-arm protection':''}{arm.blocked?' · pole flip blocked':''}</p>:null;})}</details>
       <div className="performance-controls">
+        <details className="performance-gesture-guide"><summary>Recording settings</summary><label>Maximum take length <select aria-label="Maximum take length" value={recordingLimit} disabled={status==='recording'||status==='processing'||status==='review'} onChange={e=>setRecordingLimit(recordingLimits.find(v=>v===Number(e.target.value))??120)}>{recordingLimits.map(v=><option key={v} value={v}>{v/60===Math.floor(v/60)?v/60+' min':v+' sec'}</option>)}</select></label><p>Default: 2 minutes. Maximum: 3 minutes per scene. Available at this playhead: {Math.floor(maxDuration)} seconds.</p></details>
 
         <div className="performance-facing-section">
           <span className="performance-facing-title">Character facing direction</span><label><input type="checkbox" checked={autoFacing} disabled={status==='recording'||status==='processing'||status==='review'} onChange={e=>{setAutoFacing(e.target.checked);motionStabilizer.current.reset();}}/> Automatically mirror body turns</label>
