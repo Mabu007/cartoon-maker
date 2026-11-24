@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Circle, Hand, PersonStanding, ShieldAlert, VideoOff, WandSparkles, ArrowLeft, ArrowRight, UserRound, Play, RotateCcw, Check, Square, Mic } from 'lucide-react';
+import { defaultTrackingSelection, trackingModelPlan, maskPerformance, type TrackingSelection } from '../engine/trackingSelection.ts';
 import { actingDNA, retargetCaptureFrame, samplePerformance,
   type MotionDNA, type PerformanceKey } from '../engine/performanceCapture.ts';
 import { refinePerformance, combineCaptureEvidence } from '../engine/performanceRefinement.ts';
@@ -45,8 +46,12 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const inferenceBusy=useRef(false),captureGeneration=useRef(0),lastVideoTime=useRef(-1),observationCount=useRef(0),renderCount=useRef(0),diagnosticAt=useRef(0);
   // A typical 4 GB laptop struggles with three synchronous vision models.
   // Start with body + hands on modest devices; facial capture stays one click away.
-  const [face,setFace]=useState(()=>((navigator as Navigator & {deviceMemory?:number}).deviceMemory??8)>4);
-  const [hands,setHands]=useState(true);
+  const [channels,setChannels]=useState<TrackingSelection>(()=>{try{const saved=JSON.parse(localStorage.getItem('sirvibe.tracking.channels')??'null');return Object.fromEntries(Object.entries(defaultTrackingSelection).map(([k,v])=>[k,typeof saved?.[k]==='boolean'?saved[k]:v])) as TrackingSelection;}catch{return {...defaultTrackingSelection};}});
+  const channelsRef=useRef(channels);channelsRef.current=channels;
+  const {hands}=channels;const face=channels.face||channels.eyes;
+  useEffect(()=>{try{localStorage.setItem('sirvibe.tracking.channels',JSON.stringify(channels));}catch{/* optional storage */}},[channels]);
+  const channelLabels:Record<keyof TrackingSelection,string>={head:'Head turns & tilt',face:'Facial expressions',eyes:'Eyes, gaze & blinking',torso:'Torso & body turning',hips:'Pelvis / hips',legs:'Legs & knees',arms:'Arms & elbows',hands:'Hands & fingers'};
+  function changeChannels(next:TrackingSelection){if(statusRef.current!=='idle')return;setChannels(next);motionStabilizer.current.reset();lastPreview.current=undefined;presentation.current=undefined;drawPose();}
   const [recordVoice,setRecordVoice]=useState(false);
   const [recordSeconds,setRecordSeconds]=useState(0);
   const [trackingOverlay,setTrackingOverlay]=useState(true);
@@ -168,7 +173,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           diagnosticAt.current=now;renderCount.current=0;observationCount.current=0;
         }
         if(overlay.current)drawPerformanceLandmarks(overlay.current,trackingOverlayRef.current?observed:undefined);
-        const key=observed&&retargetCaptureFrame(observed);
+        const key=observed&&maskPerformance(retargetCaptureFrame(observed),channelsRef.current);
         if(key&&!autoFacingRef.current){delete key.bodyYaw;delete key.bodyFacing;}
         if(recording.current&&at>=started.current)rawFrames.current.push({elapsed:(at-started.current)/1000,sample:key||undefined});
         if(key){
@@ -179,9 +184,10 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             const value=pose[joint];
             if(value!==undefined)pose[joint]=clamp(value*factor,-165,165);
           }
-          const target=motionStabilizer.current.update({...key,pose:constrainCapturedHead(pose)},smoothingRef.current/100);
+          const stabilized=motionStabilizer.current.update({...key,pose:constrainCapturedHead(pose)},smoothingRef.current/100);
+          const target=maskPerformance(stabilized,channelsRef.current)??{time:key.time,pose:{},presence:0,tracking:channelsRef.current};
           if(!autoFacingRef.current){delete target.bodyFacing;delete target.bodyYaw;}
-          if(recording.current&&at>=started.current)timedFrames.current.push({elapsed:(at-started.current)/1000,sample:combineCaptureEvidence({...key,pose:constrainCapturedHead(pose)},target)});
+          if(recording.current&&at>=started.current)timedFrames.current.push({elapsed:(at-started.current)/1000,sample:maskPerformance(combineCaptureEvidence({...key,pose:constrainCapturedHead(pose)},target),channelsRef.current)});
           presentTarget(target,performance.now());
           lastPreview.current=target;
           if(at-lastUi.current>350){
@@ -201,7 +207,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           // Brief occlusion is not a new neutral pose. The same predicted,
           // confidence-faded sample is shown and recorded, so replay matches
           // the live puppeteering instead of flickering to default animation.
-          const recovered=motionStabilizer.current.recover(at/1000);
+          const recovered=maskPerformance(motionStabilizer.current.recover(at/1000),channelsRef.current);
           if(recording.current&&at>=started.current)timedFrames.current.push({elapsed:(at-started.current)/1000});
           presentTarget(recovered,performance.now());
           lastPreview.current=recovered;
@@ -248,17 +254,19 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     if(!navigator.mediaDevices?.getUserMedia){
       setMessage('Use HTTPS and a browser with camera permissions to capture a performance.');return;
     }
+    if(!Object.values(channelsRef.current).some(Boolean)){setMessage('Select at least one body part to track.');return;}
     updateStatus('loading');setResult(undefined);setPreviewError('');setObservedGesture('');
     setTracking('searching');setMessage('Requesting camera permission and loading on-device MediaPipe models…');
     let media:MediaStream|undefined;let vision:AsyncPerformanceTracker|undefined;
     try{
       try{media=await navigator.mediaDevices.getUserMedia({
-        video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},
+        video:{width:{ideal:hands?640:320},height:{ideal:hands?480:240},frameRate:{ideal:20,max:24}},
         audio:recordVoice?{echoCancellation:true,noiseSuppression:true}:false});}
       catch{media=await navigator.mediaDevices.getUserMedia({
         video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},audio:false});
         if(recordVoice)setMessage('Microphone unavailable. Motion recording will still work.');}
-      vision=await startAsyncPerformanceTracker({hands,face});
+      vision=await startAsyncPerformanceTracker(trackingModelPlan(channelsRef.current));
+      if(!vision.features.pose&&!vision.features.hands&&!vision.features.face)throw Error(vision.warnings.join(' ')||'No selected tracking model is available.');
       if(!alive.current){vision.close();media.getTracks().forEach(track=>track.stop());return;}
       stream.current=media;tracker.current=vision;
       if(camera.current){camera.current.srcObject=media;await camera.current.play();}
@@ -280,7 +288,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   function resetCamera(){
     if(statusRef.current!=='ready')return;
     takeDown();setTracking('off');setTrackedFrames(0);
-    updateStatus('idle');setObservedGesture('');setMessage('Choose hand and face tracking options, then enable the camera again.');
+    updateStatus('idle');setObservedGesture('');setMessage('Choose which body parts to track, then enable the camera again.');
   }
   function begin(){
     if(statusRef.current!=='ready'||!tracker.current)return;
@@ -481,8 +489,16 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           </div>
         </div>
         <div className="performance-toggles">
-          <label><input type="checkbox" checked={hands} disabled={status!=='idle'} onChange={e=>setHands(e.target.checked)}/> <Hand size={14}/> Track fingers · pointing, counting, thumbs up (extra CPU)</label>
-          <label><input type="checkbox" checked={face} disabled={status!=='idle'} onChange={e=>setFace(e.target.checked)}/> <PersonStanding size={14}/> Track actual pupils + eyes + face (extra CPU)</label>
+          <fieldset className="performance-tracking-parts" disabled={status!=='idle'}><legend>Track body parts</legend>
+            <div className="performance-tracking-presets">
+              <button type="button" onClick={()=>changeChannels({...defaultTrackingSelection})}>Upper body</button>
+              <button type="button" onClick={()=>changeChannels({...defaultTrackingSelection,head:false,torso:false,arms:false,hands:true})}>Fingers only</button>
+              <button type="button" onClick={()=>changeChannels({...defaultTrackingSelection,head:true,face:true,eyes:true,torso:false,arms:false,hands:false})}>Face only</button>
+              <button type="button" onClick={()=>changeChannels({head:true,face:true,eyes:true,torso:true,hips:true,legs:true,arms:true,hands:true})}>Full body</button>
+            </div>
+            {Object.entries(channelLabels).map(([name,label])=><label key={name}><input type="checkbox" checked={channels[name as keyof TrackingSelection]} onChange={e=>changeChannels({...channels,[name]:e.target.checked})}/>{label}</label>)}
+            <small>Disabled parts keep their authored animation. Use Camera settings to change models while live. Face and eyes share one detector; body joints share the Pose detector.</small>
+          </fieldset>
           <label><input type="checkbox" checked={trackingOverlay} onChange={e=>setTrackingOverlay(e.target.checked)}/> Show tracking points</label>
           <label><input type="checkbox" checked={recordVoice} disabled={status!=='idle'} onChange={e=>setRecordVoice(e.target.checked)}/> <Mic size={14}/> Also record voice (optional)</label>
         </div>
@@ -491,7 +507,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           <p>Close your fingers for a <b>fist</b>, extend just the index finger to <b>point</b>, extend index and middle for <b>two</b>, extend index, middle and ring for <b>three</b>, or close four fingers and extend your thumb for <b>thumbs up</b>. Each of the five fingers is tracked independently. Keep your hands within the frame. Bring both open hands together at chest height for <b>prayer</b>; move them to your head for <b>hands on head</b>. Keep two fists near your face for a <b>guard stance</b>, or extend one clenched arm for a <b>punch pose</b>.</p>
           <p>Keep hands and wrists visible and well lit. Two-hand interactions require both wrists and usable body tracking; the system does not invent gestures from hidden hands.</p>
         </details>
-        <p className="performance-help">Natural left/front/right head turns and restrained head tilt use the lightweight pose model. Actual eyeball direction requires the optional face model (iris landmarks), which also captures eyebrows, eyelids and mouth. Without it, eye direction is only approximate. Live head pose: <strong>{liveHeadFacing==='front'?'Front':liveHeadFacing==='left'?'¾ Left':'¾ Right'}</strong>.</p>
+        <p className="performance-help">Head: <strong>{channels.head?liveHeadFacing:'Off'}</strong> · Face and eyes can be tracked independently. Keep fingers visible and well lit.</p>
         <p className="performance-help" role="status">{message}</p>
         <p className="performance-help">Use the recording toolbar above the camera preview to start, stop, replay, retake or save. No microphone is needed for movement.</p>
         {status==='review'&&result&&<>
