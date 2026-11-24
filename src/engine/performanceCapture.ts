@@ -81,7 +81,7 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
   const leftCurls=measuredFingerCurls(frame.leftHand),rightCurls=measuredFingerCurls(frame.rightHand);
   const left=leftCurls?observedHandPose(leftCurls):undefined;
   const right=rightCurls?observedHandPose(rightCurls):undefined;
-  const contact=detectedHandContact(p,frame.leftHand,frame.rightHand,leftCurls,rightCurls);
+  const contact=detectedHandContact(p,(frame.handAgeMs?.left??0)<=160?frame.leftHand:undefined,(frame.handAgeMs?.right??0)<=160?frame.rightHand:undefined,(frame.handAgeMs?.left??0)<=160?leftCurls:undefined,(frame.handAgeMs?.right??0)<=160?rightCurls:undefined);
   const arms=observedArmGuidance(p,frame.world,frame.aspect);
   // A webcam can show just a face, one arm, or the full body. Do not reject
   // legitimate facial movement because the performer's hips or shoulders
