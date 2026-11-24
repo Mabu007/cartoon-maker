@@ -5,6 +5,7 @@
  * Finger curls are normalized 0=open, 1=closed. A missing finger/hand is
  * UNKNOWN, never treated as a fist or as an observed relaxed hand.
  */
+import { thumbExtended, type ThumbMotion } from './thumbIntelligence.ts';
 import { clamp } from './animation.ts';
 import { validHandPoint } from '../services/handAssociation.ts';
 import type { Landmark } from './performanceCapture.ts';
@@ -42,10 +43,11 @@ export function measuredFingerCurls(hand?:Landmark[]):FingerCurls|undefined {
   }
   return curls as FingerCurls;
 }
-export function observedHandPose(curls:FingerCurls){
+export function observedHandPose(curls:FingerCurls,thumb?:ThumbMotion){
   const extended=curls.slice(1).map(v=>v<.46);
   const count=extended.filter(Boolean).length;
-  if(count===0&&curls[0]<.36)return 'thumbs-up' as const;
+  if(thumb&&thumb.pinch>.78&&thumb.opposition>.38&&count<=1&&curls[1]<.85)return 'pinch' as const;
+  if(count===0&&(thumb?thumbExtended(thumb):curls[0]<.36))return 'thumbs-up' as const;
   if(count===0)return 'fist' as const;
   if(count===4)return 'open' as const;
   if(extended[0]&&!extended[1]&&!extended[2]&&!extended[3])return 'point' as const;
