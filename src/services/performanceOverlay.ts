@@ -3,6 +3,7 @@
  * Uses only coordinates already computed by MediaPipe; no new inference.
  * The canvas mirrors with the video via CSS and never saves camera images.
  */
+import { validHandPoint } from './handAssociation.ts';
 import type { CaptureFrame, Landmark } from '../engine/performanceCapture.ts';
 
 export function drawPerformanceLandmarks(
@@ -36,9 +37,9 @@ export function drawPerformanceLandmarks(
   ctx.strokeStyle='rgba(255,204,129,.92)';
   ctx.fillStyle='rgba(255,225,174,.98)';
   for(const hand of [frame?.leftHand,frame?.rightHand]){
-    if(!hand||hand.length<21||!visible(hand[0]))continue;
+    if(!hand||hand.length<21||!validHandPoint(hand[0]))continue;
     for(const tip of [4,8,12,16,20]){
-      if(!visible(hand[tip]))continue;
+      if(!validHandPoint(hand[tip]))continue;
       ctx.beginPath();ctx.moveTo(hand[0].x*width,hand[0].y*height);
       ctx.lineTo(hand[tip].x*width,hand[tip].y*height);ctx.stroke();
       ctx.beginPath();ctx.arc(hand[tip].x*width,hand[tip].y*height,2,0,Math.PI*2);ctx.fill();
