@@ -20,7 +20,7 @@ function pose(curl: HandPoseParams['curl'], spread: number, thumbOpposition: num
   return { curl, spread, thumbOpposition, wristBend, wristTwist };
 }
 
-const countTwo = pose([.79, 0, 0, .94, .97], .14, .66);
+const countTwo = pose([.79, 0, 0, .94, .97], .30, .66);
 const poses: Record<HandPose, HandPoseParams> = {
   relaxed: pose([.45, .35, .42, .52, .62], .08, .45),
   'loose-open': pose([.28, .17, .23, .31, .43], .15, .28, 5),
@@ -69,8 +69,8 @@ function buildHand(params: HandPoseParams) {
     const curl = params.curl[index + 1];
     const root: HandPoint = [(index - 1.5) * 3.7, -7 + Math.abs(index - 1.5) * .4];
     const splay = (index - 1.5) * params.spread;
-    const mid: HandPoint = [root[0] + splay * 4, root[1] - length * (.55 - .34 * curl)];
-    const tip: HandPoint = [root[0] * (1 - .17 * curl) + splay * 9, mid[1] - length * (.45 - .42 * curl)];
+    const mid: HandPoint = [root[0] + splay * 4, root[1] - length * (.55 - .47 * curl)];
+    const tip: HandPoint = [root[0] * (1 - .17 * curl) + splay * 9, mid[1] - length * (.45 - .44 * curl)];
     return [root, mid, tip];
   });
   const thumbCurl = params.curl[0], opposition = params.thumbOpposition;
