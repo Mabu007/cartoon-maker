@@ -160,6 +160,8 @@ export const CapturedPoseKey = z.strictObject({
   presence:num(0,1).optional(),
   focus:z.strictObject({x:num(-1,1),y:num(-1,1)}).optional(),
   /** Pose-based subtle head turn, independent of body facing and head roll. */
+  bodyYaw:num(-1,1).optional(),
+  bodyFacing:PerformanceFacingSchema.optional(),
   headYaw:num(-1,1).optional(),
   headFacing:PerformanceFacingSchema.optional(),
   /** Per-arm influence that fades after short wrist tracking loss. */
