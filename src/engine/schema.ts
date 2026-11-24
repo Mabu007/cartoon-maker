@@ -151,6 +151,7 @@ export const CapturedPoseKey = z.strictObject({
     right:z.strictObject({x:num(-180,180),y:num(-180,180)}).optional()}).optional(),
   /** Signed elbow bend preference and relative near-camera arm scores. */
   armBend:z.strictObject({left:num(-1,1).optional(),right:num(-1,1).optional()}).optional(),
+  armEvidence:z.strictObject({left:z.strictObject({elbow:z.strictObject({x:num(-180,180),y:num(-180,180)}),confidence:num(0,1),extension:num(0,1)}).optional(),right:z.strictObject({elbow:z.strictObject({x:num(-180,180),y:num(-180,180)}),confidence:num(0,1),extension:num(0,1)}).optional()}).optional(),
   armExtension:z.strictObject({left:num(0,1).optional(),right:num(0,1).optional()}).optional(),
   armDepth:z.strictObject({left:num(-1,1).optional(),right:num(-1,1).optional()}).optional(),
   nearArm:z.enum(['left','right']).optional(),
@@ -178,7 +179,7 @@ const PerformanceClip = z.strictObject({ ...time, track: z.literal('performance'
   name:z.string().trim().min(1).max(72).optional(),
   /** Optional for compatibility with older takes: default to actor's authored view. */
   facing:PerformanceFacingSchema.optional(),
-  performance:z.array(CapturedPoseKey).min(2).max(240),
+  performance:z.array(CapturedPoseKey).min(2).max(2400),
   performanceOrigin:z.enum(['mocap','choreography']).optional() });
 const GazeClip = z.strictObject({ ...time, track: z.literal('gaze'), actor: id, target: id });
 const PropClip = z.strictObject({ ...time, track: z.literal('props'), actor: id, target: id, interaction: z.enum(['equip', 'release', 'open', 'close']), hand:z.enum(['left','right']).optional(), inherited:z.boolean().optional() });
