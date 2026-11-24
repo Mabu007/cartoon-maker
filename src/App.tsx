@@ -4,7 +4,7 @@ import { projectAssets } from './services/audio.ts';
 import { actionLayer, actionUsesProp, propActions, usesSeat, gaitStyleNames, gaitStyles, soundDurations, type GaitStyle } from './engine/performanceCatalog.ts';
 import { insertWaypoint, stagePath, type MoveClip, type PathMode, type TravelGait } from './engine/stagePath.ts';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, Trash2, X, Camera } from 'lucide-react';
+import { Captions, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clapperboard, Download, House, Maximize, MousePointer2, Pause, Play, Redo2, Repeat2, Save, Square, Moon, Sun, Undo2, UserRound, Volume2, VolumeX, Trash2, X, Camera, Plus, Minus } from 'lucide-react';
 import { missingRentMovie } from './engine/production.ts';
 import { animations, clamp, type Point } from './engine/animation.ts';
 import { moveLayer, nextLayerDepth, type LayerMove } from './engine/sceneLayers.ts';
@@ -1309,7 +1309,7 @@ export default function App() {
             </div>
             <IconButton title={project.scenes.length===1?'Clear current scene':'Delete current scene'} onClick={()=>dropDirectScene(scene)}><Trash2 size={15}/></IconButton>
           </div>
-        </div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats} render={formatLabel}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
+        </div><div className="stage-options"><button className={`quiet arrange-button ${arrange ? 'is-active' : ''}`} onClick={() => { pause(); setArrange(value => !value); }}><MousePointer2 size={15}/><span>Arrange</span></button><IconButton title="Zoom canvas out" disabled={playing} onClick={()=>window.dispatchEvent(new CustomEvent('sirvibe-stage-zoom',{detail:'out'}))}><Minus size={16}/></IconButton><IconButton title="Zoom canvas in" disabled={playing} onClick={()=>window.dispatchEvent(new CustomEvent('sirvibe-stage-zoom',{detail:'in'}))}><Plus size={16}/></IconButton><Select aria="Preview aspect ratio" value={format} onChange={setFormat} options={formats} render={formatLabel}/><IconButton title={focus ? 'Exit focus mode' : 'Focus stage'} onClick={() => setFocus(value => !value)}>{focus ? <X size={18}/> : <Maximize size={16}/>}</IconButton></div></header>
         {placement&&<div className="stage-placement-tools" role="group" aria-label="Stage placement">
           <strong>{placement.kind==='path' ? placement.editing
             ? placement.waypoint?'Click to place a waypoint':'Drag the path handles · Double-click to add a waypoint'
