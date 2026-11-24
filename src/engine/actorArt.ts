@@ -117,7 +117,11 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         if(goal&&!(guidance?.extensions?.[side]!==undefined&&guidance.extensions[side]!>.94)){
           // A heuristic contact may refine an observed bend, never manufacture
           // one by moving a distant hand across the body.
-          if(guidance?.extensions?.[side]!==undefined&&Math.hypot(goal.x-hand.x,goal.y-hand.y)>24*c.arms)goal=undefined;
+          if(guidance?.extensions?.[side]!==undefined){
+            const currentReach=Math.hypot(hand.x-joint.shoulder.x,hand.y-joint.shoulder.y);
+            const contactReach=Math.hypot(goal.x-joint.shoulder.x,goal.y-joint.shoulder.y);
+            if(Math.hypot(goal.x-hand.x,goal.y-hand.y)>12*c.arms||Math.abs(contactReach-currentReach)>3*c.arms)goal=undefined;
+          }
         }
         if(goal&&!(guidance?.extensions?.[side]!==undefined&&guidance.extensions[side]!>.94)){
           const weight=Math.min(1,Math.max(0,contact.influence)*.95);
