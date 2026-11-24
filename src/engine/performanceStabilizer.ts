@@ -5,6 +5,7 @@
  * No React state updates, additional models, allocations of large arrays,
  * or frame-rate-dependent easing are required.
  */
+import { blendFacialControls } from './facialIntelligence.ts';
 import { facingForBodyYaw,type BodyFacing } from './humanReconstruction.ts';
 import { createMotionIntent } from './motionIntent.ts';
 import type { JointName } from './schema.ts';
@@ -293,8 +294,15 @@ export function createPerformanceStabilizer(){
       else{bodyFrames=bodyCandidate===next?bodyFrames+1:1;bodyCandidate=next;
         if(bodyFrames>=2){bodyFacing=next;bodyCandidate=undefined;bodyFrames=0;}}
     }
+    // Preserve quick blinks and expressive mouth shapes while damping noisy
+    // brow/cheek coefficients independently of body smoothing.
+    const facial=key.facial&&lastOutput?.facial?{
+      ...blendFacialControls(lastOutput.facial,key.facial,.72),
+      blinkLeft:key.facial.blinkLeft,blinkRight:key.facial.blinkRight,
+      jawTension:key.facial.jawTension,lipRound:key.facial.lipRound
+    }:key.facial;
     const result:PerformanceKey={
-      ...key,pose:constrainCapturedHead(pose),focus,hands,
+      ...key,pose:constrainCapturedHead(pose),focus,hands,facial,
       ...(bodyYaw!==undefined?{bodyYaw}:{}),
       ...(time-bodySeen<.85?{bodyFacing}:{}),
       ...(headYaw!==undefined?{headYaw,headFacing:trackedHead}:{}),
