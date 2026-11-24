@@ -203,7 +203,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           }
         }
       }catch(error){
-        if(generation!==captureGeneration.current||!alive.current)return;
+        if(generation!==captureGeneration.current||!alive.current||!['ready','recording'].includes(statusRef.current))return;
+        if(recording.current&&at>=started.current)timedFrames.current.push({elapsed:(at-started.current)/1000});
         const recovered=motionStabilizer.current.recover(at/1000);
         presentTarget(recovered,performance.now());lastPreview.current=recovered;
         if(at-lastUi.current>1400){
@@ -320,6 +321,8 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
       // Source timestamps avoid baking live presentation lag into the final take.
       const timed=timedFrames.current.filter(event=>event.elapsed<=duration);
       const usable=timed.filter(event=>event.sample).length;
+      const tail=timed.at(-1);
+      if(tail?.sample&&duration-tail.elapsed<=.2&&duration-tail.elapsed>.001)timed.push({elapsed:duration,sample:tail.sample});
       const compiled=compileResolvedPerformance(usable>=2?refinePerformance(timed):frames.current,duration,{cleanMotion:true});
       setResult(compiled);updateStatus('review');
       drawPose(samplePerformance(compiled.keys,1));
