@@ -123,7 +123,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
   const warnings:string[]=[];
   const {module,files}=await resolveRuntime();
   const baseOptions=(modelAssetPath:string)=>({baseOptions:{modelAssetPath,delegate:'CPU'},runningMode:'VIDEO',numPoses:1});
-  const pose=options.pose===false?undefined:await module.PoseLandmarker.createFromOptions(files,baseOptions(modelPath('pose')));
+  const poseDetector=options.pose===false?undefined:await module.PoseLandmarker.createFromOptions(files,baseOptions(modelPath('pose')));
   let hands:Detector|undefined,face:Detector|undefined;
   if(options.hands!==false){
     try{hands=await module.HandLandmarker.createFromOptions(files,{
@@ -142,11 +142,11 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
   let previousFaceLandmarks:Landmark[]|undefined;
   let lastLeftHandAt=-Infinity,lastRightHandAt=-Infinity;
   let lastFaceLandmarksAt=0,lastFaceBlendshapesAt=0;
-  const close=()=>{for(const detector of [pose,hands,face])try{detector?.close();}catch{/* already closed */}};
-  return {features:{pose:!!pose,hands:!!hands,face:!!face},warnings,close,
+  const close=()=>{for(const detector of [poseDetector,hands,face])try{detector?.close();}catch{/* already closed */}};
+  return {features:{pose:!!poseDetector,hands:!!hands,face:!!face},warnings,close,
     detect(video,atMs) {
       if('readyState' in video?(video.readyState<2||!video.videoWidth):!video.width)return undefined;
-      const output=pose?.detectForVideo(video,atMs) as PoseLandmarkerResult|undefined;
+      const output=poseDetector?.detectForVideo(video,atMs) as PoseLandmarkerResult|undefined;
       const measuredPose=posePoints(output);
       // A face-only crop need not be rejected if the dedicated face tracker
       // still sees a nose/eyes; unknown shoulder/leg joints stay unobserved.
@@ -158,7 +158,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
       // Arm position comes from the light pose model every frame. Finger
       // classification and high-detail eyebrows/lips are much slower and
       // need not run on each frame. Stagger them so they never compete.
-      if(hands&&(!face||tick%2===0)){
+      if(hands&&(!poseDetector&&!face||tick%(face?3:2)===0)){
         const result=hands.detectForVideo(video,atMs) as HandLandmarkerResult;
         const association=associateObservedHands(result.landmarks??[],pose??[],{
           left:previousLeft,right:previousRight
@@ -168,7 +168,7 @@ export async function startPerformanceTracker(options:TrackerOptions={}):Promise
         if(association.left){previousLeft=association.left;lastLeftHandAt=atMs;}
         if(association.right){previousRight=association.right;lastRightHandAt=atMs;}
       }
-      if(face&&(!hands||tick%2===1)){
+      if(face&&(!poseDetector&&!hands||tick%(hands?3:2)===1)){
         const result=extractFaceObservation(face.detectForVideo(video,atMs) as FaceLandmarkerResultLike);
         if(result.blendshapes){previousFace=result.blendshapes;lastFaceBlendshapesAt=atMs;}
         if(result.landmarks){previousFaceLandmarks=result.landmarks;lastFaceLandmarksAt=atMs;}
