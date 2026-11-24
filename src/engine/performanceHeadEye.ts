@@ -86,7 +86,9 @@ export function estimateHeadYaw(
   const width=Math.hypot(eyeA.x-eyeB.x,eyeA.y-eyeB.y);
   if(width<.018)return undefined;
   const center=(eyeA.x+eyeB.x)/2;
-  return clamp(-(nose.x-center)/(width*.35),-1,1);
+  // The camera is unmirrored; positive raw X is left in the selfie view.
+  // Positive yaw selects the left-facing artwork, not the right-facing one.
+  return clamp((nose.x-center)/(width*.35),-1,1);
 }
 /** Two thresholds separate entering/leaving a turn, preventing rapid
  * front/left/right oscillation from uncertain nose detections. */
