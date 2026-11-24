@@ -22,9 +22,14 @@ export function observedArmGuidance(
 ):{targets:ArmTargets;bends:ArmBends;depths:ArmDepths}{
   const targets:ArmTargets={},bends:ArmBends={},depths:ArmDepths={};
   const shoulderSpan=visible(pose[11])&&visible(pose[12])
-    ?Math.abs(pose[11].x-pose[12].x):undefined;
-  if(!shoulderSpan||shoulderSpan<.085)return {targets,bends,depths};
-  const scale=48/shoulderSpan;
+    ?Math.hypot(pose[11].x-pose[12].x,(pose[11].y-pose[12].y)/Math.max(.75,aspect)):undefined;
+  if(!shoulderSpan||shoulderSpan<.065)return {targets,bends,depths};
+  // Compensate for the shoulder line foreshortening as the performer turns.
+  // The inferred metric orientation is evidence, not a new limb measurement.
+  const wl=world?.[11],wr=world?.[12];
+  const metricWidth=visible(wl)&&visible(wr)&&finite(wl.z)&&finite(wr.z)?Math.hypot(wl.x-wr.x,wl.z!-wr.z!):0;
+  const frontal=metricWidth>.11&&metricWidth<.9?clamp(Math.abs(wl!.x-wr!.x)/metricWidth,.6,1):1;
+  const scale=48*frontal/shoulderSpan;
   const torsoX=(pose[11].x+pose[12].x)/2;
   for(const side of ['left','right'] as const){
     const s=side==='left'?11:12,e=side==='left'?13:14,w=side==='left'?15:16;
