@@ -10,7 +10,7 @@ import { facingForBodyYaw,type BodyFacing } from './humanReconstruction.ts';
 import { createMotionIntent } from './motionIntent.ts';
 import type { JointName } from './schema.ts';
 import type { PerformanceKey } from './performanceCapture.ts';
-import { decideFrontArm, contactHysteresis, type ArmSide } from './performanceArmIntelligence.ts';
+import { createObedientArm, decideFrontArm, contactHysteresis, type ArmSide } from './performanceArmIntelligence.ts';
 import { observedHandPose, type FingerCurls } from './performanceHandIntelligence.ts';
 import { constrainCapturedHead, headFacingForYaw } from './performanceHeadEye.ts';
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
@@ -39,6 +39,8 @@ export function oneEuroStep(
 }
 export function createPerformanceStabilizer(){
   const filters=new Map<string,FilterState>();
+  const obedient={left:createObedientArm('left'),right:createObedientArm('right')};
+  const hasEvidence={left:false,right:false};
   const intents=new Map<string,ReturnType<typeof createMotionIntent>>();
   function intentional(name:string,values:number[],time:number,threshold:number){
     let gate=intents.get(name);
@@ -155,6 +157,7 @@ export function createPerformanceStabilizer(){
     const targets:PerformanceKey['armTargets']={};
     const depths:PerformanceKey['armDepth']={};
     const bends:PerformanceKey['armBend']={};
+    const extensions:PerformanceKey['armExtension']={};
     const curls:PerformanceKey['fingerCurls']={};
     const confidence:PerformanceKey['handConfidence']={};
     const armConfidence:PerformanceKey['armConfidence']={};
@@ -201,8 +204,15 @@ export function createPerformanceStabilizer(){
         depths[side]=clamp(filter(side+':depth',depth,time,2.5,.012),-1,1);
       else if(targets[side]&&lastOutput?.armDepth?.[side]!==undefined)
         depths[side]=lastOutput.armDepth[side];
+      const evidence=key.armEvidence?.[side];
+      if(evidence&&evidence.confidence>=.65)hasEvidence[side]=true;
+      if(targets[side]&&hasEvidence[side]){
+        const solved=obedient[side].update(targets[side]!,evidence);
+        targets[side]=solved.target;extensions[side]=solved.extension;bends[side]=solved.pole;
+        if(lastTarget[side])lastTarget[side]={...lastTarget[side]!,...solved.target};
+      }
       const measuredBend=key.armBend?.[side];
-      if(measuredBend!==undefined){
+      if(!hasEvidence[side]&&measuredBend!==undefined){
         if(bend[side]===undefined) bend[side]=measuredBend;
         else if(measuredBend!==bend[side]){
           counts[side]=pendingBend[side]===measuredBend?counts[side]+1:1;
@@ -210,7 +220,7 @@ export function createPerformanceStabilizer(){
           if(counts[side]>=3){bend[side]=measuredBend;counts[side]=0;pendingBend[side]=undefined;}
         }else{counts[side]=0;pendingBend[side]=undefined;}
         bends[side]=bend[side];
-      }else if(bend[side]!==undefined && lastTarget[side] &&
+      }else if(!hasEvidence[side]&&bend[side]!==undefined && lastTarget[side] &&
         time-lastTarget[side]!.time<.6){
         // Do not suddenly invert the elbow when its pole keypoint is briefly
         // hidden behind the chest. Keep the proven anatomical bend until
@@ -306,6 +316,8 @@ export function createPerformanceStabilizer(){
       ...(bodyYaw!==undefined?{bodyYaw}:{}),
       ...(time-bodySeen<.85?{bodyFacing}:{}),
       ...(headYaw!==undefined?{headYaw,headFacing:trackedHead}:{}),
+      armEvidence:undefined,
+      armExtension:extensions.left!==undefined||extensions.right!==undefined?extensions:undefined,
       armTargets:targets.left||targets.right?targets:undefined,
       armConfidence:armConfidence.left!==undefined||armConfidence.right!==undefined?armConfidence:undefined,
       armDepth:depths.left!==undefined||depths.right!==undefined?depths:undefined,
@@ -349,6 +361,7 @@ export function createPerformanceStabilizer(){
   }
   function reset(){
     filters.clear();intents.clear();
+    obedient.left.reset();obedient.right.reset();hasEvidence.left=hasEvidence.right=false;
     bodyFacing='front';bodyCandidate=undefined;bodyFrames=0;bodySeen=-Infinity;
     missedArmFrames.left=0;missedArmFrames.right=0;
     delete missingArm.left;delete missingArm.right;delete returningArm.left;delete returningArm.right;
@@ -370,5 +383,5 @@ export function createPerformanceStabilizer(){
     candidateFrames=0;lastContactSeen=-Infinity;
     lastTime=-Infinity;missingObservation=false;
   }
-  return {update,recover,reset};
+  return {update,recover,reset,armDiagnostics:()=>({left:obedient.left.debug(),right:obedient.right.debug()})};
 }
