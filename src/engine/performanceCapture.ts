@@ -111,12 +111,13 @@ export function retargetCaptureFrame(frame: CaptureFrame): PerformanceKey | unde
     : undefined;
   const torso=clamp(worldTorso===undefined?screenTorso:
     fuseWorldAngle(screenTorso,worldTorso,world!.frontness),-28,28);
-  const pose:JointPose=hipsVisible?{torso}:{};
+  const shoulderRoll=shouldersVisible?clamp(Math.atan2(p[11].y-p[12].y,Math.max(.03,Math.abs(p[11].x-p[12].x)))*180/Math.PI,-14,14):0;
+  const pose:JointPose={torso:hipsVisible?torso:shoulderRoll};
   for(const side of ['left','right'] as const) {
     const i=side==='left'?11:12, e=side==='left'?13:14, w=side==='left'?15:16;
     if(!confidence(p[i])||!confidence(p[e]))continue;
     const upper=angleOf(i,e);
-    pose[`${side}Shoulder`]=clamp(degrees(upper-(side==='left'?-13:13)-torso),-165,165);
+    pose[`${side}Shoulder`]=clamp(degrees(upper-(side==='left'?-13:13)-(pose.torso??0)),-165,165);
     if(confidence(p[w])){
       pose[`${side}Elbow`]=clamp(degrees(angleOf(e,w)-upper),-160,160);
       const hand=side==='left'?frame.leftHand:frame.rightHand;
