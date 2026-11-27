@@ -2,8 +2,8 @@
  * vector schema as character packs. No external dependencies or execution. */
 import {z} from 'zod';
 import {boundedAssetJSON,nativePackageLimits} from './nativeAssetPackage.ts';
-import {WorldSet,WorldArtwork,nativeWorldPropKinds,worldPropCompatible,worldArtLimits,type WorldSetData,type WorldArtworkData} from './worldArtworkSchema.ts';
-const identity={id:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/),revision:z.number().int().min(1).max(1_000_000),license:z.string().min(1).max(500),provenance:z.string().min(1).max(500)};
+import {WorldSet,WorldArtwork,WorldSource,nativeWorldPropKinds,worldPropCompatible,worldArtLimits,type WorldSetData,type WorldArtworkData} from './worldArtworkSchema.ts';
+const identity=WorldSource.shape;
 export const WorldPackage=z.strictObject({format:z.literal('sirvibe-assets'),version:z.literal(2),worldPacks:z.array(z.discriminatedUnion('category',[z.strictObject({...identity,category:z.literal('environment'),set:WorldSet}),z.strictObject({...identity,category:z.literal('prop'),kind:z.enum(nativeWorldPropKinds),art:WorldArtwork})])).min(1).max(nativePackageLimits.packs)});
 export type WorldPackageData=z.infer<typeof WorldPackage>;
 export function parseWorldPackage(text:string):WorldPackageData{
@@ -15,6 +15,7 @@ export function parseWorldPackage(text:string):WorldPackageData{
  }
  if(commands>nativePackageLimits.commands||nodes>nativePackageLimits.nodes||components>nativePackageLimits.components)throw Error('worldPacks: Aggregate native command/node/component budget exceeded');return q.data;
 }
+export function worldSource(p:WorldPackageData['worldPacks'][number]){const {id,revision,license,provenance}=p;return {id,revision,license,provenance};}
 const meta=(id:string)=>({id,revision:1,license:'CC0-1.0',provenance:'Original SIRVIBE world fixture'});
-export const exportWorldSet=(set:WorldSetData)=>JSON.stringify(parseWorldPackage(JSON.stringify({format:'sirvibe-assets',version:2,worldPacks:[{...meta(set.id),category:'environment',set}]})),null,2);
-export const exportWorldProp=(kind:typeof nativeWorldPropKinds[number],art:WorldArtworkData)=>JSON.stringify(parseWorldPackage(JSON.stringify({format:'sirvibe-assets',version:2,worldPacks:[{...meta(art.id),category:'prop',kind,art}]})),null,2);
+export const exportWorldSet=(set:WorldSetData)=>JSON.stringify(parseWorldPackage(JSON.stringify({format:'sirvibe-assets',version:2,worldPacks:[{...(set.source??meta(set.id)),category:'environment',set}]})),null,2);
+export const exportWorldProp=(kind:typeof nativeWorldPropKinds[number],art:WorldArtworkData)=>JSON.stringify(parseWorldPackage(JSON.stringify({format:'sirvibe-assets',version:2,worldPacks:[{...(art.source??meta(art.id)),category:'prop',kind,art}]})),null,2);

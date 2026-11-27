@@ -25,8 +25,8 @@ export const aiVectorCategories={
  dress:{label:'Dress',status:'partial',reason:'Top panel only. Use native garment controls for articulated skirt; no imported full dress draping.',manifest:'clothing',slots:['top'],example:'clothing'},
  footwear:{label:'Footwear',status:'supported',reason:'Foot-attached fixed shoe artwork, with declared views and profiles.',manifest:'clothing',slots:['shoe-left','shoe-right']},
  accessory:{label:'Accessory',status:'partial',reason:'Head accessory slot only, not necklaces, bags, handheld props or separate earring sockets.',manifest:'accessory',slots:nativeCategorySlots.accessory,example:'accessory'},
- prop:{label:'Prop',status:'unsupported',reason:'Native package cannot populate a scene prop slot. Existing raster prop imports remain available.'},
- environment:{label:'Environment',status:'unsupported',reason:'Native package cannot populate environment or background slots. Use existing raster environment workflow.'}
+ prop:{label:'Prop',status:'unsupported',reason:'Character asset specification cannot generate world props. Stage 14 supports separate native world prop packages for cup, book, phone, table, counter and plant under object depth controls.'},
+ environment:{label:'Environment',status:'unsupported',reason:'Character asset specification cannot generate world sets. Stage 14 uses a separate native world envelope under Lighting & perspective > Living world. Raster environments remain available.'}
 } as const satisfies Record<string,Category>;
 export type AiVectorCategory=keyof typeof aiVectorCategories;
 export const aiMaterialPresets=['rigid','spring','braid','fabric'] as const;
