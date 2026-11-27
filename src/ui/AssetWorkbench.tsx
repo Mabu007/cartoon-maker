@@ -11,7 +11,7 @@ import { mediaUrl } from '../services/media.ts';
 import { Modal } from './shared.tsx';
 type Category='character'|'hair'|'clothing'|'prop'|'environment';
 const initial:Preparation={crop:{x:0,y:0,width:1,height:1},polygon:[],tolerance:25};
-export function AssetWorkbench({close,apply,applyNative,profile='average',sourceImage}:{close:()=>void;apply:(pack:VisualAssetPack)=>void|Promise<void>;applyNative?:(packs:NativeAssetPack[],root:string)=>void;profile?:typeof bodyProfiles[number];sourceImage?:string}){
+export function AssetWorkbench({close,apply,applyNative,profile='average',sourceImage,character}:{close:()=>void;apply:(pack:VisualAssetPack)=>void|Promise<void>;applyNative?:(packs:NativeAssetPack[],root:string)=>void;profile?:typeof bodyProfiles[number];sourceImage?:string;character?:import('../engine/schema.ts').Character}){
   const [tab,setTab]=useState<'library'|'prepare'|'native'>(sourceImage?'prepare':'library'),[rows,setRows]=useState<AssetRow[]>([]),[query,setQuery]=useState('');
   const [category,setCategory]=useState<Category>(sourceImage?'prop':'hair'),[name,setName]=useState('New artwork'),[view,setView]=useState<typeof assetViews[number]>('three-quarter');
   const [targetProfile,setProfile]=useState(profile),[image,setImage]=useState<HTMLImageElement>(),[settings,setSettings]=useState<Preparation>(initial);
@@ -65,7 +65,7 @@ export function AssetWorkbench({close,apply,applyNative,profile='average',source
     <div className="field-row"><button type="button" className="quiet" disabled={busy} onClick={()=>input.current?.click()}>Choose artwork</button><button type="button" className="quiet" disabled={busy} onClick={()=>importInput.current?.click()}>Import asset pack</button><button type="button" className="quiet" onClick={template}>Rig template</button></div>
     {busy&&<p role="status">Preparing artwork… <button type="button" onClick={()=>{token.current++;setBusy(false);}}>Cancel</button></p>}
     {error&&<p role="alert" className="form-error">{error}</p>}{status&&<p role="status">{status}</p>}
-    {tab==='native'?<NativeAssetLibrary apply={applyNative}/>:tab==='library'?<><input aria-label="Search artwork" placeholder="Search names, categories and tags" value={query} onChange={e=>setQuery(e.target.value)}/>
+    {tab==='native'?<NativeAssetLibrary apply={applyNative} profile={profile} character={character}/>:tab==='library'?<><input aria-label="Search artwork" placeholder="Search names, categories and tags" value={query} onChange={e=>setQuery(e.target.value)}/>
       <div className="visual-asset-grid">{rows.filter(row=>(row.pack.name+' '+row.pack.category+' '+row.pack.tags.join(' ')).toLowerCase().includes(query.toLowerCase())).map(row=><article key={row.id}>
         <img src={row.pack.files[0].data} alt={row.pack.name}/><input aria-label={`Rename artwork ${row.pack.name}`} defaultValue={row.pack.name} maxLength={60} onBlur={e=>{if(e.target.value.trim()&&e.target.value!==row.pack.name)void updateVisualAsset(row.id,{name:e.target.value.trim()}).then(refresh).catch(fail);}}/>
         <p>{compatibility(row.pack)}</p><div className="field-row"><button type="button" className="primary" onClick={()=>{void Promise.resolve().then(()=>apply(row.pack)).catch(fail);}}>Use artwork</button><button type="button" aria-pressed={row.favorite} onClick={()=>void updateVisualAsset(row.id,{favorite:!row.favorite}).then(refresh).catch(fail)}>{row.favorite?'★':'☆'}</button></div>

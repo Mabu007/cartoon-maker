@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 /** Geometry is local, +x right (or along a bone), +y down. No SVG input. */
+export const vectorArtworkLimits={commandsPerPath:128,commandsPerArtwork:1024,palette:32,regions:24,weights:384} as const;
 const n = z.number().finite().min(-4096).max(4096);
 const unit = z.number().finite().min(0).max(1);
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/);
@@ -16,7 +17,7 @@ const paint = z.union([
   z.strictObject({kind:z.literal('solid'),color:z.string().regex(/^#[0-9a-fA-F]{6}$/)}),
   z.strictObject({kind:z.literal('palette'),key:id})
 ]);
-const path = z.array(command).min(2).max(128).superRefine((commands,ctx)=>{
+const path = z.array(command).min(2).max(vectorArtworkLimits.commandsPerPath).superRefine((commands,ctx)=>{
   let open=false, edges=0;
   for(const c of commands){
     if(c[0]==='M'){if(open&&edges===0)ctx.addIssue({code:'custom',message:'Empty subpath'});open=true;edges=0;}
@@ -34,7 +35,7 @@ const deformation = z.strictObject({
   maxDisplacement:z.number().finite().min(0).max(32),
   // Each pair of coordinates (including curve handles) is one rest point.
   // Pin and influence are independent; a pin of 1 is immovable.
-  weights:z.array(z.strictObject({pin:unit,influence:unit})).max(384)
+  weights:z.array(z.strictObject({pin:unit,influence:unit})).max(vectorArtworkLimits.weights)
 });
 const region = z.strictObject({
   id, layer:z.number().int().min(-128).max(128), commands:path,
@@ -52,7 +53,7 @@ export const VectorArtworkV1 = z.strictObject({
   palette:z.record(id,z.string().regex(/^#[0-9a-fA-F]{6}$/)),
   materials:z.array(material).max(16), controlGroups:z.array(id).max(16),
   collisionProxies:z.array(proxy).max(16),
-  regions:z.array(region).min(1).max(24), poses:z.array(pose).max(24),
+  regions:z.array(region).min(1).max(vectorArtworkLimits.regions), poses:z.array(pose).max(24),
   compatibility:z.strictObject({rig:z.literal('sirvibe-native-v1'),mirrorSafe:z.boolean()})
 }).superRefine((a,ctx)=>{
   const issue=(message:string)=>ctx.addIssue({code:'custom',message});
@@ -64,7 +65,7 @@ export const VectorArtworkV1 = z.strictObject({
   if(x1<=x0||y1<=y0)issue('Invalid bounds');
   const inside=(x:number,y:number)=>x>=x0&&x<=x1&&y>=y0&&y<=y1;
   if(!inside(...a.pivot)||a.anchors.some(x=>!inside(...x.point)))issue('Pivot or anchor outside bounds');
-  if(Object.keys(a.palette).length>32)issue('Palette budget exceeded');
+  if(Object.keys(a.palette).length>vectorArtworkLimits.palette)issue('Palette budget exceeded');
   const ids=new Set(a.regions.map(r=>r.id));
   const byId=new Map(a.regions.map(r=>[r.id,r]));
   let total=0;
@@ -106,7 +107,7 @@ export const VectorArtworkV1 = z.strictObject({
     if(!r||p.commands.length!==r.commands.length||p.commands.some((c,i)=>c[0]!==r.commands[i][0]))issue('Incompatible pose topology');
     checkGeometry(p.commands,r?.transform);
   }
-  if(total>1024)issue('Artwork command budget exceeded');
+  if(total>vectorArtworkLimits.commandsPerArtwork)issue('Artwork command budget exceeded');
 });
 export type VectorArtwork = z.infer<typeof VectorArtworkV1>;
 export type VectorRegion = VectorArtwork['regions'][number];

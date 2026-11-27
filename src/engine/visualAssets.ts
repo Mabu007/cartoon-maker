@@ -24,6 +24,7 @@ export const CompiledComponent = z.strictObject({
 }).superRefine((part,ctx)=>{if(isBoneSlot(part.slot)&&(part.offsetX!==0||part.offsetY!==0))ctx.addIssue({code:'custom',message:'Use calibrated joint pivots instead of limb offsets.'});if(isBoneSlot(part.slot)&&(!part.end||Math.hypot((part.end.x-part.pivot.x)*part.width,(part.end.y-part.pivot.y)*part.height)<2))ctx.addIssue({code:'custom',message:'Limb parts need distinct start and end joint pivots, at least 2 rig units apart.'});});
 export type CompiledArtwork = z.infer<typeof CompiledComponent>;
 /** Optional native representation shares existing slot/view/profile identity. */
+export const nativeDynamicsLimits={groups:4,minPoints:2,maxPoints:5,maxDisplacement:8,maxProxyIds:4} as const;
 export const NativeVectorComponent = z.strictObject({
   id:identifier, slot:z.enum(nativeComponentSlots), view:z.enum(assetViews),
   profiles:z.array(z.enum(bodyProfiles)).min(1).max(bodyProfiles.length),
@@ -33,11 +34,11 @@ export const NativeVectorComponent = z.strictObject({
   poseArtwork:z.array(z.strictObject({pose:z.enum(artworkPoseClasses),artwork:VectorArtworkV1})).max(6).optional(),
   authoredOffset:z.tuple([number(-32,32),number(-32,32)]).optional(),
   packageSource:z.strictObject({id:identifier,revision:z.number().int().min(1).max(1_000_000),license:z.string().min(1).max(500),provenance:z.string().min(1).max(500)}).optional(),
-  dynamics:z.array(z.strictObject({group:identifier,points:z.array(z.tuple([number(-180,180),number(-180,180)])).min(2).max(5),material:LveMaterial,proxyIds:z.array(identifier).max(4)})).max(4).optional()
+  dynamics:z.array(z.strictObject({group:identifier,points:z.array(z.tuple([number(-180,180),number(-180,180)])).min(nativeDynamicsLimits.minPoints).max(nativeDynamicsLimits.maxPoints),material:LveMaterial,proxyIds:z.array(identifier).max(nativeDynamicsLimits.maxProxyIds)})).max(nativeDynamicsLimits.groups).optional()
 }).superRefine((part,ctx)=>{
   const groups=new Set<string>();for(const d of part.dynamics??[]){
     const art=part.artwork,refs=art.regions.filter(r=>r.material?.controlGroup===d.group);
-    if(groups.has(d.group)||!['hair','top','head-accessory'].includes(part.slot)||!refs.length||!art.controlGroups.includes(d.group)||d.material.maxDisplacement>8||d.proxyIds.some(id=>!art.collisionProxies.some(p=>p.id===id))||new Set(d.proxyIds).size!==d.proxyIds.length||d.points.some(([x,y],i)=>x<art.bounds[0]||x>art.bounds[2]||y<art.bounds[1]||y>art.bounds[3]||i>0&&Math.hypot(x-d.points[i-1][0],y-d.points[i-1][1])<.01)||!refs.some(r=>r.material!.weights.some(w=>w.pin===1))||!refs.some(r=>r.material!.weights.some(w=>w.pin<1&&w.influence>0)))ctx.addIssue({code:'custom',path:['dynamics'],message:'Invalid native simulation group, pins, bounds, material or proxy reference'});
+    if(groups.has(d.group)||!['hair','top','head-accessory'].includes(part.slot)||!refs.length||!art.controlGroups.includes(d.group)||d.material.maxDisplacement>nativeDynamicsLimits.maxDisplacement||d.proxyIds.some(id=>!art.collisionProxies.some(p=>p.id===id))||new Set(d.proxyIds).size!==d.proxyIds.length||d.points.some(([x,y],i)=>x<art.bounds[0]||x>art.bounds[2]||y<art.bounds[1]||y>art.bounds[3]||i>0&&Math.hypot(x-d.points[i-1][0],y-d.points[i-1][1])<.01)||!refs.some(r=>r.material!.weights.some(w=>w.pin===1))||!refs.some(r=>r.material!.weights.some(w=>w.pin<1&&w.influence>0)))ctx.addIssue({code:'custom',path:['dynamics'],message:'Invalid native simulation group, pins, bounds, material or proxy reference'});
     groups.add(d.group);
   }
   const poseKeys=new Set<string>();for(const variant of part.poseArtwork??[]){

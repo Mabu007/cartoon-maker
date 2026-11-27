@@ -76,6 +76,6 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
     <button type="button" className="quiet full" disabled={!visual.components?.length} onClick={()=>{try{downloadText(character.name.replace(/[^a-z0-9_-]/gi,'-')+'-body.sirvibe-assets',exportAssetPackage([exportCharacterArtwork(character)]));}catch(error){setStatus(error instanceof Error?error.message:'Could not export artwork.');}}}>Export character body artwork</button>
     <button type="button" className="quiet full" onClick={()=>{const text=assetInstructions('hair',visual.profile,visual.style);void navigator.clipboard.writeText(text).then(()=>setStatus('AI instructions copied.')).catch(()=>setPrompt(text));}}>Copy AI Asset Instructions</button>
     {prompt&&<textarea aria-label="AI character asset instructions" value={prompt} readOnly rows={5} onFocus={e=>e.target.select()}/>}{status&&<p role="status" className="small-text">{status}</p>}
-    {workbench&&<AssetWorkbench close={()=>setWorkbench(false)} profile={visual.profile} apply={apply} applyNative={applyNative}/>}
+    {workbench&&<AssetWorkbench close={()=>setWorkbench(false)} profile={visual.profile} character={character} apply={apply} applyNative={applyNative}/>}
   </details>;
 }

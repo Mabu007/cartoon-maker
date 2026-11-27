@@ -1,10 +1,12 @@
 /** Restricted, self-contained JSON package. No ZIP, SVG, resource loading or code execution. */
 import {z} from 'zod';
-import {NativeVectorComponent,CharacterVisual,assetViews,type NativeVectorComponentData} from './visualAssets.ts';
+import {NativeVectorComponent,CharacterVisual,assetViews,nativeComponentSlots,type NativeSlot,type NativeVectorComponentData} from './visualAssets.ts';
 import {CharacterDefinition,type Character} from './schema.ts';
 import {vectorDrawList} from './vectorArtwork.ts';
 const id=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/),revision=z.number().int().min(1).max(1_000_000);
 export const nativePackageLimits={bytes:2_000_000,depth:32,tokens:180_000,packs:12,components:24,commands:8192,points:16384,nodes:96,constraints:128,iterations:4} as const;
+export const nativeGeometryLimits={rig:180,boneNormalized:4,transformScale:8,preflightArray:1024,preflightObject:1024} as const;
+export const nativeCategorySlots={hair:['hair'],clothing:['top','shoe-left','shoe-right','upper-arm-left','upper-arm-right','forearm-left','forearm-right','thigh-left','thigh-right','calf-left','calf-right'],accessory:['head-accessory'],character:nativeComponentSlots} as const satisfies Record<string,readonly NativeSlot[]>;
 export const NativeReference=z.strictObject({id,revision});
 const manifest=z.strictObject({format:z.literal('sirvibe-native-vector'),version:z.literal(1),id,revision,name:z.string().trim().min(1).max(60),category:z.enum(['hair','clothing','accessory','character']),style:z.enum(['classic','illustrated']),rig:z.literal('sirvibe-native-v1'),coordinates:z.literal('local-x-right-y-down'),license:z.string().trim().min(1).max(500),provenance:z.string().trim().min(1).max(500),dependencies:z.array(NativeReference).max(12),coverage:z.array(z.enum(assetViews)).min(1).max(5),components:z.array(NativeVectorComponent).min(1).max(24)});
 export type NativeAssetPack=z.infer<typeof manifest>;
@@ -24,7 +26,7 @@ export function boundedAssetJSON(text:string,limit:number=nativePackageLimits.by
   if(depth<0||tokens>nativePackageLimits.tokens)error('$','Invalid structure or token budget exceeded');
  }
  let value:unknown;try{value=JSON.parse(text);}catch{error('$','Invalid JSON');}
- const walk=(v:unknown,path:string)=>{if(typeof v==='number'&&!Number.isFinite(v))error(path,'Nonfinite number');if(typeof v==='string'&&(/<\s*\/?\s*[a-z!?]/i.test(v)||/^(?:https?:|data:|javascript:|file:|blob:|\/\/)/i.test(v.trim())))error(path,'Markup and external resource references are unsupported');if(Array.isArray(v)&&v.length>1024)error(path,'Array preflight limit exceeded');if(v&&typeof v==='object'){if(Object.keys(v).length>1024)error(path,'Object key budget exceeded');for(const [k,x] of Object.entries(v)){if(['__proto__','prototype','constructor'].includes(k))error(path+'.'+k,'Unsafe key');walk(x,path+'.'+k);}}};walk(value,'$');return value;
+ const walk=(v:unknown,path:string)=>{if(typeof v==='number'&&!Number.isFinite(v))error(path,'Nonfinite number');if(typeof v==='string'&&(/<\s*\/?\s*[a-z!?]/i.test(v)||/^(?:https?:|data:|javascript:|file:|blob:|\/\/)/i.test(v.trim())))error(path,'Markup and external resource references are unsupported');if(Array.isArray(v)&&v.length>nativeGeometryLimits.preflightArray)error(path,'Array preflight limit exceeded');if(v&&typeof v==='object'){if(Object.keys(v).length>nativeGeometryLimits.preflightObject)error(path,'Object key budget exceeded');for(const [k,x] of Object.entries(v)){if(['__proto__','prototype','constructor'].includes(k))error(path+'.'+k,'Unsafe key');walk(x,path+'.'+k);}}};walk(value,'$');return value;
 }
 export function parseNativePackage(text:string):NativePackage{
  const raw=boundedAssetJSON(text),parsed=NativeAssetPackage.safeParse(raw);
@@ -39,14 +41,14 @@ export function parseNativePackage(text:string):NativePackage{
    const field=at+'.components.'+j;components++;
    if(ids.has(c.id))error(field+'.id','Duplicate component ID in pack');ids.add(c.id);
    if(c.packageSource)error(field+'.packageSource','Source metadata assigned by importer');if(p.id.length+c.id.length+1>80)error(field+'.id','Embedded component ID exceeds 80 characters');
-   if(p.category==='hair'&&c.slot!=='hair'||p.category==='clothing'&&!['top','shoe-left','shoe-right','upper-arm-left','upper-arm-right','forearm-left','forearm-right','thigh-left','thigh-right','calf-left','calf-right'].includes(c.slot)||p.category==='accessory'&&c.slot!=='head-accessory')error(field+'.slot','Category/slot mismatch');
+   if(!(nativeCategorySlots[p.category] as readonly NativeSlot[]).includes(c.slot))error(field+'.slot','Category/slot mismatch');
    const slot=c.slot+'/'+c.view;if(slots.has(slot+'/'+(c.facing??'both'))||slots.has(slot+'/both')||!c.facing&&[...slots].some(s=>s.startsWith(slot+'/')))error(field+'.view','Conflicting slot/view/facing');slots.add(slot+'/'+(c.facing??'both'));
    if(!c.facing&&!c.artwork.compatibility.mirrorSafe)error(field+'.facing','Explicit facing required for asymmetric artwork');
    if(c.dynamics?.length&&c.artwork.regions.some(r=>r.transform))error(field+'.dynamics','Dynamic transformed regions are unsupported');
    for(const art of [c.artwork,...(c.poseArtwork??[]).map(v=>v.artwork)]){
     if(!vectorDrawList(art))error(field+'.artwork','Unsupported mask, clip, compound path or fill rule');
-    const bound=art.units==='rig'?180:4;if(art.bounds.some(x=>Math.abs(x)>bound))error(field+'.artwork.bounds','Coordinate budget exceeded');
-    if(art.regions.some(r=>r.transform&&r.transform.slice(0,4).some(x=>Math.abs(x)>8)))error(field+'.artwork.regions','Transform scale budget exceeded');
+    const bound=art.units==='rig'?nativeGeometryLimits.rig:nativeGeometryLimits.boneNormalized;if(art.bounds.some(x=>Math.abs(x)>bound))error(field+'.artwork.bounds','Coordinate budget exceeded');
+    if(art.regions.some(r=>r.transform&&r.transform.slice(0,4).some(x=>Math.abs(x)>nativeGeometryLimits.transformScale)))error(field+'.artwork.regions','Transform scale budget exceeded');
     for(const path of [...art.regions,...art.poses]){commands+=path.commands.length;points+=path.commands.reduce((n,c)=>n+(c.length-1)/2,0);}
    }
    for(const d of c.dynamics??[]){nodes+=d.points.length;constraints+=d.points.length-1;}
