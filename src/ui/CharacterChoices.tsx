@@ -180,7 +180,7 @@ export function CharacterChoices({ section:category, character, change, changeCl
       {error&&<p role="alert">{error}</p>}
     </div>}
     {(category==='Garments'||category==='Footwear')&&<GarmentControls footwearOnly={category==='Footwear'} character={character} change={value=>change('garmentDesign',value)}/>}
-    
+
     {category==='Hair'&&<LayeredHairControls character={character} change={value=>change('hairDesign',value)}/>}
     <details className="factory-details">
       <summary>{section==='Outfit'?'Fit and artwork controls':section==='Hair'?'Hair and hat controls':section==='Face'?'Facial controls':'Accessory controls'}</summary>

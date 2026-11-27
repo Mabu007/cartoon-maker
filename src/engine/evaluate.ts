@@ -335,7 +335,6 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       const acting: ActingContext = {
         time: t, actorId: actor.id, action, locomotion, expression, speaking, pointToward,
         listening: !speaking && (action === 'listen' || sounds.some(clip => clip.track === 'dialogue' && clip.actor !== actor.id)),
-        listeningEnvelope:action==='listen'?1:Math.max(0,...sounds.filter(clip=>clip.track==='dialogue'&&clip.actor!==actor.id&&!clip.muted).map(clip=>Math.min(1,Math.max(0,(t-clip.start)/.35),Math.max(0,(clip.start+clip.length-t)/.35)))),
         manualGesture: Boolean(gesture), occupiedHands: occupiedHands(character, Boolean(held), action),
         phrase: spoken ? {
           start: spoken.start, duration: spoken.length, text: spoken.text, offset: spoken.offset,
@@ -343,6 +342,12 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         } : undefined
       };
       if(coherentEnabled(character)){
+        acting.listeningEnvelope = action === 'listen' ? 1 : sounds.reduce((envelope, clip) => {
+          if (clip.track !== 'dialogue' || clip.actor === actor.id || clip.muted) return envelope;
+          const attack = (t - clip.start) / .35;
+          const release = (clip.start + clip.length - t) / .35;
+          return Math.max(envelope, Math.min(1, attack, release));
+        }, 0);
         const claimedBody=Boolean(body&&!body.performance?.length),claimedArms=Boolean(gesture||propPose||heldItems.left||heldItems.right),claimedHead=Boolean(gesture||gaze||actor.gazeTarget||face?.intent&&face.intent!=='none');
         const sample=sampleCoherentActing(character,acting,pose,{body:claimedBody||Boolean(travelling)||Boolean(propPose||held),arms:claimedArms,head:claimedHead,face:Boolean(face),gaze:Boolean(gaze||actor.gazeTarget||held),eyes:action==='blink'||Boolean(face),capture:Boolean(captured)});
         behavior=sample.frame;pose=sample.pose;handGesture=sample.gesture;

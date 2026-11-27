@@ -40,6 +40,20 @@ test('scene adapter is deterministic across seek/replay, renderer instances, and
  assert.equal(a.sample(edited,characters,1).size,0);
  a.dispose();b.dispose();
 });
+test('world-only physics remembers an empty character configuration and rebuilds after opt-in',()=>{
+ const {characters,scene}=fixture(),dyn=new CharacterDynamics();
+ const off=characters.map(c=>({...c,secondaryMotion:{...characterSecondaryDefaults,enabled:false}}));
+ let serializations=0;
+ const track={...scene,toJSON(){serializations++;return scene;}};
+ assert.equal(dyn.sample(track,off,0).size,0);
+ assert.equal(dyn.sample(track,[...off],.5).size,0);
+ assert.equal(serializations,1);
+ assert(dyn.sample(track,characters,1).size>0);
+ assert.equal(serializations,2);
+ assert.equal(dyn.sample(track,off,1.5).size,0);
+ assert.equal(dyn.instrumentation(),undefined);
+ dyn.dispose();
+});
 test('per actor budget, overrides, hair pin invariants and garment endpoints remain bounded',()=>{
  const {characters,scene}=fixture(),s=scene.visual.secondaryMotion!,{defs,bindings}=buildDynamics(scene,characters,s);
  for(const actor of scene.actors){const ids=new Set(bindings.filter(b=>b.actorId===actor.id).map(b=>b.id));assert(defs.filter(d=>ids.has(d.id)).reduce((n,d)=>n+d.nodes.length,0)<=24);}

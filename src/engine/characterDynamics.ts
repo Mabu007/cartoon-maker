@@ -79,18 +79,17 @@ export class CharacterDynamics{
  private configure(scene:Scene,characters:readonly Character[],width:number){
   const settings=scene.visual?.secondaryMotion;
   if(!settings?.enabled||settings.strength===0){this.dispose();return false;}
-  if(this.scene===scene&&this.width===width&&this.chars?.length===characters.length&&this.chars.every((c,i)=>c===characters[i])&&this.sim)return true;
+  if(this.scene===scene&&this.width===width&&this.chars?.length===characters.length&&this.chars.every((c,i)=>c===characters[i]))return Boolean(this.sim);
   // Document objects are immutable under the project store. Compare only when
   // references change; full canonical input revision invalidates seek history.
   const signature=JSON.stringify([scene,characters,width]);
-  if(this.signature!==signature||!this.sim){
+  if(this.signature!==signature){
    this.dispose();const {defs,bindings}=buildDynamics(scene,characters,settings);
    this.settings=settings;this.bindings=bindings;this.hz=settings.quality==='eco'?30:60;
-   if(!defs.length)return false;
-   this.sim=new LveSimulation(defs,{...lveDefaultConfig,seed:settings.seed,hz:this.hz,iterations:settings.quality==='eco'?2:4,maxSceneNodes:settings.quality==='eco'?96:192,maxNodesPerActor:48,checkpointInterval:this.hz,maxCheckpoints:16},scene.id);
+   if(defs.length)this.sim=new LveSimulation(defs,{...lveDefaultConfig,seed:settings.seed,hz:this.hz,iterations:settings.quality==='eco'?2:4,maxSceneNodes:settings.quality==='eco'?96:192,maxNodesPerActor:48,checkpointInterval:this.hz,maxCheckpoints:16},scene.id);
    this.signature=signature;this.byId=new Map(characters.map(c=>[c.id,c]));this.cachedTick=-1;
   }
-  this.scene=scene;this.chars=characters;this.width=width;return true;
+  this.scene=scene;this.chars=characters;this.width=width;return Boolean(this.sim);
  }
  sample(scene:Scene,characters:readonly Character[],time:number,width=960):Map<string,SecondaryOffsets>{
   if(!this.configure(scene,characters,width)||!this.sim||!this.settings)return new Map();
