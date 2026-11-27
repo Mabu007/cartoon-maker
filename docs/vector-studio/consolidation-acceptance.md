@@ -1,32 +1,29 @@
-# Cumulative release acceptance matrix (through Stage 7)
-Do not erase earlier evidence or merge just because subsequent stages are implemented. Treat each row as open until the exact consolidated source has evidence.
-| Area | Implemented candidate | Open acceptance evidence |
+# Consolidated release acceptance through Stage 14
+
+[Draft PR #59](https://github.com/Mabu007/cartoon-maker/pull/59) contains the cumulative release candidate. The [stage ledger](stage-ledger.md) records the source and environment for historical and consolidation evidence.
+
+| Stage | Acceptance status | Evidence and open work |
 | --- | --- | --- |
-| 0 anatomy | Four authored native Bézier regions; earlier software Chromium baseline | Re-run against consolidated release; sitting overlap and real target device |
-| 1 vector | Strict contract, native slots, CPU path cache, orientation and pose variants | Mask/clip/compound renderer parity, persistent GPU tessellation cache, performance |
-| 2 flagship | Explicit Sbu/Zee parametric upgrades | Professionally authored five-view model sheets with expression and action close-ups |
-| 3 morphology | DNA, profile/limb controls, finger ratios, opt-in native bone fit | Full-body surface morphology, authored asymmetry, compatible imported deformation, grip/ground proof |
-| 4 face | Identity-specific skull/eyes/mouth and optional detail | Every viseme and head pose visual proof, nose/ear/hair parity, lip cavity and self-intersection review |
-| 5 hair | Curated candidate library, sparse metadata, rear hair layer and lift correction | Twists, Bantu knots, waves, polished style variants, all views, collision/garment layering; Stage 9 dynamics |
-| 6 garments | Independent templates, materials, fit, procedural folds, wrap primitives, knee-supported skirt, bounded logo | Professional garment art, authentic cultural designs, seated dress/coat drape, arbitrary contour masks, exact pattern parity, clipping and coverage matrix |
-| 7 motion | Shared solved endpoints, optional snapshot, bounded topology-preserving contours, authored replacement contract | Full joint/torso/neck surface deformation, pose sheets, actual art transition hysteresis, depth/occlusion review, true foreshortening, hand contact visuals and SVG parity |
-| 8 LVE | Isolated fixed-step springs, chains, fabric, collision, checkpoint/seek, budget fallback | Real asset integration, force/anchor clock, collision feasibility, interpolation checkpoint proof, browser and target-device budgets |
-| 9 LVE integration | Opt-in hair groups, earrings/necklace/bag, weighted garment hems/limbs and cheek, scene clock and controls | Actual visual proof, per-view collisions, full soft body/cloth coupling, long seek cost, real preview/export parity, N4020 |
-| Special VVLE | Opt-in analytic normals, cached surface gradients, five light types, presets and draggable/keyframed existing controls | Real visual approval, face/hand/accessory/imported art and SVG shading parity, multi-light normal maps, true cast/self shadows, multiplane environment, selective DOF and final-frame grading, temporal quantization review, browser/offline export and hardware timing |
-| Cross-stage | Existing automated suite and static offline manifests; browser harness authored | Exact commit CI, screenshots both renderers five views/mirrors/gestures, live camera, real offline saved project reopen/audio export, software and N4020 p50/p95/heap/RSS/GPU, production verification after authorized merge |
- 
-Known environment blockers: Actions billing/runner failure on earlier consolidated PR; stacked PRs do not trigger main-target workflow; local dependency DNS restrictions. Vercel READY without explicit QA_RESULTS is not proof of Chromium execution. Run and preserve raw QA artifacts and record source SHA, environment, comparison, real failures and visual approvals. Never bypass checks or use build success as motion/visual acceptance.
+| 0 anatomy | Implemented, partially verified | Four Bézier limb regions render in Pixi with connected wrist snapshots. Verify all seated silhouettes and real-device timing. |
+| 1 canonical vector | Implemented, partially verified | Strict contracts, cached paths and imported artwork regression coverage. Arbitrary mask, clip and compound parity and persistent GPU tessellation are incomplete. |
+| 2 flagship art | Visually incomplete | Rendered Sbu and Zee have distinct silhouettes and five selectable views. Back and back-quarter silhouettes remain similar. Professional authored turnarounds, expression close-ups and model-sheet approval are open. |
+| 3 morphology | Implemented, partially verified | DNA, profiles, limb scales, finger ratios and fitting persist. Whole-body blend surfaces, asymmetry and the artistic grip/ground review remain open. |
+| 4 facial identity | Implemented, partially verified | Identity-specific geometry, lips and speech cues, with tests for bounded expressions and captured gaze. All-viseme close-up review across head poses and stylized facial parity remain open. |
+| 5 hair | Implemented, partially verified | Curated cap and lock geometry renders, including a rear layer. More hairstyles and full per-view collision and hat/wardrobe polish remain open. |
+| 6 garments | Implemented, partially verified | Templates, fit, folds, patterns and material choices remain in the same rig. Seated dress/coat drape, arbitrary masks, exact fallback parity and authored garment review remain open. |
+| 7 primary contours | Implemented, partially verified | Resolved geometry uses bounded endpoint-preserving changes. Full torso and joint surface deformation, true foreshortening, and smoother transitions between pose shapes remain open. |
+| 8 simulation | Implemented, verified in fixtures | Fixed-step replay, bounded budgets and checkpoint tests pass. Representative two- and three-actor browser and hardware budgets remain separate acceptance items. |
+| VVLE | Implemented, partially verified | Lighting presets and moving lights render on selected character surfaces. World art uses coarse tint. Cast shadows, broader material parity and expensive moving-light cases remain open. |
+| 9 character dynamics | Implemented, partially verified | Opt-in bounded artwork offsets and repeatable seek. Full per-view material collisions, cloth/body coupling and live capture review remain open. |
+| 10 acting | Implemented, partially verified | Deterministic actor-local profiles and authority regression coverage. Prior Chromium auditions recorded four profiles. Natural-motion and camera-led performance review remain open. |
+| 11 Character Factory | Implemented, partially verified | Character editing, audition, history, and bounded preview. The SVG fallback has approximate shading and motion. Real webcam remains open. |
+| 12 native packages | Implemented, verified in fixtures | Validation, exact dependencies, atomic reuse and embedded backup geometry. All-view authored examples and material parity remain open. |
+| 13 AI asset specification | Implemented, verified in fixtures | Current-schema prompts and authored fixture imports. External AI output has yet to be validated. |
+| 14 living environments | Implemented, partially verified | Four rendered sets, native props, repeatable motion, offline reopen and portable world backup. World package dependencies and reusable world-library installation are incomplete. Contact surfaces still use existing anchors. |
 
-Stage 8 and VVLE hosted source evidence is recorded in the ledger (478 and 481 passing tests respectively, static bundles verified); visual/physical certification is open. Exact interpolation across restored checkpoints, collision/constraint residuals under incompatible constraints, measured settling and sustained energy, and low-end performance require additional proof. Dedicated QA-only preview branch f9ec301f executes actual browser comparisons and LVE benchmark; do not merge its build override into production. QA script is also available as a separate command in VVLE branch.
+## Release gates
 
-| 10 acting | Opt-in deterministic profile schedules, existing semantic gestures, authority gates and same-line audition | Actual motion recordings, artistic review of gaze and state transitions, authored/capture confidence and device/export/offline verification |
-
-Stage 9 Chromium evidence now confirms pixel changes, disabled/seek equality for 2/3 actors, no page errors. Software-render p95 48.5→61 ms (2) and 86.4→75.7 ms (3); noisy and insufficient to certify target device. Do not confuse this with natural-motion approval.
-
-| 11 character workspace | Responsive categories, history, group randomization, immutable runtime preview, cached glyphs, temporary physics/capture audition | Real browser create/edit/save/reopen/placement, screenshots and responsiveness, fallback parity, full dirty-geometry granularity, optional webcam review, N4020 and offline export |
-
-| 12 native vector packages | Strict v2 JSON, dependency closure, transactional installation, quarantine/recolor/calibration, embedded geometry and imported LVE groups | Hosted tests, actual browser import and offline reopening, all-view authored examples, cache/renderer performance and hardware, full visual acceptance |
-
-| 13 optional AI asset specification | Runtime-derived prompt/schema, real anchor samples, category capability, authored fixture output and paste quarantine | External AI generation explicitly unverified; real browser workflow, full service worker/offline export, N4020 |
-
-| 14 living world | Four canonical vector sets, six prop artworks, shared forces, sparse LVE, opt-in world layer and safe package import | Visual coherence and recording, actual target-device/offline full app and export, richer contact surfaces and lighting parity |
+- GitHub Actions is blocked by an account billing lock. The [workflow on PR #59](https://github.com/Mabu007/cartoon-maker/actions/runs/46061945751) reported the lock before any job step or runner assignment. Earlier main-target PRs #43 and #48 failed the same way. PRs targeting intermediate stack branches were outside the workflow's `pull_request.branches: [main]` filter.
+- The built candidate passed the Chromium offline creator and export smoke, including local character creation, native asset installation, dialogue DSP, timeline playback, binary backup restoration and a video containing the imported dialogue. A same-origin update from the current main build preserved the saved project after offline reload. OS-level PWA installation remains open.
+- Record a real webcam take on the target device and review recorded-dropout and thumb/finger behavior. Run the target-load frame time, memory and long-session tests on the N4020 laptop. Hosted SwiftShader measurements characterize the test environment.
+- Keep professional character art acceptance open until all required views, motion and close-ups have visual approval.
