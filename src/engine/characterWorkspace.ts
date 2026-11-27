@@ -1,4 +1,4 @@
-import {CharacterDefinition,identityLockGroups,type Character,type Action,type Expression,type Scene,type View,type Clip} from './schema.ts';
+import {CharacterDefinition,SceneDefinition,identityLockGroups,type Character,type Action,type Expression,type Scene,type View,type Clip} from './schema.ts';
 import {characterIdentity,randomizeCharacterIdentity,type IdentityLock} from './characterIdentity.ts';
 import {animations} from './animation.ts';
 import {fitCharacterPreview} from './previewLayout.ts';
@@ -36,5 +36,5 @@ export function characterAudition(c:Character,action:Action,expression:Expressio
  if(action==='stand')scene.clips.push({id:'rise',track:'body',layer:'body',actor:'preview',action:'stand',start:1.8,length:animations.stand.duration});
  if(physics!=='off')scene.visual={version:1,quality:'eco',secondaryMotion:{...sceneSecondaryDefaults,enabled:true,quality:'eco',strength:physics==='subtle'?.45:1,windX:Math.max(-80,Math.min(80,wind))}};
  if(take.length){span=Math.max(1,...take.map(c=>c.start+c.length));scene.duration=span;scene.clips=[...take];}
- return {scene,span};
+ return {scene:SceneDefinition.parse(scene),span};
 }

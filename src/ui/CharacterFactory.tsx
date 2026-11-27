@@ -6,7 +6,7 @@ import {draftHistory,startDraft,characterAudition,randomizeWorkspace,type Previe
 import {characterIdentity} from '../engine/characterIdentity.ts';
 import {CharacterSecondaryControls} from './SecondaryMotionControls.tsx';
 import {flagshipCharacters,applyProfile} from '../engine/visualPresets.ts';
-import {CharacterDefinition,HostedVoiceId} from '../engine/schema.ts';
+import {CharacterDefinition} from '../engine/schema.ts';
 import {CharacterIdentityPanel} from './CharacterIdentityPanel.tsx';
 import {duplicateCharacterIdentity} from '../engine/characterIdentity.ts';
 import { CharacterVisualStudio } from './CharacterVisualStudio.tsx';
@@ -77,7 +77,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         if(lastAction!==action||lastFrame&&lastFrame.audition.span!==audition.span){elapsed=0;lastAction=action;previous=-1;}
         const dt=Math.min(.1,Math.max(0,(now-lastNow)/1000));lastNow=now;
         if(playing&&!document.hidden)elapsed=(elapsed+dt)%audition.span;
-        const time=elapsed,changed=!lastFrame||lastFrame.audition!==audition||lastFrame.look!==look||lastFrame.mouthTest!==mouthTest||lastFrame.playing!==playing;
+        const time=Math.min(elapsed,Math.max(0,audition.span-.001)),changed=!lastFrame||lastFrame.audition!==audition||lastFrame.look!==look||lastFrame.mouthTest!==mouthTest||lastFrame.playing!==playing;
         if(!document.hidden&&(changed||playing&&Math.floor(time*20)!==previous)){
           previous=Math.floor(time*20);lastFrame=current;
           const gaze = look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } :
@@ -220,6 +220,6 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       </div>
     </div></div>
     {status&&<p role="status" className="small-text">{status}</p>}<footer className="modal-footer">{source && <><IconButton title="Delete character" onClick={() => remove(source.id)}><Trash2 size={17}/></IconButton><button className="quiet" disabled={!draft.name.trim()} onClick={() => {try{save(duplicateCharacterIdentity(draft,uid()));}catch(e){setStatus(e instanceof Error?e.message:'Invalid character');}}}><Copy size={16}/> Duplicate</button></>}<span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!draft.name.trim()} onClick={() => {const parsed=CharacterDefinition.safeParse({...draft,name:draft.name.trim()});if(parsed.success)save(parsed.data);else setStatus(parsed.error.issues[0]?.message??'Invalid character');}}><Save size={16}/> Save character</button></footer>
-    {captureOpen&&<PerformanceStudio scene={{...audition.scene,duration:180,clips:[]}} characters={[draft]} selectedActor="preview" start={0} previewOnly close={()=>setCaptureOpen(false)} commit={async clips=>{setTake(clips.filter(c=>c.track==='performance'||c.track==='body'));setPlaying(true);}} saveActingDNA={()=>{}}/>}
+    {captureOpen&&<PerformanceStudio scene={{...audition.scene,duration:180,clips:[]}} characters={[draft]} selectedActor="preview" start={0} previewOnly close={()=>setCaptureOpen(false)} commit={async clips=>{setTake(clips.filter(c=>c.track==='performance'||c.track==='body'));setAction('idle');setPlaying(true);}} saveActingDNA={()=>{}}/>}
   </Modal>;
 }

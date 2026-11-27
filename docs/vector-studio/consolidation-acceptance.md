@@ -22,3 +22,5 @@ Stage 8 and VVLE hosted source evidence is recorded in the ledger (478 and 481 p
 | 10 acting | Opt-in deterministic profile schedules, existing semantic gestures, authority gates and same-line audition | Actual motion recordings, artistic review of gaze and state transitions, authored/capture confidence and device/export/offline verification |
 
 Stage 9 Chromium evidence now confirms pixel changes, disabled/seek equality for 2/3 actors, no page errors. Software-render p95 48.5→61 ms (2) and 86.4→75.7 ms (3); noisy and insufficient to certify target device. Do not confuse this with natural-motion approval.
+
+| 11 character workspace | Responsive categories, history, group randomization, immutable runtime preview, cached glyphs, temporary physics/capture audition | Real browser create/edit/save/reopen/placement, screenshots and responsiveness, fallback parity, full dirty-geometry granularity, optional webcam review, N4020 and offline export |
