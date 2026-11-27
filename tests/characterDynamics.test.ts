@@ -53,3 +53,15 @@ test('per actor budget, overrides, hair pin invariants and garment endpoints rem
  assert.equal(deformBoneSurface('M0 0 L.5 .5 L1 0 Z',.8,10),'M 0 0 L 0.5 0.58 L 1 0 Z');
  assert.equal(deformCheekOutline('M0 -45 L0 45 Z',45,[1,1]),'M 0 -45 L 0 45 Z');
 });
+
+import {secondaryMotionAudition} from '../src/engine/secondaryMotionAudition.ts';
+test('two and three actor audition: fixed clock, bounds, disabled component and CPU timing',t=>{
+ for(const cast of [2,3] as const){const p=secondaryMotionAudition(cast),scene=p.scenes[0],dyn=new CharacterDynamics(),times:number[]=[];
+  for(let i=0;i<90;i++){const start=performance.now();const state=dyn.sample(scene,p.characters,i/30);times.push(performance.now()-start);
+   for(const o of state.values()){assert(Math.hypot(...o.body)<=1.6);assert(Math.hypot(...o.cloth)<=4);assert(Math.hypot(...o.face)<=.55);assert(Object.values(o.hair).every(q=>Math.hypot(...q)<=8));}}
+  const first=dyn.sample(scene,p.characters,2.5);dyn.sample(scene,p.characters,4);assert.deepEqual(dyn.sample(scene,p.characters,2.5),first);
+  const metrics=dyn.instrumentation()!;assert(metrics.nodes<=96);times.sort((a,b)=>a-b);t.diagnostic('LVE_SCENE_CPU '+JSON.stringify({cast,frames:times.length,p50Ms:times[45],p95Ms:times[85],metrics}));
+  for(const time of [4.65,8.3,18.9,19.9,21.3,26.8]){const frame=dyn.sample(scene,p.characters,time);assert([...frame.values()].every(o=>Object.values(o.hair).every(q=>q.every(Number.isFinite))));}
+  const disabled=p.characters.map(c=>({...c,secondaryMotion:{...characterSecondaryDefaults,enabled:false}}));assert.equal(dyn.sample(scene,disabled,1).size,0);dyn.dispose();
+ }
+});

@@ -8,3 +8,7 @@ World force transforms use sampled actor pose, head rig, local root and mirror; 
 
 ## Prior VVLE QA observation
 QA-only deployment 2rqWVFuHSUvWfiNEGukHvEMENC5R reached Chromium capture, including portrait; screenshot of built-in living room showed active darker character surface shading, but a relatively flat bright environment and abrupt shadow/highlight regions. Screenshot loop timed out at qa-vvle-preview.mjs:49 (locator screenshot stability, 30s); deployment ERROR. Do not count that as complete artistic or performance pass.
+
+## Audition and benchmark
+
+`secondaryMotionAudition(2|3)` provides a validated built-in project with walk, stop, seated cup, jump, run, camera changes and three wind gusts; no existing project overwritten. Regression diagnostics measure scene-evaluator + solver CPU time, not GPU or N4020. `npm run qa:lve:character` runs focused Chromium actual-render tests, disabled/off and seek pixel equivalence, two/three actors and p50/p95 render-call timings. It reads canvas pixels directly instead of waiting for locator screenshot stability. Browser export/offline and device timings are independent gates.
