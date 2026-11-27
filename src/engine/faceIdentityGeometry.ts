@@ -26,11 +26,14 @@ export function headOutline(c: Character,a:IllustratedView) {
   }
   const sharp=['square','oblong','diamond','pentagon','inverted-triangle','trapezoid'].includes(c.shape);
   const skew=asym+(a.face*.25);
-  const radius=c.wardrobe?.jawAngle===undefined?(sharp?.22:.72):.72-.50*c.wardrobe.jawAngle;
+  const radius=sharp?.22:.72;
+  const angle=c.wardrobe?.jawAngle;
+  const jawCorner=angle===undefined?.62:.52+angle*.19;
+  const jawCurve=angle===undefined?1:1+(angle-.5)*.13;
   return `M ${-crown*radius+skew} ${top} Q ${skew} ${top-3} ${crown*radius+skew} ${top}
     C ${crown+skew} ${top} ${w+skew} ${-h*.52} ${w} ${-h*.09}
-    Q ${jaw+2} ${end*.44} ${jaw} ${end*.62} Q ${jaw-1} ${end*.91} ${chin+skew} ${end}
-    Q ${skew} ${end+(sharp?1:4)} ${-chin+skew} ${end} Q ${-jaw} ${end*.91} ${-jaw} ${end*.62}
+    Q ${jaw+2} ${end*.44} ${jaw*jawCurve} ${end*jawCorner} Q ${jaw-1} ${end*.91} ${chin+skew} ${end}
+    Q ${skew} ${end+(sharp?1:4)} ${-chin+skew} ${end} Q ${-jaw} ${end*.91} ${-jaw*jawCurve} ${end*jawCorner}
     Q ${-w-1} ${end*.36} ${-w} ${-h*.09} C ${-w+asym} ${-h*.52} ${-crown+skew} ${top} ${-crown*radius+skew} ${top}Z`;
 }
 

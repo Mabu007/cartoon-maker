@@ -11,11 +11,11 @@ Object.defineProperty(globalThis,'localStorage',{value:{get length(){return stor
 test('character DNA and contour controls survive device storage and portable movie backup',async()=>{
   const project=makeRevenentDemo();
   const base=applyProfile(studioCharacters[0],'heavyset');
-  const character=randomizeCharacterIdentity(setIdentityLock({...base,id:project.characters[0].id,visual:{...base.visual!,wristWidth:1.1,softness:.8,muscleDefinition:.25}},'body',true),91);
+  const character=randomizeCharacterIdentity(setIdentityLock({...base,id:project.characters[0].id,wardrobe:{...base.wardrobe,eyeTilt:7,cupidBow:.8,upperLipRatio:1.25},visual:{...base.visual!,wristWidth:1.1,softness:.8,muscleDefinition:.25}},'body',true),91);
   project.characters[0]=character;
   await saveDeviceProject('guest',project);
   const stored=(await getDeviceProject('guest',project.id)).project.characters[0];
   assert.deepEqual(stored.identity,character.identity);assert.equal(stored.visual?.softness,.8);assert.equal(stored.visual?.profile,'heavyset');
   const restored=await restoreMovie(new File([await createMovieBackup(project)],'dna.sirvibe'));
-  assert.deepEqual(restored.characters[0].identity,character.identity);assert.equal(restored.characters[0].visual?.wristWidth,1.1);
+  assert.deepEqual(restored.characters[0].identity,character.identity);assert.equal(restored.characters[0].visual?.wristWidth,1.1);assert.equal(restored.characters[0].wardrobe?.eyeTilt,7);assert.equal(restored.characters[0].wardrobe?.cupidBow,.8);assert.equal(stored.wardrobe?.upperLipRatio,1.25);
 });

@@ -58,6 +58,8 @@ export const garmentDefaults = {
   patternScale:1, patternRotation:0, patternOpacity:.65, logoScale:1, waist:1, hem:0,
   lensOpacity:.19, rim:1.7, glint:true, pupilSize:1, ring:.36, veins:0, eyelid:0, undereye:0,
   crownWidth:1, cheekWidth:1, jawWidth:1, chinWidth:1, headStretch:1,
+  forehead:1,jawAngle:.5,eyeWidth:1,eyeTilt:0,eyeHeight:0,irisSize:1,lidCurvature:1,lashes:0,browLength:1,browAsymmetry:0,
+  freckles:0,wrinkles:0,makeup:0,cheekBlush:0,upperLipRatio:1,lowerLipRatio:1,cupidBow:0,mouthHeight:0,
   browInner:0, browOuter:0, browBend:0, browThickness:1, browSpacing:0, browOffset:0, unibrow:false,
   earScale:1, earTilt:0, earTip:0, earlobe:1, noseLength:1, noseWidth:1, noseTilt:0, noseFlare:0, noseBlush:0,
   mouthCurve:0, restJaw:0, lipThickness:1, teethIntensity:1, facialOffset:0, beardLength:1, beardWidth:1, beardFullness:1,

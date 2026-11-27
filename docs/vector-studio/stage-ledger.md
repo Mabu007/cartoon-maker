@@ -65,3 +65,5 @@ Vercel status for f3f12b5 was success (n47cEdsyb4xq5qywjFLczS7SgxVg); build log 
 ## Stage 4. Face identity and morphology follow-up — development candidate
 
 Branch feat/face-identity-v1 stacked on Stage 3 f3f12b5. Optional face identity controls, shared skull/eye/feature descriptors, identity lip paths, cosmetic details, independent finger length for noncontact poses, torso softness/muscle and shared illustrated torso contour, explicit facing native bone variants. Added regression tests and [face identity contract](face-identity-v1.md). Existing rig, timing and capture precedence unchanged by design, not yet verified by hosted candidate checks. Full native parity, custom fixed/raster morphology, Stage 2 authored art, browser recorded-line/visual evidence, offline export and device benchmarks remain open. No merge or production deployment.
+
+Added neutral defaults for new sliders (legacy identity remains optional), jaw contour corner shaping, and facial control round-trip assertions on the existing device and portable movie code paths. No hosted pass claimed for this revision.
