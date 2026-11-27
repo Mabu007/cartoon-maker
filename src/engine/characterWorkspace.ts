@@ -1,4 +1,4 @@
-import {CharacterDefinition,identityLockGroups,type Character,type Action,type Expression,type Scene,type View} from './schema.ts';
+import {CharacterDefinition,identityLockGroups,type Character,type Action,type Expression,type Scene,type View,type Clip} from './schema.ts';
 import {characterIdentity,randomizeCharacterIdentity,type IdentityLock} from './characterIdentity.ts';
 import {animations} from './animation.ts';
 import {fitCharacterPreview} from './previewLayout.ts';
@@ -25,8 +25,8 @@ export function randomizeWorkspace(c:Character,seed:number,group:IdentityLock|'a
  return CharacterDefinition.parse({...next,identity:{...identity,seed}});
 }
 export type PreviewPhysics='off'|'subtle'|'expressive';
-export function characterAudition(c:Character,action:Action,expression:Expression,view:View,flip:boolean,physics:PreviewPhysics,wind:number):{scene:Scene;span:number}{
- const layout=fitCharacterPreview(c,1.4,action),performance=animations[action],span=action==='stand'?4:performance.loop||action==='sit'?8:Math.min(8,performance.duration+.75);
+export function characterAudition(c:Character,action:Action,expression:Expression,view:View,flip:boolean,physics:PreviewPhysics,wind:number,take:readonly Clip[]=[]):{scene:Scene;span:number}{
+ const layout=fitCharacterPreview(c,1.4,action),performance=animations[action];let span=action==='stand'?4:performance.loop||action==='sit'?8:Math.min(8,performance.duration+.75);
  const scene:Scene={id:'character-preview',name:'Character audition',environment:'Podcast studio',duration:8,actors:[{id:'preview',characterId:c.id,x:layout.x,y:layout.y,scale:layout.scale,rotation:0,depth:0,view,flip,expression}],objects:[],clips:[]};
  // Idle and dialogue deliberately leave body channels unclaimed. Other
  // actions retain the real timeline authority.
@@ -35,5 +35,6 @@ export function characterAudition(c:Character,action:Action,expression:Expressio
  if(action==='talk')scene.clips.push({id:'example-speech',track:'dialogue',actor:'preview',text:conversationAudition.text,asset:'builtin:sbu-food',start:conversationAudition.start,length:conversationAudition.duration,muted:false,volume:1,offset:0});
  if(action==='stand')scene.clips.push({id:'rise',track:'body',layer:'body',actor:'preview',action:'stand',start:1.8,length:animations.stand.duration});
  if(physics!=='off')scene.visual={version:1,quality:'eco',secondaryMotion:{...sceneSecondaryDefaults,enabled:true,quality:'eco',strength:physics==='subtle'?.45:1,windX:Math.max(-80,Math.min(80,wind))}};
+ if(take.length){span=Math.max(1,...take.map(c=>c.start+c.length));scene.duration=span;scene.clips=[...take];}
  return {scene,span};
 }

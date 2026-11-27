@@ -46,7 +46,7 @@ const choiceNames: Partial<Record<Core|Addon,Record<string,string>>> = {
 };
 const formatStyle = (field:Core|Addon,value:string)=>choiceNames[field]?.[value]??styleNames[value]??label(value);
 
-function glyph(field:Core|Addon,value:string,c:Character):ReactNode {
+function createGlyph(field:Core|Addon,value:string,c:Character):ReactNode {
   if(value==='none'||value==='auto')return null;
   const paths:Partial<Record<Core|Addon,Record<string,string>>> = {hair:hairPaths,hat:hatPaths,eyewear:eyewearPaths,extra:extraPaths,footwear:shoePaths,bag:bagPaths,handheld:handheldPaths};
   if(field==='hair'){
@@ -70,6 +70,14 @@ function glyph(field:Core|Addon,value:string,c:Character):ReactNode {
     return svg('-32 -8 64 94',`M-9 -4L${-a} 7L${-a} 20L${-b} ${49+h}Q0 ${52+h} ${b} ${49+h}L${a} 20V7L9 -4Q0 4 -9 -4Z`,value==='shirtless'?c.skin:c.shirt);
   }
   return null;
+}
+// Thumbnail keys contain only the fields read by the vector glyph functions, never uploaded image data.
+const glyphCache=new Map<string,ReactNode>();
+export function thumbnailCacheSize(){return glyphCache.size;}
+function glyph(field:Core|Addon,value:string,c:Character):ReactNode{
+ const q=c.wardrobe,key=JSON.stringify([field,value,c.skin,c.hairColor,c.shirt,c.shoes,c.shape,c.head,q?.headStretch,q?.crownWidth,q?.jawWidth,q?.chinWidth,q?.cheekWidth,q?.forehead,q?.jawAngle,q?.facialOffset,q?.accessoryColor,q?.lens]);
+ if(glyphCache.has(key))return glyphCache.get(key);
+ const node=createGlyph(field,value,c);if(glyphCache.size>=192)glyphCache.delete(glyphCache.keys().next().value!);glyphCache.set(key,node);return node;
 }
 function Cards({ title, choices, selected, choose, field, character, open, toggle }:{
   title:string; choices:readonly string[]; selected:string; choose:(value:string)=>void; field:Core|Addon;
@@ -172,7 +180,7 @@ export function CharacterChoices({ section:category, character, change, changeCl
         </label>)}
       {error&&<p role="alert">{error}</p>}
     </div>}
-    {category==='Garments'&&<GarmentControls character={character} change={value=>change('garmentDesign',value)}/>}
+    {(category==='Garments'||category==='Footwear')&&<GarmentControls footwearOnly={category==='Footwear'} character={character} change={value=>change('garmentDesign',value)}/>}
     
     {category==='Hair'&&<LayeredHairControls character={character} change={value=>change('hairDesign',value)}/>}
     <details className="factory-details">

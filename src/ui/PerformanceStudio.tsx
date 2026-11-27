@@ -22,13 +22,13 @@ type Result = {keys:PerformanceKey[];duration:number;framesAccepted:number;frame
 type Props={
   scene:Scene; characters:Character[]; selectedActor?:string; start:number;
   close:()=>void; commit:(clips:Clip[])=>Promise<void>;
-  saveActingDNA:(actorId:string,style:MotionDNA)=>void;
+  saveActingDNA:(actorId:string,style:MotionDNA)=>void;previewOnly?:boolean;
 };
 type Status='idle'|'loading'|'ready'|'recording'|'processing'|'review';
 const recordingLimits=[60,120,150,180] as const;
 const recordingLimitKey='sirvibe.performance.maxDuration';
 function loadRecordingLimit(){try{const value=Number(localStorage.getItem(recordingLimitKey));return recordingLimits.find(limit=>limit===value)??120;}catch{return 120;}}
-export function PerformanceStudio({scene,characters,selectedActor,start,close,commit,saveActingDNA}:Props) {
+export function PerformanceStudio({scene,characters,selectedActor,start,close,commit,saveActingDNA,previewOnly=false}:Props) {
   const [actor,setActor]=useState(selectedActor??scene.actors[0]?.id??'');
   const [facing,setFacing]=useState<PerformanceFacing>(()=>initialPerformanceFacing(
     scene.actors.find(item=>item.id===(selectedActor??scene.actors[0]?.id))));
