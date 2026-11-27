@@ -40,6 +40,14 @@ test('scene adapter is deterministic across seek/replay, renderer instances, and
  assert.equal(a.sample(edited,characters,1).size,0);
  a.dispose();b.dispose();
 });
+test('an authored camera cut does not move physical hair and garment roots',()=>{
+ const {characters,scene}=fixture(),first=new CharacterDynamics(),second=new CharacterDynamics();
+ const uncut={...scene,clips:scene.clips.filter(clip=>clip.track!=='camera')};
+ for(const time of [.4,5.4,12.6,7.05,22.6]){
+  assert.deepEqual(first.sample(scene,characters,time),second.sample(uncut,characters,time));
+ }
+ first.dispose();second.dispose();
+});
 test('world-only physics remembers an empty character configuration and rebuilds after opt-in',()=>{
  const {characters,scene}=fixture(),dyn=new CharacterDynamics();
  const off=characters.map(c=>({...c,secondaryMotion:{...characterSecondaryDefaults,enabled:false}}));

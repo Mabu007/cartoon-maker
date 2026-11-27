@@ -1,3 +1,5 @@
+import {headRigHandles,type HeadRigHandle} from './headRigRecipe.ts';
+import type {HeadDeformation} from './headDeformation.ts';
 import type {Character} from './schema.ts';
 import type {IllustratedView} from './illustration.ts';
 import type {FacialPerformance} from './facialAnimation.ts';
@@ -15,7 +17,7 @@ export function headMetrics(c:Character,a:IllustratedView) {
   return {w:w*cheek*(q?.cheekWidth??1),h:45*stretch*(q?.headStretch??1),
     crown:w*crown*(q?.crownWidth??1),jaw:w*jaw*(q?.jawWidth??1),chin:w*chin*(q?.chinWidth??1)};
 }
-export function headOutline(c: Character,a:IllustratedView) {
+export function headOutline(c: Character,a:IllustratedView,deformation?:HeadDeformation) {
   const {w,h,crown,jaw,chin}=headMetrics(c,a);
   const top=-h*(c.wardrobe?.forehead??1), end=h, asym=c.shape==='bean'?7:0;
   if(a.profile) {
@@ -30,10 +32,12 @@ export function headOutline(c: Character,a:IllustratedView) {
   const angle=c.wardrobe?.jawAngle;
   const jawCorner=angle===undefined?.62:.52+angle*.19;
   const jawCurve=angle===undefined?1:1+(angle-.5)*.13;
+  const jawShift=(deformation?.yaw??0)*w*.09;
+  const jawDepth=(deformation?.pitch??0)*h*.055;
   return `M ${-crown*radius+skew} ${top} Q ${skew} ${top-3} ${crown*radius+skew} ${top}
     C ${crown+skew} ${top} ${w+skew} ${-h*.52} ${w} ${-h*.09}
-    Q ${jaw+2} ${end*.44} ${jaw*jawCurve} ${end*jawCorner} Q ${jaw-1} ${end*.91} ${chin+skew} ${end}
-    Q ${skew} ${end+(sharp?1:4)} ${-chin+skew} ${end} Q ${-jaw} ${end*.91} ${-jaw*jawCurve} ${end*jawCorner}
+    Q ${jaw+2+jawShift*.3} ${end*.44} ${jaw*jawCurve+jawShift*.6} ${end*jawCorner+jawDepth*.3} Q ${jaw-1+jawShift} ${end*.91+jawDepth} ${chin+skew+jawShift} ${end+jawDepth}
+    Q ${skew+jawShift} ${end+(sharp?1:4)+jawDepth} ${-chin+skew+jawShift} ${end+jawDepth} Q ${-jaw+jawShift} ${end*.91+jawDepth} ${-jaw*jawCurve+jawShift*.6} ${end*jawCorner+jawDepth*.3}
     Q ${-w-1} ${end*.36} ${-w} ${-h*.09} C ${-w+asym} ${-h*.52} ${-crown+skew} ${top} ${-crown*radius+skew} ${top}Z`;
 }
 
@@ -65,13 +69,67 @@ export function faceLandmarks(c:Character,art:IllustratedView){
   const eyes=art.rear?[]:art.profile?[center+offset]:[center-spacing+offset,Math.min(w-8,center+spacing*(art.face?.81:1)-offset)];
   return {w,h,center,eyes,eyeY:-5*h/45+(q?.eyeHeight??0),noseX:art.profile?w*.94:center,mouthX:art.profile?w*.65:center,mouthY:27+(q?.mouthHeight??0)};
 }
-export function eyeIdentity(c:Character,m:FacialPerformance,x:number,y:number,side:number,narrow:boolean,camera:boolean,faceShift:number){
+type HandlePoint=Readonly<{x:number;y:number}>;
+type CompiledHeadRig=Readonly<{
+  width:number;height:number;eyeY:number;spacing:number;eyeWidth:number;offset:number;mouthY:number;
+  handles:Readonly<Record<HeadRigHandle,HandlePoint>>;
+}>;
+const headFits=new Map<string,CompiledHeadRig>();
+const ownerFits=new WeakMap<Character,WeakMap<IllustratedView,CompiledHeadRig>>();
+const headFitLimit=48;
+const neutralHandle=Object.freeze({x:0,y:0});
+/** The family topology is shared. Only anatomy and named handle edits
+ * affect this fit, so recoloring leaves the compiled coordinates reusable. */
+export function compileHeadRig(c:Character,art:IllustratedView):CompiledHeadRig{
+  let family=ownerFits.get(c);
+  if(!family){family=new WeakMap();ownerFits.set(c,family);}
+  const fitted=family.get(art);
+  if(fitted)return fitted;
+  const q=c.wardrobe,source=c.visual?.headRig;
+  const handlePoints=headRigHandles.map(id=>source?.handles[id]??neutralHandle);
+  const {w,h}=headMetrics(c,art);
+  const key=JSON.stringify([source?.family??'catalog-head-v1',w,h,c.eyeSpacing,q?.facialOffset,q?.eyeWidth,
+    q?.eyeHeight,q?.mouthHeight,handlePoints.map(point=>[point.x,point.y])]);
+  const cached=headFits.get(key);
+  if(cached){family.set(art,cached);return cached;}
+  const handles=Object.fromEntries(headRigHandles.map((id,i)=>[id,Object.freeze({...handlePoints[i]})])) as Record<HeadRigHandle,HandlePoint>;
+  const fit=Object.freeze({width:w,height:h,eyeY:-5*h/45+(q?.eyeHeight??0),spacing:Math.min(w*.35,13*c.eyeSpacing),
+    eyeWidth:q?.eyeWidth??1,offset:q?.facialOffset??0,mouthY:27+(q?.mouthHeight??0),handles:Object.freeze(handles)});
+  if(headFits.size===headFitLimit)headFits.delete(headFits.keys().next().value!);
+  headFits.set(key,fit);
+  family.set(art,fit);
+  return fit;
+}
+
+/** Signed corrections leave the crown fixed and keep both eye apertures
+ * within the face and on their respective sides of the facial center. */
+export function deformFaceLandmarks(c:Character,art:IllustratedView,deformation:HeadDeformation){
+  const fit=compileHeadRig(c,art),{width:w,height:h,handles}=fit,{yaw,pitch}=deformation;
+  const turn=Math.abs(yaw),center=yaw*w*.21;
+  const eyeY=fit.eyeY+pitch*h*.085;
+  const far=yaw<0?0:1;
+  const edge=Math.max(w*.45,w-12);
+  const eye=(side:-1|1,index:number,handle:HandlePoint)=>{
+    const width=index===far?1-.28*turn:1-.045*turn;
+    const inset=Math.min(edge-side*center,8.5*width*fit.eyeWidth+1);
+    const wanted=side*(fit.spacing*(index===far?1-.24*turn:1)-fit.offset+side*handle.x);
+    const distance=Math.max(inset,side*wanted);
+    return {x:center+side*Math.min(edge-side*center,distance),y:eyeY+handle.y,width};
+  };
+  const eyes=[eye(-1,0,handles['left-eye']),eye(1,1,handles['right-eye'])];
+  return {center,eyes,eyeY,noseX:yaw*w*.26+handles.nose.x,noseY:8+pitch*h*.105+handles.nose.y,
+    mouthX:yaw*w*.18+handles.mouth.x,mouthY:fit.mouthY+pitch*h*.10+handles.mouth.y,
+    mouthWidth:1-.12*turn,earY:8*h/45-pitch*h*.055,
+    farEarInset:turn*w*.18};
+}
+
+export function eyeIdentity(c:Character,m:FacialPerformance,x:number,y:number,side:number,narrow:boolean,camera:boolean,faceShift:number,yawWidth=1){
   const w=c.wardrobe,kind=c.eyes,left=side<0,attitude=attitudeByExpression[m.expression]??1;
   const narrowControl=left?m.controls?.eyeNarrowLeft??0:m.controls?.eyeNarrowRight??0;
   const wideControl=left?m.controls?.eyeWideLeft??0:m.controls?.eyeWideRight??0;
   const eyeScale=Math.max(.16,Math.min(1.55,attitude+wideControl*.39-narrowControl*.40));
   const capturedBlink=left?m.controls?.blinkLeft??0:m.controls?.blinkRight??0;
-  const sx=(narrow?.72:1)*(w?.eyeWidth??1),sy=Math.max(.05,(1-Math.max(m.blink,capturedBlink))*(1-(w?.eyelid??0))*eyeScale*(w?.lidCurvature??1));
+  const sx=(narrow?.72:1)*(w?.eyeWidth??1)*yawWidth,sy=Math.max(.05,(1-Math.max(m.blink,capturedBlink))*(1-(w?.eyelid??0))*eyeScale*(w?.lidCurvature??1));
   const angle=(w?.eyeTilt??0)*side,compact=['squint','monolid','triangle'].includes(kind);
   const radius=Math.min(3.45*(w?.irisSize??1),4.1*sy)*(compact?.68:1)*(narrow?.86:1);
   const pupilX=x+Math.max(-3.2*sx,Math.min(3.2*sx,m.gazeX+(camera?-faceShift*.105:faceShift*.035)))*(compact?.7:1);

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {compileCompoundFill,type CompoundFill} from './compoundVectorFill.ts';
 
 /** Geometry is local, +x right (or along a bone), +y down. No SVG input. */
 export const vectorArtworkLimits={commandsPerPath:128,commandsPerArtwork:1024,palette:32,regions:24,weights:384} as const;
@@ -155,7 +156,7 @@ export function springDemo(s:VectorRuntimeState,target:readonly [number,number],
   if(len>max){x*=max/len;y*=max/len;vx=0;vy=0;}
   return {...s,displacement:[x,y],velocity:[vx,vy]};
 }
-export type VectorDrawRegion={id:string;commands:VectorCommand[];fill?:string;stroke?:{color:string;width:number};fillRule:'nonzero'|'evenodd';transform?:VectorMatrix};
+export type VectorDrawRegion={id:string;commands:VectorCommand[];fill?:string;stroke?:{color:string;width:number};fillRule:'nonzero'|'evenodd';transform?:VectorMatrix;compound?:CompoundFill};
 function freezeDeep<T>(value:T):T{
   if(value&&typeof value==='object'&&!Object.isFrozen(value)){
     for(const child of Object.values(value))freezeDeep(child);
@@ -186,12 +187,19 @@ export class VectorArtworkCache{
   dispose(){this.entries.clear();}
   get size(){return this.entries.size;}
 }
-/** Both render adapters consume this same draw list. Stage 1 candidate deliberately
- * refuses masks, clips and compound/evenodd fills until their Pixi parity is proven.
- * Callers must use the existing legacy art when this returns undefined.
- */
+/** Both render adapters consume the same native drawing order. Compound
+ * fills support validated polygon rings without masks or dynamic weights. */
 export function vectorDrawList(art:VectorArtwork,palette:Readonly<Record<string,string>>={},state?:VectorRuntimeState):VectorDrawRegion[]|undefined{
-  if(art.regions.some(r=>r.clipRegionId||r.maskRegionId||r.fillRule!=='nonzero'||r.commands.filter(c=>c[0]==='M').length!==1))return undefined;
+  const compounds=new Map<string,CompoundFill>();
+  for(const region of art.regions){
+    if(region.clipRegionId||region.maskRegionId)return;
+    const multiple=region.commands.filter(command=>command[0]==='M').length!==1;
+    if(!multiple&&region.fillRule==='nonzero')continue;
+    if(region.material||state?.regionId===region.id)return;
+    const compound=compileCompoundFill(region.commands,region.fillRule);
+    if(!compound)return;
+    compounds.set(region.id,compound);
+  }
   const color=(p:z.infer<typeof paint>)=>{
     if(p.kind==='solid')return p.color;
     const override=Object.hasOwn(palette,p.key)?palette[p.key]:undefined;
@@ -200,6 +208,6 @@ export function vectorDrawList(art:VectorArtwork,palette:Readonly<Record<string,
   return [...art.regions].sort((a,b)=>a.layer-b.layer).map(r=>({
     id:r.id,commands:state?.regionId===r.id?deformRegion(r,state.displacement):r.commands.map(c=>[...c] as VectorCommand),
     fill:r.fill?color(r.fill):undefined,stroke:r.stroke?{color:color(r.stroke.paint),width:r.stroke.width}:undefined,
-    fillRule:r.fillRule,transform:r.transform
+    fillRule:r.fillRule,transform:r.transform,...(compounds.has(r.id)?{compound:compounds.get(r.id)}:{})
   }));
 }

@@ -40,7 +40,7 @@ function reset(d:LveDefinitionData,transform:EntityState['transform']=identity):
 const bound=(p:NodeState,n:LveDefinitionData['nodes'][number])=>{const [x,y]=cap(p.x-n.rest.x,p.y-n.rest.y,n.material.maxDisplacement*(1-n.pin));p.x=n.rest.x+x;p.y=n.rest.y+y;};
 export type LveMetrics={tick:number;nodes:number;constraints:number;iterations:number;fallbackEntities:number;steps:number;collisions:number};
 export class LveSimulation{
- private config:LveConfigData;private definitions:LveDefinitionData[]=[];private fallback:LveDefinitionData[]=[];private states:EntityState[]=[];private checkpoints:LveCheckpointData[]=[];private previous:EntityState[]=[];private signature='';private tick=0;private disposed=false;
+ private config:LveConfigData;private definitions:LveDefinitionData[]=[];private fallback:LveDefinitionData[]=[];private states:EntityState[]=[];private checkpoints:LveCheckpointData[]=[];private previous:Float64Array[]=[];private constraintIndices:[number,number][][]=[];private signature='';private tick=0;private disposed=false;
  private metrics:LveMetrics={tick:0,nodes:0,constraints:0,iterations:0,fallbackEntities:0,steps:0,collisions:0};
  constructor(definitions:readonly LveDefinitionData[],config:LveConfigData=lveDefaultConfig,revision='initial'){
   this.config=LveConfig.parse(config);this.configure(definitions,revision);
@@ -54,26 +54,40 @@ export class LveSimulation{
    if(d.nodes.length>this.config.maxNodesPerActor||nodes+d.nodes.length>this.config.maxSceneNodes||edges+d.constraints.length>this.config.maxConstraints)this.fallback.push(d);
    else{this.definitions.push(d);nodes+=d.nodes.length;edges+=d.constraints.length;}}
   // Exact signature (not a collision-prone short hash). Revision includes upstream timeline/asset edits.
-  this.signature=JSON.stringify([revision,this.config,all]);this.states=this.definitions.map(d=>reset(d));this.previous=structuredClone(this.states);this.tick=0;this.checkpoints=[];
+  this.signature=JSON.stringify([revision,this.config,all]);this.states=this.definitions.map(d=>reset(d));this.resetPrevious();this.tick=0;this.checkpoints=[];
+  this.constraintIndices=this.definitions.map(definition=>{
+   const byId=new Map(definition.nodes.map((node,index)=>[node.id,index]));
+   return definition.constraints.map(constraint=>[byId.get(constraint.a)!,byId.get(constraint.b)!]);
+  });
   this.metrics={tick:0,nodes,constraints:edges,iterations:this.config.iterations,fallbackEntities:this.fallback.length,steps:0,collisions:0};
  }
  invalidate(definitions:readonly LveDefinitionData[],revision:string){this.assertActive();this.configure(definitions,revision);}
  checkpoint():LveCheckpointData{this.assertActive();return {version:1,signature:this.signature,tick:this.tick,entities:structuredClone(this.states)};}
  restore(raw:unknown){this.assertActive();const c=LveCheckpoint.parse(raw);if(c.signature!==this.signature||c.tick>180*this.config.hz||c.entities.length!==this.definitions.length)throw Error('Incompatible checkpoint');
   for(let i=0;i<c.entities.length;i++){const e=c.entities[i],d=this.definitions[i];if(e.id!==d.id||e.nodes.length!==d.nodes.length||e.nodes.some((p,j)=>p.id!==d.nodes[j].id||Math.hypot(p.x-d.nodes[j].rest.x,p.y-d.nodes[j].rest.y)>d.nodes[j].material.maxDisplacement*(1-d.nodes[j].pin)+1e-6))throw Error('Invalid checkpoint state');}
-  this.states=c.entities;this.previous=structuredClone(c.entities);this.tick=c.tick;this.metrics.tick=this.tick;
+  this.states=c.entities;this.resetPrevious();this.tick=c.tick;this.metrics.tick=this.tick;
+ }
+ private rememberPositions(index:number){
+  const saved=this.previous[index],nodes=this.states[index].nodes;
+  for(let i=0;i<nodes.length;i++){saved[i*2]=nodes[i].x;saved[i*2+1]=nodes[i].y;}
+ }
+ private resetPrevious(){
+  if(this.previous.length!==this.states.length||this.states.some((state,i)=>this.previous[i].length!==state.nodes.length*2))
+   this.previous=this.states.map(state=>new Float64Array(state.nodes.length*2));
+  for(let i=0;i<this.states.length;i++)this.rememberPositions(i);
  }
  private step(sample:LveSampler){
-  const dt=1/this.config.hz,next=this.tick+1;this.previous=structuredClone(this.states);
+  const dt=1/this.config.hz,next=this.tick+1;
   for(let ei=0;ei<this.definitions.length;ei++){
    const d=this.definitions[ei],s=this.states[ei],input=sample(next,d.id),parsed=matrix.safeParse(input.transform),forces=LveForces.safeParse(input.forces);
+   this.rememberPositions(ei);
    if(!parsed.success||!forces.success){this.states[ei]=reset(d,s.transform);continue;}
    const m=parsed.data,det=m[0]*m[3]-m[1]*m[2],jump=Math.hypot(m[4]-s.transform[4],m[5]-s.transform[5]);
-   if(input.cut||input.sleep||jump>80||Math.abs(det)<.002||det*(s.transform[0]*s.transform[3]-s.transform[1]*s.transform[2])<0){this.states[ei]=reset(d,m);this.previous[ei]=structuredClone(this.states[ei]);continue;}
+   if(input.cut||input.sleep||jump>80||Math.abs(det)<.002||det*(s.transform[0]*s.transform[3]-s.transform[1]*s.transform[2])<0){this.states[ei]=reset(d,m);this.rememberPositions(ei);continue;}
    const [avx,avy]=cap((m[4]-s.transform[4])/dt,(m[5]-s.transform[5])/dt,256);
    const [ax,ay]=cap((avx-s.velocity.x)/dt,(avy-s.velocity.y)/dt,160);
-   const force=forces.data,old=s.nodes.map(p=>({x:p.x,y:p.y}));s.transform=m;s.velocity={x:avx,y:avy};
-   const index=new Map(d.nodes.map((n,i)=>[n.id,i]));
+   const force=forces.data,old=this.previous[ei];s.transform=m;s.velocity={x:avx,y:avy};
+   const indices=this.constraintIndices[ei];
    for(let j=0;j<d.nodes.length;j++){const p=s.nodes[j],node=d.nodes[j],mat=node.material,free=1-node.pin;if(!free){p.x=node.rest.x;p.y=node.rest.y;p.vx=p.vy=0;continue;}
     const [fx,fy]=localVector(m,force.gravity.x*mat.gravityScale+force.wind.x*mat.windResponse+noise(this.config.seed,next,ei*128+j)*force.turbulence-ax+(force.impulse?.x??0)/dt,force.gravity.y*mat.gravityScale+force.wind.y*mat.windResponse+noise(this.config.seed^137,next,ei*128+j)*force.turbulence-ay+(force.impulse?.y??0)/dt);
     const [sx,sy]=cap(fx,fy,400),spring=mat.stiffness/mat.mass,decay=Math.exp(-(mat.damping/mat.mass+mat.drag)*dt);
@@ -81,28 +95,28 @@ export class LveSimulation{
     p.x+=vx*dt;p.y+=vy*dt;bound(p,node);
    }
    for(let it=0;it<this.config.iterations;it++){
-    for(const c of d.constraints){const ia=index.get(c.a)!,ib=index.get(c.b)!,a=s.nodes[ia],b=s.nodes[ib],na=d.nodes[ia],nb=d.nodes[ib],dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy),wa=(1-na.pin)/na.material.mass,wb=(1-nb.pin)/nb.material.mass;
+    for(let i=0;i<d.constraints.length;i++){const c=d.constraints[i],[ia,ib]=indices[i],a=s.nodes[ia],b=s.nodes[ib],na=d.nodes[ia],nb=d.nodes[ib],dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy),wa=(1-na.pin)/na.material.mass,wb=(1-nb.pin)/nb.material.mass;
      if(len<1e-8||wa+wb===0)continue;const k=(len-c.length)/len*c.strength/(wa+wb);a.x+=dx*k*wa;a.y+=dy*k*wa;b.x-=dx*k*wb;b.y-=dy*k*wb;bound(a,na);bound(b,nb);}
     for(let j=0;j<s.nodes.length;j++){const p=s.nodes[j],node=d.nodes[j];if(node.pin===1)continue;
      for(const c of d.colliders){if(!c.groups.includes(node.material.collisionGroup))continue;const dx=c.b.x-c.a.x,dy=c.b.y-c.a.y,t=clamp(((p.x-c.a.x)*dx+(p.y-c.a.y)*dy)/Math.max(1e-9,dx*dx+dy*dy),0,1),x=c.a.x+t*dx,y=c.a.y+t*dy,ux=p.x-x,uy=p.y-y,len=Math.hypot(ux,uy);
       if(len<c.radius){p.x=x+(len>1e-8?ux/len:1)*c.radius;p.y=y+(len>1e-8?uy/len:0)*c.radius;bound(p,node);this.metrics.collisions++;}}
     }
    }
-   for(let j=0;j<s.nodes.length;j++){const p=s.nodes[j];[p.vx,p.vy]=cap((p.x-old[j].x)/dt,(p.y-old[j].y)/dt,160);}
+   for(let j=0;j<s.nodes.length;j++){const p=s.nodes[j];[p.vx,p.vy]=cap((p.x-old[j*2])/dt,(p.y-old[j*2+1])/dt,160);}
   }
   this.tick=next;this.metrics.tick=next;this.metrics.steps++;
   if(next%this.config.checkpointInterval===0){this.checkpoints.push(this.checkpoint());if(this.checkpoints.length>this.config.maxCheckpoints)this.checkpoints.shift();}
  }
  /** Exact tick reconstruction. No dropping ticks on a scrub. Max 180 s; render alpha is separate. */
  seek(tick:number,sample:LveSampler){this.assertActive();if(!Number.isInteger(tick)||tick<0||tick>180*this.config.hz)throw Error('Invalid simulation tick');
-  if(tick<this.tick){const nearest=this.checkpoints.filter(c=>c.tick<=tick).sort((a,b)=>b.tick-a.tick)[0];if(nearest)this.restore(nearest);else{this.states=this.definitions.map(d=>reset(d));this.previous=structuredClone(this.states);this.tick=0;}this.checkpoints=this.checkpoints.filter(c=>c.tick<=tick);}
+  if(tick<this.tick){const nearest=this.checkpoints.filter(c=>c.tick<=tick).sort((a,b)=>b.tick-a.tick)[0];if(nearest)this.restore(nearest);else{this.states=this.definitions.map(d=>reset(d));this.resetPrevious();this.tick=0;}this.checkpoints=this.checkpoints.filter(c=>c.tick<=tick);}
   while(this.tick<tick)this.step(sample);this.metrics.tick=this.tick;return this.offsets();
  }
  /** Bounded realtime advancement; caller may defer remaining ticks, never discard them. */
  advance(target:number,sample:LveSampler,maxSubsteps=4){this.assertActive();if(!Number.isInteger(target)||target<this.tick||target>180*this.config.hz)throw Error('Invalid target tick');return this.seek(Math.min(target,this.tick+clamp(Math.floor(maxSubsteps),1,8)),sample);}
- offsets(alpha=1){this.assertActive();const t=Number.isFinite(alpha)?clamp(alpha,0,1):1;return [...this.definitions.map((d,i)=>({id:d.id,nodes:d.nodes.map((n,j)=>{const p=this.states[i].nodes[j],a=this.previous[i].nodes[j];return {id:n.id,dx:(a.x+(p.x-a.x)*t)-n.rest.x,dy:(a.y+(p.y-a.y)*t)-n.rest.y};})})),...this.fallback.map(d=>({id:d.id,nodes:d.nodes.map(n=>({id:n.id,dx:0,dy:0}))}))].sort((a,b)=>cmp(a.id,b.id));}
+ offsets(alpha=1){this.assertActive();const t=Number.isFinite(alpha)?clamp(alpha,0,1):1;return [...this.definitions.map((d,i)=>({id:d.id,nodes:d.nodes.map((n,j)=>{const p=this.states[i].nodes[j],a=this.previous[i],x=a[j*2],y=a[j*2+1];return {id:n.id,dx:(x+(p.x-x)*t)-n.rest.x,dy:(y+(p.y-y)*t)-n.rest.y};})})),...this.fallback.map(d=>({id:d.id,nodes:d.nodes.map(n=>({id:n.id,dx:0,dy:0}))}))].sort((a,b)=>cmp(a.id,b.id));}
  instrumentation(){return {...this.metrics};}
- dispose(){this.states=[];this.previous=[];this.checkpoints=[];this.definitions=[];this.fallback=[];this.disposed=true;}
+ dispose(){this.states=[];this.previous=[];this.checkpoints=[];this.constraintIndices=[];this.definitions=[];this.fallback=[];this.disposed=true;}
 }
 /** Adapter from a regional node delta to canonical weighted vector geometry. */
 export function lveRegionCommands(region:VectorRegion,offset:{dx:number;dy:number}){return deformRegion(region,[offset.dx,offset.dy]);}

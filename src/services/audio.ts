@@ -2,7 +2,7 @@ import { getLocalMedia, putLocalMedia, MissingLocalMedia } from './localMedia.ts
 import { shiftVoice } from '../engine/voiceEffects.ts';
 import { soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
 import { clamp } from '../engine/animation.ts';
-import { builtinVoiceNames, soundNames, type Project, type Scene, type SoundClip } from '../engine/schema.ts';
+import { builtinVoiceNames, soundNames, type Clip, type Project, type Scene, type SoundClip } from '../engine/schema.ts';
 import { applyGainEnvelope, audibleAudioTrack } from '../engine/audioMix.ts';
 
 const builtinVoices = new Set<string>(builtinVoiceNames);
@@ -198,9 +198,27 @@ export async function auditionClip(clip:SoundClip) {
   }
 }
 export const sceneSounds = (scene: Scene) => scene.clips.filter((clip): clip is SoundClip => clip.track === 'dialogue' || clip.track === 'audio' || clip.track === 'music');
-export const projectAssets = (project: Project) => [...new Set(project.scenes.flatMap(scene =>
-  sceneSounds(scene).flatMap(clip => [clip.asset, ...(clip.track === 'dialogue' ? (clip.versions ?? []).map(item => item.asset) : [])])
-).filter(asset => asset.startsWith('asset:')).map(asset => asset.slice(6)))];
+export function projectAssets(project: Project, scope: 'project' | 'timeline' = 'project') {
+  const assets = new Set<string>();
+  const addAsset = (asset: string) => {
+    if (asset.startsWith('asset:')) assets.add(asset.slice(6));
+  };
+  const addClip = (clip: Clip) => {
+    if (clip.track !== 'dialogue' && clip.track !== 'audio' && clip.track !== 'music') return;
+    addAsset(clip.asset);
+    if (clip.track === 'dialogue') for (const version of clip.versions ?? []) addAsset(version.asset);
+  };
+  for (const scene of project.scenes) for (const clip of sceneSounds(scene)) addClip(clip);
+  if (scope === 'project') {
+    for (const scene of project.production?.graph ?? []) {
+      for (const event of Object.values(scene.events)) {
+        // ProjectDocument validates these signatures as timeline clips.
+        addClip(JSON.parse(event.signature) as Clip);
+      }
+    }
+  }
+  return [...assets];
+}
 export function soundEvents(scenes: Scene[]) {
   let sceneStart = 0;
   return scenes.flatMap(scene => {

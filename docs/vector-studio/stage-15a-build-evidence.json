@@ -1,0 +1,2275 @@
+{
+  "date": "2026-11-27",
+  "baseline": "e73985843f6808170f13bcf59d88f2cc67f47977",
+  "failedSource": "c862e156770c94c14b396c08d0e7c7c43b4d4eb4",
+  "passedBuildSource": "97ca1eaa9c61c7e55571e1e3a3b944c13cfa5e8e",
+  "harnessSource": "47773036ade31ef39f4d50ad8eb0e825ca988e25",
+  "notes": "Raw connector-returned event excerpts; service omitted middle test output. No exact count inferred. Restored dependency cache; npm ci not confirmed. No browser or hardware run.",
+  "deployments": [
+    {
+      "id": "dpl_FtL5BSMmyjeEL6Kzxm8iZ5qy1nsV",
+      "events": [
+        {
+          "created": 1795813931932,
+          "date": 1795813931932,
+          "type": "stdout",
+          "text": "Running build in Washington, D.C., USA (East) – iad1",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813931932,
+          "date": 1795813931932,
+          "type": "stdout",
+          "text": "Build machine configuration: 2 cores, 8 GB",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813932043,
+          "date": 1795813932043,
+          "type": "stdout",
+          "text": "Cloning github.com/Mabu007/cartoon-maker (Branch: feat/stage-15a-visual-frame-baseline, Commit: c862e15)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813932603,
+          "date": 1795813932603,
+          "type": "stdout",
+          "text": "Cloning completed: 560.000ms",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813932724,
+          "date": 1795813932724,
+          "type": "stdout",
+          "text": "Restored build cache from previous deployment (FqiK6LxV2hwmgeEzEkF17TDmowcv)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813933526,
+          "date": 1795813933526,
+          "type": "stdout",
+          "text": "Running \"vercel build\"",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813933537,
+          "date": 1795813933537,
+          "type": "stderr",
+          "text": "Vercel CLI 66.6.0",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813934266,
+          "date": 1795813934266,
+          "type": "stdout",
+          "text": "Installing dependencies...",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813934959,
+          "date": 1795813934959,
+          "type": "stderr",
+          "text": "npm warn Unknown env config \"cache-dir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935338,
+          "date": 1795813935338,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935339,
+          "date": 1795813935339,
+          "type": "stdout",
+          "text": "up to date in 849ms",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935339,
+          "date": 1795813935339,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935339,
+          "date": 1795813935339,
+          "type": "stdout",
+          "text": "24 packages are looking for funding",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935339,
+          "date": 1795813935339,
+          "type": "stdout",
+          "text": "  run `npm fund` for details",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935340,
+          "date": 1795813935340,
+          "type": "stderr",
+          "text": "npm warn install-scripts 3 packages have install scripts not yet covered by allowScripts:",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935340,
+          "date": 1795813935340,
+          "type": "stderr",
+          "text": "npm warn install-scripts   @firebase/util@1.15.3 (postinstall: node ./postinstall.js)",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935340,
+          "date": 1795813935340,
+          "type": "stderr",
+          "text": "npm warn install-scripts   esbuild@0.28.2 (postinstall: node install.js)",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935340,
+          "date": 1795813935340,
+          "type": "stderr",
+          "text": "npm warn install-scripts   protobufjs@7.6.6 (postinstall: node scripts/postinstall)",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935340,
+          "date": 1795813935340,
+          "type": "stderr",
+          "text": "npm warn install-scripts",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935341,
+          "date": 1795813935341,
+          "type": "stderr",
+          "text": "npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935482,
+          "date": 1795813935482,
+          "type": "stderr",
+          "text": "npm warn Unknown env config \"cache-dir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935500,
+          "date": 1795813935500,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935501,
+          "date": 1795813935501,
+          "type": "stdout",
+          "text": "> toonroom@0.1.0 build",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935501,
+          "date": 1795813935501,
+          "type": "stdout",
+          "text": "> npm test && tsc --noEmit && vite build && npm run verify:offline",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935501,
+          "date": 1795813935501,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935608,
+          "date": 1795813935608,
+          "type": "stderr",
+          "text": "npm warn Unknown env config \"cache-dir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935626,
+          "date": 1795813935626,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935626,
+          "date": 1795813935626,
+          "type": "stdout",
+          "text": "> toonroom@0.1.0 test",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935626,
+          "date": 1795813935626,
+          "type": "stdout",
+          "text": "> node --experimental-strip-types --test tests/*.test.ts",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813935626,
+          "date": 1795813935626,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936039,
+          "date": 1795813936039,
+          "type": "stdout",
+          "text": "✔ point index and relaxed fingers extend away from the wrist anchor (1.845876ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936039,
+          "date": 1795813936039,
+          "type": "stdout",
+          "text": "✔ seated soles are planted at the local floor and use deterministic IK (1.578756ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936039,
+          "date": 1795813936039,
+          "type": "stdout",
+          "text": "✔ walk/run support phases stay grounded, while running lifts the swing foot higher (0.850217ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936039,
+          "date": 1795813936039,
+          "type": "stdout",
+          "text": "✔ shy and confident resting silhouettes and gaze differ without lip motion (2.08414ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936039,
+          "date": 1795813936039,
+          "type": "stdout",
+          "text": "✔ one sparse phrase accent drives deterministic body and hand decisions (4.102227ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936480,
+          "date": 1795813936480,
+          "type": "stdout",
+          "text": "✔ conversation 1: Zee watches talking Sbu then an angry close-up (24.576004ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936482,
+          "date": 1795813936482,
+          "type": "stdout",
+          "text": "✔ conversation 2: walking to a new mark with a waving gesture (10.526896ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936483,
+          "date": 1795813936483,
+          "type": "stdout",
+          "text": "✔ conversation 3: nervous emotion with directed eyes and a pointed hand (6.578679ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936483,
+          "date": 1795813936483,
+          "type": "stdout",
+          "text": "✔ conversation 4: new dialogue generated only after Apply, with one-clip replacement and Undo (14.314505ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936483,
+          "date": 1795813936483,
+          "type": "stdout",
+          "text": "✔ conversation 5: place props, change world, schedule SFX and music (8.976951ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936483,
+          "date": 1795813936483,
+          "type": "stdout",
+          "text": "✔ invalid actor/prop, camera overlap, unknown asset and locked tracks are rejected atomically (3.23064ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936483,
+          "date": 1795813936483,
+          "type": "stdout",
+          "text": "✔ unsupported clip fields and dialogue text substitution without new voice are prohibited (2.06018ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813936483,
+          "date": 1795813936483,
+          "type": "stdout",
+          "text": "✔ generated dialogue cannot overlap an existing line or exceed the scene duration (1.344068ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813937443,
+          "date": 1795813937443,
+          "type": "stdout",
+          "text": "✔ specification includes actual current schema, runtime bounds, task, rig anchors and portable data rules (54.49995ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813937447,
+          "date": 1795813937447,
+          "type": "stdout",
+          "text": "ℹ AI_SPEC_CPU {\"firstMs\":41.84710000000007,\"chars\":21759,\"schemaChars\":11342}",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813937447,
+          "date": 1795813937447,
+          "type": "stdout",
+          "text": "✔ category capability and task restrictions align with importer; no unsupported claims or fake views (17.022306ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813937606,
+          "date": 1795813937606,
+          "type": "stdout",
+          "text": "✔ authored starters for hair, shirt and accessory survive actual importer, palette edit, storage, runtime and backup (165.642223ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813937606,
+          "date": 1795813937606,
+          "type": "stdout",
+          "text": "✔ actual validation errors retain paths and produce actionable repair guidance (9.493221ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813937895,
+          "date": 1795813937895,
+          "type": "stdout",
+          "text": "✔ native anatomy contours have distinct fixed closed SVG geometry (1.091151ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813937898,
+          "date": 1795813937898,
+          "type": "stdout",
+          "text": "✔ bone frames retain endpoints, independent widths, and reject invalid input (0.300408ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        "[596 items omitted]",
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "        at strict.doesNotThrow (node:assert:748:32)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "        at TestContext.<anonymous> (file:///vercel/path0/tests/engine.test.ts:320:14)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "        at Test.runInAsyncScope (node:async_hooks:226:14)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "        at Test.run (node:internal/test_runner/test:1402:25)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "        at Test.processPendingSubtests (node:internal/test_runner/test:974:18),",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "    expected: undefined,",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "    operator: 'doesNotThrow',",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "    diff: 'simple'",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "  }",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "test at tests/engine.test.ts:327:1",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "✖ grounded walk and run have opposite stance legs and airborne recovery arcs (0.963818ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "  AssertionError [ERR_ASSERTION]: Got unwanted exception.",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "  Actual message: \"Cannot access 'carrying' before initialization\"",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "      at TestContext.<anonymous> (file:///vercel/path0/tests/engine.test.ts:336:12)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "      at Test.runInAsyncScope (node:async_hooks:226:14)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "      at Test.run (node:internal/test_runner/test:1402:25)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "      at Test.postRun (node:internal/test_runner/test:1542:19)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976304,
+          "date": 1795813976304,
+          "type": "stdout",
+          "text": "      at Test.run (node:internal/test_runner/test:1467:12)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "    generatedMessage: false,",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "    code: 'ERR_ASSERTION',",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "    actual: ReferenceError: Cannot access 'carrying' before initialization",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at resolveHand (file:///vercel/path0/src/engine/visualFrame.ts:91:31)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at resolveVisualFrame (file:///vercel/path0/src/engine/visualFrame.ts:119:21)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at drawActor (file:///vercel/path0/src/engine/actorArt.ts:67:15)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at file:///vercel/path0/tests/engine.test.ts:336:31",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at getActual (node:assert:580:5)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at strict.doesNotThrow (node:assert:748:32)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at TestContext.<anonymous> (file:///vercel/path0/tests/engine.test.ts:336:12)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at Test.runInAsyncScope (node:async_hooks:226:14)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at Test.run (node:internal/test_runner/test:1402:25)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "        at Test.processPendingSubtests (node:internal/test_runner/test:974:18),",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "    expected: undefined,",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "    operator: 'doesNotThrow',",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "    diff: 'simple'",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "  }",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "test at tests/visualFrame.test.ts:10:1",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "✖ 15A frame preserves legacy resolver endpoints, facial cue and mirror across views (1.954302ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "  ReferenceError [Error]: Cannot access 'carrying' before initialization",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "      at resolveHand (file:///vercel/path0/src/engine/visualFrame.ts:91:31)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "      at resolveVisualFrame (file:///vercel/path0/src/engine/visualFrame.ts:119:21)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "      at TestContext.<anonymous> (file:///vercel/path0/tests/visualFrame.test.ts:13:11)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "      at Test.runInAsyncScope (node:async_hooks:226:14)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "      at Test.run (node:internal/test_runner/test:1402:25)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "      at Test.start (node:internal/test_runner/test:1262:17)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976305,
+          "date": 1795813976305,
+          "type": "stdout",
+          "text": "      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813976322,
+          "date": 1795813976322,
+          "type": "stderr",
+          "text": "Error: [BUILD_UTILS_SPAWN_1] Command \"npm run build\" exited with 1",
+          "level": "error",
+          "info": {
+            "type": "build",
+            "name": "bld_9z4j29xys",
+            "entrypoint": "."
+          }
+        }
+      ]
+    },
+    {
+      "id": "dpl_9ifS6KzcV4hZeA3qNE6umk1A6s2w",
+      "events": [
+        {
+          "created": 1795813977430,
+          "date": 1795813977430,
+          "type": "stdout",
+          "text": "Running build in Washington, D.C., USA (East) – iad1",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813977431,
+          "date": 1795813977431,
+          "type": "stdout",
+          "text": "Build machine configuration: 2 cores, 8 GB",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813977543,
+          "date": 1795813977543,
+          "type": "stdout",
+          "text": "Cloning github.com/Mabu007/cartoon-maker (Branch: feat/stage-15a-visual-frame-baseline, Commit: 97ca1ea)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813978133,
+          "date": 1795813978133,
+          "type": "stdout",
+          "text": "Cloning completed: 590.000ms",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813978236,
+          "date": 1795813978236,
+          "type": "stdout",
+          "text": "Restored build cache from previous deployment (FqiK6LxV2hwmgeEzEkF17TDmowcv)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813979059,
+          "date": 1795813979059,
+          "type": "stdout",
+          "text": "Running \"vercel build\"",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813979071,
+          "date": 1795813979071,
+          "type": "stderr",
+          "text": "Vercel CLI 66.6.0",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813980026,
+          "date": 1795813980026,
+          "type": "stdout",
+          "text": "Installing dependencies...",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813980724,
+          "date": 1795813980724,
+          "type": "stderr",
+          "text": "npm warn Unknown env config \"cache-dir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981020,
+          "date": 1795813981020,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981020,
+          "date": 1795813981020,
+          "type": "stdout",
+          "text": "up to date in 760ms",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981021,
+          "date": 1795813981021,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981021,
+          "date": 1795813981021,
+          "type": "stdout",
+          "text": "24 packages are looking for funding",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981021,
+          "date": 1795813981021,
+          "type": "stdout",
+          "text": "  run `npm fund` for details",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981021,
+          "date": 1795813981021,
+          "type": "stderr",
+          "text": "npm warn install-scripts 3 packages have install scripts not yet covered by allowScripts:",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981021,
+          "date": 1795813981021,
+          "type": "stderr",
+          "text": "npm warn install-scripts   @firebase/util@1.15.3 (postinstall: node ./postinstall.js)",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981022,
+          "date": 1795813981022,
+          "type": "stderr",
+          "text": "npm warn install-scripts   esbuild@0.28.2 (postinstall: node install.js)",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981022,
+          "date": 1795813981022,
+          "type": "stderr",
+          "text": "npm warn install-scripts   protobufjs@7.6.6 (postinstall: node scripts/postinstall)",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981022,
+          "date": 1795813981022,
+          "type": "stderr",
+          "text": "npm warn install-scripts",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981024,
+          "date": 1795813981024,
+          "type": "stderr",
+          "text": "npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981186,
+          "date": 1795813981186,
+          "type": "stderr",
+          "text": "npm warn Unknown env config \"cache-dir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981202,
+          "date": 1795813981202,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981203,
+          "date": 1795813981203,
+          "type": "stdout",
+          "text": "> toonroom@0.1.0 build",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981203,
+          "date": 1795813981203,
+          "type": "stdout",
+          "text": "> npm test && tsc --noEmit && vite build && npm run verify:offline",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981203,
+          "date": 1795813981203,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981326,
+          "date": 1795813981326,
+          "type": "stderr",
+          "text": "npm warn Unknown env config \"cache-dir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981346,
+          "date": 1795813981346,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981347,
+          "date": 1795813981347,
+          "type": "stdout",
+          "text": "> toonroom@0.1.0 test",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981347,
+          "date": 1795813981347,
+          "type": "stdout",
+          "text": "> node --experimental-strip-types --test tests/*.test.ts",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981347,
+          "date": 1795813981347,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981746,
+          "date": 1795813981746,
+          "type": "stdout",
+          "text": "✔ point index and relaxed fingers extend away from the wrist anchor (1.238488ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981747,
+          "date": 1795813981747,
+          "type": "stdout",
+          "text": "✔ seated soles are planted at the local floor and use deterministic IK (1.052773ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981748,
+          "date": 1795813981748,
+          "type": "stdout",
+          "text": "✔ walk/run support phases stay grounded, while running lifts the swing foot higher (0.533703ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981748,
+          "date": 1795813981748,
+          "type": "stdout",
+          "text": "✔ shy and confident resting silhouettes and gaze differ without lip motion (1.339561ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813981749,
+          "date": 1795813981749,
+          "type": "stdout",
+          "text": "✔ one sparse phrase accent drives deterministic body and hand decisions (2.815567ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813982222,
+          "date": 1795813982222,
+          "type": "stdout",
+          "text": "✔ conversation 1: Zee watches talking Sbu then an angry close-up (27.118949ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813982224,
+          "date": 1795813982224,
+          "type": "stdout",
+          "text": "✔ conversation 2: walking to a new mark with a waving gesture (10.747284ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813982224,
+          "date": 1795813982224,
+          "type": "stdout",
+          "text": "✔ conversation 3: nervous emotion with directed eyes and a pointed hand (7.180762ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813982224,
+          "date": 1795813982224,
+          "type": "stdout",
+          "text": "✔ conversation 4: new dialogue generated only after Apply, with one-clip replacement and Undo (13.694565ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813982225,
+          "date": 1795813982225,
+          "type": "stdout",
+          "text": "✔ conversation 5: place props, change world, schedule SFX and music (8.316543ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813982225,
+          "date": 1795813982225,
+          "type": "stdout",
+          "text": "✔ invalid actor/prop, camera overlap, unknown asset and locked tracks are rejected atomically (4.330338ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813982225,
+          "date": 1795813982225,
+          "type": "stdout",
+          "text": "✔ unsupported clip fields and dialogue text substitution without new voice are prohibited (2.337015ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813982225,
+          "date": 1795813982225,
+          "type": "stdout",
+          "text": "✔ generated dialogue cannot overlap an existing line or exceed the scene duration (1.427684ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813983138,
+          "date": 1795813983138,
+          "type": "stdout",
+          "text": "✔ specification includes actual current schema, runtime bounds, task, rig anchors and portable data rules (43.10662ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813983139,
+          "date": 1795813983139,
+          "type": "stdout",
+          "text": "ℹ AI_SPEC_CPU {\"firstMs\":24.49415399999998,\"chars\":21759,\"schemaChars\":11342}",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813983139,
+          "date": 1795813983139,
+          "type": "stdout",
+          "text": "✔ category capability and task restrictions align with importer; no unsupported claims or fake views (16.120669ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813983312,
+          "date": 1795813983312,
+          "type": "stdout",
+          "text": "✔ authored starters for hair, shirt and accessory survive actual importer, palette edit, storage, runtime and backup (183.27434ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813983313,
+          "date": 1795813983313,
+          "type": "stdout",
+          "text": "✔ actual validation errors retain paths and produce actionable repair guidance (8.608948ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813983622,
+          "date": 1795813983622,
+          "type": "stdout",
+          "text": "✔ native anatomy contours have distinct fixed closed SVG geometry (1.627126ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795813983623,
+          "date": 1795813983623,
+          "type": "stdout",
+          "text": "✔ bone frames retain endpoints, independent widths, and reject invalid input (0.466393ms)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        "[525 items omitted]",
+        {
+          "created": 1795814036259,
+          "date": 1795814036259,
+          "type": "stderr",
+          "text": "in \"node_modules/zod/v4/core/regexes.js\" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.\u001b[39m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814044535,
+          "date": 1795814044535,
+          "type": "stdout",
+          "text": "\u001b[32m✓\u001b[39m 2798 modules transformed.",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814044938,
+          "date": 1795814044938,
+          "type": "stdout",
+          "text": "rendering chunks...",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045646,
+          "date": 1795814045646,
+          "type": "stdout",
+          "text": "computing gzip size...",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045708,
+          "date": 1795814045708,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[32mindex.html                                   \u001b[39m\u001b[1m\u001b[2m    1.22 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   0.59 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045708,
+          "date": 1795814045708,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[32mdsp.worker-fSj4v-66.js                \u001b[39m\u001b[1m\u001b[2m    2.67 kB\u001b[22m\u001b[1m\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045708,
+          "date": 1795814045708,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[32mperformanceVision.worker-Bk1-h4L9.js  \u001b[39m\u001b[1m\u001b[2m    6.09 kB\u001b[22m\u001b[1m\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045708,
+          "date": 1795814045708,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[35mindex-BJftYrbH.css                    \u001b[39m\u001b[1m\u001b[2m  185.16 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  39.31 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045709,
+          "date": 1795814045709,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mindex.esm-BzyB6IQn.js                 \u001b[39m\u001b[1m\u001b[2m    0.74 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   0.41 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045709,
+          "date": 1795814045709,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mFilter-DD3MzRJ_.js                    \u001b[39m\u001b[1m\u001b[2m    0.90 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   0.47 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045709,
+          "date": 1795814045709,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mframeExport-Dd2t7g9x.js               \u001b[39m\u001b[1m\u001b[2m    1.82 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   1.06 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045709,
+          "date": 1795814045709,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mgetTexelRangeRects-DSbcvnm8.js        \u001b[39m\u001b[1m\u001b[2m   11.49 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   3.02 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045709,
+          "date": 1795814045709,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mwebworkerAll-CEMw9t3d.js              \u001b[39m\u001b[1m\u001b[2m   15.59 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   4.83 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045709,
+          "date": 1795814045709,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mCanvasRenderer-ByrnuSRZ.js            \u001b[39m\u001b[1m\u001b[2m   17.89 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   6.00 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045709,
+          "date": 1795814045709,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mindex.esm-DOd6eiD9.js                 \u001b[39m\u001b[1m\u001b[2m   32.55 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  10.64 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045709,
+          "date": 1795814045709,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mindex.esm-Du5wIYCd.js                 \u001b[39m\u001b[1m\u001b[2m   35.48 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  11.48 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045709,
+          "date": 1795814045709,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mrecorderWebm-CHtO3G_y.js              \u001b[39m\u001b[1m\u001b[2m   37.37 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   9.68 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mbrowserAll-8617VOJW.js                \u001b[39m\u001b[1m\u001b[2m   44.01 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  11.43 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mRenderTargetSystem-DIUCxYFj.js        \u001b[39m\u001b[1m\u001b[2m   54.52 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  15.02 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mWebGPURenderer-BvoCjW9k.js            \u001b[39m\u001b[1m\u001b[2m   61.50 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  17.60 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mWebGLRenderer-ZNzTjgf8.js             \u001b[39m\u001b[1m\u001b[2m   76.86 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  21.05 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mindex.esm-C1Od5_IQ.js                 \u001b[39m\u001b[1m\u001b[2m  128.93 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  36.60 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mindex-DAsN62f8.js                     \u001b[39m\u001b[1m\u001b[2m  402.80 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 103.45 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mindex.esm-D3iQV6ca.js                 \u001b[39m\u001b[1m\u001b[33m  567.68 kB\u001b[39m\u001b[22m\u001b[2m │ gzip: 168.55 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stdout",
+          "text": "\u001b[2mdist/\u001b[22m\u001b[2massets/\u001b[22m\u001b[36mindex-DOmuRFEk.js                     \u001b[39m\u001b[1m\u001b[33m1,591.10 kB\u001b[39m\u001b[22m\u001b[2m │ gzip: 557.00 kB\u001b[22m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stderr",
+          "text": "\u001b[33m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stderr",
+          "text": "(!) Some chunks are larger than 500 kB after minification. Consider:",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stderr",
+          "text": "- Using dynamic import() to code-split the application",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stderr",
+          "text": "- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045710,
+          "date": 1795814045710,
+          "type": "stderr",
+          "text": "- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\u001b[39m",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045711,
+          "date": 1795814045711,
+          "type": "stdout",
+          "text": "\u001b[32m✓ built in 11.23s\u001b[39m",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045876,
+          "date": 1795814045876,
+          "type": "stderr",
+          "text": "npm warn Unknown env config \"cache-dir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+          "level": "warning",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045888,
+          "date": 1795814045888,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045889,
+          "date": 1795814045889,
+          "type": "stdout",
+          "text": "> toonroom@0.1.0 verify:offline",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045889,
+          "date": 1795814045889,
+          "type": "stdout",
+          "text": "> node scripts/verify-offline.mjs",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045889,
+          "date": 1795814045889,
+          "type": "stdout",
+          "text": "",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814045922,
+          "date": 1795814045922,
+          "type": "stdout",
+          "text": "Verified offline bundle 1515cd02f4829ea2835f: 59 files, 3.59 MiB. Includes DSP worker, video exporters, local assets and lazy libraries.",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814046191,
+          "date": 1795814046191,
+          "type": "stdout",
+          "text": "Using TypeScript 5.9.3 (local user-provided)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814051036,
+          "date": 1795814051036,
+          "type": "stdout",
+          "text": "Using TypeScript 5.9.3 (local user-provided)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814051787,
+          "date": 1795814051787,
+          "type": "stdout",
+          "text": "Using TypeScript 5.9.3 (local user-provided)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814051864,
+          "date": 1795814051864,
+          "type": "stdout",
+          "text": "Using TypeScript 5.9.3 (local user-provided)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814051915,
+          "date": 1795814051915,
+          "type": "stdout",
+          "text": "Using TypeScript 5.9.3 (local user-provided)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814051970,
+          "date": 1795814051970,
+          "type": "stdout",
+          "text": "Using TypeScript 5.9.3 (local user-provided)",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814052064,
+          "date": 1795814052064,
+          "type": "stderr",
+          "text": "Build Completed in /vercel/output [1m]",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814052137,
+          "date": 1795814052137,
+          "type": "stdout",
+          "text": "Deploying outputs...",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814053430,
+          "date": 1795814053430,
+          "type": "stdout",
+          "text": "Deployment completed",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814053433,
+          "date": 1795814053433,
+          "type": "stdout",
+          "text": "Creating build cache...",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814068112,
+          "date": 1795814068112,
+          "type": "stdout",
+          "text": "Created build cache: 15s",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814068112,
+          "date": 1795814068112,
+          "type": "stdout",
+          "text": "Uploading build cache [106.85 MB]",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        },
+        {
+          "created": 1795814070131,
+          "date": 1795814070131,
+          "type": "stdout",
+          "text": "Build cache uploaded: 2.019s",
+          "info": {
+            "type": "build",
+            "name": "bld_eshqmiqt2",
+            "entrypoint": "."
+          }
+        }
+      ]
+    }
+  ]
+}

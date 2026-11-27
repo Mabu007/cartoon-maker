@@ -14,3 +14,80 @@
 .workspace-category-title{font-size:15px;margin:10px 0;}
 .workspace-grid .factory-edit{min-width:0;}
 @media(max-width:800px){.workspace-grid{grid-template-columns:1fr;}.workspace-grid .factory-preview{position:static;}.workspace-canvas{height:42vh;min-height:240px;}.workspace-grid .workspace-categories{grid-template-columns:repeat(3,minmax(0,1fr));}}
+
+/* Stage 15H candidate: scoped to CharacterFactory, no global theme changes. */
+.modal-wide:has(> .modal-content > .workspace-grid){
+  width: min(1660px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+  height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); overflow:hidden;
+  color:#f3edf8; background:#21172b; border-color:#594163; color-scheme:dark;
+  --text:#f3edf8; --muted:#c5b4ce;
+}
+.modal-wide:has(> .modal-content > .workspace-grid) > .modal-content{
+  height:100%; min-height:0; display:flex; flex-direction:column;
+}
+.modal-wide:has(> .modal-content > .workspace-grid) > .modal-content > :is(header,.modal-footer){flex:0 0 auto;background:#271c31;border-color:#4b3756;}
+.modal-wide:has(> .modal-content > .workspace-grid) .workspace-grid{
+  flex:1 1 auto; min-height:0; overflow:hidden; align-items:stretch;
+  grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:14px; padding:12px;
+}
+.workspace-grid > :is(.factory-preview,.factory-edit){
+  min-height:0; overflow:auto; scrollbar-gutter:stable; overscroll-behavior:contain;
+  padding:12px; border:1px solid #513c5b; border-radius:12px; background:#291d33;
+}
+.workspace-grid > .factory-preview{position:static;display:flex;flex-direction:column;}
+.workspace-grid > .factory-preview > *{flex-shrink:0;}
+.workspace-grid .workspace-canvas{
+  height:clamp(220px,43dvh,560px); min-height:220px; border:1px solid #62436f;
+  background:#1a1323; border-radius:12px;
+}
+.workspace-grid .studio-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;padding:4px;border:1px solid #513c5b;border-radius:10px;background:#201627;}
+.workspace-grid .studio-tabs button{min-width:0;min-height:36px;padding:6px 4px;white-space:normal;overflow-wrap:anywhere;font-size:12px;color:#e6daee;background:transparent;border:1px solid transparent;border-radius:7px;}
+.workspace-grid .studio-tabs button[aria-pressed=true],.workspace-grid .workspace-auditions button[aria-pressed=true],.workspace-grid .workspace-categories button[aria-pressed=true],.workspace-grid .view-choice button[aria-pressed=true]{background:#61327c;border-color:#bd73dc;color:#fff;}
+.workspace-grid .studio-panel[hidden]{display:none!important;}
+.workspace-grid .studio-panel{min-width:0;}
+.workspace-grid .studio-panel fieldset{min-width:0;margin:0;padding:12px;border:1px solid #594163;border-radius:8px;}
+.workspace-grid .studio-panel fieldset:disabled{opacity:.6;}
+.workspace-grid .studio-scrub{display:grid;grid-template-columns:1fr auto;gap:6px;margin:10px 0;font-size:12px;}
+.workspace-grid .studio-scrub input{grid-column:1/-1;width:100%;}
+.workspace-grid input[type=range]{accent-color:#c77cf0;}
+.workspace-grid :is(button,input,select,summary,[tabindex]):focus-visible{outline:2px solid #d2a1f3;outline-offset:2px;}
+.workspace-grid .workspace-categories{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;}
+.workspace-grid .workspace-categories button{min-height:35px;white-space:normal;overflow-wrap:anywhere;}
+.workspace-grid .workspace-history{margin:10px 0;}
+@media(max-width:900px){
+ .modal-wide:has(> .modal-content > .workspace-grid) .workspace-grid{grid-template-columns:1fr;grid-auto-rows:max-content;align-content:start;overflow:auto;align-items:start;}
+ .workspace-grid > :is(.factory-preview,.factory-edit){overflow:visible;scrollbar-gutter:auto;}
+ .workspace-grid .workspace-canvas{height:clamp(220px,42dvh,440px);}
+ .workspace-grid .workspace-categories{grid-template-columns:repeat(3,minmax(0,1fr));}
+}
+@media(max-width:450px){.modal-wide:has(> .modal-content > .workspace-grid){width:calc(100vw - 12px);max-width:calc(100vw - 12px);height:calc(100dvh - 12px);max-height:calc(100dvh - 12px);}.modal-wide:has(> .modal-content > .workspace-grid) .workspace-grid{padding:6px;gap:8px;}.workspace-grid > :is(.factory-preview,.factory-edit){padding:8px;}.workspace-grid .studio-tabs{grid-template-columns:repeat(2,minmax(0,1fr));}}
+.workspace-grid .studio-fullscreen-exit{position:absolute;right:16px;top:16px;z-index:1}
+.workspace-grid .workspace-canvas:fullscreen{height:100%;background:#1a1323;border:0;border-radius:0}
+.workspace-grid .studio-panel legend{padding:0 5px;font-size:13px}
+.workspace-grid .studio-panel fieldset+label{margin-top:12px}
+.workspace-grid .studio-tabs{position:sticky;top:0;z-index:1}
+.workspace-grid > .factory-preview{overflow:hidden;scrollbar-gutter:auto}
+.workspace-grid .studio-preview-controls{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-gutter:stable;overscroll-behavior:contain;padding:0 3px 3px}
+.workspace-grid .studio-stage{flex:none}
+.workspace-grid .studio-preview-controls .view-choice{flex-wrap:wrap}
+.workspace-grid .studio-preview-controls .view-choice button{flex:1 1 auto}
+.filmmaking-shell dialog.modal-wide:has(> .modal-content > .workspace-grid){
+  --film-ink:#f3edf8;--film-muted:#c5b4ce;--film-field:#21172b;--film-border:#594163;
+  --film-panel:#291d33;--film-hover:#382848;--film-soft-accent:#472651;
+}
+.filmmaking-shell dialog.modal-wide:has(> .modal-content > .workspace-grid) :is(input:not([type=range],[type=checkbox],[type=color]),select,textarea){
+  color:#f3edf8;background:#21172b;border:1px solid #684a75;border-radius:6px;
+}
+.filmmaking-shell dialog.modal-wide:has(> .modal-content > .workspace-grid) :is(.quiet,.icon-button){color:#efdef7;background:#302139;border-color:#5b3b68}
+.filmmaking-shell dialog.modal-wide:has(> .modal-content > .workspace-grid) :is(.quiet,.icon-button):hover{background:#452955}
+@media(max-width:900px){
+  .workspace-grid > .factory-preview,.workspace-grid .studio-preview-controls{overflow:visible;scrollbar-gutter:auto}
+}
+.workspace-grid .workspace-preview-transform{position:relative}
+.workspace-grid .workspace-preview-transform .factory-renderer-mount{
+  position:absolute;inset:0;display:block;min-height:0;min-width:0;
+}
+.workspace-grid .workspace-preview-transform :is(canvas,svg){
+  position:absolute;inset:0;display:block;width:100%!important;height:100%!important;
+  min-height:0;min-width:0;max-width:100%;max-height:100%;object-fit:contain;
+}

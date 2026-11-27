@@ -2,9 +2,10 @@ import 'fake-indexeddb/auto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeProject } from '../src/engine/presets.ts';
-import { uid } from '../src/engine/schema.ts';
+import { ProjectDocument, uid } from '../src/engine/schema.ts';
+import { startProduction } from '../src/engine/production.ts';
 import { putAudio, getAudio, projectAssets } from '../src/services/audio.ts';
-import { createMovieBackup, restoreMovie } from '../src/services/projectExchange.ts';
+import { createMovieBackup, inspectMovieBackup, restoreMovie } from '../src/services/projectExchange.ts';
 test('binary backups restore exact media with fresh project and audio identities',async()=>{
   const project=makeProject(false),id=uid();
   const bytes=new Uint8Array(1400000);bytes[37]=75;
@@ -54,4 +55,36 @@ test('storage failure halfway through a valid import rolls back its newly alloca
   finally {IDBObjectStore.prototype.put=original;}
   assert.equal(await count(),before);
   assert(await getAudio(a));assert(await getAudio(b));
+});
+
+
+test('a recording kept only in a production graph survives a portable round trip',async()=>{
+  const project=makeProject(true),scene=project.scenes[0],actor=scene.actors[0];
+  const asset=uid(),version=uid();
+  await putAudio(asset,new Blob(['graph recording'],{type:'audio/wav'}));
+  await putAudio(version,new Blob(['archived graph recording'],{type:'audio/wav'}));
+  const signature=JSON.stringify({id:'graph-voice',track:'dialogue',actor:actor.id,start:0,length:1,
+    asset:'asset:'+asset,text:'Generated line',volume:1,offset:0,muted:false,
+    versions:[{asset:'asset:'+version,text:'Earlier line',length:1,offset:0}]});
+  const document=ProjectDocument.parse({...project,production:{...startProduction(project),graph:[{
+    sceneId:scene.id,signature:'source',entry:'start',exit:'{}',locked:[],diagnostics:[],
+    events:{'graph-voice':{line:'line-a',beat:'beat-a',signature}}}]}});
+  assert.deepEqual(projectAssets(document),[asset,version]);
+  const currentBackup=new File([await createMovieBackup(document)],'graph.sirvibe');
+  const inspection=await inspectMovieBackup(currentBackup);
+  assert.equal(inspection.audioFiles,2);
+  assert.deepEqual(inspection.missingGraphAudio,[]);
+  const restored=await restoreMovie(currentBackup);
+  const [current,archived]=projectAssets(restored);
+  assert.notEqual(current,asset);
+  assert.notEqual(archived,version);
+  assert.equal(await (await getAudio(current))?.text(),'graph recording');
+  assert.equal(await (await getAudio(archived))?.text(),'archived graph recording');
+
+  // An older writer could omit graph-only recordings. Keep such backups readable.
+  const legacy={format:'toonroom-backup-1',project:document,audio:{}};
+  const oldBackup=new File([JSON.stringify(legacy)],'graph-old.json');
+  assert.deepEqual((await inspectMovieBackup(oldBackup)).missingGraphAudio,[asset,version]);
+  const old=await restoreMovie(oldBackup);
+  assert.equal(old.production?.graph[0].events['graph-voice'].signature,signature);
 });

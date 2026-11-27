@@ -14,8 +14,9 @@ import { drawSeat } from './seating.ts';
 import { isSeating, seats } from './seatingCatalog.ts';
 import { costumeImages } from './wardrobeArt.ts';
 import { rig, viewForward } from './animation.ts';
-import { Application, Container, Graphics, Text, Sprite, Texture } from 'pixi.js';
-import { drawActor, heldPropPose } from './actorArt.ts';
+import { RendererType, Application, Container, Graphics, Text, Sprite, Texture } from 'pixi.js';
+import { drawActor } from './actorArt.ts';
+import { gripPlacement } from './propMotion.ts';
 import { cameraViewport, screenToWorld, worldToScreen, worldEntityBounds, pointHitsEntity, renderDepth, type WorldEntityRect } from './cameraTransform.ts';
 import { drawProp, drawWorld, ellipse, propSize, rect } from './art.ts';
 import { evaluate } from './evaluate.ts';
@@ -30,7 +31,9 @@ export const dimensions = (format: Format, scale = 1): [number, number] => {
 
 type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; rearHairArt?:Graphics; gestureArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
   worldArt?:WorldArtworkData;worldSignature?:string; foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; heldArt?:Graphics; heldArtKey?:string; heldSpriteLeft?:Sprite;heldArtLeft?:Graphics;heldArtKeyLeft?:string; imageData?: string };
-export type RenderOptions = { onResolvedArtworkPose?:(frame:ResolvedArtworkPose)=>void; characterPreview?: boolean; previewFocus?: { x: number; y: number };
+type RenderTiming={evaluateMs:number;characterPhysicsMs:number;worldPhysicsMs:number;paintMs:number;submissionMs:number};
+export type RenderOptions = { onTiming?:(timing:RenderTiming)=>void; onResolvedArtworkPose?:(frame:ResolvedArtworkPose)=>void; characterPreview?: boolean; previewFocus?: { x: number; y: number };
+  previewHead?: import('./headDeformation.ts').HeadAudition;
   previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
@@ -138,12 +141,17 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return entity;
   }
   function draw(scene: Scene, characters: Character[], time: number, options: RenderOptions = {}) {
+    const clock=options.onTiming?()=>performance.now():undefined;
+    const start=clock?.()??0;
     volumeCache.begin();
     repaintLatestFrame=()=>{draw(scene,characters,time,options);};
     const characterById = new Map(characters.map(character => [character.id, character]));
     lastFrame = evaluate(scene, time, characterById, width);
+    const evaluated=clock?.()??0;
     const secondary=options.edit?undefined:dynamics.sample(scene,characters,time,width);
+    const characterPhysics=clock?.()??0;
     const worldOffsets=options.edit||options.characterPreview?undefined:worldDynamics.sample(scene,characters,time,width);
+    const worldPhysics=clock?.()??0;
     const { actors, sounds, effects, transition } = lastFrame;
     const camera={...lastFrame.camera};
     for(const clip of effects){
@@ -302,7 +310,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.scale.set((directionFlip ? -1 : 1) * actor.scale, actor.scale);
       const angle=actor.rotation*Math.PI/180,cos=Math.cos(angle),sin=Math.sin(angle);
       const worldPoint=(p:{x:number;y:number})=>{const x=p.x*actor.scale*(directionFlip?-1:1),y=(p.y-lift)*actor.scale;return {x:point.x+x*cos-y*sin,y:point.y+x*sin+y*cos};};
-      const surface:SurfaceFill|undefined=volume?((base,material,center,rotation=0,shape)=>volumeCache.fill(volume,base,material,worldPoint(center),actor.rotation+(directionFlip?-rotation:rotation),directionFlip,shape)):undefined;
+      const surface:SurfaceFill|undefined=volume?((base,material,center,rotation=0,shape,reflected=false)=>volumeCache.fill(volume,base,material,worldPoint(center),actor.rotation+(directionFlip?-rotation:rotation),directionFlip!==reflected,shape,app.renderer.type===RendererType.CANVAS)):undefined;
       entity.group.zIndex = renderDepth(actor.depth, point.y);
       entity.art.position.y = -lift;
       entity.gestureArt!.position.y=-lift;
@@ -319,14 +327,14 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       const projectedEyes=actor.gazePoint?eyeWorldPoint({...actor,...point,flip:directionFlip},character):undefined;
       const targetFocus=projectedEyes&&actor.gazePoint
         ? aimEyes(projectedEyes,actor.gazePoint,directionFlip,actor.rotation+rig(character,actor.pose,1).angle*(directionFlip?-1:1),actor.scale):actor.focus;
-      drawActor(entity.art.clear(),entity.face!,character,view,
+      const visualFrame=drawActor(entity.art.clear(),entity.face!,character,view,
         options.edit ? {} : actor.pose, options.edit ? source.expression : actor.expression,
         options.amplitude?.(actor.id, time) ?? 0, options.edit ? undefined : actor.held,
         time, actor.action, actor.id, actor.speaking || Boolean(options.characterPreview&&options.previewViseme),
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         actor.authoredGaze?targetFocus:resolvePreviewFocus(Boolean(options.characterPreview), options.previewFocus, targetFocus), options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {vectorCache,behavior:options.edit?undefined:actor.behavior,secondary:secondary?.get(actor.id),surface,onResolvedArtworkPose:options.onResolvedArtworkPose,rearHairArt:entity.rearHairArt,mirrored:directionFlip,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
+        {vectorCache,behavior:options.edit?undefined:actor.behavior,secondary:secondary?.get(actor.id),surface,onResolvedArtworkPose:options.onResolvedArtworkPose,rearHairArt:entity.rearHairArt,mirrored:directionFlip,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,headAudition:options.characterPreview?options.previewHead:undefined,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
       entity.face!.y -= lift;
       entity.rearHairArt!.y -= lift;
       // Props are children of the same character Container as the hands:
@@ -343,8 +351,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
           if(art)art.visible=false;
           continue;
         }
-        const grip=heldPropPose(character,view,actor.pose,prop,
-          actor.propPose??{action:actor.action,time:actor.actionTime,weight:1},side);
+        const grip=gripPlacement(visualFrame.attachments.palms[side].position,
+          actor.propPose??{action:actor.action,time:actor.actionTime,weight:actor.actionWeight},prop,
+          visualFrame.attachments.palms[left?'right':'left'].position);
         if(prop.imageData){
           if(art)art.visible=false;
           if(!sprite){
@@ -442,8 +451,11 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     }
     for(const [id,entry] of titleLabels)if(!activeTitles.has(id)){entry.text.destroy();titleLabels.delete(id);}
     if(!options.edit&&transition)drawTransition(fade,transition.effect,transition.progress,width,height);
+    const painted=clock?.()??0;
+    volumeCache.flush();
     app.render();
-    volumeCache.end();
+    if(clock)options.onTiming?.({evaluateMs:evaluated-start,characterPhysicsMs:characterPhysics-evaluated,
+      worldPhysicsMs:worldPhysics-characterPhysics,paintMs:painted-worldPhysics,submissionMs:clock()-painted});
     return lastFrame;
   }
   function pick(x: number, y: number) {
@@ -463,7 +475,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     const hit = candidates.find(item => item.id === lastSelectedId) ?? candidates[0];
     return { id: hit?.id, x: point.x, y: point.y };
   }
-  return { canvas: app.canvas, draw, pick, width, height, prepareImages, secondaryMetrics:()=>dynamics.instrumentation(),worldMetrics:()=>worldDynamics.instrumentation(),
+  return { canvas: app.canvas, draw, pick, width, height, prepareImages, volumeMetrics:()=>({swatches:volumeCache.size,textureBytes:volumeCache.textureBytes}),secondaryMetrics:()=>dynamics.instrumentation(),worldMetrics:()=>worldDynamics.instrumentation(),
     projectPoint: (point:{x:number;y:number})=>worldToScreen(point,currentCamera,{width,height},format),
     preloadBackground: (image: string | undefined) => {if (image) void loadImage(image).catch(()=>{});},
     destroy: () => {

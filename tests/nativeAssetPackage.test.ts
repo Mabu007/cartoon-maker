@@ -60,3 +60,18 @@ test('versioned dependency closure, atomic persistence, failed writes do not par
  const cycle=clone(valid);cycle.packs[0].dependencies=[{id:garment.id,revision:1}];assert.throws(()=>parseNativePackage(raw(cycle)),/cycle/i);
  const duplicate=clone(valid);duplicate.packs[1].dependencies.push(duplicate.packs[1].dependencies[0]);assert.throws(()=>parseNativePackage(raw(duplicate)),/Duplicate dependency/);
 });
+
+test('installing one facing retains the previous native drawing for the other facing',()=>{
+ const existing=nativeExample('hair').packs[0];
+ const withHair=applyNativePackage(base,[existing],nativeKey(existing));
+ const incoming=structuredClone(existing);
+ incoming.id='one-facing-hair';
+ incoming.coverage=['front'];
+ incoming.components=incoming.components.filter(part=>part.view==='front').map(part=>({...part,facing:'normal'}));
+ const updated=applyNativePackage(withHair,[incoming],nativeKey(incoming));
+ const before=nativePartFor(withHair,'hair','front',true)!;
+ const after=nativePartFor(updated,'hair','front',true)!;
+ assert.equal(after.id,before.id);
+ assert.deepEqual(after.artwork,before.artwork);
+ assert.match(nativePartFor(updated,'hair','front',false)!.id,/one-facing-hair/);
+});

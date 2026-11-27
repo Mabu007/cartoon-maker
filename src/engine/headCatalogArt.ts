@@ -97,8 +97,8 @@ export function resetEyeLayers(face:Container) {
   layers.eyewear.clear();
   return layers;
 }
-export function drawEye(g:Graphics,layer:EyeLayer,c:Character,m:FacialPerformance,x:number,y:number,side:number,narrow:boolean,camera:boolean,faceShift:number) {
-  const w=c.wardrobe,kind=c.eyes,e=eyeIdentity(c,m,x,y,side,narrow,camera,faceShift);
+export function drawEye(g:Graphics,layer:EyeLayer,c:Character,m:FacialPerformance,x:number,y:number,side:number,narrow:boolean,camera:boolean,faceShift:number,yawWidth=1) {
+  const w=c.wardrobe,kind=c.eyes,e=eyeIdentity(c,m,x,y,side,narrow,camera,faceShift,yawWidth);
   const {sx,sy,radius,pupilX,pupilY}=e,t=at(x,y,sx*side,sy,e.angle);
   if(kind==='bead'){if(sy>.15)vector(g,e.aperture,w?.iris??INK,INK,0,t);}
   else if(e.open){
@@ -115,7 +115,7 @@ export function drawEye(g:Graphics,layer:EyeLayer,c:Character,m:FacialPerformanc
     if((w?.veins??0)>.01)interior.moveTo(x-6*sx,y).lineTo(x-4*sx,y+.5*sy).lineTo(x-5*sx,y+2*sy).stroke({color:'#d56575',alpha:w?.veins,width:.65});
     if((w?.makeup??0)>0)vector(g,e.aperture,'none','#57394c',.6+(w?.makeup??0),t);
     if((w?.lashes??0)>0)vector(g,'M6 -1L9 -4M4 -4L6 -7','none',INK,.6+(w?.lashes??0)*.6,t);
-  }else vector(g,'M-7 0Q0 2 7 0','none',INK,2,at(x,y,1,1,e.angle));
+  }else vector(g,'M-7 0Q0 2 7 0','none',INK,2,at(x,y,yawWidth,1,e.angle));
   if((w?.undereye??0)>0)g.moveTo(x-6*sx,y+6*sy+1).quadraticCurveTo(x,y+9*sy+2,x+6*sx,y+6*sy+1).stroke({color:'#78576d',alpha:w?.undereye,width:1.4,cap:'round'});
   vector(g,e.browPath,'none',shade(c.hairColor,-.09),e.browWidth,at(e.browX,e.browY,e.browScale,1));
 }
@@ -138,9 +138,9 @@ export function drawEar(g:Graphics,c:Character,x:number,y:number,side:number) {
   vector(g,paths[c.ears],c.skin,INK,2.65,t);
   vector(g,'M-8 -1q4 -5 5 3','none',shade(c.skin,-.22),1.1,t);
 }
-export function drawNose(g:Graphics,c:Character,a:IllustratedView,x:number) {
+export function drawNose(g:Graphics,c:Character,a:IllustratedView,x:number,y=8) {
   const q=c.wardrobe, h=q?.noseLength??1, width=q?.noseWidth??1, tint=shade(c.skin,-.26);
-  const t=at(x,8,width,h,q?.noseTilt??0);
+  const t=at(x,y,width,h,q?.noseTilt??0);
   const paths:Record<Character['nose'],string>={
     minimal:'M1 -6l-4 9 6 1',button:'M-5 1Q-5 -4 1 -4Q7 -3 6 1Q4 5 -4 3Z',
     wedge:'M0 -6L-5 3L6 3Z',long:'M0 -8Q-4 -3 -4 3Q-6 5 -1 6Q6 7 5 2',
@@ -153,8 +153,8 @@ export function drawNose(g:Graphics,c:Character,a:IllustratedView,x:number) {
   };
   vector(g,a.profile?profilePaths[c.nose]:paths[c.nose],c.nose==='minimal'?'none':c.skin,tint,a.profile?1.85:1.45,t);
   const flare=(q?.noseFlare??0)*2;
-  if(c.nose!=='minimal')ellipse(g,x+(a.profile?1.5:-2.4-flare*.48),10.6,(.78+flare*.5)*width,.76,tint);
-  if((q?.noseBlush??0)>.01)g.ellipse(x+(a.profile?3:0),9,4.6*width,2.1*h).fill({color:'#db7876',alpha:(q?.noseBlush??0)*.68});
+  if(c.nose!=='minimal')ellipse(g,x+(a.profile?1.5:-2.4-flare*.48),y+2.6,(.78+flare*.5)*width,.76,tint);
+  if((q?.noseBlush??0)>.01)g.ellipse(x+(a.profile?3:0),y+1,4.6*width,2.1*h).fill({color:'#db7876',alpha:(q?.noseBlush??0)*.68});
 }
 
 const mustaches = {

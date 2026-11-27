@@ -39,11 +39,11 @@ export function traceMouthCavity(g:Graphics,shape:MouthGeometry):Graphics {
  * <clipPath>, and Pixi's renderer uses its equivalent native Graphics mask.
  * Neither implementation swaps image mouth shapes or approximates clipping.
  */
-export function drawExpressionMouth(face:Container,character:Character,mood:FacialPerformance,x:number,view:View='front') {
+export function drawExpressionMouth(face:Container,character:Character,mood:FacialPerformance,x:number,view:View='front',shape?:{mouthY:number;mouthWidth:number}) {
   const layer=getLayer(face),model=mouthGeometry(character,mood,view);
   layer.root.visible=true;
-  layer.root.position.set(x,27+(character.wardrobe?.mouthHeight??0));
-  layer.root.scale.set(model.profileScale,1);
+  layer.root.position.set(x,shape?.mouthY??(27+(character.wardrobe?.mouthHeight??0)));
+  layer.root.scale.set(shape?.mouthWidth??model.profileScale,1);
   layer.cavity.clear();layer.mask.clear();layer.lips.clear();
   layer.inside.visible=model.open;
   if(!model.open) {

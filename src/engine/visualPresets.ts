@@ -28,6 +28,7 @@ export function applyProfile(character:Character,profile:CharacterVisualData['pr
   const visual:CharacterVisualData={version:1,style:character.visual?.style??'illustrated',profile};
   if(limbArt)visual.limbArt=limbArt;
   if(character.visual?.primaryArt)visual.primaryArt=character.visual.primaryArt;
+  if(character.visual?.headRig)visual.headRig=character.visual.headRig;
   if(character.visual?.vectorComponents)visual.vectorComponents=character.visual.vectorComponents.filter(c=>c.profiles.includes(profile));
   const components=character.visual?.components?.filter(c=>c.profiles.includes(profile));
   return {...character,height:1,head:1,thickness:1,torso:1,arms:1,legs:1,...settings,

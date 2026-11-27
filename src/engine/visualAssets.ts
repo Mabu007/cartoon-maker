@@ -2,6 +2,7 @@ import {LveMaterial} from './lveSimulation.ts';
 import {artworkPoseClasses} from './primaryArtworkPose.ts';
 import { characterCoreSlots, isBoneSlot } from './artworkGeometry.ts';
 import { z } from 'zod';
+import { HeadRigRecipe } from './headRigRecipe.ts';
 import { VectorArtworkV1 } from './vectorArtwork.ts';
 
 export const assetCategories = ['character','body-profile','face-component','hair','clothing','accessory','prop','environment','art-style'] as const;
@@ -54,6 +55,7 @@ export const CharacterVisual = z.strictObject({
   version:z.literal(1), style:z.enum(['classic','illustrated']), profile:z.enum(bodyProfiles),
   limbArt:z.literal('anatomical-v1').optional(),
   primaryArt:z.literal('pose-v1').optional(),
+  headRig:HeadRigRecipe.optional(),
   shoulders:number(.8,1.25).optional(), waist:number(.75,1.35).optional(), hips:number(.8,1.3).optional(),
   armWidth:number(.75,1.3).optional(), thighWidth:number(.75,1.3).optional(), calfWidth:number(.8,1.25).optional(),
   abdomen:number(.8,1.3).optional(), wristWidth:number(.85,1.15).optional(), kneeWidth:number(.85,1.15).optional(), ankleWidth:number(.85,1.15).optional(),

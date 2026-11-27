@@ -80,7 +80,16 @@ export function applyNativePackage(character:Character,packs:NativeAssetPack[],r
  // Component IDs are bounded and unique after embedding; no silent truncation.
  const ids=new Set<string>();for(const c of parts){if(c.id.length>80||ids.has(c.id))error('components.id','Embedded component ID conflict or length limit');ids.add(c.id);}
  const replace=(old:{slot:string;view:string})=>parts.some(c=>c.slot===old.slot&&c.view===old.view);
- const retained=(visual.vectorComponents??[]).filter(c=>!replace(c));if(retained.some(c=>ids.has(c.id)))error('components.id','Embedded identity conflicts with retained geometry');
+ const retained=(visual.vectorComponents??[]).flatMap(old=>{
+  const incoming=parts.filter(part=>part.slot===old.slot&&part.view===old.view);
+  if(!incoming.length)return [old];
+  if(incoming.length>1||!incoming[0].facing||old.facing===incoming[0].facing)return [];
+  if(old.facing)return [old];
+  // Preserve the previous shared artwork for the opposite direction.
+  const facing=incoming[0].facing==='normal'?'mirrored' as const:'normal' as const;
+  return [{...old,facing}];
+ });
+ if(retained.some(c=>ids.has(c.id)))error('components.id','Embedded identity conflicts with retained geometry');
  const next=CharacterVisual.safeParse({...visual,...(visual.components?{components:visual.components.filter(c=>!replace(c))}:{}),vectorComponents:[...retained,...parts]});
  if(!next.success)error('character.visual',next.error.issues.map(i=>i.path.join('.')+': '+i.message).join('; '));
  return CharacterDefinition.parse({...character,visual:next.data});

@@ -37,11 +37,14 @@ export function propArm(character:Character, joints:ReturnType<typeof rig>, side
 
 export function propPlacement(character:Character, joints:ReturnType<typeof rig>, pose:PropPose, prop:Prop, rear:boolean,side:'left'|'right'='right') {
   const [,hand]=propArm(character,joints,side,pose,true,rear);
-  const phase=cycle(pose);
-  const scale=clamp(prop.scale,.25,2);
-  if(pose.action==='drive'){
-    const [,left]=propArm(character,joints,'left',pose,false,rear);
-    return {x:(hand.x+left.x)/2,y:(hand.y+left.y)/2+22*scale,angle:14*Math.sin(phase*Math.PI*2),scale};
+  const otherHand=pose.action==='drive'?propArm(character,joints,'left',pose,false,rear)[1]:undefined;
+  return gripPlacement(hand,pose,prop,otherHand);
+}
+/** Paint from the resolved wrist used for the actor's own hand artwork. */
+export function gripPlacement(hand:Point,pose:PropPose,prop:Prop,otherHand?:Point) {
+  const phase=cycle(pose),scale=clamp(prop.scale,.25,2);
+  if(pose.action==='drive'&&otherHand){
+    return {x:(hand.x+otherHand.x)/2,y:(hand.y+otherHand.y)/2+22*scale,angle:14*Math.sin(phase*Math.PI*2),scale};
   }
   const angle=pose.action==='drink'?-28*Math.sin(Math.PI*phase)**3:pose.action==='phone-call'?-12:pose.action==='write'?-42:pose.action==='cartoon-stab'?-8:0;
   const offset:Partial<Record<Prop['kind'],Point>>={
