@@ -83,6 +83,7 @@ const controls = {
   Face: [
     ['crownWidth','Crown width',.72,1.28],['cheekWidth','Cheekbone width',.72,1.28],['jawWidth','Jaw width',.72,1.28],
     ['chinWidth','Chin width',.6,1.4],['headStretch','Vertical stretch',.8,1.25],['facialOffset','Facial asymmetry',-4,4],
+    ['forehead','Forehead height',.8,1.2],['jawAngle','Jaw angle',0,1],['eyeWidth','Eye width',.8,1.2],['eyeTilt','Eye tilt',-15,15],['eyeHeight','Eye height',-4,4],['irisSize','Iris size',.75,1.25],['lidCurvature','Eyelid curvature',.8,1.2],['lashes','Lashes',0,1],['browLength','Brow length',.8,1.2],['browAsymmetry','Brow asymmetry',-3,3],['freckles','Freckles',0,1],['wrinkles','Wrinkles',0,1],['makeup','Makeup',0,1],['cheekBlush','Cheek blush',0,1],['upperLipRatio','Upper lip',.65,1.35],['lowerLipRatio','Lower lip',.65,1.35],['cupidBow','Cupid’s bow',0,1],['mouthHeight','Mouth height',-3,3],
     ['pupilSize','Pupil size',.4,1.8],['ring','Iris ring darkness',0,1],['veins','Bloodshot veins',0,1],['eyelid','Upper lid drop',0,.8],['undereye','Under-eye shading',0,1],
     ['browInner','Inner brow tilt',-45,45],['browOuter','Outer brow tilt',-45,45],['browBend','Brow arch',-1,1],
     ['browThickness','Brow thickness',.5,2],['browSpacing','Brow spacing',-4,4],['browOffset','Brow height',-6,6],

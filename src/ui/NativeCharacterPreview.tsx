@@ -1,3 +1,5 @@
+import {faceLandmarks,headOutline,eyeIdentity,pupils,faceDetailGeometry} from '../engine/faceIdentityGeometry.ts';
+import {viewArt} from '../engine/actorArt.ts';
 import {nativeBoneFor,boneVectorMatrix} from '../engine/nativeVectorBone.ts';
 import {nativeBonePreview} from '../engine/vectorArtworkRender.ts';
 import { anatomicalSegments, type LimbRegion, type LimbMorphology } from '../engine/anatomicalVectorArt.ts';
@@ -47,8 +49,8 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const profile = view === 'side';
   const q = view === 'three-quarter' || view === 'back-quarter';
   const width = profile ? .65 : q ? .9 : 1;
-  const headW = (c.shape === 'square' ? 41 : 44) * (profile ? .83 : 1) * c.head;
-  const headH = (c.shape === 'round' ? 42 : 46) * c.head;
+  const faceArt=viewArt[view],faceFit=faceLandmarks(c,faceArt);
+  const headW=faceFit.w*c.head,headH=faceFit.h*c.head;
   const headY = -(142 * c.height + 11 * c.torso)-36*c.head*((c.visual?.neckLength??1)-1);
   const shirtBottom = -(71 * c.legs);
   const shoulderY = headY + headH + 17;
@@ -79,9 +81,9 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const right = -left;
   const hips=19*width*build.hip;
   const chest=build.chest*7;
-  const eyeY = headY - 5;
+  const eyeY=headY+faceFit.eyeY*c.head;
   const faceShift = q ? 8 * viewForward(view) : profile ? 16 : 0;
-  const noseX = faceShift + (profile ? 13 : 0);
+  const noseX=faceFit.noseX*c.head;
   const animated = ['wave', 'jump', 'celebrate', 'talk', 'laugh'].includes(action);
   const moving = action === 'walk' || action === 'run';
   const forward = viewForward(view);
@@ -99,11 +101,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
     return { side, foot, shoe, upper, knee, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
-  const eyeH = (emotion === 'surprised' || emotion === 'excited' ? 11 : emotion==='nervous'?10 : emotion === 'sleepy' ? 3 : emotion === 'angry' || emotion === 'smug' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
   const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
-  const silhouette = c.shape === 'square'
-    ? 'M ' + (-headW + 14) + ' ' + (headY - headH) + ' Q ' + (-headW - 5) + ' ' + (headY - headH) + ' ' + (-headW) + ' ' + (headY - 9) + ' Q ' + (-headW - 4) + ' ' + (headY + headH) + ' 0 ' + (headY + headH) + ' Q ' + headW + ' ' + (headY + headH) + ' ' + headW + ' ' + (headY - 9) + ' Q ' + headW + ' ' + (headY - headH) + ' ' + (headW - 15) + ' ' + (headY - headH) + ' Z'
-    : 'M 0 ' + (headY - headH) + ' C ' + (-headW * 1.3) + ' ' + (headY - headH) + ' ' + (-headW * 1.3) + ' ' + (headY + headH * .75) + ' 0 ' + (headY + headH) + ' C ' + (headW * 1.3) + ' ' + (headY + headH * 1.15) + ' ' + (headW * 1.3) + ' ' + (headY - headH) + ' 0 ' + (headY - headH) + ' Z';
   const customHair=c.hat==='none'?componentFor(c,'hair',view):undefined;
   const customHead=componentFor(c,'head-base',view);
   const customTop=componentFor(c,'top',view);
@@ -158,7 +156,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         {c.accessory === 'chain' && <path d={'M -13 ' + (shirtTop + 6) + ' Q 0 ' + (shirtTop + 36) + ' 13 ' + (shirtTop + 6)} fill="none" stroke="#f8d06d" strokeWidth="3"/>}
         <ellipse cx={-headW + 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>
         {!profile && <ellipse cx={headW - 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>}
-        {customHead?<g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage character={c} view={view} slot="head-base" x={0} y={0}/></g>:<path d={silhouette} fill={c.skin} stroke="#252037" strokeWidth="4"/>}
+        {customHead?<g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage character={c} view={view} slot="head-base" x={0} y={0}/></g>:<path d={headOutline(c,faceArt)} transform={`translate(0 ${headY}) scale(${c.head})`} fill={c.skin} stroke="#252037" strokeWidth={c.visual?.style==='illustrated'?1.9:3.5}/>}
         <path d={'M ' + (-headW + 9) + ' ' + (headY + 8) + ' Q ' + (-headW + 6) + ' ' + (headY + 22) + ' ' + (-headW + 19) + ' ' + (headY + 32)} fill="none" stroke="#754634" strokeWidth="2" opacity=".4"/>
         {customHair?<image preserveAspectRatio="none" href={customHair.image} x={customHair.offsetX-customHair.pivot.x*customHair.width*c.head} y={headY+customHair.offsetY-customHair.pivot.y*customHair.height*c.head} width={customHair.width*c.head} height={customHair.height*c.head}/>:<>
         {c.hair !== 'bald' && <path d={mainHair} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
@@ -187,18 +185,29 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         {c.hat !== 'none' && <><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' Q 0 ' + (headY - headH - 35) + ' ' + (headW + 3) + ' ' + (headY - headH + 10) + ' Z'} fill={c.shirt} stroke="#252037" strokeWidth="3"/><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' H ' + (headW + 3)} stroke="#252037" strokeWidth="5"/></>}
         {!rear && <g>
           {(emotion === 'happy' || emotion === 'excited' || emotion === 'sad') && !profile && [-24,24].map(offset => <ellipse key={offset} cx={Math.max(-headW+12,Math.min(headW-12,faceCenter+offset))} cy={headY+15} rx="6.5" ry="3.5" fill={emotion === 'happy' || emotion === 'excited' ? '#dc8877' : '#897195'} opacity=".22"/>)}
-          {[profile ? faceShift : faceShift - 15 * c.eyeSpacing, ...(!profile ? [faceShift + 15 * c.eyeSpacing] : [])].map((x, i) => <g key={i}>
-            {eyeH < 1.4 ? <path d={'M ' + (x-7) + ' ' + eyeY + ' q 7 3 14 0'} stroke="#27213a" strokeWidth="2.5" fill="none"/> : <><ellipse cx={x} cy={eyeY} rx="7" ry={eyeH} fill="#fff5e7" stroke="#27213a" strokeWidth="2"/><circle cx={x+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY+Math.max(-eyeH+2, Math.min(eyeH-2, mood.gazeY))} r="3" fill="#27213a"/>{eyeH > 3 && <circle cx={x-1+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY-1.5+mood.gazeY} r="1.3" fill="white"/>}</>}
-            <path d={'M ' + (x-7) + ' ' + (eyeY-eyeH-5) + ' Q ' + x + ' ' + (eyeY-eyeH-(c.brows==='arched'?11:5)) + ' ' + (x+7) + ' ' + (eyeY-eyeH-(emotion==='angry'?2:emotion==='nervous'?(i===0?10:1):5))} stroke="#242036" strokeWidth={c.brows==='bold'?4:2.5} fill="none" strokeLinecap="round"/>
-          </g>)}
+          <g transform={`translate(0 ${headY}) scale(${c.head})`}>
+            {faceFit.eyes.map((x,i)=>{
+              const e=eyeIdentity(c,mood,x,faceFit.eyeY,i?1:-1,Boolean(i&&faceArt.face),false,faceArt.face);
+              const clipId=mouthMask+'-eye-'+i, transform=`translate(${e.x} ${e.y}) rotate(${e.angle}) scale(${e.sx*e.side} ${e.sy})`;
+              return <g key={i}>
+                {c.eyes==='bead'?e.sy>.15&&<path d={e.aperture} transform={transform} fill={c.wardrobe?.iris??'#27213a'}/>:e.open?<><defs><clipPath id={clipId}><path d={e.aperture} transform={transform}/></clipPath></defs><path d={e.aperture} transform={transform} fill={c.wardrobe?.sclera??'#fff5e9'} stroke="#27213a" strokeWidth="1.35" vectorEffect="non-scaling-stroke"/>
+                  <g clipPath={`url(#${clipId})`}>{e.radius>.5&&<><circle cx={e.pupilX} cy={e.pupilY} r={e.radius} fill={c.wardrobe?.iris??'#79564b'}/><path d={pupils[c.wardrobe?.pupil??'round']} transform={`translate(${e.pupilX} ${e.pupilY}) scale(${e.pupilScale})`} fill="#27213a"/>{e.radius>2&&<circle cx={e.pupilX-1} cy={e.pupilY-1} r=".75" fill="white"/>}</>}</g>
+                  {(c.wardrobe?.makeup??0)>0&&<path d={e.aperture} transform={transform} fill="none" stroke="#57394c" strokeWidth={.6+(c.wardrobe?.makeup??0)}/>}
+                  {(c.wardrobe?.lashes??0)>0&&<path d="M6 -1L9 -4M4 -4L6 -7" transform={transform} fill="none" stroke="#27213a" strokeWidth={.6+(c.wardrobe?.lashes??0)*.6}/>}
+                </>:<path d="M-7 0Q0 2 7 0" transform={`translate(${e.x} ${e.y}) rotate(${e.angle})`} stroke="#27213a" strokeWidth="2" fill="none"/>}
+                <path d={e.browPath} transform={`translate(${e.browX} ${e.browY}) scale(${e.browScale} 1)`} fill="none" stroke={c.hairColor} strokeWidth={e.browWidth} strokeLinecap="round"/>
+              </g>;
+            })}
+            {faceDetailGeometry(c,faceArt).map(d=><ellipse key={d.id} cx={d.x} cy={d.y} rx={d.rx} ry={d.ry} fill={d.color} opacity={d.alpha}/>)}
+            {(c.wardrobe?.wrinkles??0)>0&&<path d={`M ${-faceFit.w*.3} ${-faceFit.h*.46} Q 0 ${-faceFit.h*.51} ${faceFit.w*.3} ${-faceFit.h*.46}`} fill="none" stroke="#70402f" opacity={c.wardrobe?.wrinkles} strokeWidth=".8"/>}
+          </g>
           <ellipse cx={noseX} cy={headY + 11} rx={c.nose === 'long' ? 7 : 5} ry={c.nose === 'long' ? 6 : 3.5} fill={c.skin} stroke="#2a2339" strokeWidth="2"/>
           {c.beard==='stubble'?<path d={`M${-headW+7} ${headY+17}Q${-headW+9} ${headY+34} 0 ${headY+39}Q${headW-9} ${headY+34} ${headW-7} ${headY+17}`} fill="none" stroke={c.hairColor} strokeWidth="3" strokeDasharray="1 3" opacity={.5}/>:c.beard !== 'none' && <g fill={c.hairColor}>
             <path d={'M ' + (noseX-1) + ' ' + (headY+17) + ' q -6 -5 -15 -1 q 4 7 13 4 Z'}/>
             {!profile && <path d={'M ' + (noseX+1) + ' ' + (headY+17) + ' q 7 -5 15 -1 q -4 7 -13 4 Z'}/>}
             {c.beard === 'goatee' ? <path d={'M ' + (noseX-8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+53) + ' ' + (noseX+8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+43) + ' ' + (noseX-8) + ' ' + (headY+33) + ' Z'}/> : <path d={'M ' + (-headW+4) + ' ' + (headY+13) + ' Q ' + (-headW+2) + ' ' + (headY+37) + ' 0 ' + (headY+54) + ' Q ' + (headW-2) + ' ' + (headY+37) + ' ' + (headW-4) + ' ' + (headY+13) + ' L ' + (headW-11) + ' ' + (headY+27) + ' Q 0 ' + (headY+50) + ' ' + (-headW+11) + ' ' + (headY+27) + ' Z'}/>}
           </g>}
-          <SvgMouthRig character={c} mood={mood} view={view}
-            x={noseX} y={headY+27} clipId={mouthMask}/>
+          <g transform={`translate(0 ${headY}) scale(${c.head})`}><SvgMouthRig character={c} mood={mood} view={view} x={faceFit.mouthX} y={faceFit.mouthY} clipId={mouthMask}/></g>
           {c.glasses && <><ellipse cx={faceShift - 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>{!profile && <ellipse cx={faceShift + 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>}</>}
           {action==='cry'&&<g fill={c.skin} stroke="#27213a" strokeWidth="2.1"><ellipse cx={faceCenter+12} cy={eyeY+2} rx="7" ry="8"/>{!profile&&<ellipse cx={faceCenter-12} cy={eyeY+2} rx="7" ry="8"/>}<ellipse fill="#80d8f3" stroke="none" cx={faceCenter+13} cy={eyeY+15+elapsed*23%16} rx="2" ry="4"/></g>}
           {c.earrings && <circle cx={-headW + 2} cy={headY + 18} r="5" fill="none" stroke="#f5cf6b" strokeWidth="3"/>}

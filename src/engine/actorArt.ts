@@ -1,3 +1,4 @@
+import {faceLandmarks} from './faceIdentityGeometry.ts';
 import type {NativeBonePathCache} from './vectorArtworkRender.ts';
 import { drawComponent, drawBoneComponent } from './hybridArtwork.ts';
 import {drawStudioLimb,drawAnatomicalLimb} from './studioLimbArt.ts';
@@ -12,7 +13,7 @@ import { facialPerformance, type FacialPerformance } from './facialAnimation.ts'
 import { blendSelectedFace } from './trackingSelection.ts';
 import { neutralFacialControls, type FacialControls } from './facialIntelligence.ts';
 import { at, drawBag, drawHandheld, drawShoe, drawTop, drawWatch, sleeveCoverage, vector, type CostumeTexture } from './wardrobeArt.ts';
-import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
+import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawFaceDetails, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
@@ -368,11 +369,8 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
     drawExtra(g,c,art,w,h,'head');
     return;
   }
-  const center=profile?w*.62:art.face*w/42;
-  const facialOffset=q?.facialOffset??0;
-  const spacing=Math.min(w*.35,13*c.eyeSpacing);
-  const eyes=profile?[center+facialOffset]:[center-spacing+facialOffset,Math.min(w-8,center+spacing*(art.face?.81:1)-facialOffset)];
-  const eyeY=-5*yScale;
+  const {center,eyes,eyeY,noseX,mouthX}=faceLandmarks(c,art);
+  drawFaceDetails(g,c,art);
   eyes.forEach((x,i)=>drawEye(g,layers.eyes[i],c,mood,x,eyeY,i?1:-1,Boolean(i&&art.face),camera,art.face));
   // Raised cheeks follow the asymmetric expression without changing face geometry.
   if(!profile&&mood.controls){
@@ -394,9 +392,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
     });
   }
   drawEyewear(layers.eyewear,c,art,eyes,eyeY);
-  const noseX=profile?w*.94:center;
   drawNose(g,c,art,noseX);
-  const mouthX=profile?w*.65:center;
   drawBeard(g,c,art,mouthX,w,h);
   drawPiercing(g,c,art,ears,profile?mouthX:noseX);
   drawExtra(g,c,art,w,h,'head');
