@@ -1,3 +1,4 @@
+import type {ArtworkPoseClass} from './primaryArtworkPose.ts';
 import {nativeBoneFor,boneVectorMatrix,nativePartFor,fixedVectorMatrix} from './nativeVectorBone.ts';
 import {NativeBonePathCache} from './vectorArtworkRender.ts';
 import { Matrix } from 'pixi.js';
@@ -28,8 +29,8 @@ export function drawComponent(g:Graphics,character:Character,slot:CompiledArtwor
   g.context.restore();return true;
 }
 
-export function drawBoneComponent(g:Graphics,character:Character,slot:CompiledArtwork['slot'],view:View,start:Point,end:Point,thickness:number,texture?:CostumeTexture,vectorCache?:NativeBonePathCache,mirrored=false){
-  const native=nativeBoneFor(character,slot,view,mirrored),matrix=native&&boneVectorMatrix(start,end,thickness);
+export function drawBoneComponent(g:Graphics,character:Character,slot:CompiledArtwork['slot'],view:View,start:Point,end:Point,thickness:number,texture?:CostumeTexture,vectorCache?:NativeBonePathCache,mirrored=false,pose:ArtworkPoseClass='rest'){
+  const native=nativeBoneFor(character,slot,view,mirrored,pose),matrix=native&&boneVectorMatrix(start,end,thickness);
   if(native&&matrix&&vectorCache?.draw(g,native,matrix))return true;
   const part=componentFor(character,slot,view),image=part&&texture?.(part.image);
   if(!part||!image)return false;

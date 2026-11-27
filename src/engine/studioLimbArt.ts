@@ -1,3 +1,4 @@
+import type {PrimaryArtworkPose} from './primaryArtworkPose.ts';
 import { anatomicalSegments, type LimbRegion, type LimbMorphology } from './anatomicalVectorArt.ts';
 import type {Graphics} from 'pixi.js';
 import type {Point} from './animation.ts';
@@ -30,8 +31,8 @@ export function drawStudioLimb(g:Graphics,joints:Point[],width:number,color:stri
 
 /** Opt-in anatomy artwork. Existing illustrated and classic projects retain
  * their original renderer. Geometry strings are fixed and use the shared path cache. */
-export function drawAnatomicalLimb(g:Graphics,joints:Point[],width:number,color:string,region:LimbRegion,morphology?:LimbMorphology){
-  for(const {frame,art} of anatomicalSegments(joints,width,region,morphology)){
+export function drawAnatomicalLimb(g:Graphics,joints:Point[],width:number,color:string,region:LimbRegion,morphology?:LimbMorphology,primary?:PrimaryArtworkPose){
+  for(const {frame,art} of anatomicalSegments(joints,width,region,morphology,primary)){
     const transform=at(frame.x,frame.y,frame.length,frame.width,frame.angle);
     vector(g,art.outline,color,shade(color,-.34),.65,transform);
     vector(g,art.shadow,shade(color,-.16),'none',0,transform);

@@ -1,3 +1,4 @@
+import type {ResolvedArtworkPose} from './resolvedArtworkPose.ts';
 import {NativeBonePathCache} from './vectorArtworkRender.ts';
 import { lightAt, perspectiveScale } from './environmentVisuals.ts';
 import { drawVisualEffect, drawTransition, effectTime, titleStyle } from './visualEffects.ts';
@@ -23,7 +24,7 @@ export const dimensions = (format: Format, scale = 1): [number, number] => {
 
 type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; rearHairArt?:Graphics; gestureArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
   foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; heldArt?:Graphics; heldArtKey?:string; heldSpriteLeft?:Sprite;heldArtLeft?:Graphics;heldArtKeyLeft?:string; imageData?: string };
-export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: number; y: number };
+export type RenderOptions = { onResolvedArtworkPose?:(frame:ResolvedArtworkPose)=>void; characterPreview?: boolean; previewFocus?: { x: number; y: number };
   previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
@@ -289,8 +290,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         actor.authoredGaze?targetFocus:resolvePreviewFocus(Boolean(options.characterPreview), options.previewFocus, targetFocus), options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {vectorCache,rearHairArt:entity.rearHairArt,mirrored:directionFlip,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
+        {vectorCache,onResolvedArtworkPose:options.onResolvedArtworkPose,rearHairArt:entity.rearHairArt,mirrored:directionFlip,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
       entity.face!.y -= lift;
+      entity.rearHairArt!.y -= lift;
       // Props are children of the same character Container as the hands:
       // the IK grip and object share one transform and move as one until
       // their Release event. Left and right use independent persistent art.

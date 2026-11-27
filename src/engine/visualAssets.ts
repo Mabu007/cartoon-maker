@@ -1,3 +1,4 @@
+import {artworkPoseClasses} from './primaryArtworkPose.ts';
 import { characterCoreSlots, isBoneSlot } from './artworkGeometry.ts';
 import { z } from 'zod';
 import { VectorArtworkV1 } from './vectorArtwork.ts';
@@ -26,8 +27,13 @@ export const NativeVectorComponent = z.strictObject({
   artwork:VectorArtworkV1,
   facing:z.enum(['normal','mirrored']).optional(),
   fitMorphology:z.literal('anatomical-v1').optional(),
+  poseArtwork:z.array(z.strictObject({pose:z.enum(artworkPoseClasses),artwork:VectorArtworkV1})).max(6).optional(),
   authoredOffset:z.tuple([number(-32,32),number(-32,32)]).optional()
 }).superRefine((part,ctx)=>{
+  const poseKeys=new Set<string>();for(const variant of part.poseArtwork??[]){
+    if(poseKeys.has(variant.pose)||variant.pose==='rest')ctx.addIssue({code:'custom',message:'Duplicate or redundant pose artwork'});poseKeys.add(variant.pose);
+    if(!isBoneSlot(part.slot)||variant.artwork.units!=='bone-normalized'||variant.artwork.pivot.some(n=>n!==0)||!variant.artwork.anchors.some(a=>a.id==='end'&&a.point[0]===1&&a.point[1]===0)||(!part.facing&&!variant.artwork.compatibility.mirrorSafe))ctx.addIssue({code:'custom',message:'Pose variants must preserve normalized bone anchors and facing compatibility'});
+  }
   if(part.fitMorphology&&!isBoneSlot(part.slot))ctx.addIssue({code:'custom',message:'Anatomical morphology applies only to normalized bone art.'});
   if(!isBoneSlot(part.slot)&&part.artwork.units!=='rig')ctx.addIssue({code:'custom',message:'Fixed native slots require rig units.'});
   if(isBoneSlot(part.slot)&&(part.artwork.units!=='bone-normalized'||part.artwork.pivot[0]!==0||part.artwork.pivot[1]!==0||!part.artwork.anchors.some(a=>a.id==='end'&&a.point[0]===1&&a.point[1]===0)))ctx.addIssue({code:'custom',message:'Native bone parts require normalized origin and end anchor [1,0].'});
@@ -36,6 +42,7 @@ export type NativeVectorComponentData=z.infer<typeof NativeVectorComponent>;
 export const CharacterVisual = z.strictObject({
   version:z.literal(1), style:z.enum(['classic','illustrated']), profile:z.enum(bodyProfiles),
   limbArt:z.literal('anatomical-v1').optional(),
+  primaryArt:z.literal('pose-v1').optional(),
   shoulders:number(.8,1.25).optional(), waist:number(.75,1.35).optional(), hips:number(.8,1.3).optional(),
   armWidth:number(.75,1.3).optional(), thighWidth:number(.75,1.3).optional(), calfWidth:number(.8,1.25).optional(),
   abdomen:number(.8,1.3).optional(), wristWidth:number(.85,1.15).optional(), kneeWidth:number(.85,1.15).optional(), ankleWidth:number(.85,1.15).optional(),

@@ -1,3 +1,4 @@
+import {classifyArtworkPose} from './primaryArtworkPose.ts';
 import {resolveArtworkArm,resolveArtworkLeg,type ResolvedArtworkPose,type ResolvedLeg} from './resolvedArtworkPose.ts';
 import {garmentEnabled,garmentTorso,garmentSleeve,garmentLeg,garmentSkirt,garmentFoot} from './garmentGeometry.ts';
 import {drawGarmentPaths} from './garmentRender.ts';
@@ -96,8 +97,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       armEndpoints[side]=endpoint;
     }
     const {elbow,hand}=endpoint;
+    const primary=c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(joint.shoulder,elbow,hand,{view,side,centerX:r.neck.x,contact:carrying||holdsCostume||reachesFace||Boolean(appearance?.capturedContact&&(appearance.capturedContact.type.endsWith(side)||['prayer','hands-on-head','guard'].includes(appearance.capturedContact.type))),confidence:appearance?.capturedRig?.confidence?.[side],expectedLength:28*c.arms}):undefined;
     const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
-      ?drawAnatomicalLimb(target,points,width,color,points[0]===elbow?'forearm':'upper-arm',c.visual)
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===elbow?'forearm':'upper-arm',c.visual,primary)
       :legacyStroke(target,points,width,color);
     const coverage=sleeveCoverage(c);
     const upper=coverage<=1;
@@ -106,8 +108,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const cuff={x:cuffStart.x+(cuffEnd.x-cuffStart.x)*cover,y:cuffStart.y+(cuffEnd.y-cuffStart.y)*cover};
     const drawUpper=part==='all'||part==='upper';
     const drawLower=part==='all'||part==='lower';
-    const customUpper=drawUpper&&drawBoneComponent(g,c,`upper-arm-${side}`,view,joint.shoulder,elbow,c.thickness*build.arm,costume,appearance?.vectorCache,appearance?.mirrored);
-    const customLower=drawLower&&drawBoneComponent(g,c,`forearm-${side}`,view,elbow,hand,c.thickness*(.63+.37*build.arm),costume,appearance?.vectorCache,appearance?.mirrored);
+    const customUpper=drawUpper&&drawBoneComponent(g,c,`upper-arm-${side}`,view,joint.shoulder,elbow,c.thickness*build.arm,costume,appearance?.vectorCache,appearance?.mirrored,primary?.kind);
+    const customLower=drawLower&&drawBoneComponent(g,c,`forearm-${side}`,view,elbow,hand,c.thickness*(.63+.37*build.arm),costume,appearance?.vectorCache,appearance?.mirrored,primary?.kind);
     if(drawUpper&&drawLower&&build.arm===1&&!customUpper&&!customLower){
       stroke(g,[joint.shoulder,elbow,hand],limbWidth,c.skin);
     }else{
@@ -174,15 +176,16 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const joint = r[side];
     const resolved=resolveArtworkLeg(c,r,side,action,locomotion,lift,gaitTime,forward,gaitWeight,velocity,appearance);resolvedLegs[side]=resolved;
     const {knee,foot,moving}=resolved;
+    const primary=c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(joint.upper,knee,foot,{view,side,centerX:r.hip.x,seated:action==='sit',arm:false,expectedLength:38*c.legs*c.height}):undefined;
     const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
-      ?drawAnatomicalLimb(target,points,width,color,points[0]===knee?'calf':'thigh',c.visual)
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===knee?'calf':'thigh',c.visual,primary)
       :legacyStroke(target,points,width,color);
     const bottom=c.wardrobe?.bottoms??(c.outfit==='athleisure'?'leggings':'straight');
     const swim=c.outfit==='bikini';
     const shorts=bottom==='shorts'||bottom==='biker-shorts';
     const width={straight:11,cargo:16,joggers:13,shorts:15,'wide-leg':17,'skinny-jeans':8,skirt:10,'cargo-joggers':15,leggings:8,'biker-shorts':10}[bottom]*c.thickness*build.leg;
-    const customThigh=drawBoneComponent(g,c,`thigh-${side}`,view,joint.upper,knee,c.thickness*build.leg,costume,appearance?.vectorCache,appearance?.mirrored);
-    const customCalf=drawBoneComponent(g,c,`calf-${side}`,view,knee,foot,c.thickness*build.leg*build.calves,costume,appearance?.vectorCache,appearance?.mirrored);
+    const customThigh=drawBoneComponent(g,c,`thigh-${side}`,view,joint.upper,knee,c.thickness*build.leg,costume,appearance?.vectorCache,appearance?.mirrored,primary?.kind);
+    const customCalf=drawBoneComponent(g,c,`calf-${side}`,view,knee,foot,c.thickness*build.leg*build.calves,costume,appearance?.vectorCache,appearance?.mirrored,primary?.kind);
     if(garments){
       if(!customThigh)stroke(g,[joint.upper,knee],limbWidth*.82*build.leg,c.skin);
       if(!customCalf)stroke(g,[knee,foot],limbWidth*.82*build.leg*build.calves,c.skin);

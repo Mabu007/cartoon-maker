@@ -1,3 +1,4 @@
+import type {ArtworkPoseClass} from './primaryArtworkPose.ts';
 import {isBoneSlot} from './artworkGeometry.ts';
 import {VectorArtworkV1} from './vectorArtwork.ts';
 import {vectorDrawList,worldPoint,type VectorDrawRegion,type VectorMatrix,type VectorCommand} from './vectorArtwork.ts';
@@ -9,10 +10,12 @@ import type {Point} from './artworkGeometry.ts';
 export function nativePartFor(c:Character,slot:CompiledArtwork['slot'],view:View,mirrored=false){
   return c.visual?.vectorComponents?.find(p=>p.slot===slot&&p.view===view&&p.profiles.includes(c.visual!.profile)&&(p.facing?p.facing===(mirrored?'mirrored':'normal'):p.artwork.compatibility.mirrorSafe));
 }
+const poseParts=new WeakMap<NativeVectorComponentData,Map<ArtworkPoseClass,NativeVectorComponentData>>();
 const fittedParts=new WeakMap<NativeVectorComponentData,Map<string,NativeVectorComponentData>>();
-export function nativeBoneFor(c:Character,slot:CompiledArtwork['slot'],view:View,mirrored=false){
-  const part=nativePartFor(c,slot,view,mirrored);
+export function nativeBoneFor(c:Character,slot:CompiledArtwork['slot'],view:View,mirrored=false,pose:ArtworkPoseClass='rest'){
+  let part=nativePartFor(c,slot,view,mirrored);
   if(!part||!isBoneSlot(slot)||part.artwork.units!=='bone-normalized')return;
+  const variant=part.poseArtwork?.find(v=>v.pose===pose);if(variant){let variants=poseParts.get(part);if(!variants){variants=new Map();poseParts.set(part,variants);}let selected=variants.get(pose);if(!selected){selected={...part,artwork:variant.artwork,poseArtwork:undefined};variants.set(pose,selected);}part=selected;}
   if(!part.fitMorphology)return part;
   const v=c.visual,quant=(n:number)=>Math.round(n*20)/20;
   const proximal=slot.startsWith('calf')?quant(v?.kneeWidth??1):1;

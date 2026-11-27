@@ -1,3 +1,4 @@
+import {classifyArtworkPose,type PrimaryArtworkPose} from '../engine/primaryArtworkPose.ts';
 import {resolveArtworkArm,resolveArtworkLeg} from '../engine/resolvedArtworkPose.ts';
 import {garmentEnabled,garmentTorso,garmentSleeve,garmentLeg,garmentSkirt,garmentFoot} from '../engine/garmentGeometry.ts';
 import {SvgGarmentPaths,GarmentPattern} from './SvgGarmentPaths.tsx';
@@ -84,7 +85,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const armParts = (['left', 'right'] as const).map(side => {
     const hand = handPerformance({ action, locomotion, side, carrying: occupying === side, gesture });
     const solved=resolveArtworkArm(c,bodyRig,side,faceArt,action,actionTime,occupying===side,false,false,action==='cry'&&occupying!==side);
-    return { side, ...solved, performance: hand };
+    return { side, ...solved, performance: hand,primary:c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(solved.shoulder,solved.elbow,solved.hand,{view,side,centerX:bodyRig.neck.x,contact:occupying===side,expectedLength:28*c.arms}):undefined };
   });
 
   const left = -24 * width * c.thickness*build.shoulder;
@@ -104,7 +105,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     const scale=c.legs*c.height;
     const {knee,foot}=resolveArtworkLeg(c,bodyRig,side,auditionAction,locomotion,lift,elapsed,forward);
     const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
-    return { side, foot, shoe, upper, knee, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
+    return { side, foot, shoe, upper, knee,primary:c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(upper,knee,foot,{view,side,centerX:bodyRig.hip.x,seated:action==='sit',arm:false,expectedLength:38*scale}):undefined, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
   const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
   const customHair=hairOpen&&hasFixed('hair');
@@ -121,20 +122,20 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     <g transform={'translate(270 443) scale(' + (flip ? -scale : scale) + ' ' + scale + ')'}>
       <g className={animated ? 'native-actor native-actor-' + action : ''} transform={lift ? `translate(0 ${-lift})` : undefined}>
         {hairLayer('background')}
-        {legs.map(({ side, path, foot, shoe, upper, knee }) => <g key={side}>
+        {legs.map(({ side, path, foot, shoe, upper, knee,primary }) => <g key={side}>
           {hasBone(`thigh-${side}`)||hasBone(`calf-${side}`)?<>
-            <BoneImage mirrored={flip} character={c} view={view} slot={`thigh-${side}`} start={upper} end={knee} thickness={c.thickness*build.leg} color={c.pants}/>
-            <BoneImage mirrored={flip} character={c} view={view} slot={`calf-${side}`} start={knee} end={foot} thickness={c.thickness*build.leg*build.calves} color={c.pants}/>
-          </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<AnatomicalLimb morphology={c.visual} points={[upper,knee,foot]} width={9*c.thickness*build.leg} region="thigh" color={swim||garments?c.skin:c.pants}/>:<><path d={path} stroke="#211e33" strokeWidth={13*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={path} stroke={swim||garments?c.skin:c.pants} strokeWidth={9*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/></>}
+            <BoneImage primary={primary} mirrored={flip} character={c} view={view} slot={`thigh-${side}`} start={upper} end={knee} thickness={c.thickness*build.leg} color={c.pants}/>
+            <BoneImage primary={primary} mirrored={flip} character={c} view={view} slot={`calf-${side}`} start={knee} end={foot} thickness={c.thickness*build.leg*build.calves} color={c.pants}/>
+          </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<AnatomicalLimb primary={primary} morphology={c.visual} points={[upper,knee,foot]} width={9*c.thickness*build.leg} region="thigh" color={swim||garments?c.skin:c.pants}/>:<><path d={path} stroke="#211e33" strokeWidth={13*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={path} stroke={swim||garments?c.skin:c.pants} strokeWidth={9*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/></>}
           {garments&&<SvgGarmentPaths paths={garmentLeg(c,upper,knee,foot,hasBone(`thigh-${side}`),hasBone(`calf-${side}`))} patternId={patternId}/>}
           {hasFixed(`shoe-${side}`)?<FixedImage mirrored={flip} character={c} view={view} slot={`shoe-${side}`} x={foot.x} y={foot.y}/>:garments?<SvgGarmentPaths paths={garmentFoot(c,foot,Math.sign(shoe)||1,rear)} patternId={patternId}/>:<ellipse cx={foot.x+shoe} cy={foot.y+1} rx={13*c.thickness*(c.visual?.footSize??1)} ry={6.5*(c.visual?.footSize??1)} fill={c.shoes} stroke="#242037" strokeWidth="3"/>}
         </g>)}
         {garments&&<SvgGarmentPaths paths={garmentSkirt(c,faceArt,bodyRig.hip,action==='sit')} patternId={patternId}/>}
-        {armParts.map(({side,shoulder,elbow,hand})=><g key={side}>
+        {armParts.map(({side,shoulder,elbow,hand,primary})=><g key={side}>
           {hasBone(`upper-arm-${side}`)||hasBone(`forearm-${side}`)?<>
-            <BoneImage mirrored={flip} character={c} view={view} slot={`upper-arm-${side}`} start={shoulder} end={elbow} thickness={c.thickness*build.arm} color={c.skin}/>
-            <BoneImage mirrored={flip} character={c} view={view} slot={`forearm-${side}`} start={elbow} end={hand} thickness={c.thickness*(.63+.37*build.arm)} color={c.skin}/>
-          </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<><AnatomicalLimb morphology={c.visual} points={[shoulder,elbow,hand]} width={11*c.thickness*build.arm} region="upper-arm" color={c.skin}/>{!bare&&!garments&&<AnatomicalLimb morphology={c.visual} points={[shoulder,elbow]} width={16*c.thickness} region="upper-arm" color={c.shirt}/>}</>:<><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke="#242037" strokeWidth={16*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke={c.skin} strokeWidth={11*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>{!bare&&!garments&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`} stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}</>}
+            <BoneImage primary={primary} mirrored={flip} character={c} view={view} slot={`upper-arm-${side}`} start={shoulder} end={elbow} thickness={c.thickness*build.arm} color={c.skin}/>
+            <BoneImage primary={primary} mirrored={flip} character={c} view={view} slot={`forearm-${side}`} start={elbow} end={hand} thickness={c.thickness*(.63+.37*build.arm)} color={c.skin}/>
+          </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<><AnatomicalLimb primary={primary} morphology={c.visual} points={[shoulder,elbow,hand]} width={11*c.thickness*build.arm} region="upper-arm" color={c.skin}/>{!bare&&!garments&&<AnatomicalLimb primary={primary} morphology={c.visual} points={[shoulder,elbow]} width={16*c.thickness} region="upper-arm" color={c.shirt}/>}</>:<><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke="#242037" strokeWidth={16*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke={c.skin} strokeWidth={11*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>{!bare&&!garments&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`} stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}</>}
           {garments&&<SvgGarmentPaths paths={garmentSleeve(c,shoulder,elbow,hand,'all',hasBone(`upper-arm-${side}`),hasBone(`forearm-${side}`))} patternId={patternId}/>}
         </g>)}
         {customTop?<FixedImage mirrored={flip} character={c} view={view} slot="top" x={bodyRig.neck.x} y={bodyRig.neck.y} angle={-(live.torso??0)-(live.hips??0)}/>:garments?<SvgGarmentPaths paths={garmentTorso(c,faceArt,bodyRig.neck,bodyRig.hip,bodyRig.left.shoulder,bodyRig.right.shoulder,action==='sit'?1:Math.min(1,Math.abs(live.torso??0)/35))} patternId={patternId}/>:<path d={c.visual?.style==='illustrated'?topContour(c,faceArt,bodyRig.neck,bodyRig.hip).path:'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>}
@@ -236,8 +237,8 @@ function FixedImage({character,view,slot,x,y,angle=0,mirrored=false}:{character:
   const box=componentTransform(part,character,x,y,angle);
   return <image preserveAspectRatio="none" href={part.image} x={box.x-part.pivot.x*box.width} y={box.y-part.pivot.y*box.height} width={box.width} height={box.height} transform={`rotate(${angle} ${box.x} ${box.y})`}/>;
 }
-function BoneImage({character,view,slot,start,end,thickness,color,mirrored}:{mirrored?:boolean;character:Character;view:View;slot:CompiledArtwork['slot'];start:Point;end:Point;thickness:number;color:string}){
-  const native=nativeBoneFor(character,slot,view,mirrored),world=native&&boneVectorMatrix(start,end,thickness);
+function BoneImage({character,view,slot,start,end,thickness,color,mirrored,primary}:{primary?:PrimaryArtworkPose;mirrored?:boolean;character:Character;view:View;slot:CompiledArtwork['slot'];start:Point;end:Point;thickness:number;color:string}){
+  const native=nativeBoneFor(character,slot,view,mirrored,primary?.kind),world=native&&boneVectorMatrix(start,end,thickness);
   const paths=native&&world&&nativeBonePreview(native,world);
   if(paths)return <g>{paths.map(({id,...props})=><path key={id} {...props} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
   const part=componentFor(character,slot,view),m=part&&boneArtworkTransform(part,start,end,thickness);
@@ -245,8 +246,8 @@ function BoneImage({character,view,slot,start,end,thickness,color,mirrored}:{mir
   return <image preserveAspectRatio="none" href={part.image} width={part.width} height={part.height} transform={`matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.tx} ${m.ty})`}/>;
 }
 
-function AnatomicalLimb({points,width,region,color,morphology}:{points:Point[];width:number;region:LimbRegion;color:string;morphology?:LimbMorphology}){
-  return <>{anatomicalSegments(points,width,region,morphology).map(({frame,art},i)=><g key={i} transform={`translate(${frame.x} ${frame.y}) rotate(${frame.angle}) scale(${frame.length} ${frame.width})`}>
+function AnatomicalLimb({points,width,region,color,morphology,primary}:{primary?:PrimaryArtworkPose;points:Point[];width:number;region:LimbRegion;color:string;morphology?:LimbMorphology}){
+  return <>{anatomicalSegments(points,width,region,morphology,primary).map(({frame,art},i)=><g key={i} transform={`translate(${frame.x} ${frame.y}) rotate(${frame.angle}) scale(${frame.length} ${frame.width})`}>
     <path d={art.outline} fill={color} stroke="#302922" strokeOpacity=".34" strokeWidth=".65" vectorEffect="non-scaling-stroke"/>
     <path d={art.shadow} fill="#000" opacity=".16"/>
     <path d={art.highlight} fill="#fff" opacity=".12"/>

@@ -1,3 +1,4 @@
+import type {PrimaryArtworkPose} from './primaryArtworkPose.ts';
 /** Native, reusable limb contours in bone-local units. X is the solved
  * bone length; Y is the independent anatomical width. No pose mutation. */
 export type LimbRegion = 'upper-arm'|'forearm'|'thigh'|'calf';
@@ -30,12 +31,12 @@ export function anatomicalBoneFrame(a:VectorPoint,b:VectorPoint,width:number){
   if(!Number.isFinite(length)||length<.01)return undefined;
   return {x:a.x,y:a.y,length,width,angle:Math.atan2(dy,dx)*180/Math.PI};
 }
-export function anatomicalSegments(joints:readonly VectorPoint[],width:number,first:LimbRegion,morphology?:LimbMorphology){
+export function anatomicalSegments(joints:readonly VectorPoint[],width:number,first:LimbRegion,morphology?:LimbMorphology,primary?:PrimaryArtworkPose){
   const segments:{frame:NonNullable<ReturnType<typeof anatomicalBoneFrame>>;region:LimbRegion;art:LimbArtwork}[]=[];
   for(let i=1;i<joints.length;i++){
     const region=i===1?first:first==='upper-arm'?'forearm':first==='thigh'?'calf':first;
     const frame=anatomicalBoneFrame(joints[i-1],joints[i],width*(i===1?1:.83));
-    if(frame)segments.push({frame,region,art:morphLimbArtwork(region,morphology)});
+    if(frame)segments.push({frame,region,art:poseLimbArtwork(region,morphLimbArtwork(region,morphology),primary)});
   }
   return segments;
 }
@@ -79,3 +80,23 @@ export function morphLimbArtwork(region:LimbRegion,m?:LimbMorphology):LimbArtwor
   if(morphologyCache.size>64){const oldest=morphologyCache.keys().next().value;if(oldest!==undefined)morphologyCache.delete(oldest);}
   return art;
 }
+
+// Same topology, axial coordinates and centerline endpoints as the authored
+// rest art. Weighted transverse compression affects only visual control points.
+const posedCache=new Map<string,LimbArtwork>();
+export function poseLimbArtwork(region:LimbRegion,rest:LimbArtwork,pose?:PrimaryArtworkPose):LimbArtwork{
+ if(!pose||!pose.bend&&!pose.shortening)return rest;
+ const bend=Math.round(Math.max(0,Math.min(1,pose.bend))*8)/8,short=Math.round(Math.max(0,Math.min(1,pose.shortening))*8)/8;
+ const key=[region,bend,short,pose.inside,rest.outline,rest.shadow,rest.highlight].join('|');const hit=posedCache.get(key);if(hit)return hit;
+ const proximal=region==='forearm'||region==='calf';
+ function deform(source:string){const tokens=source.match(/[MLQCZ]|-?(?:\d+(?:\.\d*)?|\.\d+)/g)!,out:string[]=[];
+ for(let i=0;i<tokens.length;){const t=tokens[i++];out.push(t);if(t==='Z')continue;const count=t==='C'?3:t==='Q'?2:1;
+ for(let j=0;j<count;j++){const x=Number(tokens[i++]),y=Number(tokens[i++]),u=Math.max(0,Math.min(1,x));
+ const joint=proximal?(1-u)**3:u**3,inner=Math.sign(y)===pose.inside*(proximal?-1:1),weight=Math.sin(Math.PI*u);
+ // Keep seam tips intact, compress the inside and support the outer contour.
+ const factor=1+(inner?-.16:.09)*bend*joint*weight+.10*short*weight;
+ out.push(String(x),String(Math.round(y*factor*10000)/10000));}}
+ return out.join(' ');}
+ const value=Object.freeze({outline:deform(rest.outline),shadow:deform(rest.shadow),highlight:deform(rest.highlight)});if(posedCache.size>=96)posedCache.delete(posedCache.keys().next().value!);posedCache.set(key,value);return value;
+}
+export const primaryArtworkCacheSize=()=>posedCache.size;
