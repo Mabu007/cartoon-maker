@@ -17,3 +17,8 @@ for(const character of illustratedCharacters){
 console.log('Generated visual schemas, AI instructions and native rig reference sheets.');
 
 await writeFile(new URL('../public/visual-examples/REVENENT-visual-test.sirvibe',import.meta.url),JSON.stringify({format:'toonroom-backup-1',project:makeRevenentDemo(),audio:{}},null,2)+'\n');
+
+// Native v2 spec and authored fixtures generated from the exact runtime contract.
+const {generateAiVectorSpecification,nativePackageSchemaText,exportAiStarter}=await import('../src/engine/aiVectorSpecification.ts');
+await writeFile(new URL('native-package-v2.schema.json',root),nativePackageSchemaText()+'\n');
+for(const [category,material] of [['hair','braid'],['shirt','fabric'],['accessory','spring']]){const options={category,material,brief:'Original clean stylised vector artwork with a distinct silhouette and restrained detail',views:['front','three-quarter'],profile:'curvy',style:'illustrated'};await writeFile(new URL('native-'+category+'-ai-spec.txt',root),generateAiVectorSpecification(options)+'\n');await writeFile(new URL('native-'+category+'-authored-starter.sirvibe-assets',root),exportAiStarter(options)+'\n');}

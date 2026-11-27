@@ -26,3 +26,5 @@ Stage 9 Chromium evidence now confirms pixel changes, disabled/seek equality for
 | 11 character workspace | Responsive categories, history, group randomization, immutable runtime preview, cached glyphs, temporary physics/capture audition | Real browser create/edit/save/reopen/placement, screenshots and responsiveness, fallback parity, full dirty-geometry granularity, optional webcam review, N4020 and offline export |
 
 | 12 native vector packages | Strict v2 JSON, dependency closure, transactional installation, quarantine/recolor/calibration, embedded geometry and imported LVE groups | Hosted tests, actual browser import and offline reopening, all-view authored examples, cache/renderer performance and hardware, full visual acceptance |
+
+| 13 optional AI asset specification | Runtime-derived prompt/schema, real anchor samples, category capability, authored fixture output and paste quarantine | External AI generation explicitly unverified; real browser workflow, full service worker/offline export, N4020 |
