@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm test && tsc --noEmit && vite build",
+    "build": "npm test && tsc --noEmit && vite build && npm run verify:offline",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "preview": "vite preview",
+    "qa:vector": "node scripts/qa-vector-studio.mjs",
     "verify:offline": "node scripts/verify-offline.mjs",
     "assets:performance": "node scripts/fetch-performance-assets.mjs",
     "docs:visual-assets": "node --experimental-strip-types scripts/export-visual-spec.mjs"

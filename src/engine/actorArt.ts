@@ -336,7 +336,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       ? view === 'back' ? 'back' : 'three-quarter' : view;
   const facialArt=appearance?.art??(face instanceof Graphics?face:undefined);
   const rearHair=appearance?.rearHairArt;
-  if(rearHair){rearHair.clear();rearHair.position.set(face.position.x,face.position.y+g.position.y);rearHair.angle=face.angle;rearHair.scale.set(face.scale.x,face.scale.y);}
+  if(rearHair){rearHair.clear();rearHair.position.set(face.position.x,face.position.y);rearHair.angle=face.angle;rearHair.scale.set(face.scale.x,face.scale.y);}
   if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume,rearHair);
 }
 function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture,rearHair?:Graphics) {

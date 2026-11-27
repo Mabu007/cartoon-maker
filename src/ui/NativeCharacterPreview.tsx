@@ -55,7 +55,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const faceArt=viewArt[view],faceFit=faceLandmarks(c,faceArt);
   const layered=hasLayeredHair(c),hairOpen=['none','visor','sun-visor','fascinator'].includes(c.hat);
   const model=layered&&hairOpen&&!componentFor(c,'hair',view)?buildLayeredHair(c,faceArt):undefined;
-  const hairLayer=(layer:'background'|'foreground')=>model&&<g transform={`translate(0 ${headY}) scale(${c.head})`}>{hairRenderPaths(model,layer).map(({id,...item})=><path key={id} {...item} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
+  const hairLayer=(layer:'background'|'foreground')=>model&&<g transform={layer==='background'?`translate(${bodyRig.head.x} ${headY}) rotate(${bodyRig.angle}) scale(${c.head})`:`translate(0 ${headY}) scale(${c.head})`}>{hairRenderPaths(model,layer).map(({id,...item})=><path key={id} {...item} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
   const headW=faceFit.w*c.head,headH=faceFit.h*c.head;
 
   const build=bodyProportions(c), swim=c.outfit==='bikini', bare=swim||c.outfit==='shirtless';
@@ -158,6 +158,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         })}
         {!customTop&&(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
         {c.accessory === 'chain' && <path d={'M -13 ' + (shirtTop + 6) + ' Q 0 ' + (shirtTop + 36) + ' 13 ' + (shirtTop + 6)} fill="none" stroke="#f8d06d" strokeWidth="3"/>}
+        <g transform={`translate(${bodyRig.head.x} 0) rotate(${bodyRig.angle} 0 ${headY})`}>
         <ellipse cx={-headW + 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>
         {!profile && <ellipse cx={headW - 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>}
         {customHead?<g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage character={c} view={view} slot="head-base" x={0} y={0}/></g>:<path d={headOutline(c,faceArt)} transform={`translate(0 ${headY}) scale(${c.head})`} fill={c.skin} stroke="#252037" strokeWidth={c.visual?.style==='illustrated'?1.9:3.5}/>}
@@ -216,6 +217,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
           {action==='cry'&&<g fill={c.skin} stroke="#27213a" strokeWidth="2.1"><ellipse cx={faceCenter+12} cy={eyeY+2} rx="7" ry="8"/>{!profile&&<ellipse cx={faceCenter-12} cy={eyeY+2} rx="7" ry="8"/>}<ellipse fill="#80d8f3" stroke="none" cx={faceCenter+13} cy={eyeY+15+elapsed*23%16} rx="2" ry="4"/></g>}
           {c.earrings && <circle cx={-headW + 2} cy={headY + 18} r="5" fill="none" stroke="#f5cf6b" strokeWidth="3"/>}
         </g>}
+        </g>
       </g>
     </g>
   </svg>;
