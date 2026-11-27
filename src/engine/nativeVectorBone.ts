@@ -59,3 +59,10 @@ export function positionedVectorRegion(r:VectorDrawRegion,world:VectorMatrix):Ve
   });
   return {...r,commands,transform:undefined,stroke:r.stroke?{...r.stroke,width:r.stroke.width*Math.sqrt(Math.abs(m[0]*m[3]-m[1]*m[2]))}:undefined};
 }
+
+/** Fixed components use rig-space pivots, without changing the pose or source. */
+export function fixedVectorMatrix(part:NativeVectorComponentData,x:number,y:number,angle=0):VectorMatrix|undefined{
+  if(part.artwork.units!=='rig'||![x,y,angle].every(Number.isFinite))return;
+  const r=angle*Math.PI/180,a=Math.cos(r),b=Math.sin(r),[px,py]=part.artwork.pivot;
+  return [a,b,-b,a,x-a*px+b*py,y-b*px-a*py];
+}

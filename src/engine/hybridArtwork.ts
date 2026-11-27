@@ -1,4 +1,4 @@
-import {nativeBoneFor,boneVectorMatrix,nativePartFor} from './nativeVectorBone.ts';
+import {nativeBoneFor,boneVectorMatrix,nativePartFor,fixedVectorMatrix} from './nativeVectorBone.ts';
 import {NativeBonePathCache} from './vectorArtworkRender.ts';
 import { Matrix } from 'pixi.js';
 import { boneArtworkTransform, type Point } from './artworkGeometry.ts';
@@ -18,8 +18,8 @@ export function componentTransform(component:CompiledArtwork,character:Character
 }
 export function drawComponent(g:Graphics,character:Character,slot:CompiledArtwork['slot'],view:View,x:number,y:number,angle:number,texture?:CostumeTexture,vectorCache?:NativeBonePathCache,mirrored=false){
   const native=nativePartFor(character,slot,view,mirrored);
-  const rad=angle*Math.PI/180;
-  if(native?.artwork.units==='rig'&&vectorCache?.draw(g,native,[Math.cos(rad),Math.sin(rad),-Math.sin(rad),Math.cos(rad),x,y]))return true;
+  const matrix=native&&fixedVectorMatrix(native,x,y,angle);
+  if(native&&matrix&&vectorCache?.draw(g,native,matrix))return true;
   const component=componentFor(character,slot,view),image=component&&texture?.(component.image);
   if(!component||!image)return false;
   const box=componentTransform(component,character,x,y,angle);

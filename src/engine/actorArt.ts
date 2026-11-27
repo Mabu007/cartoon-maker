@@ -1,3 +1,4 @@
+import {nativePartFor,boneDrawList} from './nativeVectorBone.ts';
 import {buildLayeredHair,hasLayeredHair,hairRenderPaths} from './layeredHair.ts';
 import {morphHandGeometry} from './handRig.ts';
 import {faceLandmarks} from './faceIdentityGeometry.ts';
@@ -274,7 +275,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       if(bottom==='skinny-jeans'||bottom==='leggings')segment(g,foot.x-3,foot.y-5,foot.x+3,foot.y-5,shade(c.pants,.28),1.4);
     }
     const toe=moving||art.profile||(view!=='front'&&view!=='back')?Math.sign(forward):(side==='left'?-1:1);
-    if(drawComponent(g,c,`shoe-${side}`,view,foot.x,foot.y,0,costume))return;
+    if(drawComponent(g,c,`shoe-${side}`,view,foot.x,foot.y,0,costume,appearance?.vectorCache,appearance?.mirrored))return;
     const footScale=c.visual?.footSize??1;
     g.context.save().setTransform(at(foot.x*(1-footScale),foot.y*(1-footScale),footScale));
     drawShoe(g,c,foot,toe,costume,view==='back');
@@ -301,7 +302,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     vector(g,`M ${x-width} ${y-5}H${x+width}L${x+width*1.29} ${y+hem}Q${x} ${y+hem+7} ${x-width*1.29} ${y+hem}Z`,c.pants,INK,2.1);
     for(const offset of [-.57,0,.57]) segment(g,x+offset*width,y+2,x+offset*width*1.15,y+hem,shade(c.pants,-.28),1.1);
   }
-  if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume))drawTop(g,c,art,r.neck,r.hip,costume);
+  if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume,appearance?.vectorCache,appearance?.mirrored))drawTop(g,c,art,r.neck,r.hip,costume);
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
   if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,carryingHand(frontArm));
@@ -337,9 +338,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const facialArt=appearance?.art??(face instanceof Graphics?face:undefined);
   const rearHair=appearance?.rearHairArt;
   if(rearHair){rearHair.clear();rearHair.position.set(face.position.x,face.position.y);rearHair.angle=face.angle;rearHair.scale.set(face.scale.x,face.scale.y);}
-  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume,rearHair);
+  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume,rearHair,appearance?.vectorCache,Boolean(appearance?.mirrored)!==(trackedHead==='left'));
 }
-function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture,rearHair?:Graphics) {
+function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture,rearHair?:Graphics,vectorCache?:NativeBonePathCache,mirrored=false) {
   const art=viewArt[view], {rear,profile}=art;
   const layers=resetEyeLayers(face);
   const {w,h}=headMetrics(c,art), q=c.wardrobe;
@@ -347,11 +348,12 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   const ears=profile?[-w*.47]:[-w+3,w-3];
   const openHat=['none','visor','sun-visor','fascinator'].includes(c.hat);
   const customHairPart=openHat?componentFor(c,'hair',view):undefined;
-  const customHairReady=Boolean(customHairPart&&texture?.(customHairPart.image));
+  const nativeHair=openHat?nativePartFor(c,'hair',view,mirrored):undefined;
+  const customHairReady=Boolean(customHairPart&&texture?.(customHairPart.image)||nativeHair&&vectorCache&&boneDrawList(nativeHair));
   const layered=hasLayeredHair(c),hair=openHat&&!customHairReady?buildLayeredHair(c,art):undefined;
   if(hair)for(const item of hairRenderPaths(hair,'background'))vector(rearHair??g,item.d,item.fill,item.stroke,item.strokeWidth);
   if(!profile)drawEar(g,c,ears[1],8*yScale,-1);
-  const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture);
+  const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture,vectorCache,mirrored);
   if(!customHead)vector(g,headOutline(c,art),c.skin,c.visual?.style==='illustrated'?shade(c.skin,-.48):INK,c.visual?.style==='illustrated'?1.9:3.5);
   if(!customHead)vector(g,`M ${-w*.81} 5 Q ${-w*.85} ${h*.63} ${-w*.32} ${h*.77} Q ${-w*.57} ${h*.55} ${-w*.81} 5Z`,shade(c.skin,-.10),INK,0);
   if(c.visual?.style==='illustrated'&&!rear){
@@ -363,7 +365,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
     vector(g,`M ${-w*.65} ${h*.34} Q ${-w*.48} ${h*.45} ${-w*.29} ${h*.4} M ${w*.32} ${h*.4} Q ${w*.52} ${h*.43} ${w*.7} ${h*.29}`,'none',tone,.9);
     if(c.visual.profile==='mature'||c.visual.profile==='elderly')vector(g,`M ${-w*.35} ${-h*.47} Q 0 ${-h*.51} ${w*.38} ${-h*.45} M ${-w*.35} ${-h*.38} Q 0 ${-h*.42} ${w*.38} ${-h*.36}`,'none',tone,.8);
   }
-  const customHair=openHat&&drawComponent(g,c,'hair',view,0,0,0,texture);
+  const customHair=openHat&&drawComponent(g,c,'hair',view,0,0,0,texture,vectorCache,mirrored);
   if(hair&&!customHair){
     for(const item of hairRenderPaths(hair,'foreground'))vector(g,item.d,item.fill,item.stroke,item.strokeWidth);
   }else if(openHat&&!customHair&&!layered) {
