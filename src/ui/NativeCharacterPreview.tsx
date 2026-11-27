@@ -1,3 +1,5 @@
+import { boneArtworkTransform, type Point } from '../engine/artworkGeometry.ts';
+import type { CompiledArtwork } from '../engine/visualAssets.ts';
 import { componentFor, componentTransform } from '../engine/hybridArtwork.ts';
 import { useEffect, useId, useState } from 'react';
 import { bodyProportions } from '../engine/bodyBuild.ts';
@@ -82,15 +84,16 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const forward = viewForward(view);
   const lift = moving || action==='sit' || action==='stand' ? base.lift : 0;
   const legs = (['left', 'right'] as const).map((side, index) => {
-    const upper = { x: (index ? 15 : -15) * width*build.hip, y: shirtBottom };
-    const scale = -shirtBottom / 76;
+    const importedLeg=componentFor(c,`thigh-${side}`,view)||componentFor(c,`calf-${side}`,view);
+    const upper = importedLeg?bodyRig[side].upper:{ x: (index ? 15 : -15) * width*build.hip, y: shirtBottom };
+    const scale = importedLeg?c.legs*c.height:-shirtBottom / 76;
     const [knee, foot] = moving
       ? gaitLeg(upper, scale, elapsed, action, side, forward, lift)
       : action==='sit'||action==='stand'
         ? seatedLeg(upper,scale,lift,side)
-        : [{ x: upper.x + (index ? 6 : -5), y: -29 }, { x: upper.x + (index ? 3 : -3), y: -3 }];
+        : importedLeg?[bodyRig[side].knee,bodyRig[side].foot]:[{ x: upper.x + (index ? 6 : -5), y: -29 }, { x: upper.x + (index ? 3 : -3), y: -3 }];
     const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
-    return { side, foot, shoe, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
+    return { side, foot, shoe, upper, knee, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
   const eyeH = (emotion === 'surprised' || emotion === 'excited' ? 11 : emotion==='nervous'?10 : emotion === 'sleepy' ? 3 : emotion === 'angry' || emotion === 'smug' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
   const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
@@ -98,6 +101,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     ? 'M ' + (-headW + 14) + ' ' + (headY - headH) + ' Q ' + (-headW - 5) + ' ' + (headY - headH) + ' ' + (-headW) + ' ' + (headY - 9) + ' Q ' + (-headW - 4) + ' ' + (headY + headH) + ' 0 ' + (headY + headH) + ' Q ' + headW + ' ' + (headY + headH) + ' ' + headW + ' ' + (headY - 9) + ' Q ' + headW + ' ' + (headY - headH) + ' ' + (headW - 15) + ' ' + (headY - headH) + ' Z'
     : 'M 0 ' + (headY - headH) + ' C ' + (-headW * 1.3) + ' ' + (headY - headH) + ' ' + (-headW * 1.3) + ' ' + (headY + headH * .75) + ' 0 ' + (headY + headH) + ' C ' + (headW * 1.3) + ' ' + (headY + headH * 1.15) + ' ' + (headW * 1.3) + ' ' + (headY - headH) + ' 0 ' + (headY - headH) + ' Z';
   const customHair=c.hat==='none'?componentFor(c,'hair',view):undefined;
+  const customHead=componentFor(c,'head-base',view);
   const customTop=componentFor(c,'top',view);
   const topBox=customTop?componentTransform(customTop,c,bodyRig.neck.x,bodyRig.neck.y):undefined;
   const mainHair = 'M ' + (-headW) + ' ' + (headY - 5) + ' C ' + (-headW - 13) + ' ' + (headY - headH - 9) + ' ' + (-headW / 2) + ' ' + (headY - headH - 13) + ' 2 ' + (headY - headH - 8) + ' C ' + headW + ' ' + (headY - headH - 14) + ' ' + (headW + 6) + ' ' + (headY - headH + 7) + ' ' + headW + ' ' + (headY - 6) + (rear ? ' Q 0 ' + (headY + headH) + ' ' + (-headW) + ' ' + (headY - 5) : ' Q 12 ' + (headY - 22) + ' -3 ' + (headY - 19) + ' Q ' + (-headW + 8) + ' ' + (headY - 10) + ' ' + (-headW) + ' ' + (headY - 5)) + ' Z';
@@ -109,24 +113,24 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     <ellipse cx="270" cy="443" rx={37 * scale} ry="7" fill="#382d45" opacity=".4"/>
     <g transform={'translate(270 443) scale(' + (flip ? -scale : scale) + ' ' + scale + ')'}>
       <g className={animated ? 'native-actor native-actor-' + action : ''} transform={lift ? `translate(0 ${-lift})` : undefined}>
-        {legs.map(({ side, path, foot, shoe }) => <g key={side}>
-          <path d={path} stroke="#211e33" strokeWidth={13 * c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-          <path d={path} stroke={swim?c.skin:c.pants} strokeWidth={9 * c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-          <ellipse cx={foot.x + shoe} cy={foot.y + 1} rx={13 * c.thickness} ry="6.5" fill={c.shoes} stroke="#242037" strokeWidth="3"/>
+        {legs.map(({ side, path, foot, shoe, upper, knee }) => <g key={side}>
+          {componentFor(c,`thigh-${side}`,view)||componentFor(c,`calf-${side}`,view)?<>
+            <BoneImage character={c} view={view} slot={`thigh-${side}`} start={upper} end={knee} thickness={c.thickness*build.leg} color={c.pants}/>
+            <BoneImage character={c} view={view} slot={`calf-${side}`} start={knee} end={foot} thickness={c.thickness*build.leg*build.calves} color={c.pants}/>
+          </>:<><path d={path} stroke="#211e33" strokeWidth={13*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={path} stroke={swim?c.skin:c.pants} strokeWidth={9*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/></>}
+          {componentFor(c,`shoe-${side}`,view)?<FixedImage character={c} view={view} slot={`shoe-${side}`} x={foot.x} y={foot.y}/>:<ellipse cx={foot.x+shoe} cy={foot.y+1} rx={13*c.thickness*(c.visual?.footSize??1)} ry={6.5*(c.visual?.footSize??1)} fill={c.shoes} stroke="#242037" strokeWidth="3"/>}
         </g>)}
         {armParts.map(({side,shoulder,elbow,hand})=><g key={side}>
-          <path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`}
-            stroke="#242037" strokeWidth={16*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-          <path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`}
-            stroke={c.skin} strokeWidth={11*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-          {!bare&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`}
-            stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}
+          {componentFor(c,`upper-arm-${side}`,view)||componentFor(c,`forearm-${side}`,view)?<>
+            <BoneImage character={c} view={view} slot={`upper-arm-${side}`} start={shoulder} end={elbow} thickness={c.thickness*build.arm} color={c.skin}/>
+            <BoneImage character={c} view={view} slot={`forearm-${side}`} start={elbow} end={hand} thickness={c.thickness*(.63+.37*build.arm)} color={c.skin}/>
+          </>:<><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke="#242037" strokeWidth={16*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke={c.skin} strokeWidth={11*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>{!bare&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`} stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}</>}
         </g>)}
-        {customTop&&topBox?<image href={customTop.image} x={topBox.x-customTop.pivot.x*topBox.width} y={topBox.y-customTop.pivot.y*topBox.height} width={topBox.width} height={topBox.height}/>:<path d={'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>}
+        {customTop&&topBox?<image preserveAspectRatio="none" href={customTop.image} x={topBox.x-customTop.pivot.x*topBox.width} y={topBox.y-customTop.pivot.y*topBox.height} width={topBox.width} height={topBox.height}/>:<path d={'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>}
         {swim&&<><path d={`M ${left*.8} ${shirtTop+15} Q 0 ${shirtTop+(rear?20:7)} ${right*.8} ${shirtTop+15} v12 Q0 ${shirtTop+34} ${left*.8} ${shirtTop+27}Z`} fill={c.shirt} stroke="#242037" strokeWidth="2"/>
           <path d={`M ${-hips} ${shirtBottom-5} Q0 ${shirtBottom-2} ${hips} ${shirtBottom-5} L7 ${shirtBottom+13} H-7 Z`} fill={c.pants} stroke="#242037" strokeWidth="2"/></>}
         {c.outfit==='shirtless'&&c.bodyBuild?.abs&&!rear&&<path d={`M0 ${shirtTop+24} V${shirtBottom-5} ${[0,1,2].map(offset=>`M-8 ${shirtTop+29+offset*5} q2 4 6 3 m4-3 q4 1 6-3`).join(' ')}`} fill="none" stroke="#754634" opacity=".58" strokeWidth="1.4"/>}
-        {c.outfit === 'hoodie' ? <><path d={'M -15 ' + (shirtTop - 4) + ' Q 0 ' + (shirtTop + 26) + ' 15 ' + (shirtTop - 4)} fill="none" stroke="#41334b" strokeWidth="3"/><path d={'M -5 ' + (shirtTop + 15) + ' v 14 M 5 ' + (shirtTop + 15) + ' v 14'} stroke="#ffebcf" strokeWidth="2"/><path d={'M -14 ' + (shirtBottom - 19) + ' Q 0 ' + (shirtBottom - 11) + ' 14 ' + (shirtBottom - 19) + ' L 14 ' + (shirtBottom - 7) + ' L -14 ' + (shirtBottom - 7) + ' Z'} fill="none" stroke="#423248" strokeWidth="1.5"/></> : null}
+        {!customTop&&c.outfit === 'hoodie' ? <><path d={'M -15 ' + (shirtTop - 4) + ' Q 0 ' + (shirtTop + 26) + ' 15 ' + (shirtTop - 4)} fill="none" stroke="#41334b" strokeWidth="3"/><path d={'M -5 ' + (shirtTop + 15) + ' v 14 M 5 ' + (shirtTop + 15) + ' v 14'} stroke="#ffebcf" strokeWidth="2"/><path d={'M -14 ' + (shirtBottom - 19) + ' Q 0 ' + (shirtBottom - 11) + ' 14 ' + (shirtBottom - 19) + ' L 14 ' + (shirtBottom - 7) + ' L -14 ' + (shirtBottom - 7) + ' Z'} fill="none" stroke="#423248" strokeWidth="1.5"/></> : null}
 
         {armParts.map(({ side, hand, elbow, performance }) => {
           const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
@@ -146,13 +150,13 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
             <path d={thumb} stroke={c.skin} strokeWidth={handRig.digitWidths[4]} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           </g>;
         })}
-        {(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
+        {!customTop&&(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
         {c.accessory === 'chain' && <path d={'M -13 ' + (shirtTop + 6) + ' Q 0 ' + (shirtTop + 36) + ' 13 ' + (shirtTop + 6)} fill="none" stroke="#f8d06d" strokeWidth="3"/>}
         <ellipse cx={-headW + 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>
         {!profile && <ellipse cx={headW - 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>}
-        <path d={silhouette} fill={c.skin} stroke="#252037" strokeWidth="4"/>
+        {customHead?<g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage character={c} view={view} slot="head-base" x={0} y={0}/></g>:<path d={silhouette} fill={c.skin} stroke="#252037" strokeWidth="4"/>}
         <path d={'M ' + (-headW + 9) + ' ' + (headY + 8) + ' Q ' + (-headW + 6) + ' ' + (headY + 22) + ' ' + (-headW + 19) + ' ' + (headY + 32)} fill="none" stroke="#754634" strokeWidth="2" opacity=".4"/>
-        {customHair?<image href={customHair.image} x={customHair.offsetX-customHair.pivot.x*customHair.width*c.head} y={headY+customHair.offsetY-customHair.pivot.y*customHair.height*c.head} width={customHair.width*c.head} height={customHair.height*c.head}/>:<>
+        {customHair?<image preserveAspectRatio="none" href={customHair.image} x={customHair.offsetX-customHair.pivot.x*customHair.width*c.head} y={headY+customHair.offsetY-customHair.pivot.y*customHair.height*c.head} width={customHair.width*c.head} height={customHair.height*c.head}/>:<>
         {c.hair !== 'bald' && <path d={mainHair} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
         {(c.hair === 'fade' || c.hair === 'buzz') && <g>
           <path d={'M ' + (-headW+3) + ' ' + (headY-6) + ' Q ' + (-headW+3) + ' ' + (headY-26) + ' ' + (-headW+17) + ' ' + (headY-25) + ' Q ' + (-headW+19) + ' ' + (headY-12) + ' ' + (-headW+3) + ' ' + (headY-6) + ' Z'} fill={c.hair === 'fade' ? c.skin : c.hairColor} opacity={c.hair==='fade' ? .64 : 1}/>
@@ -184,7 +188,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
             <path d={'M ' + (x-7) + ' ' + (eyeY-eyeH-5) + ' Q ' + x + ' ' + (eyeY-eyeH-(c.brows==='arched'?11:5)) + ' ' + (x+7) + ' ' + (eyeY-eyeH-(emotion==='angry'?2:emotion==='nervous'?(i===0?10:1):5))} stroke="#242036" strokeWidth={c.brows==='bold'?4:2.5} fill="none" strokeLinecap="round"/>
           </g>)}
           <ellipse cx={noseX} cy={headY + 11} rx={c.nose === 'long' ? 7 : 5} ry={c.nose === 'long' ? 6 : 3.5} fill={c.skin} stroke="#2a2339" strokeWidth="2"/>
-          {c.beard !== 'none' && <g fill={c.hairColor}>
+          {c.beard==='stubble'?<path d={`M${-headW+7} ${headY+17}Q${-headW+9} ${headY+34} 0 ${headY+39}Q${headW-9} ${headY+34} ${headW-7} ${headY+17}`} fill="none" stroke={c.hairColor} strokeWidth="3" strokeDasharray="1 3" opacity={.5}/>:c.beard !== 'none' && <g fill={c.hairColor}>
             <path d={'M ' + (noseX-1) + ' ' + (headY+17) + ' q -6 -5 -15 -1 q 4 7 13 4 Z'}/>
             {!profile && <path d={'M ' + (noseX+1) + ' ' + (headY+17) + ' q 7 -5 15 -1 q -4 7 -13 4 Z'}/>}
             {c.beard === 'goatee' ? <path d={'M ' + (noseX-8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+53) + ' ' + (noseX+8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+43) + ' ' + (noseX-8) + ' ' + (headY+33) + ' Z'}/> : <path d={'M ' + (-headW+4) + ' ' + (headY+13) + ' Q ' + (-headW+2) + ' ' + (headY+37) + ' 0 ' + (headY+54) + ' Q ' + (headW-2) + ' ' + (headY+37) + ' ' + (headW-4) + ' ' + (headY+13) + ' L ' + (headW-11) + ' ' + (headY+27) + ' Q 0 ' + (headY+50) + ' ' + (-headW+11) + ' ' + (headY+27) + ' Z'}/>}
@@ -198,4 +202,15 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
       </g>
     </g>
   </svg>;
+}
+
+function FixedImage({character,view,slot,x,y}:{character:Character;view:View;slot:CompiledArtwork['slot'];x:number;y:number}){
+  const part=componentFor(character,slot,view);if(!part)return null;
+  const box=componentTransform(part,character,x,y);
+  return <image preserveAspectRatio="none" href={part.image} x={box.x-part.pivot.x*box.width} y={box.y-part.pivot.y*box.height} width={box.width} height={box.height}/>;
+}
+function BoneImage({character,view,slot,start,end,thickness,color}:{character:Character;view:View;slot:CompiledArtwork['slot'];start:Point;end:Point;thickness:number;color:string}){
+  const part=componentFor(character,slot,view),m=part&&boneArtworkTransform(part,start,end,thickness);
+  if(!part||!m)return <path d={`M${start.x} ${start.y}L${end.x} ${end.y}`} stroke={color} strokeWidth={11*thickness} strokeLinecap="round"/>;
+  return <image preserveAspectRatio="none" href={part.image} width={part.width} height={part.height} transform={`matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.tx} ${m.ty})`}/>;
 }

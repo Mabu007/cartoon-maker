@@ -1,5 +1,8 @@
+import { applySelectionAlpha, applyBrushStroke, type MaskStroke } from '../engine/selectionMask.ts';
+import { AssetManifest, type VisualAssetPack } from '../engine/visualAssets.ts';
+import { uid, type Character } from '../engine/schema.ts';
 import { parseAssetPackage } from '../engine/visualAssets.ts';
-export type Preparation={crop:{x:number;y:number;width:number;height:number};polygon:{x:number;y:number}[];eraseColor?:string;tolerance:number};
+export type Preparation={crop:{x:number;y:number;width:number;height:number};polygon:{x:number;y:number}[];eraseColor?:string;tolerance:number;strokes?:MaskStroke[]};
 /** Read raster dimensions before asking the browser to allocate decoded pixels. */
 export function rasterDimensions(bytes:Uint8Array):{width:number;height:number}{
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),ascii=(start:number,end:number)=>String.fromCharCode(...bytes.slice(start,end));
@@ -44,21 +47,31 @@ export function preparePixels(image:HTMLImageElement,settings:Preparation){
   const ratio=Math.min(1,1024/Math.max(crop.width,crop.height));
   const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(crop.width*ratio));canvas.height=Math.max(1,Math.round(crop.height*ratio));
   const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw Error('Image preparation is unavailable.');
-  if(settings.polygon.length>=3){
-    ctx.beginPath();settings.polygon.forEach((p,i)=>{const x=(p.x*image.naturalWidth-crop.x)*ratio,y=(p.y*image.naturalHeight-crop.y)*ratio;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.closePath();ctx.clip();
-  }
   ctx.drawImage(image,crop.x,crop.y,crop.width,crop.height,0,0,canvas.width,canvas.height);
   const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
+  const maskCanvas=document.createElement('canvas');maskCanvas.width=canvas.width;maskCanvas.height=canvas.height;
+  const maskContext=maskCanvas.getContext('2d',{willReadFrequently:true});if(!maskContext)throw Error('Mask preparation is unavailable.');
+  maskContext.fillStyle='#ffffff';
+  if(settings.polygon.length>=3){maskContext.beginPath();settings.polygon.forEach((p,i)=>{const x=(p.x*image.naturalWidth-crop.x)*ratio,y=(p.y*image.naturalHeight-crop.y)*ratio;if(i===0)maskContext.moveTo(x,y);else maskContext.lineTo(x,y);});maskContext.closePath();maskContext.fill();}
+  else maskContext.fillRect(0,0,canvas.width,canvas.height);
+  const maskPixels=maskContext.getImageData(0,0,canvas.width,canvas.height).data,alpha=new Uint8ClampedArray(canvas.width*canvas.height);
+  for(let i=0;i<alpha.length;i++)alpha[i]=maskPixels[i*4+3];
+  if((settings.strokes?.length??0)>128)throw Error('Mask history is full. Save this part before adding more strokes.');
+  for(const stroke of settings.strokes??[]){
+    if(!Number.isFinite(stroke.radius)||stroke.radius<.001||stroke.radius>.25||stroke.points.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)||p.x<0||p.x>1||p.y<0||p.y>1))throw Error('Invalid brush stroke.');
+    applyBrushStroke(alpha,canvas.width,canvas.height,stroke.points.map(p=>({x:(p.x*image.naturalWidth-crop.x)*ratio,y:(p.y*image.naturalHeight-crop.y)*ratio})),stroke.radius*Math.min(image.naturalWidth,image.naturalHeight)*ratio,stroke.operation);
+  }
+  applySelectionAlpha(pixels.data,alpha);
   if(settings.eraseColor){
     const reference=[1,3,5].map(i=>parseInt(settings.eraseColor!.slice(i,i+2),16));
     for(let i=0;i<pixels.data.length;i+=4){const d=Math.hypot(pixels.data[i]-reference[0],pixels.data[i+1]-reference[1],pixels.data[i+2]-reference[2]);if(d<=settings.tolerance)pixels.data[i+3]=0;}
-    ctx.putImageData(pixels,0,0);
   }
+  ctx.putImageData(pixels,0,0);
   if(!pixels.data.some((value,index)=>index%4===3&&value>0))throw Error('Selection contains no visible artwork. Adjust the polygon or background removal.');
-  const alpha=pixels.data.some((value,index)=>index%4===3&&value<255);
+  const hasAlpha=pixels.data.some((value,index)=>index%4===3&&value<255);
   let data='';for(const quality of [.88,.74,.6,.45]){data=canvas.toDataURL('image/webp',quality);if(data.length<=95_000)break;}
   if(!data.startsWith('data:image/webp;base64,')||data.length>95_000)throw Error('Artwork is too detailed. Crop it more closely or reduce its dimensions.');
-  return {data,width:canvas.width,height:canvas.height,alpha};
+  return {data,width:canvas.width,height:canvas.height,alpha:hasAlpha};
 }
 export async function verifyPackageImages(text:string){
   const pack=parseAssetPackage(text);
@@ -69,10 +82,12 @@ export async function verifyPackageImages(text:string){
     const response=await fetch(file.data),image=await createImageBitmap(await response.blob());
     try{
       if(image.width!==file.width||image.height!==file.height)throw Error(`Decoded dimensions do not match ${file.path}.`);
-      if(asset.category==='hair'||asset.category==='clothing'){
+      if(asset.category==='hair'||asset.category==='clothing'||asset.category==='character'){
         const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;
         const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw Error('Cannot verify artwork transparency.');ctx.drawImage(image,0,0);
-        if(!ctx.getImageData(0,0,image.width,image.height).data.some((v,i)=>i%4===3&&v<255))throw Error(`${file.path} needs real transparency.`);
+        const alpha=ctx.getImageData(0,0,image.width,image.height).data;
+        if(!alpha.some((v,i)=>i%4===3&&v>0))throw Error(`${file.path} is fully transparent.`);
+        if(!alpha.some((v,i)=>i%4===3&&v<255))throw Error(`${file.path} needs real transparency.`);
       }
     }finally{image.close();}
   }
@@ -80,4 +95,11 @@ export async function verifyPackageImages(text:string){
 }
 export function downloadText(name:string,text:string,type='application/json'){
   const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+export function exportCharacterArtwork(character:Character):VisualAssetPack{
+  const components=character.visual?.components;if(!components?.length)throw Error('This character has no imported body artwork.');
+  const images=[...new Set(components.map(part=>part.image))];
+  const files=images.map((image,index)=>{const data=Uint8Array.from(atob(image.slice(image.indexOf(',')+1)),c=>c.charCodeAt(0));const dimensions=rasterDimensions(data);return {path:`art-${index}.${image.startsWith('data:image/png')?'png':'webp'}`,data:image,...dimensions};});
+  return AssetManifest.parse({format:'sirvibe-visual-assets',version:1,id:'character-'+uid(),name:character.name,revision:1,category:'character',style:character.visual!.style,rig:'sirvibe-native-v1',license:'See per-part licence records',provenance:'Compiled from embedded artwork with per-part provenance',tags:['character-artwork'],dependencies:[],files,parts:components.map((part,index)=>({id:'part-'+index,license:part.license,provenance:part.source,file:files[images.indexOf(part.image)].path,slot:part.slot,view:part.view,pivot:part.pivot,end:part.end,width:part.width,height:part.height,offsetX:part.offsetX,offsetY:part.offsetY,fit:part.fit,profiles:part.profiles,symmetrical:part.symmetrical}))});
 }

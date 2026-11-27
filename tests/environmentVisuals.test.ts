@@ -48,3 +48,32 @@ test('walkable polygons warn for out-of-region ground positions without moving a
   const polygon=[{x:0,y:0},{x:100,y:0},{x:100,y:100},{x:0,y:100}];
   assert(inWalkable({x:50,y:50},polygon));assert(!inWalkable({x:101,y:50},polygon));assert(inWalkable({x:-1,y:-1}));
 });
+test('canvas ground handles preserve calibration order and bounds',async()=>{
+  const {moveEnvironmentHandle}=await import('../src/engine/environmentEditing.ts');
+  const source={version:1 as const,quality:'balanced' as const,perspective:defaultPerspective};
+  const a=moveEnvironmentHandle(source,{kind:'horizon'},{x:0,y:1000},0);assert(a.perspective!.horizon<a.perspective!.farY);
+  const b=moveEnvironmentHandle(source,{kind:'nearY'},{x:0,y:0},0);assert(b.perspective!.nearY>b.perspective!.farY);
+  const c=moveEnvironmentHandle(source,{kind:'farY'},{x:0,y:-500},0);assert(c.perspective!.farY>c.perspective!.horizon);assert.equal(source.perspective.nearY,480);
+});
+test('dragging an animated light keys the current playhead and retains earlier motion',async()=>{
+  const {moveEnvironmentHandle}=await import('../src/engine/environmentEditing.ts');
+  const source={...visual,lighting:{...visual.lighting,lights:[{...visual.lighting.lights[0],keys:[{time:0,x:10,y:20,intensity:0},{time:10,x:100,y:200,intensity:1}]}]}};
+  const result=moveEnvironmentHandle(source,{kind:'light',id:'warm'},{x:350,y:230},5);
+  assert.equal(result.lighting!.lights[0].keys!.length,3);assert.equal(result.lighting!.lights[0].keys![1].intensity,.5);assert.equal(result.lighting!.lights[0].keys![1].x,350);assert.deepEqual(source.lighting.lights[0].keys[0],{time:0,x:10,y:20,intensity:0});
+});
+test('optional perspective retiming moves quickly near camera and slows toward depth while preserving endpoints',async()=>{
+  const {movementPosition}=await import('../src/engine/evaluate.ts');
+  const clip={id:'depth',track:'movement' as const,actor:'a',start:0,length:10,fromX:100,fromY:480,toX:800,toY:270};
+  const p={...defaultPerspective,retimeMovement:true};
+  assert.deepEqual(movementPosition(clip,0,p),{x:100,y:480});assert.deepEqual(movementPosition(clip,1,p),{x:800,y:270});
+  assert(movementPosition(clip,.5,p).x>movementPosition(clip,.5).x);
+  const nearSpeed=movementPosition(clip,.3,p).x-movementPosition(clip,.2,p).x,farSpeed=movementPosition(clip,.8,p).x-movementPosition(clip,.7,p).x;
+  assert(nearSpeed>farSpeed);const again=movementPosition(clip,.5,p);movementPosition(clip,.9,p);assert.deepEqual(movementPosition(clip,.5,p),again);
+  const horizontal={...clip,toY:480};assert(Math.abs(movementPosition(horizontal,.4,p).x-movementPosition(horizontal,.4).x)<1e-6);
+});
+test('perspective walking opt-out retains authored movement and frame/gait evaluation share the same path',async()=>{
+  const p=makeRevenentDemo(),scene=p.scenes[0],at=4,frame=evaluate(scene,at,new Map(p.characters.map(c=>[c.id,c]))),move=scene.clips.find(c=>c.track==='movement')!;
+  const {movementPosition}=await import('../src/engine/evaluate.ts');if(move.track!=='movement')throw Error('Missing demo path');
+  const expected=movementPosition(move,(at-move.start)/move.length,scene.visual!.perspective);assert.equal(frame.actors[0].x,expected.x);assert.equal(frame.actors[0].y,expected.y);
+  scene.actors[0].visual={perspective:false};const flat=evaluate(scene,at);assert.equal(flat.actors[0].x,movementPosition(move,(at-move.start)/move.length).x);assert.equal(flat.actors[0].scale,1);
+});

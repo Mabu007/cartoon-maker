@@ -92,7 +92,7 @@
           },
           "files": {
             "minItems": 1,
-            "maxItems": 32,
+            "maxItems": 80,
             "type": "array",
             "items": {
               "type": "object",
@@ -129,7 +129,7 @@
           },
           "parts": {
             "minItems": 1,
-            "maxItems": 32,
+            "maxItems": 128,
             "type": "array",
             "items": {
               "type": "object",
@@ -157,10 +157,41 @@
                   "type": "string",
                   "enum": [
                     "hair",
-                    "top"
+                    "top",
+                    "head-base",
+                    "upper-arm-left",
+                    "forearm-left",
+                    "upper-arm-right",
+                    "forearm-right",
+                    "thigh-left",
+                    "calf-left",
+                    "thigh-right",
+                    "calf-right",
+                    "shoe-left",
+                    "shoe-right"
                   ]
                 },
                 "pivot": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "additionalProperties": false
+                },
+                "end": {
                   "type": "object",
                   "properties": {
                     "x": {
@@ -271,6 +302,16 @@
                 },
                 "symmetrical": {
                   "type": "boolean"
+                },
+                "license": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "provenance": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
                 },
                 "interaction": {
                   "type": "string",

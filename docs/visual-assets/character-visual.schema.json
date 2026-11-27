@@ -76,7 +76,7 @@
       "maximum": 1.2
     },
     "components": {
-      "maxItems": 12,
+      "maxItems": 80,
       "type": "array",
       "items": {
         "type": "object",
@@ -89,7 +89,18 @@
             "type": "string",
             "enum": [
               "hair",
-              "top"
+              "top",
+              "head-base",
+              "upper-arm-left",
+              "forearm-left",
+              "upper-arm-right",
+              "forearm-right",
+              "thigh-left",
+              "calf-left",
+              "thigh-right",
+              "calf-right",
+              "shoe-left",
+              "shoe-right"
             ]
           },
           "view": {
@@ -108,6 +119,26 @@
             "pattern": "^data:image\\/(?:png|webp);base64,[A-Za-z0-9+/]+={0,2}$"
           },
           "pivot": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false
+          },
+          "end": {
             "type": "object",
             "properties": {
               "x": {

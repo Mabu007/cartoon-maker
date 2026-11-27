@@ -144,6 +144,9 @@
         "enabled": {
           "type": "boolean"
         },
+        "retimeMovement": {
+          "type": "boolean"
+        },
         "horizon": {
           "type": "number",
           "minimum": -540,

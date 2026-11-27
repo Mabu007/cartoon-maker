@@ -5,7 +5,7 @@ const key=z.strictObject({time:n(0,180),scale:n(.2,4),opacity:n(0,1).optional(),
 export const EntityVisual=z.strictObject({perspective:z.boolean().optional(),lighting:z.boolean().optional(),opacity:n(0,1).optional(),keys:z.array(key).max(120).optional()}).superRefine((v,ctx)=>{
   if(v.keys?.some((k,i)=>i>0&&k.time<=v.keys![i-1].time))ctx.addIssue({code:'custom',message:'Visual keys must have unique increasing times.'});
 });
-export const Perspective=z.strictObject({enabled:z.boolean(),horizon:n(-540,530),nearY:n(0,1080),farY:n(0,1080),nearScale:n(.1,4),farScale:n(.1,4),minScale:n(.05,4),maxScale:n(.05,4)}).superRefine((p,ctx)=>{
+export const Perspective=z.strictObject({enabled:z.boolean(),retimeMovement:z.boolean().optional(),horizon:n(-540,530),nearY:n(0,1080),farY:n(0,1080),nearScale:n(.1,4),farScale:n(.1,4),minScale:n(.05,4),maxScale:n(.05,4)}).superRefine((p,ctx)=>{
   if(p.nearY<=p.farY||p.farY<=p.horizon)ctx.addIssue({code:'custom',message:'Place horizon above far reference, and far reference above near reference.'});
   if(p.nearScale<p.farScale||p.minScale>p.maxScale)ctx.addIssue({code:'custom',message:'Near scale must be at least far scale; minimum must not exceed maximum.'});
 });

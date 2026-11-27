@@ -9,7 +9,7 @@ export function makeRevenentDemo():Project{
   const backdrop=visualExamples.find(pack=>pack.category==='environment')!,car=visualExamples.find(pack=>pack.category==='prop')!;
   return ProjectDocument.parse({version:1,id:uid(),name:'REVENENT · Alexandra night visual test',characters:structuredClone(illustratedCharacters),scenes:[{
     ...scene,name:'Alexandra · silent visual benchmark',duration:16,backgroundImage:backdrop.files[0].data,
-    visual:{version:1,quality:'balanced',perspective:defaultPerspective,
+    visual:{version:1,quality:'balanced',perspective:{...defaultPerspective,retimeMovement:true},
       lighting:{enabled:true,ambient:'#81769a',intensity:.72,shadow:'#171b2c',shadowOpacity:.48,
         lights:[{id:'amber-streetlight',x:695,y:225,color:'#ffbf7f',intensity:.85,radius:230,falloff:1.4}]}},
     actors:[{id:actor,characterId:'revenent',x:260,y:495,scale:1,depth:0,rotation:0,view:'three-quarter',flip:false,expression:'neutral'}],

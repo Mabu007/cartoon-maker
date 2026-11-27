@@ -1345,7 +1345,7 @@ export default function App() {
         </div>}
         <div className="viewer">
 
-          <Stage key={session} project={project} scene={scene} time={time}
+          <Stage changeEnvironment={visual=>editScene(current=>({...current,visual}))} key={session} project={project} scene={scene} time={time}
           playing={playing} onDestination={placement ? stagePlacement:undefined}
           editPath={placement?.kind==='path'&&!!placement.editing}
           smoothGuide={placement?.kind==='path'||!!pathClip?.style}

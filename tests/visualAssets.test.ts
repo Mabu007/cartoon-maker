@@ -59,7 +59,7 @@ test('profile switch detaches incompatible garments and resets only profile-depe
   CharacterDefinition.parse(curvy);
 });
 test('calibrated garment fit follows body and preserves its declared pivot',()=>{
-  const c=illustratedCharacters[0],component=c.visual!.components![0],box=componentTransform(component,c,11,-130,5);
+  const c=illustratedCharacters[0],component=c.visual!.components!.find(part=>part.slot==='top')!,box=componentTransform(component,c,11,-130,5);
   assert.equal(box.x,11);assert.equal(box.y,-130);assert.equal(box.angle,5);assert(box.height>component.height);
 });
 test('AI export and machine-readable schemas reflect the actual specification',()=>{

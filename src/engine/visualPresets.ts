@@ -1,3 +1,4 @@
+import { modularExample } from './modularExample.ts';
 import { visualExamples } from './visualExamples.ts';
 import { compileComponents } from './visualAssets.ts';
 import { characters } from './presets.ts';
@@ -31,5 +32,5 @@ export const illustratedCharacters:Character[]=[
     wardrobe:{jawWidth:.85,chinWidth:.8,crownWidth:.95,headStretch:1.1,noseWidth:1.12,lipThickness:1.18,trim:'#dfbc85',footwear:'chelsea',bottoms:'wide-leg'},personality:{preset:'confident',autoActing:'subtle'}}
 ];
 
-illustratedCharacters[0].visual!.components=compileComponents(visualExamples.find(p=>p.category==='clothing')!);
+illustratedCharacters[0].visual!.components=compileComponents(modularExample);
 illustratedCharacters[1].visual!.components=compileComponents(visualExamples.find(p=>p.category==='hair')!);

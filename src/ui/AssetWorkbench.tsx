@@ -1,18 +1,23 @@
+import { boneArtworkTransform, isBoneSlot } from '../engine/artworkGeometry.ts';
+import { maskSelectionBounds, type MaskStroke } from '../engine/selectionMask.ts';
 import { useEffect, useRef, useState } from 'react';
-import { assetInstructions, assetViews, bodyProfiles, compatibility, exportAssetPackage, AssetManifest, type VisualAssetPack } from '../engine/visualAssets.ts';
+import { assetInstructions, assetViews, componentSlots, bodyProfiles, compatibility, exportAssetPackage, AssetManifest, type VisualAssetPack } from '../engine/visualAssets.ts';
 import { uid } from '../engine/schema.ts';
 import { decodeArtwork, downloadText, preparePixels, verifyPackageImages, type Preparation } from '../services/assetPreparation.ts';
 import { deleteVisualAsset, listVisualAssets, saveVisualAssets, updateVisualAsset, type AssetRow } from '../services/visualAssetStore.ts';
 import { mediaUrl } from '../services/media.ts';
 import { Modal } from './shared.tsx';
-type Category='hair'|'clothing'|'prop'|'environment';
+type Category='character'|'hair'|'clothing'|'prop'|'environment';
 const initial:Preparation={crop:{x:0,y:0,width:1,height:1},polygon:[],tolerance:25};
 export function AssetWorkbench({close,apply,profile='average',sourceImage}:{close:()=>void;apply:(pack:VisualAssetPack)=>void|Promise<void>;profile?:typeof bodyProfiles[number];sourceImage?:string}){
   const [tab,setTab]=useState<'library'|'prepare'>(sourceImage?'prepare':'library'),[rows,setRows]=useState<AssetRow[]>([]),[query,setQuery]=useState('');
   const [category,setCategory]=useState<Category>(sourceImage?'prop':'hair'),[name,setName]=useState('New artwork'),[view,setView]=useState<typeof assetViews[number]>('three-quarter');
   const [targetProfile,setProfile]=useState(profile),[image,setImage]=useState<HTMLImageElement>(),[settings,setSettings]=useState<Preparation>(initial);
+  const [slot,setSlot]=useState<typeof componentSlots[number]>('head-base'),[end,setEnd]=useState({x:.5,y:.9}),[angle,setAngle]=useState(0);
+  const [brushRadius,setBrushRadius]=useState(.025),[redoStrokes,setRedoStrokes]=useState<MaskStroke[]>([]);
+  const activeStroke=useRef<MaskStroke|undefined>(undefined),brushGuide=useRef<SVGPolylineElement>(null);
   const [pivot,setPivot]=useState({x:.5,y:.5}),[rigWidth,setWidth]=useState(90),[rigHeight,setHeight]=useState(100);
-  const [mode,setMode]=useState<'polygon'|'pivot'>('polygon'),[license,setLicense]=useState('Original artwork'),[provenance,setProvenance]=useState('User-created');
+  const [mode,setMode]=useState<'polygon'|'pivot'|'joint-end'|'brush-add'|'brush-subtract'>('polygon'),[license,setLicense]=useState('Original artwork'),[provenance,setProvenance]=useState('User-created');
   const [error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[preview,setPreview]=useState(''),[instructions,setInstructions]=useState('');
   const [symmetrical,setSymmetrical]=useState(true),[sceneSource,setSceneSource]=useState(Boolean(sourceImage));
   const [interaction,setInteraction]=useState<'none'|'hold'|'sit'>('none'),[anchor,setAnchor]=useState({x:.5,y:.5});
@@ -23,20 +28,20 @@ export function AssetWorkbench({close,apply,profile='average',sourceImage}:{clos
   async function load(file:File,fromScene=false){
     const current=++token.current;setBusy(true);setError('');setPreview('');
     try{const decoded=await decodeArtwork(file);if(current!==token.current)return;
-      setImage(decoded);setName(file.name.replace(/\.[^.]+$/,'').slice(0,60));setSettings({...initial,crop:{x:0,y:0,width:decoded.naturalWidth,height:decoded.naturalHeight}});setSceneSource(fromScene);
+      setImage(decoded);setName(file.name.replace(/\.[^.]+$/,'').slice(0,60));setSettings({...initial,crop:{x:0,y:0,width:decoded.naturalWidth,height:decoded.naturalHeight}});setSceneSource(fromScene);setRedoStrokes([]);
       setPivot({x:.5,y:category==='hair'?.65:category==='clothing'?.05:1});setTab('prepare');
     }catch(cause){if(current===token.current)fail(cause);}finally{if(current===token.current&&mounted.current)setBusy(false);}
   }
   useEffect(()=>{if(!sourceImage)return;let alive=true;void mediaUrl(sourceImage).then(url=>fetch(url)).then(r=>r.blob()).then(blob=>{if(alive)return load(new File([blob],'Scene-extraction.webp',{type:blob.type}),true);}).catch(fail);return()=>{alive=false;};},[sourceImage]);
-  function selectCategory(value:Category){setCategory(value);setWidth(value==='hair'?90:value==='clothing'?60:140);setHeight(value==='hair'?100:value==='clothing'?75:140);setPivot({x:.5,y:value==='hair'?.65:value==='clothing'?.05:1});}
+  function selectCategory(value:Category){setCategory(value);setSlot('head-base');setWidth(value==='character'?76:value==='hair'?90:value==='clothing'?60:140);setHeight(value==='character'?92:value==='hair'?100:value==='clothing'?75:140);setPivot({x:.5,y:value==='character'?.5:value==='hair'?.65:value==='clothing'?.05:1});}
   function compiled():VisualAssetPack{
     if(!image)throw Error('Choose artwork first.');
     const raster=preparePixels(image,settings);
-    if((category==='hair'||category==='clothing')&&!raster.alpha)throw Error('Character artwork needs transparency. Select a polygon or remove its background colour.');
+    if((category==='hair'||category==='clothing'||category==='character')&&!raster.alpha)throw Error('Character artwork needs transparency. Select a polygon or remove its background colour.');
     const partId='part-'+uid(),id='asset-'+uid();
     return AssetManifest.parse({format:'sirvibe-visual-assets',version:1,id,name,revision:1,category,style:'illustrated',rig:'sirvibe-native-v1',license,provenance,tags:sceneSource?['scene-extraction']:[],dependencies:[],
       files:[{path:'artwork.webp',data:raster.data,width:raster.width,height:raster.height}],
-      parts:[{id:partId,file:'artwork.webp',view,slot:category==='hair'?'hair':category==='clothing'?'top':undefined,pivot,width:rigWidth,height:rigHeight,offsetX:0,offsetY:0,fit:category==='clothing'?'body':'fixed',profiles:[targetProfile],symmetrical,
+      parts:[{id:partId,file:'artwork.webp',view,slot:category==='hair'?'hair':category==='clothing'?'top':category==='character'?slot:undefined,pivot,end:category==='character'&&isBoneSlot(slot)?end:undefined,width:rigWidth,height:rigHeight,offsetX:0,offsetY:0,fit:category==='clothing'?'body':'fixed',profiles:[targetProfile],symmetrical,
         interaction:category==='prop'?interaction:undefined,interactionAnchor:category==='prop'&&interaction!=='none'?anchor:undefined,
         placement:sceneSource?{x:(settings.crop.x+settings.crop.width*pivot.x)/image.naturalWidth*960,y:(settings.crop.y+settings.crop.height*pivot.y)/image.naturalHeight*540}:undefined}]
     });
@@ -45,9 +50,8 @@ export function AssetWorkbench({close,apply,profile='average',sourceImage}:{clos
   async function importPack(file:File){setError('');setBusy(true);const current=++token.current;try{if(file.size>12_000_000)throw Error('Package exceeds 12 MB.');const result=await verifyPackageImages(await file.text());if(current!==token.current)return;await saveVisualAssets(result.packs);await refresh();if(mounted.current)setStatus('Asset package imported.');}catch(cause){if(current===token.current)fail(cause);}finally{if(current===token.current&&mounted.current)setBusy(false);}}
   function cropSelection(){
     if(!image||settings.polygon.length<3)return;
-    const xs=settings.polygon.map(p=>p.x*image.naturalWidth),ys=settings.polygon.map(p=>p.y*image.naturalHeight),x=Math.floor(Math.min(...xs)),y=Math.floor(Math.min(...ys));
-    const width=Math.min(image.naturalWidth-x,Math.ceil(Math.max(...xs))-x),height=Math.min(image.naturalHeight-y,Math.ceil(Math.max(...ys))-y);
-    setSettings(s=>({...s,crop:{x,y,width:Math.max(1,width),height:Math.max(1,height)}}));
+    const {x,y,width,height}=maskSelectionBounds(settings.polygon,image.naturalWidth,image.naturalHeight);
+    setSettings(s=>({...s,crop:{x,y,width,height}}));
     if(sceneSource){setWidth(Math.max(8,Math.min(960,width/image.naturalWidth*960)));setHeight(Math.max(8,Math.min(540,height/image.naturalHeight*540)));}
   }
   async function prompt(){const value=assetInstructions(category,targetProfile);try{await navigator.clipboard.writeText(value);setStatus('AI asset instructions copied.');}catch{setInstructions(value);}}
@@ -67,22 +71,39 @@ export function AssetWorkbench({close,apply,profile='average',sourceImage}:{clos
       </article>)}</div>{!rows.length&&<p>Your artwork library is empty. Import a pack or prepare an image to begin.</p>}</>:<div className="preparation-grid"><div>
       {image?<div className="preparation-image"><svg viewBox={`0 0 ${image.naturalWidth} ${image.naturalHeight}`} role="img" aria-label="Artwork selection canvas" onPointerDown={event=>{
         const box=event.currentTarget.getBoundingClientRect(),x=Math.max(0,Math.min(1,(event.clientX-box.left)/box.width)),y=Math.max(0,Math.min(1,(event.clientY-box.top)/box.height));
-        if(mode==='pivot')setPivot({x:Math.max(0,Math.min(1,(x*image.naturalWidth-settings.crop.x)/settings.crop.width)),y:Math.max(0,Math.min(1,(y*image.naturalHeight-settings.crop.y)/settings.crop.height))});
+        if(mode==='brush-add'||mode==='brush-subtract'){
+          if((settings.strokes?.length??0)>=128){setError('Mask history is full; save this part first.');return;}
+          activeStroke.current={operation:mode==='brush-add'?'add':'subtract',radius:brushRadius,points:[{x,y}]};brushGuide.current?.setAttribute('points',`${x*image.naturalWidth},${y*image.naturalHeight}`);brushGuide.current?.setAttribute('stroke',mode==='brush-add'?'#73d8a7':'#fa7694');setRedoStrokes([]);event.currentTarget.setPointerCapture(event.pointerId);return;
+        }
+        const local={x:Math.max(0,Math.min(1,(x*image.naturalWidth-settings.crop.x)/settings.crop.width)),y:Math.max(0,Math.min(1,(y*image.naturalHeight-settings.crop.y)/settings.crop.height))};
+        if(mode==='pivot')setPivot(local);else if(mode==='joint-end')setEnd(local);
         else setSettings(s=>({...s,polygon:[...s.polygon,{x,y}].slice(0,80)}));
-      }}><image href={image.src} width={image.naturalWidth} height={image.naturalHeight}/><rect {...settings.crop} fill="none" stroke="#ffe0a4" strokeWidth={image.naturalWidth/250}/>
+      }} onPointerMove={event=>{
+        const stroke=activeStroke.current;if(!stroke)return;
+        const box=event.currentTarget.getBoundingClientRect(),point={x:Math.max(0,Math.min(1,(event.clientX-box.left)/box.width)),y:Math.max(0,Math.min(1,(event.clientY-box.top)/box.height))};
+        const last=stroke.points.at(-1)!;if(stroke.points.length<512&&Math.hypot(point.x-last.x,point.y-last.y)>.002)stroke.points.push(point);brushGuide.current?.setAttribute('points',stroke.points.map(p=>`${p.x*image.naturalWidth},${p.y*image.naturalHeight}`).join(' '));
+      }} onPointerUp={()=>{const stroke=activeStroke.current;activeStroke.current=undefined;brushGuide.current?.setAttribute('points','');if(stroke)setSettings(s=>({...s,strokes:[...(s.strokes??[]),stroke]}));}} onPointerCancel={()=>{activeStroke.current=undefined;brushGuide.current?.setAttribute('points','');}}><image href={image.src} width={image.naturalWidth} height={image.naturalHeight}/><rect {...settings.crop} fill="none" stroke="#ffe0a4" strokeWidth={image.naturalWidth/250}/>
       {settings.polygon.length>0&&<polygon points={settings.polygon.map(p=>`${p.x*image.naturalWidth},${p.y*image.naturalHeight}`).join(' ')} fill="#8654d933" stroke="#b697ff" strokeWidth={image.naturalWidth/200}/>}
+      <polyline ref={brushGuide} fill="none" stroke="#73d8a7" strokeWidth={brushRadius*Math.min(image.naturalWidth,image.naturalHeight)*2} strokeLinecap="round" strokeLinejoin="round" opacity={.65}/>
+      {(settings.strokes??[]).map((stroke,index)=><polyline key={index} points={stroke.points.map(p=>`${p.x*image.naturalWidth},${p.y*image.naturalHeight}`).join(' ')} fill="none" stroke={stroke.operation==='add'?'#73d8a7':'#fa7694'} strokeWidth={stroke.radius*Math.min(image.naturalWidth,image.naturalHeight)*2} strokeLinecap="round" strokeLinejoin="round" opacity={.45}/>)}
+      {category==='character'&&isBoneSlot(slot)&&<circle cx={settings.crop.x+end.x*settings.crop.width} cy={settings.crop.y+end.y*settings.crop.height} r={image.naturalWidth/80} fill="#73d8a7"/>}
       <circle cx={settings.crop.x+pivot.x*settings.crop.width} cy={settings.crop.y+pivot.y*settings.crop.height} r={image.naturalWidth/80} fill="#fbd397"/></svg></div>:<p>Choose a PNG, WebP or SVG. For a character sheet, select and save one component at a time.</p>}
-      <div className="field-row"><button type="button" aria-pressed={mode==='polygon'} onClick={()=>setMode('polygon')}>Polygon selection</button><button type="button" aria-pressed={mode==='pivot'} onClick={()=>setMode('pivot')}>Place pivot</button></div>
-      <div className="field-row"><button type="button" disabled={!settings.polygon.length} onClick={()=>setSettings(s=>({...s,polygon:s.polygon.slice(0,-1)}))}>Undo point</button><button type="button" onClick={()=>setSettings(s=>({...s,polygon:[]}))}>Clear selection</button><button type="button" disabled={settings.polygon.length<3} onClick={cropSelection}>Crop to selection</button></div>
+      <div className="field-row"><button type="button" aria-pressed={mode==='polygon'} onClick={()=>setMode('polygon')}>Polygon selection</button><button type="button" aria-pressed={mode==='pivot'} onClick={()=>setMode('pivot')}>Place pivot</button>{category==='character'&&isBoneSlot(slot)&&<button type="button" aria-pressed={mode==='joint-end'} onClick={()=>setMode('joint-end')}>Place end joint</button>}</div>
+      <div className="field-row"><button type="button" aria-pressed={mode==='brush-add'} onClick={()=>setMode('brush-add')}>Add selection brush</button><button type="button" aria-pressed={mode==='brush-subtract'} onClick={()=>setMode('brush-subtract')}>Subtract selection brush</button></div>
+      <label className="field">Brush size<input aria-label="Selection brush size" type="range" min={.005} max={.15} step={.005} value={brushRadius} onChange={e=>setBrushRadius(Number(e.target.value))}/></label>
+      <div className="field-row"><button type="button" disabled={!settings.strokes?.length} onClick={()=>{const last=settings.strokes!.at(-1)!;setRedoStrokes(values=>[...values,last]);setSettings(s=>({...s,strokes:s.strokes?.slice(0,-1)}));}}>Undo brush stroke</button><button type="button" disabled={!redoStrokes.length} onClick={()=>{const stroke=redoStrokes.at(-1)!;setRedoStrokes(values=>values.slice(0,-1));setSettings(s=>({...s,strokes:[...(s.strokes??[]),stroke]}));}}>Redo brush stroke</button></div>
+      <div className="field-row"><button type="button" disabled={!settings.polygon.length} onClick={()=>setSettings(s=>({...s,polygon:s.polygon.slice(0,-1)}))}>Undo point</button><button type="button" onClick={()=>{setSettings(s=>({...s,polygon:[],strokes:[]}));setRedoStrokes([]);}}>Clear selection</button><button type="button" disabled={settings.polygon.length<3} onClick={cropSelection}>Crop to selection</button></div>
       <button type="button" className="quiet" disabled={!image||busy} onClick={()=>{try{setPreview(preparePixels(image!,settings).data);setError('');}catch(cause){fail(cause);}}}>Preview transparency</button>{preview&&<img className="prepared-preview" src={preview} alt="Prepared transparent artwork"/>}
       <p className="small-text">Click polygon points around the object. Hair pivots attach to the head; clothing pivots attach to the neck. This prepares visible pixels; hidden parts need separate artwork.</p>
     </div><div>
       <label className="field">Artwork name<input aria-label="Artwork name" value={name} maxLength={60} onChange={e=>setName(e.target.value)}/></label>
-      <label className="field">Category<select aria-label="Artwork category" value={category} onChange={e=>selectCategory(e.target.value as Category)}>{(['hair','clothing','prop','environment'] as const).map(c=><option key={c}>{c}</option>)}</select></label>
+      <label className="field">Category<select aria-label="Artwork category" value={category} onChange={e=>selectCategory(e.target.value as Category)}>{(['character','hair','clothing','prop','environment'] as const).map(c=><option key={c}>{c}</option>)}</select></label>
+      {category==='character'&&<label className="field">Body part<select aria-label="Body part slot" value={slot} onChange={e=>{const value=e.target.value as typeof slot;setSlot(value);setPivot({x:.5,y:isBoneSlot(value)?.1:value==='head-base'?.5:value.startsWith('shoe-')?.75:.05});setWidth(value==='head-base'?76:value.startsWith('shoe-')?30:value==='top'?60:18);setHeight(value==='head-base'?92:value.startsWith('shoe-')?16:value==='top'?75:40);}}>{componentSlots.map(value=><option key={value}>{value}</option>)}</select></label>}
       <label className="field">Supported view<select aria-label="Artwork view" value={view} onChange={e=>setView(e.target.value as typeof view)}>{assetViews.map(v=><option key={v}>{v}</option>)}</select></label>
       <label className="field">Compatible body profile<select aria-label="Artwork body profile" value={targetProfile} onChange={e=>setProfile(e.target.value as typeof targetProfile)}>{bodyProfiles.map(p=><option key={p}>{p}</option>)}</select></label>
-      <div className="field-row"><label>Width in rig units<input aria-label="Artwork rig width" type="number" min={8} max={category==='hair'||category==='clothing'?160:960} value={rigWidth} onChange={e=>setWidth(Number(e.target.value))}/></label><label>Height in rig units<input aria-label="Artwork rig height" type="number" min={8} max={category==='hair'||category==='clothing'?180:540} value={rigHeight} onChange={e=>setHeight(Number(e.target.value))}/></label></div>
+      <div className="field-row"><label>Width in rig units<input aria-label="Artwork rig width" type="number" min={8} max={category==='character'||category==='hair'||category==='clothing'?160:960} value={rigWidth} onChange={e=>setWidth(Number(e.target.value))}/></label><label>Height in rig units<input aria-label="Artwork rig height" type="number" min={8} max={category==='character'||category==='hair'||category==='clothing'?180:540} value={rigHeight} onChange={e=>setHeight(Number(e.target.value))}/></label></div>
       <div className="field-row">{(['x','y'] as const).map(key=><label key={key}>Pivot {key}<input aria-label={`Pivot ${key}`} type="number" min={0} max={1} step={.01} value={pivot[key]} onChange={e=>setPivot(p=>({...p,[key]:Number(e.target.value)}))}/></label>)}</div>
+      {category==='character'&&isBoneSlot(slot)&&<><div className="field-row">{(['x','y'] as const).map(key=><label key={key}>End joint {key}<input aria-label={`End joint ${key}`} type="number" min={0} max={1} step={.01} value={end[key]} onChange={e=>setEnd(p=>({...p,[key]:Number(e.target.value)}))}/></label>)}</div><label className="field">Joint rotation audition<input aria-label="Joint rotation audition" type="range" min={-150} max={150} value={angle} onChange={e=>setAngle(Number(e.target.value))}/></label>{preview&&<JointAudition image={preview} pivot={pivot} end={end} width={rigWidth} height={rigHeight} angle={angle}/>}</>}
       <label className="check"><input type="checkbox" checked={symmetrical} onChange={e=>setSymmetrical(e.target.checked)}/> Symmetrical artwork (safe to mirror)</label>
       <label className="check"><input type="checkbox" checked={sceneSource} onChange={e=>setSceneSource(e.target.checked)}/> Source is a scene image; preserve its placement</label>
       {category==='prop'&&<><label className="field">Interaction<select aria-label="Artwork interaction" value={interaction} onChange={e=>setInteraction(e.target.value as typeof interaction)}><option>none</option><option>hold</option><option>sit</option></select></label>{interaction!=='none'&&<div className="field-row">{(['x','y'] as const).map(k=><label key={k}>Interaction anchor {k}<input type="number" min={0} max={1} step={.01} value={anchor[k]} onChange={e=>setAnchor(a=>({...a,[k]:Number(e.target.value)}))}/></label>)}</div>}</>}
@@ -94,4 +115,10 @@ export function AssetWorkbench({close,apply,profile='average',sourceImage}:{clos
     </div></div>}
     </div>
   </Modal>;
+}
+
+function JointAudition({image,pivot,end,width,height,angle}:{image:string;pivot:{x:number;y:number};end:{x:number;y:number};width:number;height:number;angle:number}){
+  const target={x:Math.sin(angle*Math.PI/180)*50,y:Math.cos(angle*Math.PI/180)*50};
+  const m=boneArtworkTransform({pivot,end,width,height},{x:0,y:0},target);if(!m)return null;
+  return <svg viewBox="-80 -80 160 160" className="joint-audition" role="img" aria-label="Calibrated limb rotation preview"><image preserveAspectRatio="none" href={image} width={width} height={height} transform={`matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.tx} ${m.ty})`}/><circle r="2" fill="#fbd397"/><circle cx={target.x} cy={target.y} r="2" fill="#73d8a7"/></svg>;
 }

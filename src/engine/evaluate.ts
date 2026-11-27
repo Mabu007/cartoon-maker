@@ -1,4 +1,4 @@
-import { sampleVisual } from './environmentVisuals.ts';
+import { sampleVisual, perspectiveScale, type PerspectiveData } from './environmentVisuals.ts';
 import { smoothPath } from './stagePath.ts';
 import { propPlacement, throwArc, transferFraction, type PropPose } from './propMotion.ts';
 import { gaitProfiles, usesSeat, type GaitStyle } from './performanceCatalog.ts';
@@ -44,7 +44,7 @@ const active = (clip: Clip, time: number) => clip.start <= time && time < clip.s
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
 const frameWeight = (clip: Clip, t: number) => ease(clamp(Math.min((t - clip.start) / .16, (clip.start + clip.length - t) / .15)));
 /** Pure deterministic sampler shared by preview, props and imported JSON playback. */
-export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, progress: number): { x: number; y: number } {
+function flatMovementPosition(clip: Extract<Clip, { track: 'movement' }>, progress: number): { x: number; y: number } {
   const t = clamp(progress);
   const keys = clip.keyframes;
   if (!keys) {
@@ -57,6 +57,19 @@ export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, pro
   const left = keys[Math.max(0, (rightIndex < 0 ? keys.length - 1 : rightIndex) - 1)];
   const weight = clamp((t - left.time) / Math.max(1e-9, right.time - left.time));
   return { x: mix(left.x, right.x, weight), y: mix(left.y, right.y, weight) };
+}
+const perspectiveMotionCache=new WeakMap<object,WeakMap<object,Float64Array>>();
+/** Retiming is explicitly enabled by the director. Cached image-space timing weights
+ * slow movement at smaller ground scales; no new animation clock or solver is used. */
+export function movementPosition(clip:Extract<Clip,{track:'movement'}>,progress:number,perspective?:PerspectiveData){
+  if(!perspective?.enabled||!perspective.retimeMovement)return flatMovementPosition(clip,progress);
+  let cache=perspectiveMotionCache.get(clip);if(!cache){cache=new WeakMap();perspectiveMotionCache.set(clip,cache);}
+  let curve=cache.get(perspective);
+  if(!curve){curve=new Float64Array(65);for(let i=1;i<=64;i++){const point=flatMovementPosition(clip,(i-.5)/64);curve[i]=curve[i-1]+1/perspectiveScale(point.y,perspective);}cache.set(perspective,curve);}
+  const target=clamp(progress)*curve[64];let low=0,high=64;
+  while(high-low>1){const middle=(low+high)>>1;if(curve[middle]<=target)low=middle;else high=middle;}
+  const weight=clamp((target-curve[low])/Math.max(1e-9,curve[high]-curve[low]));
+  return flatMovementPosition(clip,(low+weight)/64);
 }
 export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<string,Character>, viewportWidth: number = WIDTH) {
   const t = clamp(time, 0, Math.max(0, scene.duration - .000001));
@@ -72,6 +85,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   }
   const visualObjects=scene.objects.map(object=>sampleVisual(object,t,object.y,scene.visual?.perspective));
   const objectsById=new Map(visualObjects.map(object=>[object.id,object]));
+  const positionAt=(clip:Extract<Clip,{track:'movement'}>,progress:number)=>movementPosition(clip,progress,scene.actors.find(actor=>actor.id===clip.actor)?.visual?.perspective===false?undefined:scene.visual?.perspective);
   type BodyClip=Extract<Clip,{track:'body'}>;
   type PropEvent={clip:BodyClip;at:number};
   const propEvents=new Map<string,PropEvent>();
@@ -94,10 +108,12 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   const byId=new Map(scene.actors.map(actor=>[actor.id,actor]));
   function placedProp(object:Prop,event:PropEvent){
     const {clip,at}=event;
-    const owner=byId.get(clip.actor);
-    if(owner){
+    const sourceOwner=byId.get(clip.actor);
+    if(sourceOwner){
+      let owner=sourceOwner;
       const motion=latest((byActor.get(owner.id)??[]).filter((item):item is Extract<Clip,{track:'movement'}>=>item.track==='movement'&&item.start<=at));
-      const position=motion?movementPosition(motion,(at-motion.start)/motion.length):owner;
+      const position=motion?positionAt(motion,(at-motion.start)/motion.length):owner;
+      owner=sampleVisual({...owner,...position},at,position.y,scene.visual?.perspective);
       const facing=viewForward(owner.view)*(owner.flip?-1:1);
       if(clip.action==='put-down')return {...object,x:position.x+28*facing*owner.scale,y:position.y};
       if(clip.action!=='throw-prop')return object;
@@ -134,13 +150,13 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const gaze = latest(clips.filter(clip => clip.track === 'gaze' && active(clip, t)));
     const movement = latest(clips.filter((clip): clip is Extract<Clip, { track: 'movement' }> => clip.track === 'movement' && clip.start <= t));
     const progress = movement ? clamp((t - movement.start) / movement.length) : 0;
-    const position = movement ? movementPosition(movement, progress) : actor;
+    const position = movement ? positionAt(movement, progress) : actor;
     let x = position.x;
     let y = position.y;
     actor=sampleVisual(actor,t,y,scene.visual?.perspective);
     const travelling = movement && active(movement, t) ? movement : undefined;
-    const lead = movement ? movementPosition(movement,clamp(progress+.003)) : undefined;
-    const trail = movement ? movementPosition(movement,clamp(progress-.003)) : undefined;
+    const lead = movement ? positionAt(movement,clamp(progress+.003)) : undefined;
+    const trail = movement ? positionAt(movement,clamp(progress-.003)) : undefined;
     const deltaX = lead && trail ? lead.x-trail.x : 0;
     const direction = Math.abs(deltaX)>.0001 ? Math.sign(deltaX) : movement ? Math.sign(movement.toX-movement.fromX) : 0;
     let flip = direction ? direction !== viewForward(actor.view) : actor.flip;
@@ -162,8 +178,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       // Finite difference samples the actual authored path, including user
       // keyframes and the same ease ramp used by visual position.
       const sampleWindow=.001;
-      const p1=movementPosition(travelling,clamp(progress+sampleWindow));
-      const p0=movementPosition(travelling,clamp(progress-sampleWindow));
+      const p1=positionAt(travelling,clamp(progress+sampleWindow));
+      const p0=positionAt(travelling,clamp(progress-sampleWindow));
       const delta=Math.max(.00001,(clamp(progress+sampleWindow)-clamp(progress-sampleWindow))*travelling.length);
       return Math.hypot(p1.x-p0.x,p1.y-p0.y)/delta/actor.scale;
     })() : undefined;
@@ -317,7 +333,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       const targetActor = speaking && targetId && !targetProp ? scene.actors.find(other => other.id === targetId && other.id !== actor.id && visibleAt(byActor.get(other.id) ?? [])) : undefined;
       const targetMove = targetActor && latest((byActor.get(targetActor.id) ?? []).filter(
         (clip): clip is Extract<Clip, {track:'movement'}> => clip.track === 'movement' && clip.start <= t));
-      const targetPosition = targetMove ? movementPosition(targetMove, (t - targetMove.start) / targetMove.length) : targetActor;
+      const targetPosition = targetMove ? positionAt(targetMove, (t - targetMove.start) / targetMove.length) : targetActor;
       const target = targetProp ? { x: targetProp.x, y: targetProp.y - (targetProp.imageHeight ?? 50) * targetProp.scale * .55 } :
         targetPosition && targetActor ? { x: targetPosition.x, y: targetPosition.y - 153 * targetActor.scale } : undefined;
       let pointToward: ActingContext['pointToward'];
@@ -439,9 +455,9 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const move = latest(timelineClips.filter(clip => clip.track === 'movement' && clip.actor === cue.actor && clip.start <= cue.start));
     if (move?.track !== 'movement') return owner ? { ...object, x: owner.x + 42, y: owner.y - 35 } : object;
     const at = clamp((cue.start - move.start) / move.length);
-    const position = movementPosition(move, at);
+    const position = positionAt(move, at);
     return { ...object, x: position.x + 42, y: position.y - 35 };
-  });
+  }).map(object=>{const source=scene.objects.find(item=>item.id===object.id);if(!source||source.y===object.y)return object;const placed=sampleVisual(source,t,object.y,scene.visual?.perspective);return {...object,scale:placed.scale};});
   const effects=timelineClips.filter((clip):clip is Extract<Clip,{track:'vfx'|'text'}>=>(clip.track==='vfx'||clip.track==='text')&&active(clip,t));
   return { actors, objects, sounds, camera, effects, transition:transition?{effect:transition.effect,progress:fade}:undefined, shot: cameraClip?.shot ?? 'wide', fade: transition?.effect === 'fade-in' ? 1 - fade : fade };
 }
