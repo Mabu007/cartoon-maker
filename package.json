@@ -9,6 +9,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "preview": "vite preview",
     "qa:lve": "node --experimental-strip-types scripts/qa-lve.mjs",
+    "qa:living-world": "npm exec --yes --package=playwright@1.51.1 --package=@sparticuz/chromium@133.0.0 -- node scripts/qa-living-world.mjs",
     "qa:ai-vector": "npm exec --yes --package=playwright@1.51.1 --package=@sparticuz/chromium@133.0.0 -- node scripts/qa-ai-vector.mjs",
     "qa:native-assets": "npm exec --yes --package=playwright@1.51.1 --package=@sparticuz/chromium@133.0.0 -- node scripts/qa-native-assets.mjs",
     "qa:workspace": "npm exec --yes --package=playwright@1.51.1 --package=@sparticuz/chromium@133.0.0 -- node scripts/qa-character-workspace.mjs",

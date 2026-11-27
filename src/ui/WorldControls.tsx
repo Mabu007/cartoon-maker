@@ -1,17 +1,18 @@
 import {vectorDrawList,svgPath} from '../engine/vectorArtwork.ts';
 import {useState} from 'react';
-import {makeWorldSet,worldSetNames,nativeWorldProp,type WorldSetName} from '../engine/worldCatalog.ts';
+import {makeWorldSet,worldSetNames,nativeWorldProp,addWorldFurniture,type WorldSetName} from '../engine/worldCatalog.ts';
 import {nativeWorldPropKinds,type NativeWorldPropKind,type WorldSetData,type WorldArtworkData} from '../engine/worldArtworkSchema.ts';
 import {exportWorldSet,exportWorldProp,parseWorldPackage,worldSource} from '../engine/worldPackage.ts';
 import {nativePackageLimits} from '../engine/nativeAssetPackage.ts';
 import {downloadText} from '../services/assetPreparation.ts';
 import type {Prop,Scene} from '../engine/schema.ts';
 import {NumberField} from './shared.tsx';
-export function WorldControls({scene,change}:{scene:Scene;change:(value:WorldSetData|undefined,ground?:boolean)=>void}){
+export function WorldControls({scene,change,addFurniture}:{scene:Scene;change:(value:WorldSetData|undefined,ground?:boolean)=>void;addFurniture:(objects:Prop[])=>void}){
  const [selected,setSelected]=useState<WorldSetName>('Living room'),[pending,setPending]=useState<WorldSetData>(),[message,setMessage]=useState('');const world=scene.visual?.world;
  function layer(id:string,patch:Partial<WorldArtworkData>){if(world)change({...world,layers:world.layers.map(l=>l.id===id?{...l,art:{...l.art,...patch}}:l)});}
  return <details className="environment-controls"><summary>Living world · vector sets</summary><p className="small-text">Select and preview a vector set. Existing objects, actors, clips, camera and lighting remain unchanged. An imported background image takes precedence over background layers.</p>
  <label>World set<select aria-label="Living world set" value={selected} onChange={e=>setSelected(e.target.value as WorldSetName)}>{worldSetNames.map(v=><option key={v}>{v}</option>)}</select></label>
+ <button type="button" onClick={()=>addFurniture(addWorldFurniture(scene,selected))}>Add recommended furniture (keep existing)</button>
  <button type="button" onClick={()=>{try{setPending(makeWorldSet(selected));setMessage('Review set before applying.');}catch(e){setMessage(String(e));}}}>Prepare vector set</button>
  <label>Import world package<input type="file" aria-label="Import world set package" accept=".sirvibe-assets,.json" onChange={async e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(!file)return;setPending(undefined);try{if(file.size>nativePackageLimits.bytes)throw Error('Package exceeds byte limit');const p=parseWorldPackage(await file.text());if(p.worldPacks.length!==1||p.worldPacks[0].category!=='environment')throw Error('Choose a single environment pack');setPending({...p.worldPacks[0].set,source:worldSource(p.worldPacks[0])});setMessage('Validated world set. Review before applying.');}catch(e){setMessage(String(e));}}}/></label>
  {pending&&<div><svg role="img" aria-label="Quarantined world set preview" viewBox="0 0 960 540" style={{width:'100%',background:'#3b3545'}}>{[...pending.layers].sort((a,b)=>['background','midground','foreground'].indexOf(a.layer)-['background','midground','foreground'].indexOf(b.layer)||a.depth-b.depth||a.y-b.y).map(l=><g key={l.id} transform={`translate(${l.x} ${l.y}) rotate(${l.rotation}) scale(${l.scale})`}>{(vectorDrawList(l.art.artwork)??[]).map(r=><path key={r.id} d={svgPath(r.commands)} fill={r.fill??'none'} stroke={r.stroke?.color??'none'} strokeWidth={r.stroke?.width}/>)}</g>)}</svg><p>{pending.name} · {pending.layers.length} layers · {pending.layers.filter(l=>l.art.dynamics?.length).length} motion groups</p><button type="button" onClick={()=>{change(pending);setPending(undefined);}}>Apply vector set</button><button type="button" onClick={()=>{change(pending,true);setPending(undefined);}}>Apply set and walkable ground</button><button type="button" onClick={()=>setPending(undefined)}>Discard</button></div>}

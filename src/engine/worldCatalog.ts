@@ -58,3 +58,17 @@ export function nativeWorldProp(kind:NativeWorldPropKind):WorldArtworkData{
  case 'plant':return art('plant','household',[-38,-113,38,0],palette,[shape('pot',0,'base',[['M',-23,-35],['L',23,-35],['L',15,0],['L',-15,0],['Z']]),shape('leaves',1,'leaf',[['M',0,-35],['C',-35,-47,-37,-93,-4,-83],['Q',2,-113,22,-102],['C',38,-70,21,-49,0,-35],['Z']])],{region:'leaves',pinY:-35,reverse:true,points:[[0,-35],[0,-70],[0,-100]],material:'braid'});
  }
 }
+
+/** Explicit additive furnishing: preserve every existing ID and timeline target. */
+import {makeProp} from './presets.ts';
+import type {Prop,Scene} from './schema.ts';
+import {nativeWorldPropKinds} from './worldArtworkSchema.ts';
+export function addWorldFurniture(scene:Scene,set:WorldSetName):Prop[]{
+ const layouts:Record<WorldSetName,readonly [Prop['kind'],number,number,number][]>={
+  'Living room':[['sofa',625,430,-2],['table',570,478,3],['plant',100,434,-1],['cup',590,410,4]],
+  'Township street':[['counter',730,430,-1],['plant',870,440,0],['streetlight',145,435,-2]],
+  Shop:[['counter',710,450,2],['table',220,452,-1],['plant',885,432,-1],['book',710,340,3]],
+  'Podcast studio':[['chair',310,420,-2],['chair',660,420,-2],['desk',480,470,1],['microphone',445,371,2],['plant',860,432,0]]
+ };
+ const out=[...scene.objects];for(const [kind,x,y,depth] of layouts[set]){if(out.length>=100)break;if(out.some(o=>o.kind===kind&&Math.hypot(o.x-x,o.y-y)<65))continue;const native=nativeWorldPropKinds.includes(kind as NativeWorldPropKind)?nativeWorldProp(kind as NativeWorldPropKind):undefined;out.push(makeProp(kind,x,y,{depth,...(native?{worldArtwork:native}:{})}));}return out;
+}
