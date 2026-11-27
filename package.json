@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm test && tsc --noEmit && vite build && npm run verify:offline",
+    "build": "npm test && tsc --noEmit && vite build && npm run verify:offline && npm run qa:workspace",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "preview": "vite preview",
     "qa:lve": "node --experimental-strip-types scripts/qa-lve.mjs",
