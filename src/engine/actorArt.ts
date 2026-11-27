@@ -1,3 +1,4 @@
+import {deformCheekOutline} from './secondarySurface.ts';
 import type {SecondaryOffsets} from './characterDynamics.ts';
 import {deformGarmentPanels} from './garmentGeometry.ts';
 import {dynamicHairPaths} from './layeredHair.ts';
@@ -299,7 +300,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   if(hair)for(const item of dynamicHairPaths(hair,'background',secondary?.hair))vector(rearHair??g,item.d,item.fill==='none'?item.fill:surface?.(item.fill,'hair',{x:0,y:-20})??item.fill,item.stroke,item.strokeWidth);
   if(!profile)drawEar(g,c,ears[1],8*yScale,-1);
   const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture,vectorCache,mirrored);
-  if(!customHead)vector(g,headOutline(c,art),surface?.(c.skin,'skin',{x:0,y:0})??c.skin,c.visual?.style==='illustrated'?shade(c.skin,-.48):INK,c.visual?.style==='illustrated'?1.9:3.5);
+  if(!customHead)vector(g,secondary?.face.some(Boolean)?deformCheekOutline(headOutline(c,art),h,secondary.face):headOutline(c,art),surface?.(c.skin,'skin',{x:0,y:0})??c.skin,c.visual?.style==='illustrated'?shade(c.skin,-.48):INK,c.visual?.style==='illustrated'?1.9:3.5);
   if(!customHead)vector(g,`M ${-w*.81} 5 Q ${-w*.85} ${h*.63} ${-w*.32} ${h*.77} Q ${-w*.57} ${h*.55} ${-w*.81} 5Z`,shade(c.skin,-.10),INK,0);
   if(c.visual?.style==='illustrated'&&!rear){
     const tone=shade(c.skin,-.25);
@@ -351,7 +352,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   drawEyewear(layers.eyewear,c,art,eyes,eyeY);
   drawNose(g,c,art,noseX);
   drawBeard(g,c,art,mouthX,w,h);
-  drawPiercing(g,c,art,ears,profile?mouthX:noseX);
+  drawPiercing(g,c,art,ears,profile?mouthX:noseX,secondary?.earrings);
   drawExtra(g,c,art,w,h,'head');
   if(q?.extra==='mask') hideExpressionMouth(face);
   else drawExpressionMouth(face,c,mood,mouthX,view);

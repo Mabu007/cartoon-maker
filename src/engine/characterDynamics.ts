@@ -15,7 +15,7 @@ export type Offset=readonly [number,number];
 export type SecondaryOffsets={hair:Readonly<Record<string,Offset>>;accessories:Offset;earrings:Offset;body:Offset;cloth:Offset;face:Offset};
 const zero:Offset=[0,0];
 const blank=():SecondaryOffsets=>({hair:{},accessories:zero,earrings:zero,body:zero,cloth:zero,face:zero});
-type Binding={id:string;actorId:string;head:boolean;component:SecondaryComponent;group?:string;tip:string;strength:number};
+type Binding={id:string;actorId:string;head:boolean;component:SecondaryComponent;group?:string;tip:string;strength:number;root:Point};
 function material(c:Character,component:SecondaryComponent,base:LveMaterialData,max:number):LveMaterialData{
  const patch=c.secondaryMotion?.components?.[component]?.material??{};
  return LveMaterial.parse({...base,...patch,maxDisplacement:Math.min(max,patch.maxDisplacement??base.maxDisplacement)});
@@ -32,7 +32,7 @@ export function buildDynamics(scene:Scene,characters:readonly Character[],settin
    const weight=strength(c,settings,component);if(weight===0||mat.maxDisplacement===0||count+points.length>max)return;
    const id='a'+i+'-'+component+'-'+(group??'spring'),tip='n'+(points.length-1);
    defs.push({version:1,id,nodes:points.map((rest,j)=>({id:'n'+j,rest,pin:pins[j],material:mat})),constraints:points.slice(1).map((p,j)=>({a:'n'+j,b:'n'+(j+1),length:Math.max(.001,Math.hypot(p.x-points[j].x,p.y-points[j].y)),strength:.8,kind:'distance'})),colliders});
-   bindings.push({id,actorId:actor.id,head,component,group,tip,strength:weight});count+=points.length;
+   bindings.push({id,actorId:actor.id,head,component,group,tip,strength:weight,root:points[0]});count+=points.length;
   };
   const hair=buildLayeredHair(c,front);
   if(hair&&['none','visor','sun-visor','fascinator'].includes(c.hat)){
@@ -61,10 +61,11 @@ export function buildDynamics(scene:Scene,characters:readonly Character[],settin
 export function secondaryAnchor(actor:CharacterState,c:Character,view:View,flip:boolean,head:boolean):VectorMatrix{
  const r=rig(c,actor.pose,viewWidth[view]),yaw=actor.capturedHeadYaw??0,p=head?{x:r.head.x-yaw*3.6*c.head,y:r.head.y}:r.neck;
  const rotation=actor.rotation*Math.PI/180,cos=Math.cos(rotation),sin=Math.sin(rotation),sx=actor.scale*(flip?-1:1),sy=actor.scale;
- const localAngle=head?r.angle*Math.PI/180:0,lc=Math.cos(localAngle),ls=Math.sin(localAngle),headScale=head?c.head:1;
+ const localAngle=head?(r.angle+(actor.listening?Math.sin(actor.actionTime*2.4+actor.id.length*.7)*1.4:0))*Math.PI/180:0,lc=Math.cos(localAngle),ls=Math.sin(localAngle),headScale=head?c.head:1;
  const headMirror=head&&view!=='back'&&view!=='back-quarter'&&actor.capturedHeadFacing==='left'?-1:1;
  const a=cos*sx*lc-sin*sy*ls,b=sin*sx*lc+cos*sy*ls,d=-cos*sx*ls-sin*sy*lc,e=-sin*sx*ls+cos*sy*lc;
- return [a*headScale*headMirror,b*headScale*headMirror,d*headScale,e*headScale,actor.x+cos*sx*p.x-sin*sy*(p.y-actor.lift),actor.y+sin*sx*p.x+cos*sy*(p.y-actor.lift)];
+ const turn=head?actor.turnScale*(1-.09*Math.abs(yaw)):1;
+ return [a*headScale*headMirror*turn,b*headScale*headMirror*turn,d*headScale,e*headScale,actor.x+cos*sx*p.x-sin*sy*(p.y-actor.lift),actor.y+sin*sx*p.x+cos*sy*(p.y-actor.lift)];
 }
 export class CharacterDynamics{
  private sim?:LveSimulation;private scene?:Scene;private chars?:readonly Character[];private byId=new Map<string,Character>();private signature='';private bindings:Binding[]=[];private settings?:SceneSecondaryData;private width=960;private cachedTick=-1;private cachedActors=new Map<string,CharacterState>();private cameraView?:View;private hz=30;
@@ -95,7 +96,8 @@ export class CharacterDynamics{
    for(const g of settings.gusts){const p=(t-g.time)/g.duration;if(p>=0&&p<=1){const w=Math.sin(Math.PI*p);forces.wind.x+=g.x*w;forces.wind.y+=g.y*w;}}
    if(!a||!c||!a.visible)return {transform:[1,0,0,1,0,0],forces,sleep:true};
    const view=this.cameraView??a.view,flip=a.flip!==(viewForward(view)!==viewForward(a.view));
-   return {transform:secondaryAnchor(a,c,view,flip,binding.head),forces};
+   const m=secondaryAnchor(a,c,view,flip,binding.head),root=binding.root;
+   return {transform:[m[0],m[1],m[2],m[3],m[4]+m[0]*root.x+m[2]*root.y,m[5]+m[1]*root.x+m[3]*root.y],forces};
   };
   // At most one fixed tick per 30/60Hz. Same random-access clock for export
   // and preview. Render interpolation uses current tick (no look-ahead).

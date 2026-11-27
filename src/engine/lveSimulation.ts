@@ -69,7 +69,7 @@ export class LveSimulation{
    const d=this.definitions[ei],s=this.states[ei],input=sample(next,d.id),parsed=matrix.safeParse(input.transform),forces=LveForces.safeParse(input.forces);
    if(!parsed.success||!forces.success){this.states[ei]=reset(d,s.transform);continue;}
    const m=parsed.data,det=m[0]*m[3]-m[1]*m[2],jump=Math.hypot(m[4]-s.transform[4],m[5]-s.transform[5]);
-   if(input.cut||input.sleep||jump>80||Math.abs(det)<.002){this.states[ei]=reset(d,m);this.previous[ei]=structuredClone(this.states[ei]);continue;}
+   if(input.cut||input.sleep||jump>80||Math.abs(det)<.002||det*(s.transform[0]*s.transform[3]-s.transform[1]*s.transform[2])<0){this.states[ei]=reset(d,m);this.previous[ei]=structuredClone(this.states[ei]);continue;}
    const [avx,avy]=cap((m[4]-s.transform[4])/dt,(m[5]-s.transform[5])/dt,256);
    const [ax,ay]=cap((avx-s.velocity.x)/dt,(avy-s.velocity.y)/dt,160);
    const force=forces.data,old=s.nodes.map(p=>({x:p.x,y:p.y}));s.transform=m;s.velocity={x:avx,y:avy};

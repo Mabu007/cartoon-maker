@@ -1,3 +1,4 @@
+import {CharacterSecondaryControls} from './SecondaryMotionControls.tsx';
 import {GarmentControls} from './GarmentControls.tsx';
 import {LayeredHairControls} from './LayeredHairControls.tsx';
 import {buildLayeredHair,hairRenderPaths} from '../engine/layeredHair.ts';
@@ -168,6 +169,7 @@ export function CharacterChoices({ section, character, change, changeCloset }:{
       {error&&<p role="alert">{error}</p>}
     </div>}
     {section==='Outfit'&&<GarmentControls character={character} change={value=>change('garmentDesign',value)}/>}
+    {section==='Hair'&&<CharacterSecondaryControls character={character} change={value=>change('secondaryMotion',value)}/>}
     {section==='Hair'&&<LayeredHairControls character={character} change={value=>change('hairDesign',value)}/>}
     <details className="factory-details">
       <summary>{section==='Outfit'?'Fit and artwork controls':section==='Hair'?'Hair and hat controls':section==='Face'?'Facial controls':'Accessory controls'}</summary>
