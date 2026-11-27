@@ -5,7 +5,7 @@ export const characterStyles = {
   ears: ['round','pointed','wide','small'],
   nose: ['minimal','button','wedge','long','flat'],
   mouth: ['line','full','wavy','smile'],
-  hair: ['bald','fade','buzz','pompadour','spiky-crop','man-bun','slicked-back','curtain-bangs','locs','mullet','side-part','bob','ponytail','space-buns','pixie','waves','afro-puffs','braids','wolf-cut','hime','top-knot','afro','puff','curls'],
+  hair: ['bald','fade','buzz','pompadour','spiky-crop','man-bun','slicked-back','curtain-bangs','locs','mullet','side-part','bob','ponytail','space-buns','pixie','waves','afro-puffs','braids','wolf-cut','hime','top-knot','afro','puff','curls','short-afro','cornrows','box-braids'],
   beard: ['none','stubble','full','goatee','van-dyke','circle-beard','mutton-chops','chin-strap','handlebar','soul-patch','braided-beard'],
   hat: ['none','cap','beanie','fedora','bucket','cowboy','flat-cap','top-hat','snapback','ushanka','visor','sun-hat','beret','cloche','sun-visor','pillbox','witch','boater','headwrap','fascinator','slouch-beanie'],
   outfit: ['tee','oversized-tee','polo','dress-shirt','hoodie','tracksuit','blazer','biker','tank','sweater','jacket','uniform','fitted-tee','blouse','camisole','cropped-hoodie','cardigan','slip-dress','sundress','athleisure','fitted-turtleneck','bikini','shirtless'],

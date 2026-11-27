@@ -1,3 +1,4 @@
+import {HairDesignV1} from './hairDesignSchema.ts';
 import { CharacterVisual } from './visualAssets.ts';
 import { EntityVisual, EnvironmentVisual } from './environmentVisuals.ts';
 import { bodyFrames,armBuilds,legBuilds } from './bodyBuild.ts';
@@ -79,6 +80,7 @@ export const CharacterDefinition = z.strictObject({
   glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(characterStyles.outfit), accessory: z.enum(characterStyles.accessory),
   visual:CharacterVisual.optional(),
   identity:CharacterIdentityMetadata.optional(),
+  hairDesign:HairDesignV1.optional(),
   bodyBuild:z.strictObject({
     frame:z.enum(bodyFrames), arms:z.enum(armBuilds),
     legs:z.enum(legBuilds), chest:num(0,1), hips:num(0,1), abs:z.boolean()
