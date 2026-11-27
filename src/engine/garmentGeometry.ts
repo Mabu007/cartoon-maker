@@ -65,10 +65,10 @@ export function garmentTorso(c:Character,v:IllustratedView,neck:Point,hip:Point,
 }
 /** Bone geometry follows the solved chain, not an independent garment skeleton.
  * Overlap at the joint covers seams; all endpoints and wrist/foot remain unchanged. */
-function bone(id:string,a:Point,b:Point,r0:number,r1:number,color:string,d:GarmentDesign,compression:number):GarmentPath[]{
+function bone(id:string,a:Point,b:Point,r0:number,r1:number,color:string,d:GarmentDesign,compression:number,motion?:readonly [number,number]):GarmentPath[]{
  const length=Math.hypot(b.x-a.x,b.y-a.y);if(length<.05)return [];
  const ux=(b.x-a.x)/length,uy=(b.y-a.y)/length,nx=-uy,ny=ux;
- const at=(t:number,r:number)=>p(a.x+ux*t+nx*r,a.y+uy*t+ny*r);
+ const at=(t:number,r:number)=>{const w=Math.sin(Math.PI*Math.max(0,Math.min(1,t/length)))**2,dx=motion?Math.max(-.8,Math.min(.8,motion[0]))*w:0,dy=motion?Math.max(-.8,Math.min(.8,motion[1]))*w:0;return p(a.x+ux*t+nx*r+dx,a.y+uy*t+ny*r+dy);};
  const overlap=Math.min(1.6,length*.1),fold=Math.max(0,Math.min(1,compression))*d.folds;
  const contour='M'+at(-overlap,-r0)+'Q'+at(length*.4,-r0*(1+fold*.07))+' '+at(length+overlap,-r1)+'Q'+at(length+overlap+1,0)+' '+at(length+overlap,r1)+'Q'+at(length*.4,r0*(1+fold*.07))+' '+at(-overlap,r0)+'Z';
  const out=[path(id+'-panel',contour,color,ink,1.45,true),path(id+'-shade','M'+at(0,r0*.7)+'Q'+at(length*.55,r0*.75)+' '+at(length,r1*.72)+'L'+at(length,r1*.32)+'Q'+at(length*.55,r0*.48)+' '+at(0,r0*.36)+'Z',shade(color,-.17),'none',0)];
@@ -77,22 +77,22 @@ function bone(id:string,a:Point,b:Point,r0:number,r1:number,color:string,d:Garme
  return out;
 }
 const bend=(a:Point,b:Point,c:Point)=>{const ab={x:b.x-a.x,y:b.y-a.y},bc={x:c.x-b.x,y:c.y-b.y};const len=Math.hypot(ab.x,ab.y)*Math.hypot(bc.x,bc.y);return len>0?Math.acos(Math.max(-1,Math.min(1,(ab.x*bc.x+ab.y*bc.y)/len)))/Math.PI:0;};
-export function garmentSleeve(c:Character,shoulder:Point,elbow:Point,hand:Point,part:'all'|'upper'|'lower'|'hand'='all',skipUpper=false,skipLower=false):GarmentPath[]{
+export function garmentSleeve(c:Character,shoulder:Point,elbow:Point,hand:Point,part:'all'|'upper'|'lower'|'hand'='all',skipUpper=false,skipLower=false,motion?:readonly [number,number]):GarmentPath[]{
  const d=c.garmentDesign;if(!d||part==='hand')return [];
  const b=bodyProportions(c),e=fitEase[d.fit],fold=bend(shoulder,elbow,hand),out:GarmentPath[]=[];
  const coverage=d.outer!=='none'?Math.max(1.85,d.sleeve):d.sleeve;
  const build=(outer:boolean)=>{
  const color=outer?d.outerColor:c.shirt,tag=outer?'outer-sleeve':'sleeve',ease=e*(outer?1.12:1),cov=outer?coverage:d.sleeve;
  const upperR=7*c.thickness*b.arm*ease,lowerR=6*c.thickness*(.63+.37*b.arm)*ease,tipR=lowerR*.7*(c.visual?.wristWidth??1)*d.cuff;
- if(cov>.02&&!skipUpper&&part!=='lower')out.push(...bone(tag+'-upper',shoulder,mix(shoulder,elbow,Math.min(1,cov)),upperR,lowerR,color,d,fold));
- if(cov>1.02&&!skipLower&&part!=='upper')out.push(...bone(tag+'-lower',elbow,mix(elbow,hand,Math.min(.97,cov-1)),lowerR,tipR,color,d,fold));
+ if(cov>.02&&!skipUpper&&part!=='lower')out.push(...bone(tag+'-upper',shoulder,mix(shoulder,elbow,Math.min(1,cov)),upperR,lowerR,color,d,fold,motion));
+ if(cov>1.02&&!skipLower&&part!=='upper')out.push(...bone(tag+'-lower',elbow,mix(elbow,hand,Math.min(.97,cov-1)),lowerR,tipR,color,d,fold,motion));
  };
  build(false);if(d.outer!=='none')build(true);return out;
 }
-export function garmentLeg(c:Character,hip:Point,knee:Point,foot:Point,skipUpper=false,skipLower=false):GarmentPath[]{
+export function garmentLeg(c:Character,hip:Point,knee:Point,foot:Point,skipUpper=false,skipLower=false,motion?:readonly [number,number]):GarmentPath[]{
  const d=c.garmentDesign;if(!d||d.bottom==='none'||(d.bottom==='skirt'||d.bottom==='wrap-skirt')||d.top==='dress')return [];
  const b=bodyProportions(c),e=fitEase[d.fit]*(d.bottom==='leggings'?.92:1),r=7.2*c.thickness*b.leg*e,kr=5.4*c.thickness*b.leg*(c.visual?.kneeWidth??1)*e,fr=4.7*c.thickness*b.leg*b.calves*(c.visual?.ankleWidth??1)*e*d.hem,fold=bend(hip,knee,foot);
- return [...(skipUpper?[]:bone('trouser-upper',hip,d.bottom==='shorts'?mix(hip,knee,.62):knee,r,kr,c.pants,d,fold)),...(skipLower||d.bottom==='shorts'?[]:bone('trouser-lower',knee,foot,kr,fr,c.pants,d,fold))];
+ return [...(skipUpper?[]:bone('trouser-upper',hip,d.bottom==='shorts'?mix(hip,knee,.62):knee,r,kr,c.pants,d,fold,motion)),...(skipLower||d.bottom==='shorts'?[]:bone('trouser-lower',knee,foot,kr,fr,c.pants,d,fold,motion))];
 }
 export function garmentSkirt(c:Character,v:IllustratedView,hip:Point,seated=false,knees?:readonly [Point,Point]):GarmentPath[]{
  const d=c.garmentDesign;if(!d||!['skirt','wrap-skirt'].includes(d.bottom)||d.top==='dress')return [];

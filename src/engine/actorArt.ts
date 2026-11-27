@@ -1,3 +1,4 @@
+import {coupledLimbOffset} from './characterDynamics.ts';
 import {deformCheekOutline} from './secondarySurface.ts';
 import type {SecondaryOffsets} from './characterDynamics.ts';
 import {deformGarmentPanels} from './garmentGeometry.ts';
@@ -105,7 +106,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const {elbow,hand}=endpoint;
     const primary=c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(joint.shoulder,elbow,hand,{view,side,centerX:r.neck.x,contact:carrying||holdsCostume||reachesFace||Boolean(appearance?.capturedContact&&(appearance.capturedContact.type.endsWith(side)||['prayer','hands-on-head','guard'].includes(appearance.capturedContact.type))),confidence:appearance?.capturedRig?.confidence?.[side],expectedLength:28*c.arms}):undefined;
     const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
-      ?drawAnatomicalLimb(target,points,width,color,points[0]===elbow?'forearm':'upper-arm',c.visual,primary,appearance?.surface)
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===elbow?'forearm':'upper-arm',c.visual,primary,appearance?.surface,appearance?.secondary?.body)
       :legacyStroke(target,points,width,color);
     const coverage=sleeveCoverage(c);
     const upper=coverage<=1;
@@ -125,7 +126,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         segment(g,(joint.shoulder.x+elbow.x)/2,(joint.shoulder.y+elbow.y)/2,
           elbow.x,elbow.y,shade(c.skin,-.18),1.2);
     }
-    if(garments){drawGarmentPaths(g,c,garmentSleeve(c,joint.shoulder,elbow,hand,part,customUpper,customLower),costume,appearance?.surface,elbow);}
+    if(garments){drawGarmentPaths(g,c,garmentSleeve(c,joint.shoulder,elbow,hand,part,customUpper,customLower,appearance?.secondary?coupledLimbOffset(appearance.secondary):undefined),costume,appearance?.surface,elbow);}
     else if(coverage>0&&(customUpper||customLower)){
       if(drawUpper&&!customUpper)stroke(g,[joint.shoulder,upper?cuff:elbow],limbWidth*build.arm+4,c.shirt);
       if(drawLower&&!customLower&&!upper)stroke(g,[elbow,cuff],limbWidth*build.arm+4,c.shirt);
@@ -186,7 +187,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const {knee,foot,moving}=resolved;
     const primary=c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(joint.upper,knee,foot,{view,side,centerX:r.hip.x,seated:action==='sit',arm:false,expectedLength:38*c.legs*c.height}):undefined;
     const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
-      ?drawAnatomicalLimb(target,points,width,color,points[0]===knee?'calf':'thigh',c.visual,primary,appearance?.surface)
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===knee?'calf':'thigh',c.visual,primary,appearance?.surface,appearance?.secondary?.body)
       :legacyStroke(target,points,width,color);
     const bottom=c.wardrobe?.bottoms??(c.outfit==='athleisure'?'leggings':'straight');
     const swim=c.outfit==='bikini';
@@ -197,7 +198,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     if(garments){
       if(!customThigh)stroke(g,[joint.upper,knee],limbWidth*.82*build.leg,c.skin);
       if(!customCalf)stroke(g,[knee,foot],limbWidth*.82*build.leg*build.calves,c.skin);
-      drawGarmentPaths(g,c,garmentLeg(c,joint.upper,knee,foot,customThigh,customCalf),costume,appearance?.surface,knee);
+      drawGarmentPaths(g,c,garmentLeg(c,joint.upper,knee,foot,customThigh,customCalf,appearance?.secondary?coupledLimbOffset(appearance.secondary):undefined),costume,appearance?.surface,knee);
     }else if(customThigh||customCalf){
       const color=swim||shorts||bottom==='skirt'?c.skin:c.pants;
       if(!customThigh)stroke(g,[joint.upper,knee],width,color);
