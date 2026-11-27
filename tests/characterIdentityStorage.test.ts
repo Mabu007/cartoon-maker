@@ -1,3 +1,6 @@
+import {garmentDefaults} from '../src/engine/garmentDesignSchema.ts';
+import {garmentPhysics} from '../src/engine/garmentGeometry.ts';
+import {visualRigAnchors} from '../src/engine/visualRig.ts';
 import {hairDesignDefaults} from '../src/engine/hairDesignSchema.ts';
 import {buildLayeredHair} from '../src/engine/layeredHair.ts';
 import {viewArt} from '../src/engine/actorArt.ts';
@@ -14,7 +17,7 @@ Object.defineProperty(globalThis,'localStorage',{value:{get length(){return stor
 test('character DNA and contour controls survive device storage and portable movie backup',async()=>{
   const project=makeRevenentDemo();
   const base=applyProfile(studioCharacters[0],'heavyset');
-  const character=randomizeCharacterIdentity(setIdentityLock({...base,id:project.characters[0].id,hairDesign:{...hairDesignDefaults,volume:1.2,material:{...hairDesignDefaults.material,wind:.55}},wardrobe:{...base.wardrobe,eyeTilt:7,cupidBow:.8,upperLipRatio:1.25},visual:{...base.visual!,wristWidth:1.1,softness:.8,muscleDefinition:.25}},'body',true),91);
+  const character=randomizeCharacterIdentity(setIdentityLock({...base,id:project.characters[0].id,garmentDesign:{...garmentDefaults,outer:'jacket',pattern:'checks',fit:'oversized',material:'denim'},hairDesign:{...hairDesignDefaults,volume:1.2,material:{...hairDesignDefaults.material,wind:.55}},wardrobe:{...base.wardrobe,eyeTilt:7,cupidBow:.8,upperLipRatio:1.25},visual:{...base.visual!,wristWidth:1.1,softness:.8,muscleDefinition:.25}},'body',true),91);
   character.hair='locs';
   project.characters[0]=character;
   await saveDeviceProject('guest',project);
@@ -22,6 +25,8 @@ test('character DNA and contour controls survive device storage and portable mov
   assert.deepEqual(stored.identity,character.identity);assert.equal(stored.visual?.softness,.8);assert.equal(stored.visual?.profile,'heavyset');
   const restored=await restoreMovie(new File([await createMovieBackup(project)],'dna.sirvibe'));
   assert.deepEqual(restored.characters[0].identity,character.identity);assert.equal(restored.characters[0].visual?.wristWidth,1.1);assert.equal(restored.characters[0].wardrobe?.eyeTilt,7);assert.equal(restored.characters[0].wardrobe?.cupidBow,.8);assert.equal(stored.wardrobe?.upperLipRatio,1.25);
+  assert.deepEqual(restored.characters[0].garmentDesign,character.garmentDesign);
+  assert.deepEqual(garmentPhysics(restored.characters[0],visualRigAnchors(restored.characters[0])),garmentPhysics(character,visualRigAnchors(character)));
   assert.deepEqual(restored.characters[0].hairDesign,character.hairDesign);
   assert.deepEqual(buildLayeredHair(restored.characters[0],viewArt.front),buildLayeredHair(character,viewArt.front));
 });

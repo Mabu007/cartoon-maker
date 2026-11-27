@@ -8,5 +8,5 @@ export function GarmentPattern({character,id}:{character:Character;id:string}){
  </pattern></defs>;
 }
 export function SvgGarmentPaths({paths,patternId}:{paths:readonly GarmentPath[];patternId:string}){
- return <>{paths.map(item=><g key={item.id}><path d={item.d} fill={item.fill} stroke={item.stroke} strokeWidth={item.strokeWidth} strokeLinecap="round" strokeLinejoin="round"/>{item.fabric&&<path d={item.d} fill={`url(#${patternId})`} stroke="none"/>}</g>)}</>;
+ return <>{paths.map(item=><g key={item.id}><path d={item.d} fill={item.fill} stroke={item.stroke} strokeWidth={item.strokeWidth} strokeLinecap="round" strokeLinejoin="round"/>{item.fabric&&<path d={item.d} fill={`url(#${patternId}) none`} stroke="none"/>}</g>)}</>;
 }

@@ -38,38 +38,40 @@ try{
     const renderer=await createRenderer('16:9',1,true),project=makeProject(true);
     const canvas=renderer.canvas;document.getElementById('qa-root').appendChild(canvas);document.body.style.margin='0';
     const fixture=(set)=>{const characters=project.characters.map((c,i)=>i<2?{...structuredClone(set[i]),id:c.id}:c);return characters;};
-    window.qa={renderer,project,views,fixture,sets:[studioCharacters,flagshipCharacters]};
+    const {garmentDefaults}=await import('/src/engine/garmentDesignSchema.ts');
+    const garments=flagshipCharacters.map((c,i)=>({...c,garmentDesign:{...garmentDefaults,top:i?'blouse':'shirt',bottom:i?'skirt':'trousers',outer:i?'none':'jacket',fit:i?'relaxed':'regular',pattern:i?'checks':'solid',outerColor:'#304a48',material:i?'linen':'denim'}}));
+    window.qa={renderer,project,views,fixture,sets:[studioCharacters,flagshipCharacters,garments]};
   });
-  for(const set of [0,1]){
+  for(const set of [0,1,2]){
     for(const view of ['front','three-quarter','side','back-quarter','back'])for(const flip of [false,true]){
       await page.evaluate(({set,view,flip})=>{
         const {renderer,project,fixture,sets}=window.qa;
         const scene=structuredClone(project.scenes[0]);scene.actors.forEach(a=>{a.view=view;a.flip=flip;});
         renderer.draw(scene,fixture(sets[set]),0,{edit:true});
       },{set,view,flip});
-      await page.locator('canvas').screenshot({path:out+'/'+(set?'upgrade':'baseline')+'-'+view+'-'+(flip?'mirror':'normal')+'.png'});
+      await page.locator('canvas').screenshot({path:out+'/'+(['baseline','upgrade','garment'][set])+'-'+view+'-'+(flip?'mirror':'normal')+'.png'});
     }
     for(const time of [1.2,9.45,17.6]){
       await page.evaluate(({set,time})=>{const {renderer,project,fixture,sets}=window.qa;renderer.draw(project.scenes[0],fixture(sets[set]),time,{subtitles:true});},{set,time});
-      await page.locator('canvas').screenshot({path:out+'/'+(set?'upgrade':'baseline')+'-time-'+time+'.png'});
+      await page.locator('canvas').screenshot({path:out+'/'+(['baseline','upgrade','garment'][set])+'-time-'+time+'.png'});
     }
   }
   report.samples=await page.evaluate(()=>{
     const {renderer,project,fixture,sets}=window.qa,results=[];
-    for(const set of [0,1,1,0]){
+    for(const set of [0,2,2,0]){
       const chars=fixture(sets[set]),scene=project.scenes[0],draw=t=>renderer.draw(scene,chars,t,{subtitles:true});
       for(let i=0;i<60;i++)draw(.2+i/24);
       const a=[];for(let i=0;i<160;i++){const t=performance.now();draw(.2+(i%96)/24);a.push(performance.now()-t);}
-      a.sort((a,b)=>a-b);results.push({set:set?'upgrade':'baseline',count:a.length,medianMs:a[80],p95Ms:a[151]});
+      a.sort((a,b)=>a-b);results.push({set:['baseline','upgrade','garment'][set],count:a.length,medianMs:a[80],p95Ms:a[151]});
     }return results;
   });
-  const fixture=await page.evaluate(async()=>{const {project,fixture,sets}=window.qa;const {resizeSceneTimeline}=await import('/src/engine/timelineEditing.ts');const cropped={...project,name:'Vector QA 3s',characters:fixture(sets[1]),scenes:[resizeSceneTimeline(project.scenes[0],3)]};return {format:'toonroom-backup-1',project:cropped,audio:{}};});
+  const fixture=await page.evaluate(async()=>{const {project,fixture,sets}=window.qa;const {resizeSceneTimeline}=await import('/src/engine/timelineEditing.ts');const cropped={...project,name:'Vector QA 3s',characters:fixture(sets[2]),scenes:[resizeSceneTimeline(project.scenes[0],3)]};return {format:'toonroom-backup-1',project:cropped,audio:{}};});
   await page.evaluate(()=>window.qa.renderer.destroy());
   await page.evaluate(async()=>{
     const {draw}=await import('/qa-vector-runtime.tsx');window.qa.svg=draw;
   });
   for(const i of [0,1])for(const view of ['front','three-quarter','side','back-quarter','back']){
-    await page.evaluate(({i,view})=>window.qa.svg(window.qa.sets[1][i],view,false,'talk'),{i,view});
+    await page.evaluate(({i,view})=>window.qa.svg(window.qa.sets[2][i],view,false,'talk'),{i,view});
     await page.locator('.native-character-svg').waitFor();await page.locator('.native-character-svg').screenshot({path:out+'/svg-'+i+'-'+view+'.png'});
   }
   await context.close();

@@ -17,3 +17,12 @@ export const GarmentDesignV1=z.strictObject({
 });
 export type GarmentDesign=z.infer<typeof GarmentDesignV1>;
 export const garmentDefaults:GarmentDesign={version:1,top:'shirt',bottom:'trousers',outer:'none',footwear:'sneaker',fit:'regular',material:'cotton',neckline:'crew',sleeve:1.85,length:1,waist:1,hem:1,cuff:1,pockets:true,seams:true,closure:'none',pattern:'solid',patternScale:1,patternOpacity:.3,outerColor:'#3c4d55',accent:'#d6c6ad',sole:'#dfd9cb',laces:'#ece5d8',soleThickness:2,laceDetail:true,logo:'none',logoScale:1,folds:.6};
+
+const point=z.strictObject({x:n(-500,500),y:n(-500,500)});
+export const GarmentPhysicsV1=z.strictObject({
+ id:z.enum(['top','trousers','skirt','outer','footwear']),layer:z.enum(['inner','outer']),materialId:z.enum(garmentMaterials),
+ stiffness:n(0,256),damping:n(0,32),wind:n(0,1),displacement:n(0,8),
+ pins:z.array(z.strictObject({name:z.string().min(1).max(40),point,weight:z.literal(1)})).min(1).max(8),
+ free:z.array(z.strictObject({id:z.string().min(1).max(60),weight:z.literal(0),influence:n(0,1),rest:z.tuple([point,point,point])})).max(4),
+ collisionProxies:z.array(z.strictObject({id:z.string(),a:point,b:point,radius:n(1,80)})).max(8)
+});
