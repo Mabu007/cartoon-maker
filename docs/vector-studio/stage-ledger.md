@@ -105,3 +105,7 @@ Stage 7 application source 189ad427 Vercel READY; production build and static of
 ## Stage 8 — isolated LVE simulation
 
 Branch feat/lve-simulation-v1, stacked on Stage 7. Validated materials/forces/definitions/config/checkpoint; deterministic fixed-tick springs, constrained chains and strips, capsule collision, budget fallback, seek/replay and canonical deformation adapter. Added fixtures, tests, standalone Node benchmark and [simulation contract](lve-simulation-v1.md). No integration switch. Hosted validation pending; browser/device evidence outstanding. Owner also requested independent special VVLE stage; track separately, not as Stage 9 physics integration.
+
+## Special stage — VVLE lighting foundation
+
+Branch feat/volumetric-vector-lighting-v1 stacked on Stage 8 9024696. Opt-in analytic pseudo-normal lighting, surface/material gradients in Pixi, existing drag/key lights, typed light kinds and five cinematic setups, approximate AO/cast shadow/depth haze/backdrop parallax. See [VVLE contract](volumetric-vector-lighting-v1.md). Browser visual comparisons authored, not run. No Stage 9 asset dynamics integration. Do not claim final cinematic quality, normal maps, true occlusion or DOF; cumulative acceptance matrix retains gaps. Hosted checks pending.

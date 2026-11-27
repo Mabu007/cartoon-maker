@@ -56,6 +56,12 @@ try{
       await page.locator('canvas').screenshot({path:out+'/'+(['baseline','upgrade','garment'][set])+'-time-'+time+'.png'});
     }
   }
+  for(const preset of ['interrogation','candlelit','night-street','daylight','portrait']){
+    await page.evaluate(async preset=>{const {renderer,project,fixture,sets}=window.qa;const {cinematicPresets}=await import('/src/engine/vvlePresets.ts');const scene=structuredClone(project.scenes[0]);scene.visual={version:1,quality:'balanced',...cinematicPresets[preset]};renderer.draw(scene,fixture(sets[2]),1.2,{subtitles:true});},preset);
+    await page.locator('canvas').screenshot({path:out+'/vvle-'+preset+'.png'});
+  }
+  report.volumetric=await page.evaluate(async()=>{const {renderer,project,fixture,sets}=window.qa;const {cinematicPresets}=await import('/src/engine/vvlePresets.ts');const scene=structuredClone(project.scenes[0]);scene.visual={version:1,quality:'balanced',...cinematicPresets.portrait};scene.visual.lighting.lights[0].keys=[{time:0,x:180,y:150,intensity:1},{time:3,x:800,y:260,intensity:1.2}];const chars=fixture(sets[2]),times=[];for(let i=0;i<120;i++){const start=performance.now();renderer.draw(scene,chars,i/40,{subtitles:true});times.push(performance.now()-start);}times.sort((a,b)=>a-b);return {medianMs:times[60],p95Ms:times[114],samples:times.length};});
+  await page.locator('canvas').screenshot({path:out+'/vvle-moving-light.png'});
   report.resolvedArtwork=await page.evaluate(()=>{
     const {renderer,project,fixture,sets}=window.qa,scene=project.scenes[0],chars=fixture(sets[2]);
     const samples=[];
