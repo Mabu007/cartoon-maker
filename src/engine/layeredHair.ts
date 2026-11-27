@@ -11,6 +11,7 @@ type P=[number,number];
 type Chain={id:string;mode:'chain'|'cage';points:P[];pins:number[];wind:number;materialId:string;maxDisplacement:number;collisionProxyIds:string[]};
 export type HairModel={artwork:VectorArtwork;groups:Chain[];background:string[];foreground:string[]};
 const cache=new Map<string,HairModel>();
+const restPaths=new WeakMap<HairModel,Partial<Record<'background'|'foreground',ReturnType<typeof compileHairPaths>>>>();
 const round=(n:number)=>Math.round(n*100)/100;
 const shade=(hex:string,amount:number)=>'#'+[1,3,5].map(i=>Math.round(parseInt(hex.slice(i,i+2),16)*(1-Math.abs(amount))+(amount<0?0:255)*Math.abs(amount)).toString(16).padStart(2,'0')).join('');
 const M=(x:number,y:number):VectorCommand=>['M',round(x),round(y)];
@@ -50,7 +51,7 @@ export function buildLayeredHair(c:Character,view:IllustratedView):HairModel|und
   const outer=edge+(coiled?extra*.58*d.width:Math.max(0,d.width-1)*3);
   const crownY=top-extra;
   const scalp:VectorCommand[]=[M(-outer+shift,-9),C(-outer-3+shift,top*.62,-crown*.75+shift,crownY-3,shift,crownY),C(crown*.78+shift,crownY-3,outer+2+shift,top*.67,outer+shift,-9)];
-  const cap=[...scalp,...(view.rear?[Q(outer+shift,h*.53,shift,h*.62),Q(-outer+shift,h*.53,-outer+shift,-9)]:[Q(edge*.87+shift,hairline*.65,edge*.68+shift,hairline),Q(shift+d.parting*w,hairline-5,-edge*.65+shift,hairline),Q(-edge*.84+shift,hairline*.7,-outer+shift,-9)]),Z];
+  const cap:VectorCommand[]=[...scalp,...(view.rear?[Q(outer+shift,h*.53,shift,h*.62),Q(-outer+shift,h*.53,-outer+shift,-9)]:[Q(edge*.87+shift,hairline*.65,edge*.68+shift,hairline),Q(shift+d.parting*w,hairline-5,-edge*.65+shift,hairline),Q(-edge*.84+shift,hairline*.7,-outer+shift,-9)]),Z];
   if(long){
     const n=style==='box-braids'?6:4;
     for(let i=0;i<n;i++){
@@ -86,7 +87,7 @@ export function buildLayeredHair(c:Character,view:IllustratedView):HairModel|und
   if(puff){
     const x=shift-w*.25+d.parting*w,y=top-24*d.volume,rx=(18+7*d.volume)*d.width,ry=23*d.length*d.volume;
     const g=group('puff-volume','cage',[[round(x),round(top-4)],[round(x-rx*.5),round(y-ry)],[round(x+rx*.5),round(y-ry)]],[1,0,0]);
-    const outline=[M(x-rx,y+ry*.4),C(x-rx*1.25,y-ry*.15,x-rx*.8,y-ry,x,y-ry),C(x+rx*.9,y-ry*1.13,x+rx*1.25,y-ry*.12,x+rx,y+ry*.4),Q(x,y+ry*.95,x-rx,y+ry*.4),Z];
+    const outline:VectorCommand[]=[M(x-rx,y+ry*.4),C(x-rx*1.25,y-ry*.15,x-rx*.8,y-ry,x,y-ry),C(x+rx*.9,y-ry*1.13,x+rx*1.25,y-ry*.12,x+rx,y+ry*.4),Q(x,y+ry*.95,x-rx,y+ry*.4),Z];
     const weights=outline.flatMap(cmd=>{const out:{pin:number;influence:number}[]=[];for(let i=1;i<cmd.length;i+=2){const v=Math.max(0,Math.min(1,(top-Number(cmd[i+1]))/Math.max(1,ry+20)));out.push({pin:1-v,influence:v});}return out;});
     add('puff',2,outline,'base','ink',2.1,g,weights);
     add('tie',3,[M(x-rx*.45,top-5),Q(x,top+1,x+rx*.45,top-5)],undefined,'accessory',3);
@@ -101,7 +102,9 @@ export function buildLayeredHair(c:Character,view:IllustratedView):HairModel|und
     const n=Math.round(3+d.density*5);
     for(let i=0;i<n;i++){
       const u=(i+.5)/n,x=shift+(u-.5)*edge*1.4,y=crownY+8+Math.abs(u-.5)*17;
-      add('texture-'+i,2,[M(x-3,y+3),Q(x,y-3,x+4,y+2)],undefined,'highlight',coiled?1.6:1.05);
+      const commands=[M(x-3,y+3),Q(x,y-3,x+4,y+2)];
+      const weights=commands.flatMap(cmd=>{const out:{pin:number;influence:number}[]=[];for(let j=1;j<cmd.length;j+=2){const v=Math.max(0,Math.min(1,(hairline-Number(cmd[j+1]))/Math.max(1,hairline-crownY)));out.push({pin:1-v,influence:v});}return out;});
+      add('texture-'+i,2,commands,undefined,'highlight',coiled?1.6:1.05,capGroup,capGroup?weights:undefined);
     }
   }
   // Maximum 24 canonical regions: box braids use six sparse groups, so
@@ -116,8 +119,14 @@ export function buildLayeredHair(c:Character,view:IllustratedView):HairModel|und
   const model=freeze({artwork,groups,background,foreground});
   if(cache.size>=48)cache.delete(cache.keys().next().value!);cache.set(key,model);return model;
 }
-export function hairRenderPaths(model:HairModel,layer:'background'|'foreground',offset:readonly [number,number]=[0,0]){
+function compileHairPaths(model:HairModel,layer:'background'|'foreground',offset:readonly [number,number]){
   const ids=layer==='background'?model.background:model.foreground;
   const color=(p:VectorRegion['fill'])=>p?.kind==='palette'?model.artwork.palette[p.key]:p?.kind==='solid'?p.color:'none';
   return model.artwork.regions.filter(r=>ids.includes(r.id)).sort((a,b)=>a.layer-b.layer).map(r=>({id:r.id,d:svgPath(offset[0]||offset[1]?deformRegion(r,offset):r.commands),fill:color(r.fill),stroke:color(r.stroke?.paint),strokeWidth:r.stroke?.width??0}));
+}
+
+export function hairRenderPaths(model:HairModel,layer:'background'|'foreground',offset:readonly [number,number]=[0,0]){
+  if(offset[0]||offset[1])return compileHairPaths(model,layer,offset);
+  let entry=restPaths.get(model);if(!entry){entry={};restPaths.set(model,entry);}
+  return entry[layer]??(entry[layer]=freeze(compileHairPaths(model,layer,offset)));
 }

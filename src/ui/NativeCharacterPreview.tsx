@@ -108,7 +108,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     return { side, foot, shoe, upper, knee, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
   const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
-  const customHair=c.hat==='none'?componentFor(c,'hair',view):undefined;
+  const customHair=hairOpen?componentFor(c,'hair',view):undefined;
   const customHead=componentFor(c,'head-base',view);
   const customTop=componentFor(c,'top',view);
   const topBox=customTop?componentTransform(customTop,c,bodyRig.neck.x,bodyRig.neck.y):undefined;
