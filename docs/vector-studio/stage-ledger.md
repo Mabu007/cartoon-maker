@@ -191,3 +191,8 @@ Source `1c8be63f49655084776b214ed281331b115c1f0d` caches configurations without 
 - The Vercel production alias pointed to ready deployment `dpl_4wgW4pW3scFAZrnmgZCcHSxbzzHX` at the starting main SHA. The Stage 14 source had a ready Vercel preview. At the initial review, PR #59 stayed draft while the hosted job could not start. On 2026-11-27, the owner removed GitHub Actions as a release requirement and authorized merging the candidate using the completed local and preview verification. GitHub reported no required status checks on `main`.
 
 See the [acceptance matrix](consolidation-acceptance.md) and [integration interface inventory](architecture-decisions.md#002-consolidate-the-stage-14-stack-before-adding-new-deformation) for pending gates and Stage 15 boundaries.
+
+
+## Stage 15A — baseline and art direction (draft)
+
+Pinned main and READY production match e73985843f6808170f13bcf59d88f2cc67f47977. [Audit, limitations and validation instructions](stage-15a-baseline.md). Draft VisualFrame extraction and original editable art study only; no new PDE deformation, no schema or dependency changes. Gate OPEN: local git DNS failure, new checks unrun, visual/pixel and target device evidence absent, artist/owner approval open. Do not merge/promote.
