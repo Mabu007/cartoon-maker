@@ -4,8 +4,8 @@ import type {View} from '../engine/schema.ts';
 import { exportCharacterArtwork, downloadText } from '../services/assetPreparation.ts';
 import { exportAssetPackage, characterCompatibility } from '../engine/visualAssets.ts';
 import { useState } from 'react';
-import { applyProfile, illustratedCharacters, studioCharacters } from '../engine/visualPresets.ts';
-import { bodyProfiles, compileComponents, assetInstructions, type CharacterVisualData, type VisualAssetPack } from '../engine/visualAssets.ts';
+import { applyProfile, illustratedCharacters, studioCharacters, flagshipCharacters } from '../engine/visualPresets.ts';
+import { CharacterVisual, bodyProfiles, compileComponents, assetInstructions, type CharacterVisualData, type VisualAssetPack } from '../engine/visualAssets.ts';
 import type { Character } from '../engine/schema.ts';
 import { AssetWorkbench } from './AssetWorkbench.tsx';
 const controls=[['shoulders','Shoulder width',.8,1.25],['waist','Waist width',.75,1.35],['hips','Hip width',.8,1.3],['armWidth','Arm thickness',.75,1.3],['thighWidth','Thigh thickness',.75,1.3],['calfWidth','Calf thickness',.8,1.25],['handSize','Hand size',.75,1.3],['footSize','Foot size',.8,1.25],['neckLength','Neck length',.8,1.2],['abdomen','Abdomen',.8,1.3]] as const;
@@ -13,7 +13,7 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
   const [workbench,setWorkbench]=useState(false),[status,setStatus]=useState(''),[prompt,setPrompt]=useState('');
   const [vectorView,setVectorView]=useState<View>('three-quarter');
   const visual=character.visual??{version:1 as const,style:'classic' as const,profile:'average' as const};
-  function patch(values:Partial<CharacterVisualData>){change({...character,visual:{...visual,...values}});}
+  function patch(values:Partial<CharacterVisualData>){const result=CharacterVisual.safeParse({...visual,...values});if(!result.success){setStatus(result.error.issues[0]?.message??'Invalid artwork');return;}change({...character,visual:result.data});}
   function changeLimbArt(value:string){
     const next:CharacterVisualData={...visual};
     if(value==='anatomical-v1')next.limbArt=value;
@@ -43,6 +43,8 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
   return <details className="character-visual-studio"><summary>Illustrated characters & imported artwork</summary>
     <p className="small-text">Studio makeovers · fully editable native artwork and existing animation rig.</p>
     <div className="field-row">{studioCharacters.map(preset=><button type="button" key={preset.id} onClick={()=>{change({...structuredClone(preset),id:character.id,name:character.name});setStatus(`Applied ${preset.name}. Body, face, colours, hair and clothing remain editable.`);}}>Use {preset.name}</button>)}</div>
+    <p className="small-text">Vector Studio upgrade candidates (explicit opt-in)</p>
+    <div className="field-row">{flagshipCharacters.map(preset=><button type="button" key={preset.id} onClick={()=>{change({...structuredClone(preset),id:character.id,name:character.name});setStatus('Vector Studio upgrade applied to draft. Save to retain.');}}>Use {preset.name}</button>)}</div>
     <p className="small-text">Imported artwork examples</p>
     <div className="field-row">{illustratedCharacters.map(preset=><button type="button" key={preset.id} onClick={()=>change({...preset,id:character.id,name:character.name})}>Use {preset.name}</button>)}</div>
     <label className="field">Art style<select aria-label="Art style" value={visual.style} onChange={e=>{patch({style:e.target.value as CharacterVisualData['style'],components:[],...(visual.vectorComponents?{vectorComponents:[]}:{})});setStatus('Style changed; custom components were detached.');}}><option value="classic">Classic SIRVIBE</option><option value="illustrated">Illustrated studio</option></select></label>

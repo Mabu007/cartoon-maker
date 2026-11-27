@@ -57,10 +57,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const model=layered&&hairOpen&&!componentFor(c,'hair',view)?buildLayeredHair(c,faceArt):undefined;
   const hairLayer=(layer:'background'|'foreground')=>model&&<g transform={`translate(0 ${headY}) scale(${c.head})`}>{hairRenderPaths(model,layer).map(({id,...item})=><path key={id} {...item} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
   const headW=faceFit.w*c.head,headH=faceFit.h*c.head;
-  const headY = -(142 * c.height + 11 * c.torso)-36*c.head*((c.visual?.neckLength??1)-1);
-  const shirtBottom = -(71 * c.legs);
-  const shoulderY = headY + headH + 17;
-  const shirtTop = shoulderY - 5;
+
   const build=bodyProportions(c), swim=c.outfit==='bikini', bare=swim||c.outfit==='shirtless';
   // Native fallback shares the same deterministic elbow/wrist poses as Pixi.
   const locomotion=action==='walk'||action==='run'?action:'idle';
@@ -77,7 +74,8 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   };
   const gesture = gestureAt(c, acting);
   const live = livingPose(c, acting, base.pose, gesture);
-  const bodyRig = rig(c, live, profile ? .57 : view === 'back-quarter' ? .81 : q ? .88 : 1);
+  const bodyRig = rig(c, live, faceArt.width);
+  const headY=bodyRig.head.y,shirtBottom=bodyRig.hip.y,shoulderY=bodyRig.neck.y+10,shirtTop=bodyRig.neck.y+2;
   const armParts = (['left', 'right'] as const).map(side => {
     const hand = handPerformance({ action, locomotion, side, carrying: occupying === side, gesture });
     return { side, ...bodyRig[side], performance: hand };
@@ -96,14 +94,13 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const lift = moving || action==='sit' || action==='stand' ? base.lift : 0;
   const hasBone=(slot:CompiledArtwork['slot'])=>{const part=nativeBoneFor(c,slot,view,flip);return Boolean(componentFor(c,slot,view)||(part&&nativeBonePreview(part,[1,0,0,1,0,0])));};
   const legs = (['left', 'right'] as const).map((side, index) => {
-    const importedLeg=hasBone(`thigh-${side}`)||hasBone(`calf-${side}`);
-    const upper = importedLeg?bodyRig[side].upper:{ x: (index ? 15 : -15) * width*build.hip, y: shirtBottom };
-    const scale = importedLeg?c.legs*c.height:-shirtBottom / 76;
+    const upper=bodyRig[side].upper;
+    const scale=c.legs*c.height;
     const [knee, foot] = moving
       ? gaitLeg(upper, scale, elapsed, action, side, forward, lift)
       : action==='sit'||action==='stand'
         ? seatedLeg(upper,scale,lift,side)
-        : importedLeg?[bodyRig[side].knee,bodyRig[side].foot]:[{ x: upper.x + (index ? 6 : -5), y: -29 }, { x: upper.x + (index ? 3 : -3), y: -3 }];
+        : [bodyRig[side].knee,bodyRig[side].foot];
     const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
     return { side, foot, shoe, upper, knee, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
@@ -121,6 +118,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     <ellipse cx="270" cy="443" rx={37 * scale} ry="7" fill="#382d45" opacity=".4"/>
     <g transform={'translate(270 443) scale(' + (flip ? -scale : scale) + ' ' + scale + ')'}>
       <g className={animated ? 'native-actor native-actor-' + action : ''} transform={lift ? `translate(0 ${-lift})` : undefined}>
+        {hairLayer('background')}
         {legs.map(({ side, path, foot, shoe, upper, knee }) => <g key={side}>
           {hasBone(`thigh-${side}`)||hasBone(`calf-${side}`)?<>
             <BoneImage mirrored={flip} character={c} view={view} slot={`thigh-${side}`} start={upper} end={knee} thickness={c.thickness*build.leg} color={c.pants}/>
@@ -160,7 +158,6 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         })}
         {!customTop&&(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
         {c.accessory === 'chain' && <path d={'M -13 ' + (shirtTop + 6) + ' Q 0 ' + (shirtTop + 36) + ' 13 ' + (shirtTop + 6)} fill="none" stroke="#f8d06d" strokeWidth="3"/>}
-        {hairLayer('background')}
         <ellipse cx={-headW + 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>
         {!profile && <ellipse cx={headW - 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>}
         {customHead?<g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage character={c} view={view} slot="head-base" x={0} y={0}/></g>:<path d={headOutline(c,faceArt)} transform={`translate(0 ${headY}) scale(${c.head})`} fill={c.skin} stroke="#252037" strokeWidth={c.visual?.style==='illustrated'?1.9:3.5}/>}

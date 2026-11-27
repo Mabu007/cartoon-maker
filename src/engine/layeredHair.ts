@@ -61,7 +61,7 @@ export function buildLayeredHair(c:Character,view:IllustratedView):HairModel|und
       const x=side*(edge*.82+j*3)+shift,root:P=[round(x),round(top*.72+j*3)],mid:P=[round(side*(edge+5+j*4)+shift),round(h*.38)],tip:P=[round(side*(edge+7+j*5)+shift),round(h+(24+j*7)*d.length)];
       const id='lock-'+i,g=group(id,'chain',[root,mid,tip],[1,.35,0]);
       const sw=(style==='locs'?8:style==='box-braids'?5.8:6.6)*d.braidThickness;
-      const layer=view.rear?3:side<0?-3:4;
+      const layer=view.rear?-3:side<0?-3:4;
       const points=[M(...root),Q(...mid,...tip)],weights=[{pin:1,influence:0},{pin:.35,influence:.6},{pin:0,influence:1}];
       add(id+'-edge',layer,points,undefined,'ink',sw+2,g,weights);
       add(id,layer+0,points,undefined,'base',sw,g,weights);

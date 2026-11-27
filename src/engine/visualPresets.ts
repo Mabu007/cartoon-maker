@@ -1,3 +1,4 @@
+import {hairDesignDefaults} from './hairDesignSchema.ts';
 import { modularExample } from './modularExample.ts';
 import { visualExamples } from './visualExamples.ts';
 import { compileComponents } from './visualAssets.ts';
@@ -60,3 +61,12 @@ export const studioCharacters:Character[]=[
     visual:{version:1,style:'illustrated',profile:'curvy',limbArt:'anatomical-v1',shoulders:.94,waist:.83,hips:1.12,armWidth:1.02,thighWidth:1.08,calfWidth:1.02,handSize:1.02,footSize:.98},
     personality:{preset:'confident',autoActing:'subtle'}}
 ];
+
+/** Explicit upgrade presets; original Studio IDs/art remain available. */
+export const flagshipCharacters:Character[]=studioCharacters.map((base,i)=>({
+  ...structuredClone(base),id:i?'zee-vector-v1':'sbu-vector-v1',name:i?'Zee · Vector Studio':'Sbu · Vector Studio',
+  hair:i?'box-braids':'fade',hairDesign:{...hairDesignDefaults,volume:i?1.05:.78,length:i?1.16:.8,parting:i?-.12:0,highlight:i?.26:.18,material:{...hairDesignDefaults.material,stiffness:i?54:180,damping:i?12:24,wind:i?.35:0,maxDisplacement:i?7:0}},
+  wardrobe:{...base.wardrobe,forehead:i?1.02:1.06,jawAngle:i?.28:.79,eyeWidth:i?1.12:.96,eyeTilt:i?5:-2,irisSize:i?1.08:.93,lidCurvature:i?1.06:.88,browLength:i?1.12:1.06,browAsymmetry:i?.3:-.2,cupidBow:i?.82:.25,upperLipRatio:i?1.15:.8,lowerLipRatio:i?1.24:1.05,lipColor:i?'#934d50':'#74453d',cheekBlush:i?.18:0},
+  mouthRig:{width:i?1.04:1.08,jawScale:1,roundness:i?.66:.4,asymmetry:i?.08:-.08},
+  visual:{...base.visual!,abdomen:i?1.04:.94,muscleDefinition:i?.44:.76,softness:i?.64:.32,wristWidth:i?.94:1.08,kneeWidth:1,ankleWidth:i?.95:1.03,fingerLengths:i?[1,1.02,1.04,1.02,.98]:[1.04,1.02,1.01,1,.96]}
+}));

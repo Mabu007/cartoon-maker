@@ -52,7 +52,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{mirrored?:boolean;vectorCache?:NativeBonePathCache;texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};capturedArms?:{left:boolean;right:boolean};
+  appearance?:{rearHairArt?:Graphics;mirrored?:boolean;vectorCache?:NativeBonePathCache;texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};capturedArms?:{left:boolean;right:boolean};
     capturedFingers?:{left?:FingerCurls;right?:FingerCurls;thumbs?:ThumbPair;influence:number;confidence?:{left?:number;right?:number}};
     capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
     capturedHeadFacing?:PerformanceFacing;capturedHeadYaw?:number;
@@ -335,9 +335,11 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     : lookAtCamera && (art.profile || art.rear)
       ? view === 'back' ? 'back' : 'three-quarter' : view;
   const facialArt=appearance?.art??(face instanceof Graphics?face:undefined);
-  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume);
+  const rearHair=appearance?.rearHairArt;
+  if(rearHair){rearHair.clear();rearHair.position.set(face.position.x,face.position.y+g.position.y);rearHair.angle=face.angle;rearHair.scale.set(face.scale.x,face.scale.y);}
+  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume,rearHair);
 }
-function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture) {
+function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture,rearHair?:Graphics) {
   const art=viewArt[view], {rear,profile}=art;
   const layers=resetEyeLayers(face);
   const {w,h}=headMetrics(c,art), q=c.wardrobe;
@@ -347,7 +349,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   const customHairPart=openHat?componentFor(c,'hair',view):undefined;
   const customHairReady=Boolean(customHairPart&&texture?.(customHairPart.image));
   const layered=hasLayeredHair(c),hair=openHat&&!customHairReady?buildLayeredHair(c,art):undefined;
-  if(hair)for(const item of hairRenderPaths(hair,'background'))vector(g,item.d,item.fill,item.stroke,item.strokeWidth);
+  if(hair)for(const item of hairRenderPaths(hair,'background'))vector(rearHair??g,item.d,item.fill,item.stroke,item.strokeWidth);
   if(!profile)drawEar(g,c,ears[1],8*yScale,-1);
   const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture);
   if(!customHead)vector(g,headOutline(c,art),c.skin,c.visual?.style==='illustrated'?shade(c.skin,-.48):INK,c.visual?.style==='illustrated'?1.9:3.5);
