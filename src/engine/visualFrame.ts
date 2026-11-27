@@ -65,8 +65,6 @@ export function resolveVisualFrame(input:VisualFrameInputs):VisualFrame{
   const mocapFront=(side:'left'|'right')=>Boolean(!art.rear&&freeHand(side)&&appearance?.capturedArms?.[side]);
   const cryHand=(side:'left'|'right')=>crying&&freeHand(side);
 
-  const rearArm=art.rear?'right':'left';
-
   const frontArm=art.rear?'left':'right';
   const nearest=appearance?.capturedRig?.near??decideFrontArm(
     appearance?.capturedRig?.depths??{},undefined,frontArm
@@ -75,12 +73,12 @@ export function resolveVisualFrame(input:VisualFrameInputs):VisualFrame{
     left:mocapFront('left'),right:mocapFront('right')
   },nearest);
 
-  const carrying={left:carryingHand('left'),right:carryingHand('right')};
+  const carryingBySide={left:carryingHand('left'),right:carryingHand('right')};
   const cry={left:cryHand('left'),right:cryHand('right')};
   const capturedFront={left:mocapFront('left'),right:mocapFront('right')};
   const costumeHand=c.wardrobe?.hand??'right';
   function resolveArm(side:ArmSide){
-    const occupied=carrying[side];
+    const occupied=carryingBySide[side];
     const holdsCostume=side===costumeHand&&!occupied&&Boolean(c.wardrobe?.handheld&&c.wardrobe.handheld!=='none');
     return resolveArtworkArm(c,r,side,art,action,actionTime,occupied,holdsCostume,capturedFront[side],cry[side],appearance);
   }
@@ -88,7 +86,7 @@ export function resolveVisualFrame(input:VisualFrameInputs):VisualFrame{
   const legs={left:resolveArtworkLeg(c,r,'left',action,locomotion,lift,gaitTime,forward,gaitWeight,velocity,appearance),right:resolveArtworkLeg(c,r,'right',action,locomotion,lift,gaitTime,forward,gaitWeight,velocity,appearance)};
   function resolveHand(side:ArmSide):ResolvedHandArtwork{
     const {elbow,hand}=arms[side];
-    const carryingHandForSide=carrying[side];
+    const carryingHandForSide=carryingBySide[side];
     const holdsCostume=side===costumeHand&&!carryingHandForSide&&Boolean(c.wardrobe?.handheld&&c.wardrobe.handheld!=='none');
     const carrying=carryingHandForSide;
     const performance = handPerformance({
@@ -142,7 +140,7 @@ export function resolveVisualFrame(input:VisualFrameInputs):VisualFrame{
   return {actorId,view,headView,mirrored:Boolean(appearance?.mirrored),lift,rig:r,arms,legs,head,nearArm:nearest,hands,facial:mood,action,locomotion,time,
     headYaw,headPitch:0,speech:{cue:viseme,shape:mood.viseme,strength:viseme?.weight??0,mouthOpen:mood.mouthOpen},
     attachments:{head,palms:hands,feet:{left:legs.left.foot,right:legs.right.foot}},
-    headMirrored:Boolean(appearance?.mirrored)!==(trackedHead==='left'),capturedOrder,carrying,cry,capturedFront};
+    headMirrored:Boolean(appearance?.mirrored)!==(trackedHead==='left'),capturedOrder,carrying:carryingBySide,cry,capturedFront};
 }
 /** Only the opt-in legacy diagnostic copies data. Do not retain the live frame. */
 export function snapshotResolvedArtworkPose(frame:VisualFrame,head=frame.head):ResolvedArtworkPose{
