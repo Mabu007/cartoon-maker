@@ -1,3 +1,4 @@
+import {morphHandGeometry} from './handRig.ts';
 import {faceLandmarks} from './faceIdentityGeometry.ts';
 import type {NativeBonePathCache} from './vectorArtworkRender.ts';
 import { drawComponent, drawBoneComponent } from './hybridArtwork.ts';
@@ -225,7 +226,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const scale = handSize(c.thickness)*(appearance?.capturedFingers?.[side]?1.12:1)*(c.visual?.handSize??1);
     const width = handWidthScale(view, side, geometry.params.wristTwist);
     g.context.save().setTransform(at(hand.x, hand.y, scale * width, scale, rotation * 180 / Math.PI));
-    drawIllustratedHand(g, c.skin, geometry);
+    drawIllustratedHand(g,c.skin,morphHandGeometry(geometry,c.visual?.fingerLengths,Boolean(carrying||holdsCostume||observed||appearance?.capturedFingers?.[side]||performance.pose==='grip'||performance.pose==='pinch')));
     g.context.restore();
     const watchSide=c.wardrobe?.watchSide??costumeHand;
     if(watchSide==='both'||side===watchSide)drawWatch(g,c,hand,elbow);

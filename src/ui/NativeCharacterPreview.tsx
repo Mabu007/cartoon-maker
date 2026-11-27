@@ -1,3 +1,4 @@
+import {morphHandGeometry} from '../engine/handRig.ts';
 import {faceLandmarks,headOutline,eyeIdentity,pupils,faceDetailGeometry} from '../engine/faceIdentityGeometry.ts';
 import {viewArt} from '../engine/actorArt.ts';
 import {nativeBoneFor,boneVectorMatrix} from '../engine/nativeVectorBone.ts';
@@ -137,7 +138,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         {armParts.map(({ side, hand, elbow, performance }) => {
           const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
           const rotation = handRotation(forearm, live[`${side}Wrist`] ?? 0, performance.pose, performance.blend, side) * 180 / Math.PI;
-          const handRig = sampleHandRig(performance.pose, performance.blend);
+          const handRig=morphHandGeometry(sampleHandRig(performance.pose,performance.blend),c.visual?.fingerLengths,occupying===side||performance.pose==='grip'||performance.pose==='pinch');
           const size = handSize(c.thickness)*(c.visual?.handSize??1);
           const widthScale = handWidthScale(view, side, handRig.params.wristTwist);
           const fingers = handRig.fingers.map(fingerPath);

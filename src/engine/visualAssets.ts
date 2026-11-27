@@ -35,6 +35,7 @@ export const CharacterVisual = z.strictObject({
   shoulders:number(.8,1.25).optional(), waist:number(.75,1.35).optional(), hips:number(.8,1.3).optional(),
   armWidth:number(.75,1.3).optional(), thighWidth:number(.75,1.3).optional(), calfWidth:number(.8,1.25).optional(),
   abdomen:number(.8,1.3).optional(), wristWidth:number(.85,1.15).optional(), kneeWidth:number(.85,1.15).optional(), ankleWidth:number(.85,1.15).optional(),
+  fingerLengths:z.tuple([number(.9,1.1),number(.9,1.1),number(.9,1.1),number(.9,1.1),number(.9,1.1)]).optional(),
   muscleDefinition:number(0,1).optional(), softness:number(0,1).optional(),
   handSize:number(.75,1.3).optional(), footSize:number(.8,1.25).optional(), neckLength:number(.8,1.2).optional(),
   components:z.array(CompiledComponent).max(80).optional(),
