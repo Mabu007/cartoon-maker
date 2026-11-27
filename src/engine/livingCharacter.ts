@@ -62,7 +62,7 @@ function chance(seed:number,slot:number,salt:number) {
 const spokenActions=new Set<Action>(['idle','talk','listen','walk','run','sit','stand','idle-relaxed','idle-alert','idle-bored','idle-nervous']);
 export type ActingContext = {
   time: number; actorId: string; action: Action; locomotion: Action; expression: Expression;
-  speaking: boolean; listening?: boolean; manualGesture?: boolean;
+  speaking: boolean; listening?: boolean; listeningEnvelope?:number; manualGesture?: boolean;
   occupiedHands?: OccupiedHands; phrase?: DialoguePhrase;
   /** Authored target in actor-local coordinates, relative to the upper body. */
   pointToward?: { x: number; y: number };

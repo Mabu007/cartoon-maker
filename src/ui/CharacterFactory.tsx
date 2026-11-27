@@ -147,6 +147,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           </div>
           <label className="check"><input type="checkbox" checked={draft.personality?.actingModel==='coherent-v1'} onChange={e=>updatePersonality('actingModel',e.target.checked?'coherent-v1':undefined)}/> Coordinated procedural acting (experimental)</label>
           {draft.personality?.actingModel==='coherent-v1'&&<label>Default walk style<select value={draft.personality.walkStyle??'natural'} onChange={e=>updatePersonality('walkStyle',e.target.value as NonNullable<Character['personality']>['walkStyle'])}>{['natural','zombie','elder','kid','tsotsi','goofy','sneak','sprint'].map(style=><option key={style}>{style}</option>)}</select></label>}
+          {draft.personality?.actingModel==='coherent-v1'&&<label>Behavior seed<input type="number" min={0} max={4294967295} step={1} value={draft.personality.behaviorSeed??0} onChange={e=>updatePersonality('behaviorSeed',Math.max(0,Math.min(4294967295,Math.floor(Number(e.target.value)||0))))}/></label>}
           <p className="small-text">A character's personality affects how they move, gesture and listen. Press Play on the preview to see it.</p>
           <div className="factory-build-field"><strong>Auto-acting</strong><div className="choice-pills" role="group" aria-label="Auto acting mode">
             {(['full','subtle','off'] as const).map(mode=><button type="button" key={mode}

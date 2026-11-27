@@ -72,7 +72,7 @@ export function facialPerformance(
       clamp(speechCue.weight * (.48 + .52 * Math.max(.32, envelope))))
     : clamp(Math.max(envelope, animationSpeech));
   return { blink, gazeX, gazeY, mouthOpen, expression: resolved,
-    controls:emotionFacialControls(actingFacialControls(t,actorId,resolved,personality,expressionIntensity,actingIntent),emotion),
+    controls:emotionFacialControls(actingFacialControls(t,actorId,resolved,personality,expressionIntensity,actingIntent,Boolean(behavior&&!behavior.faceFree)),emotion),
     viseme: speechCue?.shape ?? (animationSpeech ? 'open' : 'rest'),
     mouthFrom:speechCue?.from,mouthBlend:speechCue?.blend,
     speaking: Boolean(speechCue) };
