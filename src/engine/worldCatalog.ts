@@ -46,8 +46,8 @@ export function makeWorldSet(name:WorldSetName):WorldSetData{
  if(studio){layers.push(placement('studio-light',decorativeArtwork('hanging-light'),480,0,1.4),placement('studio-curtain',decorativeArtwork('curtain'),90,60,1.5));}
  return WorldSet.parse({version:1,id:shop?'shop':studio?'studio':indoor?'room':'street',name,layers,walkable:[{x:24,y:400},{x:936,y:400},{x:960,y:535},{x:0,y:535}],surfaces:[{id:'floor',x:480,y:470,width:900,kind:'floor'}]});
 }
-export const nativeWorldPropKinds=['cup','book','phone','table','counter','plant'] as const;
-export type NativeWorldPropKind=typeof nativeWorldPropKinds[number];
+export {nativeWorldPropKinds,type NativeWorldPropKind} from './worldArtworkSchema.ts';
+import type {NativeWorldPropKind} from './worldArtworkSchema.ts';
 export function nativeWorldProp(kind:NativeWorldPropKind):WorldArtworkData{
  const palette={base:'#b77e60',trim:'#e9c69b',highlight:'#f5e4c8',leaf:'#587760'};
  switch(kind){

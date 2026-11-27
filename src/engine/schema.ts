@@ -1,4 +1,4 @@
-import {WorldArtwork} from './worldArtworkSchema.ts';
+import {WorldArtwork,worldPropCompatible} from './worldArtworkSchema.ts';
 import {CharacterSecondary} from './secondaryMotionSchema.ts';
 import {GarmentDesignV1} from './garmentDesignSchema.ts';
 import {HairDesignV1} from './hairDesignSchema.ts';
@@ -128,7 +128,7 @@ export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.str
   imageData: propImageData.optional(), imageWidth: num(10, 800).optional(), imageHeight: num(10, 800).optional(),
   worldArtwork:WorldArtwork.optional(), visual:EntityVisual.optional(), interactionAnchor:z.strictObject({x:num(-1000,1000),y:num(-1000,1000)}).optional(),
   interaction: z.enum(['none','sit','hold']).optional(), flip: z.boolean().optional()
-});
+}).superRefine((p,ctx)=>{if(p.worldArtwork&&!worldPropCompatible(p.kind,p.worldArtwork))ctx.addIssue({code:'custom',path:['worldArtwork'],message:'Native world artwork must fit the original prop bounds and supported kind; seat/door interaction art is reserved'});});
 export const Actor = z.strictObject({ id, characterId: id, ...position, visual:EntityVisual.optional(), view: CharacterView, flip: z.boolean(), expression: z.enum(expressions), gazeTarget: id.optional() });
 export const InteractionAnchor = z.strictObject({ x: num(-1000, 1000), y: num(-1000, 1000), action: z.enum(['sit', 'hold', 'open']), facing: CharacterView.optional() });
 export const joints = ['root', 'hips', 'torso', 'neck', 'head', 'leftShoulder', 'leftElbow', 'leftWrist', 'leftHand', 'rightShoulder', 'rightElbow', 'rightWrist', 'rightHand', 'leftHip', 'leftKnee', 'leftAnkle', 'leftFoot', 'rightHip', 'rightKnee', 'rightAnkle', 'rightFoot'] as const;

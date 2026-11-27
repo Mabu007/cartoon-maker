@@ -3,6 +3,10 @@ import {VectorArtworkV1,vectorDrawList} from './vectorArtwork.ts';
 import {LveMaterial} from './lveSimulation.ts';
 const n=(a:number,b:number)=>z.number().finite().min(a).max(b);
 const id=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/);
+export const nativeWorldPropKinds=['cup','book','phone','table','counter','plant'] as const;
+export type NativeWorldPropKind=typeof nativeWorldPropKinds[number];
+export const worldPropBounds:Record<NativeWorldPropKind,readonly [number,number]>={cup:[33,28],book:[55,12],phone:[25,33],table:[188,68],counter:[155,110],plant:[76,113]};
+export function worldPropCompatible(kind:string,art:WorldArtworkData){if(!nativeWorldPropKinds.includes(kind as NativeWorldPropKind))return false;const [w,h]=worldPropBounds[kind as NativeWorldPropKind],[x,y,x1,y1]=art.artwork.bounds;return x>=-w/2&&x1<=w/2&&y>=-h&&y1<=5;}
 export const worldLayers=['background','midground','foreground'] as const;
 export const worldKinds=['curtain','flag','branch','hanging-sign','hanging-light','furniture','household','architecture','prop'] as const;
 export const worldArtLimits={layers:20,commands:8192,nodes:48,groups:2,points:5,displacement:8,coordinate:180} as const;

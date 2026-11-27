@@ -1,3 +1,4 @@
+import {uid} from '../engine/schema.ts';
 import {useState} from 'react';
 import {CharacterSecondary,SceneSecondary,characterSecondaryDefaults,sceneSecondaryDefaults,secondaryComponents,type CharacterSecondaryData,type SceneSecondaryData,type SecondaryComponent} from '../engine/secondaryMotionSchema.ts';
 import {lveMaterials} from '../engine/lveSimulation.ts';
@@ -23,7 +24,9 @@ export function SceneSecondaryControls({settings,change,duration,getPlayhead}:{s
  <label className="check"><input type="checkbox" aria-label="Enable secondary motion" checked={q.enabled} onChange={e=>patch({enabled:e.target.checked})}/> Enable secondary motion</label>
  {q.enabled&&<><label>Simulation quality<select value={q.quality} onChange={e=>patch({quality:e.target.value as SceneSecondaryData['quality']})}><option value="eco">Economy · 30 Hz</option><option value="balanced">Balanced · 60 Hz</option></select></label>
  {([['strength','Scene strength',0,1,.05],['windX','Wind X',-80,80,1],['windY','Wind Y',-80,80,1],['turbulence','Turbulence',0,12,.5]] as const).map(([key,label,min,max,step])=><NumberField key={key} text={label} min={min} max={max} step={step} value={q[key]} onChange={value=>patch({[key]:value})}/>)}
+ <NumberField text="Gravity (world Y)" min={-40} max={40} step={1} value={q.gravity??12} onChange={gravity=>patch({gravity})}/>
+ <details><summary>Local wind regions</summary><p className="small-text">World coordinates, unaffected by camera zoom. Circular falloff blends with scene wind.</p>{(q.regions??[]).map(region=><div key={region.id}>{([['x','Region X',-2000,3000],['y','Region Y',-2000,3000],['radius','Region radius',10,1000],['windX','Local wind X',-80,80],['windY','Local wind Y',-80,80]] as const).map(([k,label,min,max])=><NumberField key={k} text={label} min={min} max={max} value={region[k]} onChange={value=>patch({regions:q.regions!.map(r=>r.id===region.id?{...r,[k]:value}:r)})}/>)}<button type="button" onClick={()=>patch({regions:q.regions!.filter(r=>r.id!==region.id)})}>Remove region</button></div>)}<button type="button" disabled={(q.regions?.length??0)>=8} onClick={()=>patch({regions:[...(q.regions??[]),{id:uid(),x:480,y:270,radius:240,windX:30,windY:0}]})}>Add local wind region</button></details>
  <button type="button" disabled={q.gusts.length>=16} onClick={()=>{const time=Math.min(duration,Math.round(getPlayhead()*100)/100);patch({gusts:[...q.gusts.filter(g=>g.time!==time),{time,x:60,y:-8,duration:.5}].sort((a,b)=>a.time-b.time)});}}>Add wind gust at playhead</button>
- <button type="button" onClick={()=>patch({windX:0,windY:0,turbulence:0,gusts:[]})}>Clear wind and gusts</button>
+ <button type="button" onClick={()=>patch({windX:0,windY:0,turbulence:0,gusts:[],regions:[]})}>Clear wind and gusts</button>
  <p className="small-text">Play the scene to see motion. Paused stage arrangement stays at rest. {q.gusts.length} scripted gusts.</p></>}{error&&<p role="alert">{error}</p>}</details>;
 }

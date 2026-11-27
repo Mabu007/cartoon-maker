@@ -1,3 +1,6 @@
+import {WorldDynamics,activeWorldProp,worldDrawList,layerKey,propKey,placementScale} from './worldDynamics.ts';
+import {drawVectorRegions} from './vectorArtworkRender.ts';
+import type {WorldArtworkData} from './worldArtworkSchema.ts';
 import {CharacterDynamics} from './characterDynamics.ts';
 import {sampleVolumeFrame,volumeColor,dominantLight,colorNumber} from './volumetricLighting.ts';
 import {VolumeGradientCache,type SurfaceFill} from './vvleRender.ts';
@@ -26,7 +29,7 @@ export const dimensions = (format: Format, scale = 1): [number, number] => {
 };
 
 type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; rearHairArt?:Graphics; gestureArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
-  foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; heldArt?:Graphics; heldArtKey?:string; heldSpriteLeft?:Sprite;heldArtLeft?:Graphics;heldArtKeyLeft?:string; imageData?: string };
+  worldArt?:WorldArtworkData;worldSignature?:string; foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; heldArt?:Graphics; heldArtKey?:string; heldSpriteLeft?:Sprite;heldArtLeft?:Graphics;heldArtKeyLeft?:string; imageData?: string };
 export type RenderOptions = { onResolvedArtworkPose?:(frame:ResolvedArtworkPose)=>void; characterPreview?: boolean; previewFocus?: { x: number; y: number };
   previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
@@ -34,7 +37,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   const app = new Application();
   const vectorCache=new NativeBonePathCache();
   const volumeCache=new VolumeGradientCache();
-  const dynamics=new CharacterDynamics();
+  const dynamics=new CharacterDynamics(),worldDynamics=new WorldDynamics();
   const [width, height] = videoFormats[format].viewport;
   const [pixelWidth, pixelHeight] = dimensions(format, resolution);
   await app.init({ width: pixelWidth, height: pixelHeight, resolution: 1, antialias: true, autoStart: false, background: '#24202c', preference: ['webgl', 'webgpu', 'canvas'], preserveDrawingBuffer: capture, powerPreference: 'low-power', hello: false });
@@ -91,6 +94,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   let requestedBackdrop: string | undefined;
   let destroyed = false;
   const elements = new Container({ sortableChildren: true });
+  const worldBack=new Container({sortableChildren:true}),worldFront=new Container({sortableChildren:true});
+  const worldGraphics=new Map<string,{g:Graphics;art:WorldArtworkData;signature:string}>();
   const guides = new Graphics();
   const fade = new Graphics();
   const vfxArt = new Graphics(), titles = new Container();
@@ -98,7 +103,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   const captionBackground = new Graphics();
   const caption = new Text({ text: '', style: { fontFamily: 'Arial', fill: '#fffbf4', fontWeight: '600', fontSize: 21, wordWrap: true, wordWrapWidth: width - 44, align: 'center' } });
   caption.anchor.set(.5, 1);
-  world.addChild(background, backdrop, elements, guides);
+  world.addChild(background, backdrop, worldBack, elements, worldFront, guides);
   app.stage.addChild(world, vfxArt, titles, captionBackground, caption, fade);
   app.stage.scale.set(pixelWidth / width, pixelHeight / height);
   const items = new Map<string, Entity>();
@@ -138,6 +143,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     const characterById = new Map(characters.map(character => [character.id, character]));
     lastFrame = evaluate(scene, time, characterById, width);
     const secondary=options.edit?undefined:dynamics.sample(scene,characters,time,width);
+    const worldOffsets=options.edit||options.characterPreview?undefined:worldDynamics.sample(scene,characters,time,width);
     const { actors, sounds, effects, transition } = lastFrame;
     const camera={...lastFrame.camera};
     for(const clip of effects){
@@ -185,6 +191,19 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     backdrop.x=(scene.backgroundTransform?.x??0)+(vvle?.settings.parallax??0)*(camera.x-480);
     backdrop.y=(scene.backgroundTransform?.y??0)+(vvle?.settings.parallax??0)*(camera.y-270);
     if(image){backdrop.width=WIDTH*(scene.backgroundTransform?.scale??1);backdrop.height=HEIGHT*(scene.backgroundTransform?.scale??1);}
+    // World layers are authored separately from the camera. Static graphics
+    // are retained; only changed quantized dynamic groups are redrawn.
+    const activeLayers=new Set<string>();
+    for(const l of options.characterPreview?[]:scene.visual?.world?.layers??[]){
+      if(image&&l.layer==='background')continue;
+      const key=layerKey(l.id),offset=worldOffsets?.get(key),sig=JSON.stringify(offset??{}),parent=l.layer==='background'?worldBack:l.layer==='foreground'?worldFront:elements;
+      activeLayers.add(key);let e=worldGraphics.get(key);if(!e){e={g:new Graphics(),art:l.art,signature:''};worldGraphics.set(key,e);}
+      if(e.g.parent!==parent)parent.addChild(e.g);
+      if(e.art!==l.art||e.signature!==sig){drawVectorRegions(e.g.clear(),worldDrawList(l.art,offset));e.art=l.art;e.signature=sig;}
+      const scale=placementScale(l,scene);e.g.position.set(l.x,l.y);e.g.scale.set(scale);e.g.angle=l.rotation;e.g.zIndex=renderDepth(l.depth,l.y);
+      e.g.tint=l.lighting?lightAt(l.x,l.y,scene.visual,time):0xffffff;
+    }
+    for(const [key,e] of worldGraphics)if(!activeLayers.has(key)){e.g.destroy();worldGraphics.delete(key);}
     currentCamera = camera;
     // Preview, export and stage picking share one exact camera projection.
     const transform = cameraViewport(camera, { width, height }, format);
@@ -226,9 +245,10 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
           front.zIndex=depth+.03;
         } else front.zIndex=entity.group.zIndex+.03;
       }
-      if (entity.kind !== prop.kind || entity.color !== prop.color || entity.imageData !== prop.imageData || entity.doorOpen !== ('doorOpen' in prop ? prop.doorOpen : undefined)) {
+      const native=activeWorldProp(prop),worldOffset=worldOffsets?.get(propKey(prop.id)),worldSignature=native?JSON.stringify(worldOffset??{}):undefined;
+      if (entity.worldArt!==native||entity.worldSignature!==worldSignature||entity.kind !== prop.kind || entity.color !== prop.color || entity.imageData !== prop.imageData || entity.doorOpen !== ('doorOpen' in prop ? prop.doorOpen : undefined)) {
         const opening='doorOpen' in prop ? Number(prop.doorOpen) : undefined;
-        drawProp(entity.art.clear(), prop, opening);entity.doorOpen=opening;
+        if(native)drawVectorRegions(entity.art.clear(),worldDrawList(native,worldOffset,{base:prop.color}));else drawProp(entity.art.clear(), prop, opening);entity.doorOpen=opening;entity.worldArt=native;entity.worldSignature=worldSignature;
         if(entity.foreground&&isSeating(prop.kind))drawSeat(entity.foreground.clear(),prop.kind,prop.color,true);
         entity.kind = prop.kind; entity.color = prop.color; entity.imageData = prop.imageData;
         if (entity.sprite) entity.sprite.visible = false;
@@ -356,10 +376,10 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
             art=new Graphics();entity.group.addChild(art);
             if(left)entity.heldArtLeft=art;else entity.heldArt=art;
           }
-          const key=prop.kind+'/'+prop.color;
+          const native=activeWorldProp(prop),key=prop.kind+'/'+prop.color+(native?'/'+JSON.stringify(native):'');
           const previous=left?entity.heldArtKeyLeft:entity.heldArtKey;
           if(previous!==key){
-            drawProp(art.clear(),prop);
+            if(native)drawVectorRegions(art.clear(),worldDrawList(native,undefined,{base:prop.color}));else drawProp(art.clear(),prop);
             if(left)entity.heldArtKeyLeft=key;else entity.heldArtKey=key;
           }
           art.tint=tint;
@@ -443,13 +463,13 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     const hit = candidates.find(item => item.id === lastSelectedId) ?? candidates[0];
     return { id: hit?.id, x: point.x, y: point.y };
   }
-  return { canvas: app.canvas, draw, pick, width, height, prepareImages, secondaryMetrics:()=>dynamics.instrumentation(),
+  return { canvas: app.canvas, draw, pick, width, height, prepareImages, secondaryMetrics:()=>dynamics.instrumentation(),worldMetrics:()=>worldDynamics.instrumentation(),
     projectPoint: (point:{x:number;y:number})=>worldToScreen(point,currentCamera,{width,height},format),
     preloadBackground: (image: string | undefined) => {if (image) void loadImage(image).catch(()=>{});},
     destroy: () => {
       destroyed=true;
       volumeCache.dispose();
-      dynamics.dispose();
+      dynamics.dispose();worldDynamics.dispose();worldGraphics.clear();
       cancelAnimationFrame(imageFrame);
       repaintLatestFrame=undefined;
       requests.clear();
