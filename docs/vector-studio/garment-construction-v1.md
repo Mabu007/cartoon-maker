@@ -11,3 +11,7 @@ GarmentPhysicsV1 validates per-template pin names and weight 1 at calibrated rig
 
 ## Gate
 Added five profiles × five views × four fits × four pose samples, template/serialization, pivot/prop invariants, and actual IndexedDB/backup regression checks. Extended browser fixture for garment comparisons, native SVG and offline project export; must run and inspect. Do not interpret finite path tests as clipping or artistic approval. Remaining library expansion: differentiated dress cuts, traditional cultural garments, tailored coats, realistic sitting drape, garment-specific authored view artwork, arbitrary masked decals, custom materials, full pattern parity and GPU path caching. No merge until cumulative stage gates are met.
+
+## Stage 7 follow-up
+
+Added generic wrap-tunic / wrap-skirt, seated skirt knee support and bounded uploaded logo badge. Neither professional art quality nor arbitrary silhouette decal mask is certified. Full seated dress draping, cultural authenticity, clipping review and Pixi/SVG parity remain outstanding. See Stage 7 contract and cumulative acceptance matrix.

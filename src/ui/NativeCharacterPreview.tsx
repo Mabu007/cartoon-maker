@@ -84,7 +84,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const headY=bodyRig.head.y,shirtBottom=bodyRig.hip.y,shoulderY=bodyRig.neck.y+10,shirtTop=bodyRig.neck.y+2;
   const armParts = (['left', 'right'] as const).map(side => {
     const hand = handPerformance({ action, locomotion, side, carrying: occupying === side, gesture });
-    const solved=resolveArtworkArm(c,bodyRig,side,faceArt,action,actionTime,occupying===side,false,false,action==='cry'&&occupying!==side);
+    const solved=resolveArtworkArm(c,bodyRig,side,faceArt,auditionAction,actionTime,occupying===side,false,false,action==='cry'&&occupying!==side);
     return { side, ...solved, performance: hand,primary:c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(solved.shoulder,solved.elbow,solved.hand,{view,side,centerX:bodyRig.neck.x,contact:occupying===side,expectedLength:28*c.arms}):undefined };
   });
 

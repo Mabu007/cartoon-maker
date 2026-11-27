@@ -110,4 +110,5 @@ export function resolveArtworkLeg(c:Character,r:ResolvedRig,side:ArmSide,action:
 
  return {upper:joint.upper,knee,foot,moving};
 }
-export type ResolvedArtworkPose={actorId:string;view:View;headView:View;mirrored:boolean;lift:number;rig:ResolvedRig;arms:Readonly<Record<ArmSide,ResolvedArm>>;legs:Readonly<Record<ArmSide,ResolvedLeg>>;head:{position:Point;angle:number;scale:Point};nearArm:ArmSide;action:Action;locomotion:Action;time:number};
+export type ResolvedHandArtwork={position:Point;rotationRadians:number;scale:Point;geometry:ReturnType<typeof import('./handRig.ts').sampleHandRig>;occupied:boolean};
+export type ResolvedArtworkPose={actorId:string;view:View;headView:View;mirrored:boolean;lift:number;rig:ResolvedRig;arms:Readonly<Record<ArmSide,ResolvedArm>>;legs:Readonly<Record<ArmSide,ResolvedLeg>>;head:{position:Point;angle:number;scale:Point};nearArm:ArmSide;hands:Readonly<Partial<Record<ArmSide,ResolvedHandArtwork>>>;facial:import('./facialAnimation.ts').FacialPerformance;action:Action;locomotion:Action;time:number};

@@ -1,5 +1,5 @@
 import {classifyArtworkPose} from './primaryArtworkPose.ts';
-import {resolveArtworkArm,resolveArtworkLeg,type ResolvedArtworkPose,type ResolvedLeg} from './resolvedArtworkPose.ts';
+import {resolveArtworkArm,resolveArtworkLeg,type ResolvedArtworkPose,type ResolvedLeg,type ResolvedHandArtwork} from './resolvedArtworkPose.ts';
 import {garmentEnabled,garmentTorso,garmentSleeve,garmentLeg,garmentSkirt,garmentFoot} from './garmentGeometry.ts';
 import {drawGarmentPaths} from './garmentRender.ts';
 import {nativePartFor,boneDrawList} from './nativeVectorBone.ts';
@@ -84,6 +84,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const cryHand=(side:'left'|'right')=>crying&&freeHand(side);
   type ArmParts='all'|'upper'|'lower'|'hand';
   const armEndpoints:Partial<Record<ArmSide,{elbow:Point;hand:Point}>>={};
+  const resolvedHands:Partial<Record<ArmSide,ResolvedHandArtwork>>={};
   const arm = (side:ArmSide,carrying=false,g:Graphics=bodyArt,part:ArmParts='all') => {
     const joint=r[side];
     const costumeHand=c.wardrobe?.hand??'right';
@@ -166,7 +167,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const scale = handSize(c.thickness)*(appearance?.capturedFingers?.[side]?1.12:1)*(c.visual?.handSize??1);
     const width = handWidthScale(view, side, geometry.params.wristTwist);
     g.context.save().setTransform(at(hand.x, hand.y, scale * width, scale, rotation * 180 / Math.PI));
-    drawIllustratedHand(g,c.skin,morphHandGeometry(geometry,c.visual?.fingerLengths,Boolean(carrying||holdsCostume||observed||appearance?.capturedFingers?.[side]||performance.pose==='grip'||performance.pose==='pinch')));
+    const handArt=morphHandGeometry(geometry,c.visual?.fingerLengths,Boolean(carrying||holdsCostume||observed||appearance?.capturedFingers?.[side]||performance.pose==='grip'||performance.pose==='pinch'));
+    drawIllustratedHand(g,c.skin,handArt);
+    if(appearance?.onResolvedArtworkPose)resolvedHands[side]={position:hand,rotationRadians:rotation,scale:{x:scale*width,y:scale},geometry:handArt,occupied:carrying||holdsCostume};
     g.context.restore();
     const watchSide=c.wardrobe?.watchSide??costumeHand;
     if(watchSide==='both'||side===watchSide)drawWatch(g,c,hand,elbow);
@@ -276,7 +279,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const rearHair=appearance?.rearHairArt;
   if(rearHair){rearHair.clear();rearHair.position.set(face.position.x,face.position.y);rearHair.angle=face.angle;rearHair.scale.set(face.scale.x,face.scale.y);}
   if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume,rearHair,appearance?.vectorCache,Boolean(appearance?.mirrored)!==(trackedHead==='left'));
-  if(appearance?.onResolvedArtworkPose&&armEndpoints.left&&armEndpoints.right)appearance.onResolvedArtworkPose({actorId,view,headView,mirrored:Boolean(appearance.mirrored),lift,rig:r,arms:{left:{shoulder:r.left.shoulder,...armEndpoints.left},right:{shoulder:r.right.shoulder,...armEndpoints.right}},legs:resolvedLegs,head:{position:{x:face.x,y:face.y},angle:face.angle,scale:{x:face.scale.x,y:face.scale.y}},nearArm:nearest,action,locomotion,time});
+  if(appearance?.onResolvedArtworkPose&&armEndpoints.left&&armEndpoints.right)appearance.onResolvedArtworkPose(structuredClone({actorId,view,headView,mirrored:Boolean(appearance.mirrored),lift,rig:r,arms:{left:{shoulder:r.left.shoulder,...armEndpoints.left},right:{shoulder:r.right.shoulder,...armEndpoints.right}},legs:resolvedLegs,head:{position:{x:face.x,y:face.y},angle:face.angle,scale:{x:face.scale.x,y:face.scale.y}},nearArm:nearest,hands:resolvedHands,facial:mood,action,locomotion,time}));
 }
 function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture,rearHair?:Graphics,vectorCache?:NativeBonePathCache,mirrored=false) {
   const art=viewArt[view], {rear,profile}=art;
