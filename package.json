@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm test && tsc --noEmit && vite build && npm run verify:offline",
+    "build": "npm test && tsc --noEmit && vite build && npm run verify:offline && node --experimental-strip-types scripts/qa-lve.mjs && SIRVIBE_HOSTED_QA=1 npm exec --yes --package=playwright@1.51.1 --package=@sparticuz/chromium@133.0.0 -- node scripts/qa-vvle-preview.mjs",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "preview": "vite preview",
     "qa:lve": "node scripts/qa-lve.mjs",
