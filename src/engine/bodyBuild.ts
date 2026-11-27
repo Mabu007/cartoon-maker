@@ -14,8 +14,9 @@ export function bodyProportions(character:Character) {
   const build=character.bodyBuild;
   const frame=frames[build?.frame??'regular'];
   const visual=character.visual;
+  const soft=(visual?.softness??.5)-.5,muscle=(visual?.muscleDefinition??.5)-.5;
   return {
-    ...frame,shoulder:frame.shoulder*(visual?.shoulders??1),waist:frame.waist*(visual?.waist??1),hip:(frame.hip+(build?.hips??0)*.38)*(visual?.hips??1),chest:build?.chest??0,
+    ...frame,bell:frame.bell*(visual?.abdomen??1)*(1+soft*.16),shoulder:frame.shoulder*(visual?.shoulders??1),waist:frame.waist*(visual?.waist??1)*(1+soft*.12),hip:(frame.hip+(build?.hips??0)*.38)*(visual?.hips??1),chest:Math.max(0,Math.min(1,(build?.chest??0)+Math.max(0,muscle)*.2)),
     arm:{slim:.72,regular:1,muscular:1.62}[build?.arms??'regular']*(visual?.armWidth??1),
     leg:{slim:.75,regular:1,full:1.49,muscular:1.35}[build?.legs??'regular']*(visual?.thighWidth??1),
     calves:{slim:.92,regular:1,full:1.05,muscular:1.18}[build?.legs??'regular']*(visual?.calfWidth??1)

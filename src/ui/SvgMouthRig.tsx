@@ -31,9 +31,9 @@ export function SvgMouthRig({character,mood,view,x,y,clipId}:{
         </g>)}
       </g>
       <path d={model.upperLipPath} fill="none" stroke={lipColor??'#713d4c'}
-        strokeWidth={(character.mouth==='full'?2.1:1.65)*lipWeight} strokeLinecap="round"/>
-      <path d={model.lowerLipPath} fill="none" stroke="#653946"
-        strokeWidth="1.35" strokeLinecap="round"/>
+        strokeWidth={(character.mouth==='full'?2.1:1.65)*lipWeight*(character.wardrobe?.upperLipRatio??1)} strokeLinecap="round"/>
+      <path d={model.lowerLipPath} fill="none" stroke={lipColor??'#653946'}
+        strokeWidth={1.35*(character.wardrobe?.lowerLipRatio??1)} strokeLinecap="round"/>
     </>:<><path d={model.restPath}
        fill="none" stroke={lipColor??'#302438'} strokeWidth={(character.mouth==='full'?3.1:2.5)*lipWeight}
        strokeLinecap="round"/>

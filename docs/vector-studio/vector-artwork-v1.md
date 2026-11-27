@@ -1,0 +1,17 @@
+# Stage 1 draft: canonical vector contract v1
+
+Status: partial implementation, not acceptance-tested or approved for release.
+Based on Stage 0 candidate f9d1c9e; PR #43 remains unreleased. No general physics engine.
+
+- Identity: optional CharacterVisual.vectorComponents reuses existing component id, slot, five-view identity and profile vocabulary. Existing raster components and legacy limb art remain unchanged. Slot/view conflicts are rejected. No package format migration or automatic upgrades.
+- Coordinates: +x right or along bone, +y down. Rig units or bone-normalized units; pivot/anchors and bounds in asset local space. Affine matrices use [a,b,c,d,tx,ty]. Region transforms precede owner local-to-world transforms. Bounds contain the rest control-point hull (stroke and dynamic displacement are additional).
+- Geometry: absolute M/L/Q/C/Z tuples, compound subpaths, nonzero/evenodd metadata, solid and semantic palette paint, optional strokes; no scripts, remote resources, gradients or SVG parsing. Mask/clip references and pose topology validated; these features are not yet render-enabled.
+- Deformation: immutable validated rest data, one pin/influence pair per coordinate pair including curve handles, optional material and collision proxy references, maximum displacement, named control groups. Runtime owner/region, transform, displacement and velocity are separate from serialized artwork. The spring is a bounded fixed-step example, not collision or cloth simulation.
+- Render subset: shared draw-list and SVG preview descriptor; Pixi direct path commands, not SVG parsing. Compound/evenodd/mask/clip output fails closed so caller can use legacy art. Anisotropic stroke treatment and pixel parity are not certified. Cache is bounded and owned by the future renderer/preview caller, invalidated on source replacement or explicitly; it stores frozen validation copies, not GPU resources. Callers must treat incoming source objects as immutable.
+- Fixture: opt-in forearm, recolouring, pinned endpoints, bounded deformation, JSON/schema round trip; no default character changes.
+
+Remaining before the gate: integrate the draw adapters into CharacterFactory/native preview and actorArt with explicit opt-in and legacy fallback; preserve native fields across profile/visual edits and actual device project backup/reopen; implement reusable compiled static Pixi shapes and resource disposal at renderer lifecycle; actual pixel parity, motion/offline/export and device benchmarks; full npm build/CI. Add migration coverage for unsupported future versions and real project storage tests. The candidate must not be merged until Stage 0 and Stage 1 gates pass.
+
+## Integration candidate
+
+The character editor now exposes a view-specific opt-in forearm fixture with palette and authored displacement controls. The actor renderer resolves native bone artwork before the legacy raster/native path using solved joint endpoints, without touching motion or grip logic. A per-renderer bounded CPU GraphicsPath cache compiles authored paths on source replacement and clears at destruction; this does not yet cache GPU tessellation across frames. SVG fallback consumes the same draw list and transformed geometry; the full fallback rig is still approximate. Native fixed slots, asymmetric facing, compound fills, clips/masks, browser QA and measured target-device performance remain open. No test pass is claimed.

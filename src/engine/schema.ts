@@ -1,3 +1,7 @@
+import {WorldArtwork,worldPropCompatible} from './worldArtworkSchema.ts';
+import {CharacterSecondary} from './secondaryMotionSchema.ts';
+import {GarmentDesignV1} from './garmentDesignSchema.ts';
+import {HairDesignV1} from './hairDesignSchema.ts';
 import { CharacterVisual } from './visualAssets.ts';
 import { EntityVisual, EnvironmentVisual } from './environmentVisuals.ts';
 import { bodyFrames,armBuilds,legBuilds } from './bodyBuild.ts';
@@ -57,7 +61,7 @@ export const PerformanceFacingSchema=z.enum(['front','left','right']);
 export type PerformanceFacing=z.infer<typeof PerformanceFacingSchema>;
 export const VoicePreset = z.enum(['warm','bright','deep']);
 export const HostedVoiceId = z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9_.:-]+$/);
-export const personalityPresets = ['balanced','confident','shy','nervous','relaxed','hyperactive','funny','serious','arrogant','mysterious','dramatic','grumpy','playful'] as const;
+export const personalityPresets = ['balanced','confident','shy','nervous','relaxed','hyperactive','energetic','funny','serious','arrogant','mysterious','dramatic','grumpy','playful'] as const;
 export const signatureMannerisms = ['none','point','touch-chin','rub-hands','shrug','tilt-head','hand-on-hip'] as const;
 export const PersonalityDefinition = z.strictObject({
   preset:z.enum(personalityPresets), autoActing:z.enum(['full','subtle','off']), signature:z.enum(signatureMannerisms),
@@ -66,8 +70,11 @@ export const PersonalityDefinition = z.strictObject({
   restlessness:num(0,100),emotionalReactivity:num(0,100),gestureFrequency:num(0,100),
   gestureAmplitude:num(0,100),movementSpeed:num(0,100),postureOpenness:num(0,100),
   eyeContact:num(0,100),personalSpace:num(0,100),reactionIntensity:num(0,100),
-  movementSmoothness:num(0,100)
+  movementSmoothness:num(0,100), actingModel:z.literal('coherent-v1'), behaviorSeed:z.number().int().min(0).max(4294967295),
+  breathingAmplitude:num(0,100),breathingRate:num(0,100),idleTiming:num(0,100),blinkFrequency:num(0,100),headOrientation:num(0,100),responseTendency:num(0,100),walkStyle:z.enum(gaitStyles)
 }).partial();
+export const identityLockGroups=['body','face','hair','palette','wardrobe','personality','voice'] as const;
+export const CharacterIdentityMetadata=z.strictObject({version:z.literal(1),seed:z.number().int().min(0).max(4294967295),locks:z.array(z.enum(identityLockGroups)).max(identityLockGroups.length).refine(v=>new Set(v).size===v.length,'Duplicate identity lock')});
 export const CharacterDefinition = z.strictObject({
   id, name: z.string().trim().min(1).max(60), skin: color, shirt: color, pants: color, hairColor: color, shoes: color,
   height: num(.75, 1.3), head: num(.75, 1.35), torso: num(.75, 1.3), arms: num(.75, 1.3), legs: num(.75, 1.3), thickness: num(.65, 1.45), eyeSpacing: num(.65, 1.4),
@@ -76,6 +83,10 @@ export const CharacterDefinition = z.strictObject({
   hair: z.enum(characterStyles.hair), beard: z.enum(characterStyles.beard), hat: z.enum(characterStyles.hat),
   glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(characterStyles.outfit), accessory: z.enum(characterStyles.accessory),
   visual:CharacterVisual.optional(),
+  identity:CharacterIdentityMetadata.optional(),
+  hairDesign:HairDesignV1.optional(),
+  garmentDesign:GarmentDesignV1.optional(),
+  secondaryMotion:CharacterSecondary.optional(),
   bodyBuild:z.strictObject({
     frame:z.enum(bodyFrames), arms:z.enum(armBuilds),
     legs:z.enum(legBuilds), chest:num(0,1), hips:num(0,1), abs:z.boolean()
@@ -94,6 +105,9 @@ export const CharacterDefinition = z.strictObject({
     patternImage:propImageData, logoImage:propImageData, bagLogo:propImageData, shoeLogo:propImageData,
     patternScale:num(.25,4), patternRotation:num(-180,180), patternOpacity:num(0,1), logoScale:num(.4,2),
     waist:num(.65,1.5), hem:num(-1,1), lensOpacity:num(0,1), rim:num(.5,4), glint:z.boolean(),
+    eyeWidth:num(.8,1.2), eyeTilt:num(-15,15), eyeHeight:num(-4,4), irisSize:num(.75,1.25), lidCurvature:num(.8,1.2), lashes:num(0,1),
+    forehead:num(.8,1.2), jawAngle:num(0,1), browLength:num(.8,1.2), browAsymmetry:num(-3,3), freckles:num(0,1), wrinkles:num(0,1), makeup:num(0,1), cheekBlush:num(0,1),
+    upperLipRatio:num(.65,1.35), lowerLipRatio:num(.65,1.35), cupidBow:num(0,1), mouthHeight:num(-3,3),
     pupilSize:num(.4,1.8), ring:num(0,1), veins:num(0,1), eyelid:num(0,.8), undereye:num(0,1),
     crownWidth:num(.72,1.28), cheekWidth:num(.72,1.28), jawWidth:num(.72,1.28), chinWidth:num(.6,1.4), headStretch:num(.8,1.25),
     browInner:num(-45,45), browOuter:num(-45,45), browBend:num(-1,1), browThickness:num(.5,2), browSpacing:num(-4,4),
@@ -112,9 +126,9 @@ export const CharacterDefinition = z.strictObject({
 });
 export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.string().min(1).max(60), color, ...position,
   imageData: propImageData.optional(), imageWidth: num(10, 800).optional(), imageHeight: num(10, 800).optional(),
-  visual:EntityVisual.optional(), interactionAnchor:z.strictObject({x:num(-1000,1000),y:num(-1000,1000)}).optional(),
+  worldArtwork:WorldArtwork.optional(), visual:EntityVisual.optional(), interactionAnchor:z.strictObject({x:num(-1000,1000),y:num(-1000,1000)}).optional(),
   interaction: z.enum(['none','sit','hold']).optional(), flip: z.boolean().optional()
-});
+}).superRefine((p,ctx)=>{if(p.worldArtwork&&!worldPropCompatible(p.kind,p.worldArtwork))ctx.addIssue({code:'custom',path:['worldArtwork'],message:'Native world artwork must fit the original prop bounds and supported kind; seat/door interaction art is reserved'});});
 export const Actor = z.strictObject({ id, characterId: id, ...position, visual:EntityVisual.optional(), view: CharacterView, flip: z.boolean(), expression: z.enum(expressions), gazeTarget: id.optional() });
 export const InteractionAnchor = z.strictObject({ x: num(-1000, 1000), y: num(-1000, 1000), action: z.enum(['sit', 'hold', 'open']), facing: CharacterView.optional() });
 export const joints = ['root', 'hips', 'torso', 'neck', 'head', 'leftShoulder', 'leftElbow', 'leftWrist', 'leftHand', 'rightShoulder', 'rightElbow', 'rightWrist', 'rightHand', 'leftHip', 'leftKnee', 'leftAnkle', 'leftFoot', 'rightHip', 'rightKnee', 'rightAnkle', 'rightFoot'] as const;

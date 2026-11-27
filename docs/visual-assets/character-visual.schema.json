@@ -30,6 +30,10 @@
         "elderly"
       ]
     },
+    "limbArt": {
+      "type": "string",
+      "const": "anatomical-v1"
+    },
     "shoulders": {
       "type": "number",
       "minimum": 0.8,

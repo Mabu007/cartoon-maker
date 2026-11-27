@@ -1,0 +1,16 @@
+.modal-wide:has(.workspace-grid){width:min(1320px,96vw);max-width:96vw;}
+.workspace-grid{grid-template-columns:minmax(320px,1.25fr) minmax(300px,1fr);gap:20px;align-items:start;}
+.workspace-grid .factory-preview{position:sticky;top:0;min-width:0;}
+.workspace-canvas{height:min(54vh,560px);min-height:280px;overflow:hidden;touch-action:none;cursor:grab;position:relative;display:flex;align-items:center;justify-content:center;}
+.workspace-canvas:active{cursor:grabbing;}
+.workspace-preview-transform{width:100%;height:100%;display:grid;place-items:center;transform-origin:center;pointer-events:none;}
+.workspace-preview-transform .factory-renderer-mount{width:100%;height:100%;display:grid;place-items:center;}
+.workspace-preview-transform canvas{max-width:100%;max-height:100%;object-fit:contain;}
+.workspace-preview-header,.workspace-history,.workspace-auditions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0;}
+.workspace-preview-header span{font-size:11px;opacity:.75;margin-left:auto;}
+.workspace-auditions button,.workspace-history button{padding:6px 10px;font-size:12px;min-height:32px;}
+.workspace-auditions button[aria-pressed=true]{outline:1px solid currentColor;}
+.workspace-grid .workspace-categories{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;}
+.workspace-category-title{font-size:15px;margin:10px 0;}
+.workspace-grid .factory-edit{min-width:0;}
+@media(max-width:800px){.workspace-grid{grid-template-columns:1fr;}.workspace-grid .factory-preview{position:static;}.workspace-canvas{height:42vh;min-height:240px;}.workspace-grid .workspace-categories{grid-template-columns:repeat(3,minmax(0,1fr));}}

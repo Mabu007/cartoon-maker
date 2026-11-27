@@ -1,3 +1,15 @@
+import {classifyArtworkPose,type PrimaryArtworkPose} from '../engine/primaryArtworkPose.ts';
+import {resolveArtworkArm,resolveArtworkLeg} from '../engine/resolvedArtworkPose.ts';
+import {garmentEnabled,garmentTorso,garmentSleeve,garmentLeg,garmentSkirt,garmentFoot} from '../engine/garmentGeometry.ts';
+import {SvgGarmentPaths,GarmentPattern} from './SvgGarmentPaths.tsx';
+import {buildLayeredHair,hasLayeredHair,hairRenderPaths} from '../engine/layeredHair.ts';
+import {topContour} from '../engine/wardrobeArt.ts';
+import {morphHandGeometry} from '../engine/handRig.ts';
+import {faceLandmarks,headOutline,eyeIdentity,pupils,faceDetailGeometry} from '../engine/faceIdentityGeometry.ts';
+import {viewArt} from '../engine/actorArt.ts';
+import {nativeBoneFor,boneVectorMatrix,nativePartFor,fixedVectorMatrix} from '../engine/nativeVectorBone.ts';
+import {nativeBonePreview} from '../engine/vectorArtworkRender.ts';
+import { anatomicalSegments, type LimbRegion, type LimbMorphology } from '../engine/anatomicalVectorArt.ts';
 import { boneArtworkTransform, type Point } from '../engine/artworkGeometry.ts';
 import type { CompiledArtwork } from '../engine/visualAssets.ts';
 import { componentFor, componentTransform } from '../engine/hybridArtwork.ts';
@@ -35,6 +47,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     return () => cancelAnimationFrame(frame);
   }, [frozenTime !== undefined]);
   const mouthMask = 'toon-mouth-' + useId().replace(/:/g, '');
+  const garments=garmentEnabled(c),patternId=mouthMask+'-fabric';
   const speech = mouthSample ?? (mouthTest ? {shape:mouthTest,weight:mouthTest==='rest'?0:1} :
     action === 'talk'
       ? sampleViseme(conversationAudition.text, conversationAudition.duration, elapsed % conversationAudition.duration) : undefined);
@@ -44,12 +57,13 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const profile = view === 'side';
   const q = view === 'three-quarter' || view === 'back-quarter';
   const width = profile ? .65 : q ? .9 : 1;
-  const headW = (c.shape === 'square' ? 41 : 44) * (profile ? .83 : 1) * c.head;
-  const headH = (c.shape === 'round' ? 42 : 46) * c.head;
-  const headY = -(142 * c.height + 11 * c.torso)-36*c.head*((c.visual?.neckLength??1)-1);
-  const shirtBottom = -(71 * c.legs);
-  const shoulderY = headY + headH + 17;
-  const shirtTop = shoulderY - 5;
+  const faceArt=viewArt[view],faceFit=faceLandmarks(c,faceArt);
+  const layered=hasLayeredHair(c),hairOpen=['none','visor','sun-visor','fascinator'].includes(c.hat);
+  const hasFixed=(slot:CompiledArtwork['slot'])=>{const part=nativePartFor(c,slot,view,flip),m=part&&fixedVectorMatrix(part,0,0);return Boolean(componentFor(c,slot,view)||(part&&m&&nativeBonePreview(part,m)));};
+  const model=layered&&hairOpen&&!hasFixed('hair')?buildLayeredHair(c,faceArt):undefined;
+  const hairLayer=(layer:'background'|'foreground')=>model&&<g transform={layer==='background'?`translate(${bodyRig.head.x} ${headY}) rotate(${bodyRig.angle}) scale(${c.head})`:`translate(0 ${headY}) scale(${c.head})`}>{hairRenderPaths(model,layer).map(({id,...item})=><path key={id} {...item} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
+  const headW=faceFit.w*c.head,headH=faceFit.h*c.head;
+
   const build=bodyProportions(c), swim=c.outfit==='bikini', bare=swim||c.outfit==='shirtless';
   // Native fallback shares the same deterministic elbow/wrist poses as Pixi.
   const locomotion=action==='walk'||action==='run'?action:'idle';
@@ -66,46 +80,40 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   };
   const gesture = gestureAt(c, acting);
   const live = livingPose(c, acting, base.pose, gesture);
-  const bodyRig = rig(c, live, profile ? .57 : view === 'back-quarter' ? .81 : q ? .88 : 1);
+  const bodyRig = rig(c, live, faceArt.width);
+  const headY=bodyRig.head.y,shirtBottom=bodyRig.hip.y,shoulderY=bodyRig.neck.y+10,shirtTop=bodyRig.neck.y+2;
   const armParts = (['left', 'right'] as const).map(side => {
     const hand = handPerformance({ action, locomotion, side, carrying: occupying === side, gesture });
-    return { side, ...bodyRig[side], performance: hand };
+    const solved=resolveArtworkArm(c,bodyRig,side,faceArt,auditionAction,actionTime,occupying===side,false,false,action==='cry'&&occupying!==side);
+    return { side, ...solved, performance: hand,primary:c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(solved.shoulder,solved.elbow,solved.hand,{view,side,centerX:bodyRig.neck.x,contact:occupying===side,expectedLength:28*c.arms}):undefined };
   });
 
   const left = -24 * width * c.thickness*build.shoulder;
   const right = -left;
   const hips=19*width*build.hip;
   const chest=build.chest*7;
-  const eyeY = headY - 5;
+  const eyeY=headY+faceFit.eyeY*c.head;
   const faceShift = q ? 8 * viewForward(view) : profile ? 16 : 0;
-  const noseX = faceShift + (profile ? 13 : 0);
+  const noseX=faceFit.noseX*c.head;
   const animated = ['wave', 'jump', 'celebrate', 'talk', 'laugh'].includes(action);
   const moving = action === 'walk' || action === 'run';
   const forward = viewForward(view);
   const lift = moving || action==='sit' || action==='stand' ? base.lift : 0;
+  const hasBone=(slot:CompiledArtwork['slot'])=>{const part=nativeBoneFor(c,slot,view,flip);return Boolean(componentFor(c,slot,view)||(part&&nativeBonePreview(part,[1,0,0,1,0,0])));};
   const legs = (['left', 'right'] as const).map((side, index) => {
-    const importedLeg=componentFor(c,`thigh-${side}`,view)||componentFor(c,`calf-${side}`,view);
-    const upper = importedLeg?bodyRig[side].upper:{ x: (index ? 15 : -15) * width*build.hip, y: shirtBottom };
-    const scale = importedLeg?c.legs*c.height:-shirtBottom / 76;
-    const [knee, foot] = moving
-      ? gaitLeg(upper, scale, elapsed, action, side, forward, lift)
-      : action==='sit'||action==='stand'
-        ? seatedLeg(upper,scale,lift,side)
-        : importedLeg?[bodyRig[side].knee,bodyRig[side].foot]:[{ x: upper.x + (index ? 6 : -5), y: -29 }, { x: upper.x + (index ? 3 : -3), y: -3 }];
+    const upper=bodyRig[side].upper;
+    const scale=c.legs*c.height;
+    const {knee,foot}=resolveArtworkLeg(c,bodyRig,side,auditionAction,locomotion,lift,elapsed,forward);
     const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
-    return { side, foot, shoe, upper, knee, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
+    return { side, foot, shoe, upper, knee,primary:c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(upper,knee,foot,{view,side,centerX:bodyRig.hip.x,seated:action==='sit',arm:false,expectedLength:38*scale}):undefined, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
-  const eyeH = (emotion === 'surprised' || emotion === 'excited' ? 11 : emotion==='nervous'?10 : emotion === 'sleepy' ? 3 : emotion === 'angry' || emotion === 'smug' ? 5 : c.eyes === 'relaxed' ? 5 : 8) * Math.max(.07, 1 - mood.blink);
   const faceCenter = Math.max(-headW * .12, Math.min(headW * .16, faceShift));
-  const silhouette = c.shape === 'square'
-    ? 'M ' + (-headW + 14) + ' ' + (headY - headH) + ' Q ' + (-headW - 5) + ' ' + (headY - headH) + ' ' + (-headW) + ' ' + (headY - 9) + ' Q ' + (-headW - 4) + ' ' + (headY + headH) + ' 0 ' + (headY + headH) + ' Q ' + headW + ' ' + (headY + headH) + ' ' + headW + ' ' + (headY - 9) + ' Q ' + headW + ' ' + (headY - headH) + ' ' + (headW - 15) + ' ' + (headY - headH) + ' Z'
-    : 'M 0 ' + (headY - headH) + ' C ' + (-headW * 1.3) + ' ' + (headY - headH) + ' ' + (-headW * 1.3) + ' ' + (headY + headH * .75) + ' 0 ' + (headY + headH) + ' C ' + (headW * 1.3) + ' ' + (headY + headH * 1.15) + ' ' + (headW * 1.3) + ' ' + (headY - headH) + ' 0 ' + (headY - headH) + ' Z';
-  const customHair=c.hat==='none'?componentFor(c,'hair',view):undefined;
-  const customHead=componentFor(c,'head-base',view);
-  const customTop=componentFor(c,'top',view);
-  const topBox=customTop?componentTransform(customTop,c,bodyRig.neck.x,bodyRig.neck.y):undefined;
+  const customHair=hairOpen&&hasFixed('hair');
+  const customHead=hasFixed('head-base');
+  const customTop=hasFixed('top');
   const mainHair = 'M ' + (-headW) + ' ' + (headY - 5) + ' C ' + (-headW - 13) + ' ' + (headY - headH - 9) + ' ' + (-headW / 2) + ' ' + (headY - headH - 13) + ' 2 ' + (headY - headH - 8) + ' C ' + headW + ' ' + (headY - headH - 14) + ' ' + (headW + 6) + ' ' + (headY - headH + 7) + ' ' + headW + ' ' + (headY - 6) + (rear ? ' Q 0 ' + (headY + headH) + ' ' + (-headW) + ' ' + (headY - 5) : ' Q 12 ' + (headY - 22) + ' -3 ' + (headY - 19) + ' Q ' + (-headW + 8) + ' ' + (headY - 10) + ' ' + (-headW) + ' ' + (headY - 5)) + ' Z';
   return <svg className="native-character-svg" viewBox={faceOnly?"175 215 190 145":"0 0 540 540"} role="img" aria-label={'Character preview: ' + c.name + ', ' + view + ' view'}>
+    {garments&&<GarmentPattern character={c} id={patternId}/>}
     <rect width="540" height="540" fill="#665777"/>
     {Array.from({ length: 6 }, (_, i) => <rect key={i} x={16 + i * 91} y="24" width="65" height="404" rx="31" fill={i % 2 ? '#7c6a90' : '#705f83'}/>)}
     <path d="M 0 443 H 540 V 540 H 0 Z" fill="#4b3c56"/>
@@ -113,29 +121,33 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     <ellipse cx="270" cy="443" rx={37 * scale} ry="7" fill="#382d45" opacity=".4"/>
     <g transform={'translate(270 443) scale(' + (flip ? -scale : scale) + ' ' + scale + ')'}>
       <g className={animated ? 'native-actor native-actor-' + action : ''} transform={lift ? `translate(0 ${-lift})` : undefined}>
-        {legs.map(({ side, path, foot, shoe, upper, knee }) => <g key={side}>
-          {componentFor(c,`thigh-${side}`,view)||componentFor(c,`calf-${side}`,view)?<>
-            <BoneImage character={c} view={view} slot={`thigh-${side}`} start={upper} end={knee} thickness={c.thickness*build.leg} color={c.pants}/>
-            <BoneImage character={c} view={view} slot={`calf-${side}`} start={knee} end={foot} thickness={c.thickness*build.leg*build.calves} color={c.pants}/>
-          </>:<><path d={path} stroke="#211e33" strokeWidth={13*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={path} stroke={swim?c.skin:c.pants} strokeWidth={9*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/></>}
-          {componentFor(c,`shoe-${side}`,view)?<FixedImage character={c} view={view} slot={`shoe-${side}`} x={foot.x} y={foot.y}/>:<ellipse cx={foot.x+shoe} cy={foot.y+1} rx={13*c.thickness*(c.visual?.footSize??1)} ry={6.5*(c.visual?.footSize??1)} fill={c.shoes} stroke="#242037" strokeWidth="3"/>}
+        {hairLayer('background')}
+        {legs.map(({ side, path, foot, shoe, upper, knee,primary }) => <g key={side}>
+          {hasBone(`thigh-${side}`)||hasBone(`calf-${side}`)?<>
+            <BoneImage primary={primary} mirrored={flip} character={c} view={view} slot={`thigh-${side}`} start={upper} end={knee} thickness={c.thickness*build.leg} color={c.pants}/>
+            <BoneImage primary={primary} mirrored={flip} character={c} view={view} slot={`calf-${side}`} start={knee} end={foot} thickness={c.thickness*build.leg*build.calves} color={c.pants}/>
+          </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<AnatomicalLimb primary={primary} morphology={c.visual} points={[upper,knee,foot]} width={9*c.thickness*build.leg} region="thigh" color={swim||garments?c.skin:c.pants}/>:<><path d={path} stroke="#211e33" strokeWidth={13*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={path} stroke={swim||garments?c.skin:c.pants} strokeWidth={9*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/></>}
+          {garments&&<SvgGarmentPaths paths={garmentLeg(c,upper,knee,foot,hasBone(`thigh-${side}`),hasBone(`calf-${side}`))} patternId={patternId}/>}
+          {hasFixed(`shoe-${side}`)?<FixedImage mirrored={flip} character={c} view={view} slot={`shoe-${side}`} x={foot.x} y={foot.y}/>:garments?<SvgGarmentPaths paths={garmentFoot(c,foot,Math.sign(shoe)||1,rear)} patternId={patternId}/>:<ellipse cx={foot.x+shoe} cy={foot.y+1} rx={13*c.thickness*(c.visual?.footSize??1)} ry={6.5*(c.visual?.footSize??1)} fill={c.shoes} stroke="#242037" strokeWidth="3"/>}
         </g>)}
-        {armParts.map(({side,shoulder,elbow,hand})=><g key={side}>
-          {componentFor(c,`upper-arm-${side}`,view)||componentFor(c,`forearm-${side}`,view)?<>
-            <BoneImage character={c} view={view} slot={`upper-arm-${side}`} start={shoulder} end={elbow} thickness={c.thickness*build.arm} color={c.skin}/>
-            <BoneImage character={c} view={view} slot={`forearm-${side}`} start={elbow} end={hand} thickness={c.thickness*(.63+.37*build.arm)} color={c.skin}/>
-          </>:<><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke="#242037" strokeWidth={16*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke={c.skin} strokeWidth={11*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>{!bare&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`} stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}</>}
+        {garments&&<SvgGarmentPaths paths={garmentSkirt(c,faceArt,bodyRig.hip,action==='sit',[legs[0].knee,legs[1].knee])} patternId={patternId}/>}
+        {armParts.map(({side,shoulder,elbow,hand,primary})=><g key={side}>
+          {hasBone(`upper-arm-${side}`)||hasBone(`forearm-${side}`)?<>
+            <BoneImage primary={primary} mirrored={flip} character={c} view={view} slot={`upper-arm-${side}`} start={shoulder} end={elbow} thickness={c.thickness*build.arm} color={c.skin}/>
+            <BoneImage primary={primary} mirrored={flip} character={c} view={view} slot={`forearm-${side}`} start={elbow} end={hand} thickness={c.thickness*(.63+.37*build.arm)} color={c.skin}/>
+          </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<><AnatomicalLimb primary={primary} morphology={c.visual} points={[shoulder,elbow,hand]} width={11*c.thickness*build.arm} region="upper-arm" color={c.skin}/>{!bare&&!garments&&<AnatomicalLimb primary={primary} morphology={c.visual} points={[shoulder,elbow]} width={16*c.thickness} region="upper-arm" color={c.shirt}/>}</>:<><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke="#242037" strokeWidth={16*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke={c.skin} strokeWidth={11*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>{!bare&&!garments&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`} stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}</>}
+          {garments&&<SvgGarmentPaths paths={garmentSleeve(c,shoulder,elbow,hand,'all',hasBone(`upper-arm-${side}`),hasBone(`forearm-${side}`))} patternId={patternId}/>}
         </g>)}
-        {customTop&&topBox?<image preserveAspectRatio="none" href={customTop.image} x={topBox.x-customTop.pivot.x*topBox.width} y={topBox.y-customTop.pivot.y*topBox.height} width={topBox.width} height={topBox.height}/>:<path d={'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>}
+        {customTop?<FixedImage mirrored={flip} character={c} view={view} slot="top" x={bodyRig.neck.x} y={bodyRig.neck.y} angle={-(live.torso??0)-(live.hips??0)}/>:garments?<SvgGarmentPaths paths={garmentTorso(c,faceArt,bodyRig.neck,bodyRig.hip,bodyRig.left.shoulder,bodyRig.right.shoulder,action==='sit'?1:Math.min(1,Math.abs(live.torso??0)/35))} patternId={patternId}/>:<path d={c.visual?.style==='illustrated'?topContour(c,faceArt,bodyRig.neck,bodyRig.hip).path:'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>}
         {swim&&<><path d={`M ${left*.8} ${shirtTop+15} Q 0 ${shirtTop+(rear?20:7)} ${right*.8} ${shirtTop+15} v12 Q0 ${shirtTop+34} ${left*.8} ${shirtTop+27}Z`} fill={c.shirt} stroke="#242037" strokeWidth="2"/>
           <path d={`M ${-hips} ${shirtBottom-5} Q0 ${shirtBottom-2} ${hips} ${shirtBottom-5} L7 ${shirtBottom+13} H-7 Z`} fill={c.pants} stroke="#242037" strokeWidth="2"/></>}
         {c.outfit==='shirtless'&&c.bodyBuild?.abs&&!rear&&<path d={`M0 ${shirtTop+24} V${shirtBottom-5} ${[0,1,2].map(offset=>`M-8 ${shirtTop+29+offset*5} q2 4 6 3 m4-3 q4 1 6-3`).join(' ')}`} fill="none" stroke="#754634" opacity=".58" strokeWidth="1.4"/>}
-        {!customTop&&c.outfit === 'hoodie' ? <><path d={'M -15 ' + (shirtTop - 4) + ' Q 0 ' + (shirtTop + 26) + ' 15 ' + (shirtTop - 4)} fill="none" stroke="#41334b" strokeWidth="3"/><path d={'M -5 ' + (shirtTop + 15) + ' v 14 M 5 ' + (shirtTop + 15) + ' v 14'} stroke="#ffebcf" strokeWidth="2"/><path d={'M -14 ' + (shirtBottom - 19) + ' Q 0 ' + (shirtBottom - 11) + ' 14 ' + (shirtBottom - 19) + ' L 14 ' + (shirtBottom - 7) + ' L -14 ' + (shirtBottom - 7) + ' Z'} fill="none" stroke="#423248" strokeWidth="1.5"/></> : null}
+        {!customTop&&!garments&&c.outfit === 'hoodie' ? <><path d={'M -15 ' + (shirtTop - 4) + ' Q 0 ' + (shirtTop + 26) + ' 15 ' + (shirtTop - 4)} fill="none" stroke="#41334b" strokeWidth="3"/><path d={'M -5 ' + (shirtTop + 15) + ' v 14 M 5 ' + (shirtTop + 15) + ' v 14'} stroke="#ffebcf" strokeWidth="2"/><path d={'M -14 ' + (shirtBottom - 19) + ' Q 0 ' + (shirtBottom - 11) + ' 14 ' + (shirtBottom - 19) + ' L 14 ' + (shirtBottom - 7) + ' L -14 ' + (shirtBottom - 7) + ' Z'} fill="none" stroke="#423248" strokeWidth="1.5"/></> : null}
 
         {armParts.map(({ side, hand, elbow, performance }) => {
           const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
           const rotation = handRotation(forearm, live[`${side}Wrist`] ?? 0, performance.pose, performance.blend, side) * 180 / Math.PI;
-          const handRig = sampleHandRig(performance.pose, performance.blend);
+          const handRig=morphHandGeometry(sampleHandRig(performance.pose,performance.blend),c.visual?.fingerLengths,occupying===side||performance.pose==='grip'||performance.pose==='pinch');
           const size = handSize(c.thickness)*(c.visual?.handSize??1);
           const widthScale = handWidthScale(view, side, handRig.params.wristTwist);
           const fingers = handRig.fingers.map(fingerPath);
@@ -150,13 +162,14 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
             <path d={thumb} stroke={c.skin} strokeWidth={handRig.digitWidths[4]} strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           </g>;
         })}
-        {!customTop&&(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
+        {!customTop&&!garments&&(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
         {c.accessory === 'chain' && <path d={'M -13 ' + (shirtTop + 6) + ' Q 0 ' + (shirtTop + 36) + ' 13 ' + (shirtTop + 6)} fill="none" stroke="#f8d06d" strokeWidth="3"/>}
+        <g transform={`translate(${bodyRig.head.x} 0) rotate(${bodyRig.angle} 0 ${headY})`}>
         <ellipse cx={-headW + 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>
         {!profile && <ellipse cx={headW - 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>}
-        {customHead?<g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage character={c} view={view} slot="head-base" x={0} y={0}/></g>:<path d={silhouette} fill={c.skin} stroke="#252037" strokeWidth="4"/>}
+        {customHead?<g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage mirrored={flip} character={c} view={view} slot="head-base" x={0} y={0}/></g>:<path d={headOutline(c,faceArt)} transform={`translate(0 ${headY}) scale(${c.head})`} fill={c.skin} stroke="#252037" strokeWidth={c.visual?.style==='illustrated'?1.9:3.5}/>}
         <path d={'M ' + (-headW + 9) + ' ' + (headY + 8) + ' Q ' + (-headW + 6) + ' ' + (headY + 22) + ' ' + (-headW + 19) + ' ' + (headY + 32)} fill="none" stroke="#754634" strokeWidth="2" opacity=".4"/>
-        {customHair?<image preserveAspectRatio="none" href={customHair.image} x={customHair.offsetX-customHair.pivot.x*customHair.width*c.head} y={headY+customHair.offsetY-customHair.pivot.y*customHair.height*c.head} width={customHair.width*c.head} height={customHair.height*c.head}/>:<>
+        {customHair?<g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage mirrored={flip} character={c} view={view} slot="hair" x={0} y={0}/></g>:layered?hairLayer('foreground'):<>
         {c.hair !== 'bald' && <path d={mainHair} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
         {(c.hair === 'fade' || c.hair === 'buzz') && <g>
           <path d={'M ' + (-headW+3) + ' ' + (headY-6) + ' Q ' + (-headW+3) + ' ' + (headY-26) + ' ' + (-headW+17) + ' ' + (headY-25) + ' Q ' + (-headW+19) + ' ' + (headY-12) + ' ' + (-headW+3) + ' ' + (headY-6) + ' Z'} fill={c.hair === 'fade' ? c.skin : c.hairColor} opacity={c.hair==='fade' ? .64 : 1}/>
@@ -183,34 +196,61 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         {c.hat !== 'none' && <><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' Q 0 ' + (headY - headH - 35) + ' ' + (headW + 3) + ' ' + (headY - headH + 10) + ' Z'} fill={c.shirt} stroke="#252037" strokeWidth="3"/><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' H ' + (headW + 3)} stroke="#252037" strokeWidth="5"/></>}
         {!rear && <g>
           {(emotion === 'happy' || emotion === 'excited' || emotion === 'sad') && !profile && [-24,24].map(offset => <ellipse key={offset} cx={Math.max(-headW+12,Math.min(headW-12,faceCenter+offset))} cy={headY+15} rx="6.5" ry="3.5" fill={emotion === 'happy' || emotion === 'excited' ? '#dc8877' : '#897195'} opacity=".22"/>)}
-          {[profile ? faceShift : faceShift - 15 * c.eyeSpacing, ...(!profile ? [faceShift + 15 * c.eyeSpacing] : [])].map((x, i) => <g key={i}>
-            {eyeH < 1.4 ? <path d={'M ' + (x-7) + ' ' + eyeY + ' q 7 3 14 0'} stroke="#27213a" strokeWidth="2.5" fill="none"/> : <><ellipse cx={x} cy={eyeY} rx="7" ry={eyeH} fill="#fff5e7" stroke="#27213a" strokeWidth="2"/><circle cx={x+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY+Math.max(-eyeH+2, Math.min(eyeH-2, mood.gazeY))} r="3" fill="#27213a"/>{eyeH > 3 && <circle cx={x-1+Math.max(-4, Math.min(4, mood.gazeX))} cy={eyeY-1.5+mood.gazeY} r="1.3" fill="white"/>}</>}
-            <path d={'M ' + (x-7) + ' ' + (eyeY-eyeH-5) + ' Q ' + x + ' ' + (eyeY-eyeH-(c.brows==='arched'?11:5)) + ' ' + (x+7) + ' ' + (eyeY-eyeH-(emotion==='angry'?2:emotion==='nervous'?(i===0?10:1):5))} stroke="#242036" strokeWidth={c.brows==='bold'?4:2.5} fill="none" strokeLinecap="round"/>
-          </g>)}
+          <g transform={`translate(0 ${headY}) scale(${c.head})`}>
+            {faceFit.eyes.map((x,i)=>{
+              const e=eyeIdentity(c,mood,x,faceFit.eyeY,i?1:-1,Boolean(i&&faceArt.face),false,faceArt.face);
+              const clipId=mouthMask+'-eye-'+i, transform=`translate(${e.x} ${e.y}) rotate(${e.angle}) scale(${e.sx*e.side} ${e.sy})`;
+              return <g key={i}>
+                {c.eyes==='bead'?e.sy>.15&&<path d={e.aperture} transform={transform} fill={c.wardrobe?.iris??'#27213a'}/>:e.open?<><defs><clipPath id={clipId}><path d={e.aperture} transform={transform}/></clipPath></defs><path d={e.aperture} transform={transform} fill={c.wardrobe?.sclera??'#fff5e9'} stroke="#27213a" strokeWidth="1.35" vectorEffect="non-scaling-stroke"/>
+                  <g clipPath={`url(#${clipId})`}>{e.radius>.5&&<><circle cx={e.pupilX} cy={e.pupilY} r={e.radius} fill={c.wardrobe?.iris??'#79564b'}/><path d={pupils[c.wardrobe?.pupil??'round']} transform={`translate(${e.pupilX} ${e.pupilY}) scale(${e.pupilScale})`} fill="#27213a"/>{e.radius>2&&<circle cx={e.pupilX-1} cy={e.pupilY-1} r=".75" fill="white"/>}</>}</g>
+                  {(c.wardrobe?.makeup??0)>0&&<path d={e.aperture} transform={transform} fill="none" stroke="#57394c" strokeWidth={.6+(c.wardrobe?.makeup??0)}/>}
+                  {(c.wardrobe?.lashes??0)>0&&<path d="M6 -1L9 -4M4 -4L6 -7" transform={transform} fill="none" stroke="#27213a" strokeWidth={.6+(c.wardrobe?.lashes??0)*.6}/>}
+                </>:<path d="M-7 0Q0 2 7 0" transform={`translate(${e.x} ${e.y}) rotate(${e.angle})`} stroke="#27213a" strokeWidth="2" fill="none"/>}
+                <path d={e.browPath} transform={`translate(${e.browX} ${e.browY}) scale(${e.browScale} 1)`} fill="none" stroke={c.hairColor} strokeWidth={e.browWidth} strokeLinecap="round"/>
+              </g>;
+            })}
+            {faceDetailGeometry(c,faceArt).map(d=><ellipse key={d.id} cx={d.x} cy={d.y} rx={d.rx} ry={d.ry} fill={d.color} opacity={d.alpha}/>)}
+            {(c.wardrobe?.wrinkles??0)>0&&<path d={`M ${-faceFit.w*.3} ${-faceFit.h*.46} Q 0 ${-faceFit.h*.51} ${faceFit.w*.3} ${-faceFit.h*.46}`} fill="none" stroke="#70402f" opacity={c.wardrobe?.wrinkles} strokeWidth=".8"/>}
+          </g>
           <ellipse cx={noseX} cy={headY + 11} rx={c.nose === 'long' ? 7 : 5} ry={c.nose === 'long' ? 6 : 3.5} fill={c.skin} stroke="#2a2339" strokeWidth="2"/>
           {c.beard==='stubble'?<path d={`M${-headW+7} ${headY+17}Q${-headW+9} ${headY+34} 0 ${headY+39}Q${headW-9} ${headY+34} ${headW-7} ${headY+17}`} fill="none" stroke={c.hairColor} strokeWidth="3" strokeDasharray="1 3" opacity={.5}/>:c.beard !== 'none' && <g fill={c.hairColor}>
             <path d={'M ' + (noseX-1) + ' ' + (headY+17) + ' q -6 -5 -15 -1 q 4 7 13 4 Z'}/>
             {!profile && <path d={'M ' + (noseX+1) + ' ' + (headY+17) + ' q 7 -5 15 -1 q -4 7 -13 4 Z'}/>}
             {c.beard === 'goatee' ? <path d={'M ' + (noseX-8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+53) + ' ' + (noseX+8) + ' ' + (headY+33) + ' Q ' + noseX + ' ' + (headY+43) + ' ' + (noseX-8) + ' ' + (headY+33) + ' Z'}/> : <path d={'M ' + (-headW+4) + ' ' + (headY+13) + ' Q ' + (-headW+2) + ' ' + (headY+37) + ' 0 ' + (headY+54) + ' Q ' + (headW-2) + ' ' + (headY+37) + ' ' + (headW-4) + ' ' + (headY+13) + ' L ' + (headW-11) + ' ' + (headY+27) + ' Q 0 ' + (headY+50) + ' ' + (-headW+11) + ' ' + (headY+27) + ' Z'}/>}
           </g>}
-          <SvgMouthRig character={c} mood={mood} view={view}
-            x={noseX} y={headY+27} clipId={mouthMask}/>
+          <g transform={`translate(0 ${headY}) scale(${c.head})`}><SvgMouthRig character={c} mood={mood} view={view} x={faceFit.mouthX} y={faceFit.mouthY} clipId={mouthMask}/></g>
           {c.glasses && <><ellipse cx={faceShift - 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>{!profile && <ellipse cx={faceShift + 15} cy={eyeY} rx="14" ry="13" stroke="#30253b" strokeWidth="3" fill="none"/>}</>}
           {action==='cry'&&<g fill={c.skin} stroke="#27213a" strokeWidth="2.1"><ellipse cx={faceCenter+12} cy={eyeY+2} rx="7" ry="8"/>{!profile&&<ellipse cx={faceCenter-12} cy={eyeY+2} rx="7" ry="8"/>}<ellipse fill="#80d8f3" stroke="none" cx={faceCenter+13} cy={eyeY+15+elapsed*23%16} rx="2" ry="4"/></g>}
           {c.earrings && <circle cx={-headW + 2} cy={headY + 18} r="5" fill="none" stroke="#f5cf6b" strokeWidth="3"/>}
         </g>}
+        <g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage mirrored={flip} character={c} view={view} slot="head-accessory" x={0} y={0}/></g>
+        </g>
       </g>
     </g>
   </svg>;
 }
 
-function FixedImage({character,view,slot,x,y}:{character:Character;view:View;slot:CompiledArtwork['slot'];x:number;y:number}){
+function FixedImage({character,view,slot,x,y,angle=0,mirrored=false}:{character:Character;view:View;slot:import('../engine/visualAssets.ts').NativeSlot;x:number;y:number;angle?:number;mirrored?:boolean}){
+  const native=nativePartFor(character,slot,view,mirrored),matrix=native&&fixedVectorMatrix(native,x,y,angle);
+  const paths=native&&matrix&&nativeBonePreview(native,matrix);
+  if(paths)return <g>{paths.map(({id,...props})=><path key={id} {...props} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
   const part=componentFor(character,slot,view);if(!part)return null;
-  const box=componentTransform(part,character,x,y);
-  return <image preserveAspectRatio="none" href={part.image} x={box.x-part.pivot.x*box.width} y={box.y-part.pivot.y*box.height} width={box.width} height={box.height}/>;
+  const box=componentTransform(part,character,x,y,angle);
+  return <image preserveAspectRatio="none" href={part.image} x={box.x-part.pivot.x*box.width} y={box.y-part.pivot.y*box.height} width={box.width} height={box.height} transform={`rotate(${angle} ${box.x} ${box.y})`}/>;
 }
-function BoneImage({character,view,slot,start,end,thickness,color}:{character:Character;view:View;slot:CompiledArtwork['slot'];start:Point;end:Point;thickness:number;color:string}){
+function BoneImage({character,view,slot,start,end,thickness,color,mirrored,primary}:{primary?:PrimaryArtworkPose;mirrored?:boolean;character:Character;view:View;slot:CompiledArtwork['slot'];start:Point;end:Point;thickness:number;color:string}){
+  const native=nativeBoneFor(character,slot,view,mirrored,primary?.kind),world=native&&boneVectorMatrix(start,end,thickness);
+  const paths=native&&world&&nativeBonePreview(native,world);
+  if(paths)return <g>{paths.map(({id,...props})=><path key={id} {...props} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
   const part=componentFor(character,slot,view),m=part&&boneArtworkTransform(part,start,end,thickness);
   if(!part||!m)return <path d={`M${start.x} ${start.y}L${end.x} ${end.y}`} stroke={color} strokeWidth={11*thickness} strokeLinecap="round"/>;
   return <image preserveAspectRatio="none" href={part.image} width={part.width} height={part.height} transform={`matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.tx} ${m.ty})`}/>;
+}
+
+function AnatomicalLimb({points,width,region,color,morphology,primary}:{primary?:PrimaryArtworkPose;points:Point[];width:number;region:LimbRegion;color:string;morphology?:LimbMorphology}){
+  return <>{anatomicalSegments(points,width,region,morphology,primary).map(({frame,art},i)=><g key={i} transform={`translate(${frame.x} ${frame.y}) rotate(${frame.angle}) scale(${frame.length} ${frame.width})`}>
+    <path d={art.outline} fill={color} stroke="#302922" strokeOpacity=".34" strokeWidth=".65" vectorEffect="non-scaling-stroke"/>
+    <path d={art.shadow} fill="#000" opacity=".16"/>
+    <path d={art.highlight} fill="#fff" opacity=".12"/>
+  </g>)}</>;
 }

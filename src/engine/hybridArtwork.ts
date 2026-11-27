@@ -1,11 +1,14 @@
+import type {ArtworkPoseClass} from './primaryArtworkPose.ts';
+import {nativeBoneFor,boneVectorMatrix,nativePartFor,fixedVectorMatrix,dynamicNativeDrawList} from './nativeVectorBone.ts';
+import {NativeBonePathCache,drawVectorRegions} from './vectorArtworkRender.ts';
 import { Matrix } from 'pixi.js';
 import { boneArtworkTransform, type Point } from './artworkGeometry.ts';
 import type { Graphics } from 'pixi.js';
 import { at, type CostumeTexture } from './wardrobeArt.ts';
 import { bodyProportions } from './bodyBuild.ts';
 import type { Character, View } from './schema.ts';
-import type { CompiledArtwork } from './visualAssets.ts';
-export function componentFor(character:Character,slot:CompiledArtwork['slot'],view:View){
+import type { CompiledArtwork, NativeSlot } from './visualAssets.ts';
+export function componentFor(character:Character,slot:NativeSlot,view:View){
   return character.visual?.components?.find(component=>component.slot===slot&&component.view===view&&component.profiles.includes(character.visual!.profile));
 }
 export function componentTransform(component:CompiledArtwork,character:Character,x:number,y:number,angle=0){
@@ -14,7 +17,11 @@ export function componentTransform(component:CompiledArtwork,character:Character
   const sx=shoe*(fit?build.shoulder:1),sy=shoe*(fit?character.torso*character.height:1);
   return {x:x+component.offsetX,y:y+component.offsetY,width:component.width*sx,height:component.height*sy,angle};
 }
-export function drawComponent(g:Graphics,character:Character,slot:CompiledArtwork['slot'],view:View,x:number,y:number,angle:number,texture?:CostumeTexture){
+export function drawComponent(g:Graphics,character:Character,slot:NativeSlot,view:View,x:number,y:number,angle:number,texture?:CostumeTexture,vectorCache?:NativeBonePathCache,mirrored=false,offsets?:Readonly<Record<string,readonly [number,number]>>){
+  const native=nativePartFor(character,slot,view,mirrored);
+  const matrix=native&&fixedVectorMatrix(native,x,y,angle);
+  if(native&&matrix&&offsets&&native.dynamics?.some(d=>offsets[native.id+'/'+d.group]?.some(Boolean))){const draw=dynamicNativeDrawList(native,offsets);if(draw){drawVectorRegions(g,draw,matrix);return true;}}
+  if(native&&matrix&&vectorCache?.draw(g,native,matrix))return true;
   const component=componentFor(character,slot,view),image=component&&texture?.(component.image);
   if(!component||!image)return false;
   const box=componentTransform(component,character,x,y,angle);
@@ -23,7 +30,9 @@ export function drawComponent(g:Graphics,character:Character,slot:CompiledArtwor
   g.context.restore();return true;
 }
 
-export function drawBoneComponent(g:Graphics,character:Character,slot:CompiledArtwork['slot'],view:View,start:Point,end:Point,thickness:number,texture?:CostumeTexture){
+export function drawBoneComponent(g:Graphics,character:Character,slot:CompiledArtwork['slot'],view:View,start:Point,end:Point,thickness:number,texture?:CostumeTexture,vectorCache?:NativeBonePathCache,mirrored=false,pose:ArtworkPoseClass='rest'){
+  const native=nativeBoneFor(character,slot,view,mirrored,pose),matrix=native&&boneVectorMatrix(start,end,thickness);
+  if(native&&matrix&&vectorCache?.draw(g,native,matrix))return true;
   const part=componentFor(character,slot,view),image=part&&texture?.(part.image);
   if(!part||!image)return false;
   const transform=boneArtworkTransform(part,start,end,thickness);if(!transform)return false;

@@ -28,6 +28,10 @@ jobs:
         run: |
           set -o pipefail
           npm run build 2>&1 | tee build.log
+      - name: Install pinned browser QA tooling
+        run: npm exec --yes --package=playwright@1.51.1 -- playwright install --with-deps chromium
+      - name: Vector Studio browser evidence
+        run: npm exec --yes --package=playwright@1.51.1 -- npm run qa:vector
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -35,5 +39,6 @@ jobs:
           path: |
             install.log
             build.log
+            qa-vector-results/
           if-no-files-found: warn
           retention-days: 3

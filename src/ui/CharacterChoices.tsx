@@ -1,3 +1,7 @@
+import {GarmentControls} from './GarmentControls.tsx';
+import {LayeredHairControls} from './LayeredHairControls.tsx';
+import {buildLayeredHair,hairRenderPaths} from '../engine/layeredHair.ts';
+import {hairDesignDefaults} from '../engine/hairDesignSchema.ts';
 import { useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { characterStyles, garmentDefaults, styleNames, wardrobeStyles } from '../engine/characterCatalog.ts';
@@ -9,18 +13,19 @@ import { prepareArtwork } from '../services/artwork.ts';
 type Closet = NonNullable<Character['wardrobe']>;
 type Core = keyof typeof characterStyles;
 type Addon = keyof typeof wardrobeStyles | 'piercingSide' | 'hand' | 'watchSide';
-type Section = 'Hair' | 'Face' | 'Outfit' | 'Accessories';
+type BaseSection='Hair'|'Face'|'Outfit'|'Accessories';
+type Section='Hair'|'Facial hair'|'Face'|'Eyes'|'Brows'|'Nose'|'Mouth'|'Ears'|'Garments'|'Footwear'|'Accessories';
 const coreGroups = {
   Hair: ['hair','beard','hat'],
   Face: ['shape','eyes','brows','ears','nose','mouth'],
   Outfit: ['outfit'],
   Accessories: []
-} satisfies Record<Section,Core[]>;
+} satisfies Record<BaseSection,Core[]>;
 const addonGroups = {
   Hair: ['hatWear','mustache','chinHair','jawHair'], Face: ['pupil','toothStyle'],
   Outfit: ['bottoms','footwear','pattern','sleeve','neckline','closure'],
   Accessories: ['eyewear','piercing','extra','watch','bag','handheld','hand','watchSide','piercingSide']
-} satisfies Record<Section,Addon[]>;
+} satisfies Record<BaseSection,Addon[]>;
 const optionTitles: Partial<Record<Core|Addon,string>> = {
   shape:'Head shape', eyes:'Eye shape', hair:'Hairstyle', beard:'Facial hair', hat:'Hat',
   brows:'Eyebrows', outfit:'Top or dress', extra:'Head and neck accessories', pupil:'Pupil shape',
@@ -40,9 +45,13 @@ const choiceNames: Partial<Record<Core|Addon,Record<string,string>>> = {
 };
 const formatStyle = (field:Core|Addon,value:string)=>choiceNames[field]?.[value]??styleNames[value]??label(value);
 
-function glyph(field:Core|Addon,value:string,c:Character):ReactNode {
+function createGlyph(field:Core|Addon,value:string,c:Character):ReactNode {
   if(value==='none'||value==='auto')return null;
   const paths:Partial<Record<Core|Addon,Record<string,string>>> = {hair:hairPaths,hat:hatPaths,eyewear:eyewearPaths,extra:extraPaths,footwear:shoePaths,bag:bagPaths,handheld:handheldPaths};
+  if(field==='hair'){
+    const model=buildLayeredHair({...c,hair:value as Character['hair'],hairDesign:hairDesignDefaults},{width:1,face:0,far:true,rear:false,profile:false});
+    if(model)return <svg viewBox="-85 -115 170 225" aria-hidden="true">{(['background','foreground'] as const).flatMap(layer=>hairRenderPaths(model,layer)).map(({id,...item})=><path key={id} {...item} strokeLinecap="round" strokeLinejoin="round"/>)}</svg>;
+  }
   const d=paths[field]?.[value];
   const svg=(viewBox:string,d:string,fill:string)=> <svg viewBox={viewBox} aria-hidden="true"><path d={d} fill={fill} stroke="currentColor" strokeWidth={field==='shape'?4:2} strokeLinejoin="round"/></svg>;
   if(d) {
@@ -60,6 +69,14 @@ function glyph(field:Core|Addon,value:string,c:Character):ReactNode {
     return svg('-32 -8 64 94',`M-9 -4L${-a} 7L${-a} 20L${-b} ${49+h}Q0 ${52+h} ${b} ${49+h}L${a} 20V7L9 -4Q0 4 -9 -4Z`,value==='shirtless'?c.skin:c.shirt);
   }
   return null;
+}
+// Thumbnail keys contain only the fields read by the vector glyph functions, never uploaded image data.
+const glyphCache=new Map<string,ReactNode>();
+export function thumbnailCacheSize(){return glyphCache.size;}
+function glyph(field:Core|Addon,value:string,c:Character):ReactNode{
+ const q=c.wardrobe,key=JSON.stringify([field,value,c.skin,c.hairColor,c.shirt,c.shoes,c.shape,c.head,q?.headStretch,q?.crownWidth,q?.jawWidth,q?.chinWidth,q?.cheekWidth,q?.forehead,q?.jawAngle,q?.facialOffset,q?.accessoryColor,q?.lens]);
+ if(glyphCache.has(key))return glyphCache.get(key);
+ const node=createGlyph(field,value,c);if(glyphCache.size>=192)glyphCache.delete(glyphCache.keys().next().value!);glyphCache.set(key,node);return node;
 }
 function Cards({ title, choices, selected, choose, field, character, open, toggle }:{
   title:string; choices:readonly string[]; selected:string; choose:(value:string)=>void; field:Core|Addon;
@@ -83,6 +100,7 @@ const controls = {
   Face: [
     ['crownWidth','Crown width',.72,1.28],['cheekWidth','Cheekbone width',.72,1.28],['jawWidth','Jaw width',.72,1.28],
     ['chinWidth','Chin width',.6,1.4],['headStretch','Vertical stretch',.8,1.25],['facialOffset','Facial asymmetry',-4,4],
+    ['forehead','Forehead height',.8,1.2],['jawAngle','Jaw angle',0,1],['eyeWidth','Eye width',.8,1.2],['eyeTilt','Eye tilt',-15,15],['eyeHeight','Eye height',-4,4],['irisSize','Iris size',.75,1.25],['lidCurvature','Eyelid curvature',.8,1.2],['lashes','Lashes',0,1],['browLength','Brow length',.8,1.2],['browAsymmetry','Brow asymmetry',-3,3],['freckles','Freckles',0,1],['wrinkles','Wrinkles',0,1],['makeup','Makeup',0,1],['cheekBlush','Cheek blush',0,1],['upperLipRatio','Upper lip',.65,1.35],['lowerLipRatio','Lower lip',.65,1.35],['cupidBow','Cupid’s bow',0,1],['mouthHeight','Mouth height',-3,3],
     ['pupilSize','Pupil size',.4,1.8],['ring','Iris ring darkness',0,1],['veins','Bloodshot veins',0,1],['eyelid','Upper lid drop',0,.8],['undereye','Under-eye shading',0,1],
     ['browInner','Inner brow tilt',-45,45],['browOuter','Outer brow tilt',-45,45],['browBend','Brow arch',-1,1],
     ['browThickness','Brow thickness',.5,2],['browSpacing','Brow spacing',-4,4],['browOffset','Brow height',-6,6],
@@ -111,11 +129,14 @@ const toggles = {
   Accessories:[['glint','Lens reflections']]
 } as const;
 
-export function CharacterChoices({ section, character, change, changeCloset }:{
+export function CharacterChoices({ section:category, character, change, changeCloset }:{
   section:Section; character:Character; change:<K extends keyof Character>(key:K,value:Character[K])=>void;
   changeCloset:<K extends keyof Closet>(key:K,value:Closet[K])=>void
 }) {
-  const [expanded,setExpanded]=useState<string>(coreGroups[section][0]??addonGroups[section][0]);
+  const section:BaseSection=category==='Garments'||category==='Footwear'?'Outfit':category==='Facial hair'?'Hair':['Eyes','Brows','Nose','Mouth','Ears'].includes(category)?'Face':category as BaseSection;
+  const match=(key:string)=>category==='Eyes'?/^(eyes|pupil|eye|iris|sclera|lid|lashes|ring|veins|undereye)/i.test(key):category==='Brows'?/^(brows|brow|unibrow)/i.test(key):category==='Nose'?/^nose/i.test(key):category==='Mouth'?/^(mouth|tooth|lip|upperLip|lowerLip|cupid|restJaw)/i.test(key):category==='Ears'?/^ear/i.test(key):category==='Face'?/^(shape|crown|cheek|jaw|chin|headStretch|facial|forehead|freckles|wrinkles|makeup)/i.test(key):category==='Facial hair'?/^(beard|mustache|chinHair|jawHair|hairColor)/i.test(key):category==='Hair'? !/^(beard|mustache|chinHair|jawHair)/i.test(key):category==='Footwear'?/^(footwear|shoes|sole|laces|heelHeight|socks|shoeLogo)/i.test(key):category==='Garments'?!/^(footwear|shoes|sole|laces|heelHeight|socks|shoeLogo)/i.test(key):true;
+  const core=coreGroups[section].filter(match),addons=addonGroups[section].filter(match);
+  const [expanded,setExpanded]=useState<string>(core[0]??addons[0]??'');
   const [error,setError]=useState('');
   const [uploading,setUploading]=useState('');
   const q=character.wardrobe;
@@ -132,23 +153,23 @@ export function CharacterChoices({ section, character, change, changeCloset }:{
     finally {setUploading('');}
   }
   return <>
-    {coreGroups[section].map(key=><Cards key={key} field={key} character={character} title={optionTitles[key]??label(key)}
+    {core.map(key=><Cards key={key} field={key} character={character} title={optionTitles[key]??label(key)}
       choices={characterStyles[key]} selected={character[key]} choose={v=>change(key,v as Character[typeof key])}
       open={expanded===key} toggle={()=>toggle(key)}/>)}
-    {addonGroups[section].map(key=>{
+    {addons.map(key=>{
       const choices=key==='piercingSide'||key==='watchSide'?wardrobeStyles.side:key==='hand'?['left','right']:wardrobeStyles[key];
       const field=key as Exclude<Addon,'side'>;
       return <Cards key={key} field={key} character={character} title={optionTitles[key]??label(key)}
         choices={choices} selected={String(q?.[field]??defaults[key]??'none')}
         choose={v=>changeCloset(field,v as Closet[typeof field])} open={expanded===key} toggle={()=>toggle(key)}/>;
     })}
-    <div className="color-row factory-custom-colors">{colors[section].map(([key,title])=>{
+    <div className="color-row factory-custom-colors">{colors[section].filter(([key])=>match(key)).map(([key,title])=>{
       const base=key==='shirt'||key==='pants'||key==='hairColor'||key==='shoes';
       return <label key={key}>{title}<input type="color" aria-label={title} value={base?character[key]:q?.[key]??garmentDefaults[key]}
         onChange={e=>base?change(key,e.target.value):changeCloset(key,e.target.value)}/></label>;
     })}</div>
     {section==='Outfit'&&<div className="factory-textiles">
-      {([['patternImage','Seamless pattern'],['logoImage','Chest logo'],['shoeLogo','Shoe logo'],['bagLogo','Bag logo']] as const).map(([key,title])=>
+      {([['patternImage','Seamless pattern'],['logoImage','Chest logo'],['shoeLogo','Shoe logo'],['bagLogo','Bag logo']] as const).filter(([key])=>match(key)).map(([key,title])=>
         <label className="factory-image-input" key={key}>
           {q?.[key]&&<img src={q[key]} alt=""/>}
           <span>{uploading===key?'Importing…':title}</span>
@@ -158,14 +179,17 @@ export function CharacterChoices({ section, character, change, changeCloset }:{
         </label>)}
       {error&&<p role="alert">{error}</p>}
     </div>}
+    {(category==='Garments'||category==='Footwear')&&<GarmentControls footwearOnly={category==='Footwear'} character={character} change={value=>change('garmentDesign',value)}/>}
+
+    {category==='Hair'&&<LayeredHairControls character={character} change={value=>change('hairDesign',value)}/>}
     <details className="factory-details">
       <summary>{section==='Outfit'?'Fit and artwork controls':section==='Hair'?'Hair and hat controls':section==='Face'?'Facial controls':'Accessory controls'}</summary>
-      {controls[section].map(([key,title,min,max])=><label key={key} className="field slider">
+      {controls[section].filter(([key])=>match(key)).map(([key,title,min,max])=><label key={key} className="field slider">
         <span>{title} <small>{(q?.[key]??garmentDefaults[key]).toFixed(max>10?0:2)}</small></span>
         <input type="range" aria-label={title} min={min} max={max} step={max>10?1:.01} value={q?.[key]??garmentDefaults[key]}
           onChange={e=>changeCloset(key,Number(e.target.value))}/>
       </label>)}
-      {toggles[section].map(([key,title])=><label className="check" key={key}>
+      {toggles[section].filter(([key])=>match(key)).map(([key,title])=><label className="check" key={key}>
         <input type="checkbox" checked={q?.[key]??garmentDefaults[key]} onChange={e=>changeCloset(key,e.target.checked)}/> {title}
       </label>)}
     </details>

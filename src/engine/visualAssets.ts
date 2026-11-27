@@ -1,10 +1,15 @@
+import {LveMaterial} from './lveSimulation.ts';
+import {artworkPoseClasses} from './primaryArtworkPose.ts';
 import { characterCoreSlots, isBoneSlot } from './artworkGeometry.ts';
 import { z } from 'zod';
+import { VectorArtworkV1 } from './vectorArtwork.ts';
 
 export const assetCategories = ['character','body-profile','face-component','hair','clothing','accessory','prop','environment','art-style'] as const;
 export const assetViews = ['front','three-quarter','side','back-quarter','back'] as const;
-export const bodyProfiles = ['slim','average','curvy','athletic','muscular','broad','larger','short','tall','young-adult','mature','elderly'] as const;
+export const bodyProfiles = ['slim','average','curvy','athletic','muscular','broad','larger','short','tall','young-adult','mature','elderly','lean','heavyset','petite'] as const;
 export const componentSlots = ['hair','top','head-base','upper-arm-left','forearm-left','upper-arm-right','forearm-right','thigh-left','calf-left','thigh-right','calf-right','shoe-left','shoe-right'] as const;
+export const nativeComponentSlots=[...componentSlots,'head-accessory'] as const;
+export type NativeSlot=typeof nativeComponentSlots[number];
 const number = (min:number,max:number) => z.number().finite().min(min).max(max);
 export const assetPoint = z.strictObject({x:number(0,1),y:number(0,1)});
 const identifier = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/);
@@ -18,14 +23,54 @@ export const CompiledComponent = z.strictObject({
   symmetrical:z.boolean(), license:z.string().min(1).max(500), source:z.string().min(1).max(500)
 }).superRefine((part,ctx)=>{if(isBoneSlot(part.slot)&&(part.offsetX!==0||part.offsetY!==0))ctx.addIssue({code:'custom',message:'Use calibrated joint pivots instead of limb offsets.'});if(isBoneSlot(part.slot)&&(!part.end||Math.hypot((part.end.x-part.pivot.x)*part.width,(part.end.y-part.pivot.y)*part.height)<2))ctx.addIssue({code:'custom',message:'Limb parts need distinct start and end joint pivots, at least 2 rig units apart.'});});
 export type CompiledArtwork = z.infer<typeof CompiledComponent>;
+/** Optional native representation shares existing slot/view/profile identity. */
+export const nativeDynamicsLimits={groups:4,minPoints:2,maxPoints:5,maxDisplacement:8,maxProxyIds:4} as const;
+export const NativeVectorComponent = z.strictObject({
+  id:identifier, slot:z.enum(nativeComponentSlots), view:z.enum(assetViews),
+  profiles:z.array(z.enum(bodyProfiles)).min(1).max(bodyProfiles.length),
+  artwork:VectorArtworkV1,
+  facing:z.enum(['normal','mirrored']).optional(),
+  fitMorphology:z.literal('anatomical-v1').optional(),
+  poseArtwork:z.array(z.strictObject({pose:z.enum(artworkPoseClasses),artwork:VectorArtworkV1})).max(6).optional(),
+  authoredOffset:z.tuple([number(-32,32),number(-32,32)]).optional(),
+  packageSource:z.strictObject({id:identifier,revision:z.number().int().min(1).max(1_000_000),license:z.string().min(1).max(500),provenance:z.string().min(1).max(500)}).optional(),
+  dynamics:z.array(z.strictObject({group:identifier,points:z.array(z.tuple([number(-180,180),number(-180,180)])).min(nativeDynamicsLimits.minPoints).max(nativeDynamicsLimits.maxPoints),material:LveMaterial,proxyIds:z.array(identifier).max(nativeDynamicsLimits.maxProxyIds)})).max(nativeDynamicsLimits.groups).optional()
+}).superRefine((part,ctx)=>{
+  const groups=new Set<string>();for(const d of part.dynamics??[]){
+    const art=part.artwork,refs=art.regions.filter(r=>r.material?.controlGroup===d.group);
+    if(groups.has(d.group)||!['hair','top','head-accessory'].includes(part.slot)||!refs.length||!art.controlGroups.includes(d.group)||d.material.maxDisplacement>nativeDynamicsLimits.maxDisplacement||d.proxyIds.some(id=>!art.collisionProxies.some(p=>p.id===id))||new Set(d.proxyIds).size!==d.proxyIds.length||d.points.some(([x,y],i)=>x<art.bounds[0]||x>art.bounds[2]||y<art.bounds[1]||y>art.bounds[3]||i>0&&Math.hypot(x-d.points[i-1][0],y-d.points[i-1][1])<.01)||!refs.some(r=>r.material!.weights.some(w=>w.pin===1))||!refs.some(r=>r.material!.weights.some(w=>w.pin<1&&w.influence>0)))ctx.addIssue({code:'custom',path:['dynamics'],message:'Invalid native simulation group, pins, bounds, material or proxy reference'});
+    groups.add(d.group);
+  }
+  const poseKeys=new Set<string>();for(const variant of part.poseArtwork??[]){
+    if(poseKeys.has(variant.pose)||variant.pose==='rest')ctx.addIssue({code:'custom',message:'Duplicate or redundant pose artwork'});poseKeys.add(variant.pose);
+    if(!isBoneSlot(part.slot)||variant.artwork.units!=='bone-normalized'||variant.artwork.pivot.some(n=>n!==0)||!variant.artwork.anchors.some(a=>a.id==='end'&&a.point[0]===1&&a.point[1]===0)||(!part.facing&&!variant.artwork.compatibility.mirrorSafe))ctx.addIssue({code:'custom',message:'Pose variants must preserve normalized bone anchors and facing compatibility'});
+  }
+  if(part.fitMorphology&&!isBoneSlot(part.slot))ctx.addIssue({code:'custom',message:'Anatomical morphology applies only to normalized bone art.'});
+  if(!isBoneSlot(part.slot)&&part.artwork.units!=='rig')ctx.addIssue({code:'custom',message:'Fixed native slots require rig units.'});
+  if(isBoneSlot(part.slot)&&(part.artwork.units!=='bone-normalized'||part.artwork.pivot[0]!==0||part.artwork.pivot[1]!==0||!part.artwork.anchors.some(a=>a.id==='end'&&a.point[0]===1&&a.point[1]===0)))ctx.addIssue({code:'custom',message:'Native bone parts require normalized origin and end anchor [1,0].'});
+});
+export type NativeVectorComponentData=z.infer<typeof NativeVectorComponent>;
 export const CharacterVisual = z.strictObject({
   version:z.literal(1), style:z.enum(['classic','illustrated']), profile:z.enum(bodyProfiles),
+  limbArt:z.literal('anatomical-v1').optional(),
+  primaryArt:z.literal('pose-v1').optional(),
   shoulders:number(.8,1.25).optional(), waist:number(.75,1.35).optional(), hips:number(.8,1.3).optional(),
   armWidth:number(.75,1.3).optional(), thighWidth:number(.75,1.3).optional(), calfWidth:number(.8,1.25).optional(),
+  abdomen:number(.8,1.3).optional(), wristWidth:number(.85,1.15).optional(), kneeWidth:number(.85,1.15).optional(), ankleWidth:number(.85,1.15).optional(),
+  fingerLengths:z.tuple([number(.9,1.1),number(.9,1.1),number(.9,1.1),number(.9,1.1),number(.9,1.1)]).optional(),
+  muscleDefinition:number(0,1).optional(), softness:number(0,1).optional(),
   handSize:number(.75,1.3).optional(), footSize:number(.8,1.25).optional(), neckLength:number(.8,1.2).optional(),
-  components:z.array(CompiledComponent).max(80).optional()
+  components:z.array(CompiledComponent).max(80).optional(),
+  vectorComponents:z.array(NativeVectorComponent).max(24).optional()
 }).superRefine((visual,ctx)=>{
-  const keys=new Set<string>();
+  const keys=new Set<string>(),facingKeys=new Set<string>();
+  for(const component of visual.vectorComponents??[]){
+    const key=component.slot+'/'+component.view,orientation=key+'/'+(component.facing??'both');
+    if(facingKeys.has(orientation)||facingKeys.has(key+'/both')||(!component.facing&&keys.has(key)))ctx.addIssue({code:'custom',message:'Conflicting native slot/view/facing.'});
+    facingKeys.add(orientation);
+    if(!component.profiles.includes(visual.profile))ctx.addIssue({code:'custom',message:'Native component profile mismatch.'});
+    keys.add(key);
+  }
   for(const component of visual.components??[]){
     const key=component.slot+'/'+component.view;
     if(keys.has(key))ctx.addIssue({code:'custom',message:'Only one artwork component may occupy each slot and view.'});

@@ -13,3 +13,5 @@ import './sirvibe.css';
 
 import { registerOffline } from './services/offline.ts';
 void registerOffline();
+
+import './character-workspace.css';

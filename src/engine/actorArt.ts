@@ -1,5 +1,21 @@
-import { drawComponent, drawBoneComponent } from './hybridArtwork.ts';
-import {drawStudioLimb} from './studioLimbArt.ts';
+import {coherentEnabled,type CoherentActingFrame} from './coherentActing.ts';
+import {coupledLimbOffset} from './characterDynamics.ts';
+import {deformCheekOutline} from './secondarySurface.ts';
+import type {SecondaryOffsets} from './characterDynamics.ts';
+import {deformGarmentPanels} from './garmentGeometry.ts';
+import {dynamicHairPaths} from './layeredHair.ts';
+import type {SurfaceFill} from './vvleRender.ts';
+import {classifyArtworkPose} from './primaryArtworkPose.ts';
+import {resolveArtworkArm,resolveArtworkLeg,type ResolvedArtworkPose,type ResolvedLeg,type ResolvedHandArtwork} from './resolvedArtworkPose.ts';
+import {garmentEnabled,garmentTorso,garmentSleeve,garmentLeg,garmentSkirt,garmentFoot} from './garmentGeometry.ts';
+import {drawGarmentPaths} from './garmentRender.ts';
+import {nativePartFor,boneDrawList} from './nativeVectorBone.ts';
+import {buildLayeredHair,hasLayeredHair,hairRenderPaths} from './layeredHair.ts';
+import {morphHandGeometry} from './handRig.ts';
+import {faceLandmarks} from './faceIdentityGeometry.ts';
+import type {NativeBonePathCache} from './vectorArtworkRender.ts';
+import { drawComponent, drawBoneComponent, componentFor } from './hybridArtwork.ts';
+import {drawStudioLimb,drawAnatomicalLimb} from './studioLimbArt.ts';
 import { propArm, propPlacement, type PropPose } from './propMotion.ts';
 import { bodyProportions } from './bodyBuild.ts';
 import { gaitProfiles, isSleep, type GaitStyle } from './performanceCatalog.ts';
@@ -11,7 +27,7 @@ import { facialPerformance, type FacialPerformance } from './facialAnimation.ts'
 import { blendSelectedFace } from './trackingSelection.ts';
 import { neutralFacialControls, type FacialControls } from './facialIntelligence.ts';
 import { at, drawBag, drawHandheld, drawShoe, drawTop, drawWatch, sleeveCoverage, vector, type CostumeTexture } from './wardrobeArt.ts';
-import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
+import { drawBeard, drawCatalogHair, drawEar, drawExtra, drawEye, drawFaceDetails, drawEyewear, drawHat, drawNose, drawPiercing, headMetrics, headOutline, resetEyeLayers } from './headCatalogArt.ts';
 import { drawExpressionMouth, hideExpressionMouth } from './mouthArt.ts';
 import { handPerformance } from './handPerformance.ts';
 import type { GestureSample } from './livingCharacter.ts';
@@ -48,7 +64,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};capturedArms?:{left:boolean;right:boolean};
+  appearance?:{behavior?:CoherentActingFrame;secondary?:SecondaryOffsets;surface?:SurfaceFill;onResolvedArtworkPose?:(frame:ResolvedArtworkPose)=>void;rearHairArt?:Graphics;mirrored?:boolean;vectorCache?:NativeBonePathCache;texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};capturedArms?:{left:boolean;right:boolean};
     capturedFingers?:{left?:FingerCurls;right?:FingerCurls;thumbs?:ThumbPair;influence:number;confidence?:{left?:number;right?:number}};
     capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
     capturedHeadFacing?:PerformanceFacing;capturedHeadYaw?:number;
@@ -61,7 +77,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const limbWidth = 10 * c.thickness;
   const build=bodyProportions(c);
   const bodyArt=g;
-  const stroke=c.visual?.style==='illustrated'?drawStudioLimb:classicStroke;
+  const legacyStroke=c.visual?.style==='illustrated'?drawStudioLimb:classicStroke;
+  const garments=garmentEnabled(c);
+  const anatomical=c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1';
   const crying=action==='cry'&&!art.rear;
   // Captured hands must remain *in front* of clothing and faces whenever
   // they are raised. The old fixed back/front arm order buried one wrist
@@ -73,6 +91,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const cryHand=(side:'left'|'right')=>crying&&freeHand(side);
   type ArmParts='all'|'upper'|'lower'|'hand';
   const armEndpoints:Partial<Record<ArmSide,{elbow:Point;hand:Point}>>={};
+  const resolvedHands:Partial<Record<ArmSide,ResolvedHandArtwork>>={};
   const arm = (side:ArmSide,carrying=false,g:Graphics=bodyArt,part:ArmParts='all') => {
     const joint=r[side];
     const costumeHand=c.wardrobe?.hand??'right';
@@ -81,80 +100,15 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const reachesFace=cryHand(side);
     let endpoint=armEndpoints[side];
     if(!endpoint){
-      const propPose=appearance?.propPose??{action,time:actionTime,weight:appearance?.actionWeight??1};
-      let [elbow,hand]=propArm(c,r,side,propPose,carrying,art.rear);
-      const guidance=appearance?.capturedRig;
-      const target=guidance?.targets[side];
-      if(target&&guidance&&mocapFront(side)&&!carrying&&!holdsCostume){
-        // Solve in the existing character's shoulder-local coordinate system,
-        // not by forcing raw MediaPipe angles onto the elbow.
-        const pole=guidance.bends[side]??(side==='left'?-1:1);
-        const weight=Math.max(0,Math.min(1,guidance.influence*(guidance.confidence?.[side]??1)));
-        const solved=solveStrictCapturedArm(joint.shoulder,target,c.arms,side,pole);
-        // Blend wrist targets, then solve once to preserve both bone lengths.
-        const blended={x:(mix(hand.x,solved.hand.x,weight)-joint.shoulder.x)/c.arms,y:(mix(hand.y,solved.hand.y,weight)-joint.shoulder.y)/c.arms};
-        const final=weight>=.999?solved:solveStrictCapturedArm(joint.shoulder,blended,c.arms,side,pole);
-        elbow=final.elbow;hand=final.hand;
-      }
-      // Correct contact points by moving the wrist TARGET and re-solving
-      // both arm bones. Lerp of unrelated elbows creates impossible lengths.
-      const contact=appearance?.capturedContact;
-      if(contact&&appearance?.capturedArms?.[side]&&!carrying&&!holdsCostume){
-        const sign=side==='left'?-1:1;
-        const headX=r.head.x,headY=r.head.y;
-        let goal:Point|undefined;
-        switch(contact.type){
-          case 'prayer':goal={x:r.neck.x+sign*5.8,y:r.neck.y+27};break;
-          case 'hands-on-head':goal={x:headX+sign*15*c.head,y:headY-15*c.head};break;
-          case 'chin-left':case 'chin-right':
-            if(contact.type===`chin-${side}`)goal={x:headX+sign*7*c.head,y:headY+23*c.head};break;
-          case 'forehead-left':case 'forehead-right':
-            if(contact.type===`forehead-${side}`)goal={x:headX+sign*9*c.head,y:headY-15*c.head};break;
-          case 'hip-left':case 'hip-right':
-            if(contact.type===`hip-${side}`)goal={x:r.hip.x+sign*20,y:r.hip.y};break;
-          case 'guard':goal={x:headX+sign*25*c.head,y:headY+22*c.head};break;
-          case 'punch-left':case 'punch-right':
-            if(contact.type===`punch-${side}`)
-              goal={x:joint.shoulder.x+sign*52*c.arms,y:joint.shoulder.y-11*c.arms};
-            break;
-        }
-        if(goal&&!(guidance?.extensions?.[side]!==undefined&&guidance.extensions[side]!>.94)){
-          // A heuristic contact may refine an observed bend, never manufacture
-          // one by moving a distant hand across the body.
-          if(guidance?.extensions?.[side]!==undefined){
-            const currentReach=Math.hypot(hand.x-joint.shoulder.x,hand.y-joint.shoulder.y);
-            const contactReach=Math.hypot(goal.x-joint.shoulder.x,goal.y-joint.shoulder.y);
-            if(Math.hypot(goal.x-hand.x,goal.y-hand.y)>12*c.arms||Math.abs(contactReach-currentReach)>3*c.arms)goal=undefined;
-          }
-        }
-        if(goal&&!(guidance?.extensions?.[side]!==undefined&&guidance.extensions[side]!>.94)){
-          const weight=Math.min(1,Math.max(0,contact.influence)*.95);
-          const blended={x:mix(hand.x,goal.x,weight),y:mix(hand.y,goal.y,weight)};
-          const contactTarget={x:(blended.x-joint.shoulder.x)/c.arms,y:(blended.y-joint.shoulder.y)/c.arms};
-          const pole=guidance?.bends[side]??sign;
-          const solved=solveStrictCapturedArm(joint.shoulder,contactTarget,c.arms,side,pole);
-          elbow=solved.elbow;hand=solved.hand;
-        }
-      }
-      if(reachesFace){
-        const sign=side==='right'?1:-1,weight=appearance?.actionWeight??1;
-        const eyeX=r.head.x+(art.profile?15:art.face*.38+sign*12)*c.head;
-        const rub=Math.sin(actionTime*17+sign*.5)*2.5;
-        [elbow,hand]=armIK(joint.shoulder,{
-          x:mix(hand.x,eyeX+sign*1.6,weight),
-          y:mix(hand.y,r.head.y+(-3+rub)*c.head,weight)
-        },28*c.arms,28*c.arms,sign);
-      }
-      // Final safety gate also covers old takes with joint angles only and
-      // contact/action overrides. Authored animations and held props remain intact.
-      if(appearance?.capturedArms?.[side]&&!carrying&&!holdsCostume){
-        const safe=solveStrictCapturedArm(joint.shoulder,{x:(hand.x-joint.shoulder.x)/c.arms,y:(hand.y-joint.shoulder.y)/c.arms},c.arms,side,guidance?.bends[side]);
-        elbow=safe.elbow;hand=safe.hand;
-      }
+      const {elbow,hand}=resolveArtworkArm(c,r,side,art,action,actionTime,carrying,holdsCostume,mocapFront(side),reachesFace,appearance);
       endpoint={elbow,hand};
       armEndpoints[side]=endpoint;
     }
     const {elbow,hand}=endpoint;
+    const primary=c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(joint.shoulder,elbow,hand,{view,side,centerX:r.neck.x,contact:carrying||holdsCostume||reachesFace||Boolean(appearance?.capturedContact&&(appearance.capturedContact.type.endsWith(side)||['prayer','hands-on-head','guard'].includes(appearance.capturedContact.type))),confidence:appearance?.capturedRig?.confidence?.[side],expectedLength:28*c.arms}):undefined;
+    const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===elbow?'forearm':'upper-arm',c.visual,primary,appearance?.surface,appearance?.secondary?.body)
+      :legacyStroke(target,points,width,color);
     const coverage=sleeveCoverage(c);
     const upper=coverage<=1;
     const cuffStart=upper?joint.shoulder:elbow, cuffEnd=upper?elbow:hand;
@@ -162,8 +116,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const cuff={x:cuffStart.x+(cuffEnd.x-cuffStart.x)*cover,y:cuffStart.y+(cuffEnd.y-cuffStart.y)*cover};
     const drawUpper=part==='all'||part==='upper';
     const drawLower=part==='all'||part==='lower';
-    const customUpper=drawUpper&&drawBoneComponent(g,c,`upper-arm-${side}`,view,joint.shoulder,elbow,c.thickness*build.arm,costume);
-    const customLower=drawLower&&drawBoneComponent(g,c,`forearm-${side}`,view,elbow,hand,c.thickness*(.63+.37*build.arm),costume);
+    const customUpper=drawUpper&&drawBoneComponent(g,c,`upper-arm-${side}`,view,joint.shoulder,elbow,c.thickness*build.arm,costume,appearance?.vectorCache,appearance?.mirrored,primary?.kind);
+    const customLower=drawLower&&drawBoneComponent(g,c,`forearm-${side}`,view,elbow,hand,c.thickness*(.63+.37*build.arm),costume,appearance?.vectorCache,appearance?.mirrored,primary?.kind);
     if(drawUpper&&drawLower&&build.arm===1&&!customUpper&&!customLower){
       stroke(g,[joint.shoulder,elbow,hand],limbWidth,c.skin);
     }else{
@@ -173,7 +127,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         segment(g,(joint.shoulder.x+elbow.x)/2,(joint.shoulder.y+elbow.y)/2,
           elbow.x,elbow.y,shade(c.skin,-.18),1.2);
     }
-    if(coverage>0&&(customUpper||customLower)){
+    if(garments){drawGarmentPaths(g,c,garmentSleeve(c,joint.shoulder,elbow,hand,part,customUpper,customLower,appearance?.secondary?coupledLimbOffset(appearance.secondary):undefined),costume,appearance?.surface,elbow);}
+    else if(coverage>0&&(customUpper||customLower)){
       if(drawUpper&&!customUpper)stroke(g,[joint.shoulder,upper?cuff:elbow],limbWidth*build.arm+4,c.shirt);
       if(drawLower&&!customLower&&!upper)stroke(g,[elbow,cuff],limbWidth*build.arm+4,c.shirt);
     }else if(coverage>0){
@@ -219,34 +174,33 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const scale = handSize(c.thickness)*(appearance?.capturedFingers?.[side]?1.12:1)*(c.visual?.handSize??1);
     const width = handWidthScale(view, side, geometry.params.wristTwist);
     g.context.save().setTransform(at(hand.x, hand.y, scale * width, scale, rotation * 180 / Math.PI));
-    drawIllustratedHand(g, c.skin, geometry);
+    const handArt=morphHandGeometry(geometry,c.visual?.fingerLengths,Boolean(carrying||holdsCostume||observed||appearance?.capturedFingers?.[side]||performance.pose==='grip'||performance.pose==='pinch'));
+    drawIllustratedHand(g,c.skin,handArt);
+    if(appearance?.onResolvedArtworkPose)resolvedHands[side]={position:hand,rotationRadians:rotation,scale:{x:scale*width,y:scale},geometry:handArt,occupied:carrying||holdsCostume};
     g.context.restore();
     const watchSide=c.wardrobe?.watchSide??costumeHand;
     if(watchSide==='both'||side===watchSide)drawWatch(g,c,hand,elbow);
   };
+  const resolvedLegs={} as Record<ArmSide,ResolvedLeg>;
   const leg = (side: 'left' | 'right') => {
     const joint = r[side];
-    let knee = joint.knee, foot = joint.foot;
-    const moving = locomotion === 'walk' || locomotion === 'run';
-    if (moving) {
-      const [walkingKnee,walkingFoot]=gaitLeg(joint.upper,c.legs*c.height,gaitTime,
-        locomotion,side,forward,lift,velocity,gaitProfiles[appearance?.gaitStyle??'natural'].lift);
-      knee={x:joint.knee.x+(walkingKnee.x-joint.knee.x)*gaitWeight,
-        y:joint.knee.y+(walkingKnee.y-joint.knee.y)*gaitWeight};
-      foot={x:joint.foot.x+(walkingFoot.x-joint.foot.x)*gaitWeight,
-        y:joint.foot.y+(walkingFoot.y-joint.foot.y)*gaitWeight};
-    }
-    // Sit and Stand transfer the torso over feet planted at actor-floor y=0.
-    if(!moving&&(action==='sit'||action==='stand')){
-      [knee,foot]=seatedLeg(joint.upper,c.legs*c.height,lift,side);
-    }
+    const resolved=resolveArtworkLeg(c,r,side,action,locomotion,lift,gaitTime,forward,gaitWeight,velocity,appearance);resolvedLegs[side]=resolved;
+    const {knee,foot,moving}=resolved;
+    const primary=c.visual?.primaryArt==='pose-v1'?classifyArtworkPose(joint.upper,knee,foot,{view,side,centerX:r.hip.x,seated:action==='sit',arm:false,expectedLength:38*c.legs*c.height}):undefined;
+    const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===knee?'calf':'thigh',c.visual,primary,appearance?.surface,appearance?.secondary?.body)
+      :legacyStroke(target,points,width,color);
     const bottom=c.wardrobe?.bottoms??(c.outfit==='athleisure'?'leggings':'straight');
     const swim=c.outfit==='bikini';
     const shorts=bottom==='shorts'||bottom==='biker-shorts';
     const width={straight:11,cargo:16,joggers:13,shorts:15,'wide-leg':17,'skinny-jeans':8,skirt:10,'cargo-joggers':15,leggings:8,'biker-shorts':10}[bottom]*c.thickness*build.leg;
-    const customThigh=drawBoneComponent(g,c,`thigh-${side}`,view,joint.upper,knee,c.thickness*build.leg,costume);
-    const customCalf=drawBoneComponent(g,c,`calf-${side}`,view,knee,foot,c.thickness*build.leg*build.calves,costume);
-    if(customThigh||customCalf){
+    const customThigh=drawBoneComponent(g,c,`thigh-${side}`,view,joint.upper,knee,c.thickness*build.leg,costume,appearance?.vectorCache,appearance?.mirrored,primary?.kind);
+    const customCalf=drawBoneComponent(g,c,`calf-${side}`,view,knee,foot,c.thickness*build.leg*build.calves,costume,appearance?.vectorCache,appearance?.mirrored,primary?.kind);
+    if(garments){
+      if(!customThigh)stroke(g,[joint.upper,knee],limbWidth*.82*build.leg,c.skin);
+      if(!customCalf)stroke(g,[knee,foot],limbWidth*.82*build.leg*build.calves,c.skin);
+      drawGarmentPaths(g,c,garmentLeg(c,joint.upper,knee,foot,customThigh,customCalf,appearance?.secondary?coupledLimbOffset(appearance.secondary):undefined),costume,appearance?.surface,knee);
+    }else if(customThigh||customCalf){
       const color=swim||shorts||bottom==='skirt'?c.skin:c.pants;
       if(!customThigh)stroke(g,[joint.upper,knee],width,color);
       if(!customCalf)stroke(g,[knee,foot],width*build.calves,color);
@@ -263,7 +217,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       if(bottom==='skinny-jeans'||bottom==='leggings')segment(g,foot.x-3,foot.y-5,foot.x+3,foot.y-5,shade(c.pants,.28),1.4);
     }
     const toe=moving||art.profile||(view!=='front'&&view!=='back')?Math.sign(forward):(side==='left'?-1:1);
-    if(drawComponent(g,c,`shoe-${side}`,view,foot.x,foot.y,0,costume))return;
+    if(drawComponent(g,c,`shoe-${side}`,view,foot.x,foot.y,0,costume,appearance?.vectorCache,appearance?.mirrored))return;
+    if(garments){drawGarmentPaths(g,c,garmentFoot(c,foot,toe,art.rear),costume,appearance?.surface,foot);return;}
     const footScale=c.visual?.footSize??1;
     g.context.save().setTransform(at(foot.x*(1-footScale),foot.y*(1-footScale),footScale));
     drawShoe(g,c,foot,toe,costume,view==='back');
@@ -284,15 +239,19 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   // separated by the torso. At a crossing this created a visible hole.
   // The complete shoulder -> elbow -> wrist line and attached hand now
   // share one Graphics layer and one pair of solved endpoints.
-  if(c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
+  if(garments){const skirt=garmentSkirt(c,art,r.hip,action==='sit',[resolvedLegs.left.knee,resolvedLegs.right.knee]);const motion=appearance?.secondary;drawGarmentPaths(g,c,motion?deformGarmentPanels(skirt,r.hip.y-3,r.hip.y+28,motion.cloth,motion.body):skirt,costume,appearance?.surface,r.hip);}
+  if(!garments&&c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
     const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
     vector(g,`M ${x-width} ${y-5}H${x+width}L${x+width*1.29} ${y+hem}Q${x} ${y+hem+7} ${x-width*1.29} ${y+hem}Z`,c.pants,INK,2.1);
     for(const offset of [-.57,0,.57]) segment(g,x+offset*width,y+2,x+offset*width*1.15,y+hem,shade(c.pants,-.28),1.1);
   }
-  if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume))drawTop(g,c,art,r.neck,r.hip,costume);
-  drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
-  drawBag(g,c,art,r.neck,r.hip,undefined,costume);
+  if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume,appearance?.vectorCache,appearance?.mirrored,appearance?.secondary?.native)){
+    if(garments){const top=garmentTorso(c,art,r.neck,r.hip,r.left.shoulder,r.right.shoulder,action==='sit'?1:Math.min(1,Math.abs(pose.torso??0)/35));const motion=appearance?.secondary;drawGarmentPaths(g,c,motion?deformGarmentPanels(top,r.neck.y+12,r.hip.y+4,motion.cloth,motion.body):top,costume,appearance?.surface,{x:(r.neck.x+r.hip.x)/2,y:(r.neck.y+r.hip.y)/2});}
+    else drawTop(g,c,art,r.neck,r.hip,costume);
+  }
+  drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6,appearance?.secondary?.accessories);
+  drawBag(g,c,art,r.neck,r.hip,undefined,costume,appearance?.secondary?.accessories);
   if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,carryingHand(frontArm));
   for(const side of capturedOrder)
     arm(side,false,appearance?.gestureArt??g,'all');
@@ -302,7 +261,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   // Use the already stabilized yaw as a subtle continuous transition,
   // while the front/three-quarter artwork supplies the three discrete poses.
   face.position.set(r.head.x-headYaw*3.6*c.head,r.head.y);
-  face.angle = r.angle + (listening ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
+  face.angle = r.angle + (listening&&!coherentEnabled(c) ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
   // Three modest head poses are independent from the body facing selected
   // by the director. Mirroring the three-quarter head does not rotate the
   // whole torso or change the saved character viewpoint.
@@ -310,7 +269,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   face.scale.set(c.head*turnScale*(1-.09*Math.abs(headYaw))*(trackedHead==='left'?-1:1),c.head);
   // Never add synthetic random jaw motion over audio-aligned silence.
   const localFocus=trackedHead==='left'&&focus?{x:-focus.x,y:focus.y}:focus;
-  const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, localFocus, c.personality,appearance?.expressionIntensity??1,appearance?.actingIntent,appearance?.emotion);
+  const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, localFocus, c.personality,appearance?.expressionIntensity??1,appearance?.actingIntent,appearance?.emotion,appearance?.behavior);
   if(appearance?.facialCapture) mood.controls=blendSelectedFace(
     mood.controls??{...neutralFacialControls},appearance.facialCapture.controls,appearance.facialCapture.influence,appearance.facialCapture.tracking);
   if(isSleep(action)&&!speaking){
@@ -324,17 +283,26 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     : lookAtCamera && (art.profile || art.rear)
       ? view === 'back' ? 'back' : 'three-quarter' : view;
   const facialArt=appearance?.art??(face instanceof Graphics?face:undefined);
-  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume);
+  const rearHair=appearance?.rearHairArt;
+  if(rearHair){rearHair.clear();rearHair.position.set(face.position.x,face.position.y);rearHair.angle=face.angle;rearHair.scale.set(face.scale.x,face.scale.y);}
+  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume,rearHair,appearance?.vectorCache,Boolean(appearance?.mirrored)!==(trackedHead==='left'),appearance?.surface?((color,material,point,angle,shape)=>appearance.surface!(color,material,{x:face.x+point.x,y:face.y+point.y},face.angle+(angle??0),shape)):undefined,appearance?.secondary);
+  if(appearance?.onResolvedArtworkPose&&armEndpoints.left&&armEndpoints.right)appearance.onResolvedArtworkPose(structuredClone({actorId,view,headView,mirrored:Boolean(appearance.mirrored),lift,rig:r,arms:{left:{shoulder:r.left.shoulder,...armEndpoints.left},right:{shoulder:r.right.shoulder,...armEndpoints.right}},legs:resolvedLegs,head:{position:{x:face.x,y:face.y},angle:face.angle,scale:{x:face.scale.x,y:face.scale.y}},nearArm:nearest,hands:resolvedHands,facial:mood,action,locomotion,time}));
 }
-function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture) {
+function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture,rearHair?:Graphics,vectorCache?:NativeBonePathCache,mirrored=false,surface?:SurfaceFill,secondary?:SecondaryOffsets) {
   const art=viewArt[view], {rear,profile}=art;
   const layers=resetEyeLayers(face);
   const {w,h}=headMetrics(c,art), q=c.wardrobe;
   const yScale=h/45;
   const ears=profile?[-w*.47]:[-w+3,w-3];
+  const openHat=['none','visor','sun-visor','fascinator'].includes(c.hat);
+  const customHairPart=openHat?componentFor(c,'hair',view):undefined;
+  const nativeHair=openHat?nativePartFor(c,'hair',view,mirrored):undefined;
+  const customHairReady=Boolean(customHairPart&&texture?.(customHairPart.image)||nativeHair&&vectorCache&&boneDrawList(nativeHair));
+  const layered=hasLayeredHair(c),hair=openHat&&!customHairReady?buildLayeredHair(c,art):undefined;
+  if(hair)for(const item of dynamicHairPaths(hair,'background',secondary?.hair))vector(rearHair??g,item.d,item.fill==='none'?item.fill:surface?.(item.fill,'hair',{x:0,y:-20})??item.fill,item.stroke,item.strokeWidth);
   if(!profile)drawEar(g,c,ears[1],8*yScale,-1);
-  const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture);
-  if(!customHead)vector(g,headOutline(c,art),c.skin,c.visual?.style==='illustrated'?shade(c.skin,-.48):INK,c.visual?.style==='illustrated'?1.9:3.5);
+  const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture,vectorCache,mirrored);
+  if(!customHead)vector(g,secondary?.face.some(Boolean)?deformCheekOutline(headOutline(c,art),h,secondary.face):headOutline(c,art),surface?.(c.skin,'skin',{x:0,y:0})??c.skin,c.visual?.style==='illustrated'?shade(c.skin,-.48):INK,c.visual?.style==='illustrated'?1.9:3.5);
   if(!customHead)vector(g,`M ${-w*.81} 5 Q ${-w*.85} ${h*.63} ${-w*.32} ${h*.77} Q ${-w*.57} ${h*.55} ${-w*.81} 5Z`,shade(c.skin,-.10),INK,0);
   if(c.visual?.style==='illustrated'&&!rear){
     const tone=shade(c.skin,-.25);
@@ -345,26 +313,25 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
     vector(g,`M ${-w*.65} ${h*.34} Q ${-w*.48} ${h*.45} ${-w*.29} ${h*.4} M ${w*.32} ${h*.4} Q ${w*.52} ${h*.43} ${w*.7} ${h*.29}`,'none',tone,.9);
     if(c.visual.profile==='mature'||c.visual.profile==='elderly')vector(g,`M ${-w*.35} ${-h*.47} Q 0 ${-h*.51} ${w*.38} ${-h*.45} M ${-w*.35} ${-h*.38} Q 0 ${-h*.42} ${w*.38} ${-h*.36}`,'none',tone,.8);
   }
-  const openHat=['none','visor','sun-visor','fascinator'].includes(c.hat);
-  const customHair=openHat&&drawComponent(g,c,'hair',view,0,0,0,texture);
-  if(openHat&&!customHair) {
+  const customHair=openHat&&drawComponent(g,c,'hair',view,0,0,0,texture,vectorCache,mirrored,secondary?.native);
+  if(hair&&!customHair){
+    for(const item of dynamicHairPaths(hair,'foreground',secondary?.hair))vector(g,item.d,item.fill==='none'?item.fill:surface?.(item.fill,'hair',{x:0,y:-20})??item.fill,item.stroke,item.strokeWidth);
+  }else if(openHat&&!customHair&&!layered) {
     if(!drawCatalogHair(g,c,art,w,h))drawIllustratedHair(g,c,art,w,h);
-  } else if(!customHair&&['bob','hime','mullet','ponytail','waves','wolf-cut','braids','locs','curtain-bangs'].includes(c.hair)) {
+  } else if(!customHair&&!layered&&['bob','hime','mullet','ponytail','waves','wolf-cut','braids','locs','curtain-bangs'].includes(c.hair)) {
     if(!drawCatalogHair(g,c,art,w,h*.83))drawIllustratedHair(g,c,art,w,h*.83);
   }
   drawEar(g,c,ears[0],8*yScale,1);
   drawHat(g,c,art,w,h);
   if(rear) {
     hideExpressionMouth(face);
-    drawPiercing(g,c,art,ears,0);
+    drawPiercing(g,c,art,ears,0,secondary?.earrings);
     drawExtra(g,c,art,w,h,'head');
+    drawComponent(g,c,'head-accessory',view,0,0,0,texture,vectorCache,mirrored,secondary?.native);
     return;
   }
-  const center=profile?w*.62:art.face*w/42;
-  const facialOffset=q?.facialOffset??0;
-  const spacing=Math.min(w*.35,13*c.eyeSpacing);
-  const eyes=profile?[center+facialOffset]:[center-spacing+facialOffset,Math.min(w-8,center+spacing*(art.face?.81:1)-facialOffset)];
-  const eyeY=-5*yScale;
+  const {center,eyes,eyeY,noseX,mouthX}=faceLandmarks(c,art);
+  drawFaceDetails(g,c,art);
   eyes.forEach((x,i)=>drawEye(g,layers.eyes[i],c,mood,x,eyeY,i?1:-1,Boolean(i&&art.face),camera,art.face));
   // Raised cheeks follow the asymmetric expression without changing face geometry.
   if(!profile&&mood.controls){
@@ -386,12 +353,11 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
     });
   }
   drawEyewear(layers.eyewear,c,art,eyes,eyeY);
-  const noseX=profile?w*.94:center;
   drawNose(g,c,art,noseX);
-  const mouthX=profile?w*.65:center;
   drawBeard(g,c,art,mouthX,w,h);
-  drawPiercing(g,c,art,ears,profile?mouthX:noseX);
+  drawPiercing(g,c,art,ears,profile?mouthX:noseX,secondary?.earrings);
   drawExtra(g,c,art,w,h,'head');
+    drawComponent(g,c,'head-accessory',view,0,0,0,texture,vectorCache,mirrored,secondary?.native);
   if(q?.extra==='mask') hideExpressionMouth(face);
   else drawExpressionMouth(face,c,mood,mouthX,view);
 }

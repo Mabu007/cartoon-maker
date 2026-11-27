@@ -22,13 +22,13 @@ type Result = {keys:PerformanceKey[];duration:number;framesAccepted:number;frame
 type Props={
   scene:Scene; characters:Character[]; selectedActor?:string; start:number;
   close:()=>void; commit:(clips:Clip[])=>Promise<void>;
-  saveActingDNA:(actorId:string,style:MotionDNA)=>void;
+  saveActingDNA:(actorId:string,style:MotionDNA)=>void;previewOnly?:boolean;
 };
 type Status='idle'|'loading'|'ready'|'recording'|'processing'|'review';
 const recordingLimits=[60,120,150,180] as const;
 const recordingLimitKey='sirvibe.performance.maxDuration';
 function loadRecordingLimit(){try{const value=Number(localStorage.getItem(recordingLimitKey));return recordingLimits.find(limit=>limit===value)??120;}catch{return 120;}}
-export function PerformanceStudio({scene,characters,selectedActor,start,close,commit,saveActingDNA}:Props) {
+export function PerformanceStudio({scene,characters,selectedActor,start,close,commit,saveActingDNA,previewOnly=false}:Props) {
   const [actor,setActor]=useState(selectedActor??scene.actors[0]?.id??'');
   const [facing,setFacing]=useState<PerformanceFacing>(()=>initialPerformanceFacing(
     scene.actors.find(item=>item.id===(selectedActor??scene.actors[0]?.id))));
@@ -36,7 +36,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [recordingLimit,setRecordingLimit]=useState(loadRecordingLimit);
   const maxDuration=Math.min(recordingLimit,Math.max(0,180-start));
   const maxDurationRef=useRef(maxDuration);maxDurationRef.current=maxDuration;
-  useEffect(()=>{try{localStorage.setItem(recordingLimitKey,String(recordingLimit));}catch{/* private storage */}},[recordingLimit]);
+  useEffect(()=>{try{if(!previewOnly)localStorage.setItem(recordingLimitKey,String(recordingLimit));}catch{/* private storage */}},[recordingLimit]);
   const [message,setMessage]=useState('Nothing leaves your device during tracking. With installed local models, MediaPipe works without internet.');
   const [intensity,setIntensity]=useState(100);
   const [smoothing,setSmoothing]=useState(50);
@@ -49,7 +49,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [channels,setChannels]=useState<TrackingSelection>(()=>{try{const saved=JSON.parse(localStorage.getItem('sirvibe.tracking.channels')??'null');return Object.fromEntries(Object.entries(defaultTrackingSelection).map(([k,v])=>[k,typeof saved?.[k]==='boolean'?saved[k]:v])) as TrackingSelection;}catch{return {...defaultTrackingSelection};}});
   const channelsRef=useRef(channels);channelsRef.current=channels;
   const {hands}=channels;const face=channels.face||channels.eyes;
-  useEffect(()=>{try{localStorage.setItem('sirvibe.tracking.channels',JSON.stringify(channels));}catch{/* optional storage */}},[channels]);
+  useEffect(()=>{try{if(!previewOnly)localStorage.setItem('sirvibe.tracking.channels',JSON.stringify(channels));}catch{/* optional storage */}},[channels]);
   const channelLabels:Record<keyof TrackingSelection,string>={head:'Head turns & tilt',face:'Facial expressions',eyes:'Eyes, gaze & blinking',torso:'Torso & body turning',hips:'Pelvis / hips',legs:'Legs & knees',arms:'Arms & elbows',hands:'Hands & fingers'};
   function changeChannels(next:TrackingSelection){if(statusRef.current!=='idle')return;setChannels(next);motionStabilizer.current.reset();lastPreview.current=undefined;presentation.current=undefined;drawPose();}
   const [recordVoice,setRecordVoice]=useState(false);
@@ -264,7 +264,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
     try{
       try{media=await navigator.mediaDevices.getUserMedia({
         video:{width:{ideal:hands?640:320},height:{ideal:hands?480:240},frameRate:{ideal:20,max:24}},
-        audio:recordVoice?{echoCancellation:true,noiseSuppression:true}:false});}
+        audio:!previewOnly&&recordVoice?{echoCancellation:true,noiseSuppression:true}:false});}
       catch{media=await navigator.mediaDevices.getUserMedia({
         video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:20,max:24}},audio:false});
         if(recordVoice)setMessage('Microphone unavailable. Motion recording will still work.');}
@@ -377,7 +377,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
         start:startAt,length,performance:result.keys,performanceOrigin:'mocap',facing
       };
       const clips:Clip[]=[motion];
-      if(recordedAudio){
+      if(recordedAudio&&!previewOnly){
         const assetId=uid();
         await putAudio(assetId,recordedAudio);
         const spoken:Extract<Clip,{track:'dialogue'}>={
@@ -433,7 +433,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           {status==='recording'&&<button type="button" className="primary performance-stop" onClick={()=>void stop()}><Square size={14} fill="currentColor"/> Stop &amp; review</button>}
           {status==='review'&&<button type="button" className="quiet" disabled={replaying||!!previewError} onClick={()=>replay()}><Play size={15}/> Replay stabilized</button>}
           {status==='review'&&<button type="button" className="quiet" onClick={retake}><RotateCcw size={15}/> Retake</button>}
-          {status==='review'&&<button type="button" className="primary" onClick={()=>void save()}><Check size={16}/> Add to timeline</button>}
+          {status==='review'&&<button type="button" className="primary" onClick={()=>void save()}><Check size={16}/> {previewOnly?'Audition this take':'Add to timeline'}</button>}
           {(status==='loading'||status==='processing')&&<span className="performance-busy" role="status">{status==='loading'?'Starting webcam…':'Finishing take…'}</span>}
         </div>
       </div>
@@ -503,7 +503,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
             <small>Disabled parts keep their authored animation. Use Camera settings to change models while live. Face and eyes share one detector; body joints share the Pose detector.</small>
           </fieldset>
           <label><input type="checkbox" checked={trackingOverlay} onChange={e=>setTrackingOverlay(e.target.checked)}/> Show tracking points</label>
-          <label><input type="checkbox" checked={recordVoice} disabled={status!=='idle'} onChange={e=>setRecordVoice(e.target.checked)}/> <Mic size={14}/> Also record voice (optional)</label>
+          {!previewOnly&&<label><input type="checkbox" checked={recordVoice} disabled={status!=='idle'} onChange={e=>setRecordVoice(e.target.checked)}/> <Mic size={14}/> Also record voice (optional)</label>}
         </div>
         <details className="performance-gesture-guide">
           <summary>Gesture guide · fists, pointing, prayer and more</summary>
@@ -529,9 +529,9 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
           {style&&<div className="performance-dna">
             <strong>Observed Acting DNA</strong>
             <span>Energy {style.energy}% · Gesture size {style.gestureAmplitude}% · Dominant {style.dominantHand} hand</span>
-            <button type="button" className="quiet" onClick={()=>saveActingDNA(actor,style)}><WandSparkles size={14}/> Apply motion style to character</button>
+            {!previewOnly&&<button type="button" className="quiet" onClick={()=>saveActingDNA(actor,style)}><WandSparkles size={14}/> Apply motion style to character</button>}
           </div>}
-          <p className="performance-help">Name your performance here, then use <strong>Add to timeline</strong> in the toolbar above. Your movement will appear on the Performance track.</p>
+          <p className="performance-help">{previewOnly?'Audition this take returns the recorded motion to the temporary character preview. Nothing is added to the project timeline.':'Name your performance here, then use Add to timeline in the toolbar above. Your movement will appear on the Performance track.'}</p>
         </>}
         <div className="performance-privacy"><ShieldAlert size={15}/> Raw camera video is not stored. The character is controlled locally; only compact pose keys and an optional voice recording are saved. Face tracking can be disabled for slower computers.</div>
       </div>

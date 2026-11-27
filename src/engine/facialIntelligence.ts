@@ -109,19 +109,19 @@ function pulse(time:number,seed:number,period:number) {
 /** Character-aware acting controls, with a restrained asymmetric micro-beat. */
 export function actingFacialControls(
   time:number, actorId:string, expression:Expression,
-  personality?:Character['personality'], intensity=1, intention:ActingIntent='none'
+  personality?:Character['personality'], intensity=1, intention:ActingIntent='none', authoritative=false
 ):FacialControls {
   const traits=resolvePersonality(personality);
   const expressiveness=traits.expressiveness/100;
   const nervousness=traits.nervousness/100;
-  const strength=clamp(intensity,0,1.5)*mix(.78,1.15,expressiveness);
+  const strength=clamp(intensity,0,1.5)*(authoritative?1:mix(.78,1.15,expressiveness));
   const face=facialExpressionControls(expression,strength);
   if(intention!=='none'){
     const direction=intentions[intention];
     for(const key of Object.keys(direction) as (keyof FacialControls)[])
       face[key]=limit(key,(direction[key]??0)*strength);
   }
-  if(traits.autoActing==='off')return face;
+  if(authoritative||traits.autoActing==='off')return face;
   const subtle=traits.autoActing==='subtle'?.4:1;
   // Temperament modifies the *same* authored emotion, not just idle motion.
   // An anxious actor holds more lip tension and opens their eyes slightly more.

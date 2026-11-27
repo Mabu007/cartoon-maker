@@ -1,3 +1,11 @@
+import {WorldDynamics,activeWorldProp,worldDrawList,layerKey,propKey,placementScale} from './worldDynamics.ts';
+import {drawVectorRegions} from './vectorArtworkRender.ts';
+import type {WorldArtworkData} from './worldArtworkSchema.ts';
+import {CharacterDynamics} from './characterDynamics.ts';
+import {sampleVolumeFrame,volumeColor,dominantLight,colorNumber} from './volumetricLighting.ts';
+import {VolumeGradientCache,type SurfaceFill} from './vvleRender.ts';
+import type {ResolvedArtworkPose} from './resolvedArtworkPose.ts';
+import {NativeBonePathCache} from './vectorArtworkRender.ts';
 import { lightAt, perspectiveScale } from './environmentVisuals.ts';
 import { drawVisualEffect, drawTransition, effectTime, titleStyle } from './visualEffects.ts';
 import { mediaUrl } from '../services/media.ts';
@@ -20,13 +28,16 @@ export const dimensions = (format: Format, scale = 1): [number, number] => {
   return [Math.round(width * scale), Math.round(height * scale)];
 };
 
-type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; gestureArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
-  foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; heldArt?:Graphics; heldArtKey?:string; heldSpriteLeft?:Sprite;heldArtLeft?:Graphics;heldArtKeyLeft?:string; imageData?: string };
-export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: number; y: number };
+type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Graphics; rearHairArt?:Graphics; gestureArt?:Graphics; shadow?: Graphics; color?: string; kind?: string; doorOpen?:number;
+  worldArt?:WorldArtworkData;worldSignature?:string; foreground?: Graphics; sprite?: Sprite; heldSprite?: Sprite; heldArt?:Graphics; heldArtKey?:string; heldSpriteLeft?:Sprite;heldArtLeft?:Graphics;heldArtKeyLeft?:string; imageData?: string };
+export type RenderOptions = { onResolvedArtworkPose?:(frame:ResolvedArtworkPose)=>void; characterPreview?: boolean; previewFocus?: { x: number; y: number };
   previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
   const app = new Application();
+  const vectorCache=new NativeBonePathCache();
+  const volumeCache=new VolumeGradientCache();
+  const dynamics=new CharacterDynamics(),worldDynamics=new WorldDynamics();
   const [width, height] = videoFormats[format].viewport;
   const [pixelWidth, pixelHeight] = dimensions(format, resolution);
   await app.init({ width: pixelWidth, height: pixelHeight, resolution: 1, antialias: true, autoStart: false, background: '#24202c', preference: ['webgl', 'webgpu', 'canvas'], preserveDrawingBuffer: capture, powerPreference: 'low-power', hello: false });
@@ -83,6 +94,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   let requestedBackdrop: string | undefined;
   let destroyed = false;
   const elements = new Container({ sortableChildren: true });
+  const worldBack=new Container({sortableChildren:true}),worldFront=new Container({sortableChildren:true});
+  const worldGraphics=new Map<string,{g:Graphics;art:WorldArtworkData;signature:string}>();
   const guides = new Graphics();
   const fade = new Graphics();
   const vfxArt = new Graphics(), titles = new Container();
@@ -90,7 +103,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   const captionBackground = new Graphics();
   const caption = new Text({ text: '', style: { fontFamily: 'Arial', fill: '#fffbf4', fontWeight: '600', fontSize: 21, wordWrap: true, wordWrapWidth: width - 44, align: 'center' } });
   caption.anchor.set(.5, 1);
-  world.addChild(background, backdrop, elements, guides);
+  world.addChild(background, backdrop, worldBack, elements, worldFront, guides);
   app.stage.addChild(world, vfxArt, titles, captionBackground, caption, fade);
   app.stage.scale.set(pixelWidth / width, pixelHeight / height);
   const items = new Map<string, Entity>();
@@ -109,9 +122,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       const group = new Container();
       entity = { group, art };
       if (isActor) {
-        entity.shadow = new Graphics(); entity.face = new Container(); entity.facialArt=new Graphics();entity.gestureArt=new Graphics();
+        entity.shadow = new Graphics(); entity.face = new Container(); entity.facialArt=new Graphics();entity.rearHairArt=new Graphics();entity.gestureArt=new Graphics();
         entity.face.addChild(entity.facialArt);
-        group.addChild(entity.shadow, art, entity.face, entity.gestureArt);
+        group.addChild(entity.shadow, entity.rearHairArt, art, entity.face, entity.gestureArt);
       } else {
         const sprite = new Sprite(Texture.EMPTY);
         sprite.anchor.set(.5, 1);
@@ -125,9 +138,12 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return entity;
   }
   function draw(scene: Scene, characters: Character[], time: number, options: RenderOptions = {}) {
+    volumeCache.begin();
     repaintLatestFrame=()=>{draw(scene,characters,time,options);};
     const characterById = new Map(characters.map(character => [character.id, character]));
     lastFrame = evaluate(scene, time, characterById, width);
+    const secondary=options.edit?undefined:dynamics.sample(scene,characters,time,width);
+    const worldOffsets=options.edit||options.characterPreview?undefined:worldDynamics.sample(scene,characters,time,width);
     const { actors, sounds, effects, transition } = lastFrame;
     const camera={...lastFrame.camera};
     for(const clip of effects){
@@ -171,8 +187,23 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       backdrop.texture = textures.get(image)!;
       backdrop.width = WIDTH * (scene.backgroundTransform?.scale??1); backdrop.height = HEIGHT * (scene.backgroundTransform?.scale??1); backdrop.visible = true;
     }
-    backdrop.x=scene.backgroundTransform?.x??0;backdrop.y=scene.backgroundTransform?.y??0;
+    const vvle=sampleVolumeFrame(scene.visual,time);
+    backdrop.x=(scene.backgroundTransform?.x??0)+(vvle?.settings.parallax??0)*(camera.x-480);
+    backdrop.y=(scene.backgroundTransform?.y??0)+(vvle?.settings.parallax??0)*(camera.y-270);
     if(image){backdrop.width=WIDTH*(scene.backgroundTransform?.scale??1);backdrop.height=HEIGHT*(scene.backgroundTransform?.scale??1);}
+    // World layers are authored separately from the camera. Static graphics
+    // are retained; only changed quantized dynamic groups are redrawn.
+    const activeLayers=new Set<string>();
+    for(const l of options.characterPreview?[]:scene.visual?.world?.layers??[]){
+      if(image&&l.layer==='background')continue;
+      const key=layerKey(l.id),offset=worldOffsets?.get(key),sig=JSON.stringify(offset??{}),parent=l.layer==='background'?worldBack:l.layer==='foreground'?worldFront:elements;
+      activeLayers.add(key);let e=worldGraphics.get(key);if(!e){e={g:new Graphics(),art:l.art,signature:''};worldGraphics.set(key,e);}
+      if(e.g.parent!==parent)parent.addChild(e.g);
+      if(e.art!==l.art||e.signature!==sig){drawVectorRegions(e.g.clear(),worldDrawList(l.art,offset));e.art=l.art;e.signature=sig;}
+      const scale=placementScale(l,scene);e.g.position.set(l.x,l.y);e.g.scale.set(scale);e.g.angle=l.rotation;e.g.zIndex=renderDepth(l.depth,l.y);
+      e.g.tint=l.lighting?lightAt(l.x,l.y,scene.visual,time):0xffffff;
+    }
+    for(const [key,e] of worldGraphics)if(!activeLayers.has(key)){e.g.destroy();worldGraphics.delete(key);}
     currentCamera = camera;
     // Preview, export and stage picking share one exact camera projection.
     const transform = cameraViewport(camera, { width, height }, format);
@@ -198,7 +229,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.scale.set(prop.flip ? -prop.scale : prop.scale, prop.scale);
       entity.group.angle = prop.rotation;
       entity.group.alpha=prop.visual?.opacity??1;
-      entity.group.tint=prop.visual?.lighting===false?0xffffff:lightAt(point.x,point.y-(prop.imageHeight??100)*prop.scale*.5,scene.visual,time);
+      const propFrame=prop.visual?.lighting===false?undefined:sampleVolumeFrame(scene.visual,time,prop.depth);
+      entity.group.tint=prop.visual?.lighting===false?0xffffff:propFrame?colorNumber(volumeColor(propFrame,{x:point.x,y:point.y-(prop.imageHeight??100)*prop.scale*.5},[0,0,1],'#ffffff',prop.kind==='window'?'glass':prop.kind==='phone'||prop.kind==='lamp'?'metal':'fabric')):lightAt(point.x,point.y-(prop.imageHeight??100)*prop.scale*.5,scene.visual,time);
       entity.group.zIndex = renderDepth(prop.depth, point.y);
       if(isSeating(prop.kind)) {
         if(!entity.foreground) {entity.foreground=new Graphics();elements.addChild(entity.foreground);}
@@ -213,9 +245,10 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
           front.zIndex=depth+.03;
         } else front.zIndex=entity.group.zIndex+.03;
       }
-      if (entity.kind !== prop.kind || entity.color !== prop.color || entity.imageData !== prop.imageData || entity.doorOpen !== ('doorOpen' in prop ? prop.doorOpen : undefined)) {
+      const native=activeWorldProp(prop),worldOffset=worldOffsets?.get(propKey(prop.id)),worldSignature=native?JSON.stringify(worldOffset??{}):undefined;
+      if (entity.worldArt!==native||entity.worldSignature!==worldSignature||entity.kind !== prop.kind || entity.color !== prop.color || entity.imageData !== prop.imageData || entity.doorOpen !== ('doorOpen' in prop ? prop.doorOpen : undefined)) {
         const opening='doorOpen' in prop ? Number(prop.doorOpen) : undefined;
-        drawProp(entity.art.clear(), prop, opening);entity.doorOpen=opening;
+        if(native)drawVectorRegions(entity.art.clear(),worldDrawList(native,worldOffset,{base:prop.color}));else drawProp(entity.art.clear(), prop, opening);entity.doorOpen=opening;entity.worldArt=native;entity.worldSignature=worldSignature;
         if(entity.foreground&&isSeating(prop.kind))drawSeat(entity.foreground.clear(),prop.kind,prop.color,true);
         entity.kind = prop.kind; entity.color = prop.color; entity.imageData = prop.imageData;
         if (entity.sprite) entity.sprite.visible = false;
@@ -261,17 +294,23 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.position.set(point.x, point.y);
       entity.group.angle = actor.rotation;
       entity.group.alpha=actor.visual?.opacity??1;
-      const tint=actor.visual?.lighting===false?0xffffff:lightAt(point.x,point.y-110*actor.scale,scene.visual,time);
-      entity.art.tint=tint;entity.face!.tint=tint;entity.gestureArt!.tint=tint;
+      const volume=actor.visual?.lighting===false?undefined:sampleVolumeFrame(scene.visual,time,actor.depth);
+      const tint=actor.visual?.lighting===false||volume?0xffffff:lightAt(point.x,point.y-110*actor.scale,scene.visual,time);
+      entity.art.tint=tint;entity.rearHairArt!.tint=tint;entity.face!.tint=tint;entity.gestureArt!.tint=tint;
       const view = (options.edit ? source.view : camera.view) ?? actor.view;
       const directionFlip = options.edit ? source.flip : actor.flip !== (viewForward(view) !== viewForward(actor.view));
       entity.group.scale.set((directionFlip ? -1 : 1) * actor.scale, actor.scale);
+      const angle=actor.rotation*Math.PI/180,cos=Math.cos(angle),sin=Math.sin(angle);
+      const worldPoint=(p:{x:number;y:number})=>{const x=p.x*actor.scale*(directionFlip?-1:1),y=(p.y-lift)*actor.scale;return {x:point.x+x*cos-y*sin,y:point.y+x*sin+y*cos};};
+      const surface:SurfaceFill|undefined=volume?((base,material,center,rotation=0,shape)=>volumeCache.fill(volume,base,material,worldPoint(center),actor.rotation+(directionFlip?-rotation:rotation),directionFlip,shape)):undefined;
       entity.group.zIndex = renderDepth(actor.depth, point.y);
       entity.art.position.y = -lift;
       entity.gestureArt!.position.y=-lift;
       const lighting=scene.visual?.lighting;
       entity.shadow!.alpha=lighting?.enabled?lighting.shadowOpacity:1;
       ellipse(entity.shadow!.clear(), 0, 3, (39 - Math.min(10, Math.max(0, lift / 5)))*(character.visual?character.thickness:1), !capture&&scene.visual?.quality==='eco'?5:7, lighting?.enabled?lighting.shadow:'#816a61');
+      if(volume&&volume.settings.shadowLength>0){const dir=dominantLight(volume,{x:point.x,y:point.y-90*actor.scale}),len=Math.min(45,dir.weight*volume.settings.shadowLength*30),localX=(-dir.x*cos-dir.y*sin)*(directionFlip?-1:1),localY=dir.x*sin-dir.y*cos;
+        ellipse(entity.shadow!,localX*len,3+localY*len*.18,Math.max(12,28+len*.4),5,lighting?.shadow??'#241b35');}
       // Respect staged three-quarter dialogue angles. An automatic camera gaze
       // must not override the director's chosen front-left/front-right angle.
       const cameraGaze=actor.authoredGaze?actor.gazeTarget==='camera':actor.capturedFacing==='left'||actor.capturedFacing==='right'
@@ -287,8 +326,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         actor.authoredGaze?targetFocus:resolvePreviewFocus(Boolean(options.characterPreview), options.previewFocus, targetFocus), options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
+        {vectorCache,behavior:options.edit?undefined:actor.behavior,secondary:secondary?.get(actor.id),surface,onResolvedArtworkPose:options.onResolvedArtworkPose,rearHairArt:entity.rearHairArt,mirrored:directionFlip,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
       entity.face!.y -= lift;
+      entity.rearHairArt!.y -= lift;
       // Props are children of the same character Container as the hands:
       // the IK grip and object share one transform and move as one until
       // their Release event. Left and right use independent persistent art.
@@ -336,10 +376,10 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
             art=new Graphics();entity.group.addChild(art);
             if(left)entity.heldArtLeft=art;else entity.heldArt=art;
           }
-          const key=prop.kind+'/'+prop.color;
+          const native=activeWorldProp(prop),key=prop.kind+'/'+prop.color+(native?'/'+JSON.stringify(native):'');
           const previous=left?entity.heldArtKeyLeft:entity.heldArtKey;
           if(previous!==key){
-            drawProp(art.clear(),prop);
+            if(native)drawVectorRegions(art.clear(),worldDrawList(native,undefined,{base:prop.color}));else drawProp(art.clear(),prop);
             if(left)entity.heldArtKeyLeft=key;else entity.heldArtKey=key;
           }
           art.tint=tint;
@@ -403,6 +443,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     for(const [id,entry] of titleLabels)if(!activeTitles.has(id)){entry.text.destroy();titleLabels.delete(id);}
     if(!options.edit&&transition)drawTransition(fade,transition.effect,transition.progress,width,height);
     app.render();
+    volumeCache.end();
     return lastFrame;
   }
   function pick(x: number, y: number) {
@@ -422,14 +463,17 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     const hit = candidates.find(item => item.id === lastSelectedId) ?? candidates[0];
     return { id: hit?.id, x: point.x, y: point.y };
   }
-  return { canvas: app.canvas, draw, pick, width, height, prepareImages,
+  return { canvas: app.canvas, draw, pick, width, height, prepareImages, secondaryMetrics:()=>dynamics.instrumentation(),worldMetrics:()=>worldDynamics.instrumentation(),
     projectPoint: (point:{x:number;y:number})=>worldToScreen(point,currentCamera,{width,height},format),
     preloadBackground: (image: string | undefined) => {if (image) void loadImage(image).catch(()=>{});},
     destroy: () => {
       destroyed=true;
+      volumeCache.dispose();
+      dynamics.dispose();worldDynamics.dispose();worldGraphics.clear();
       cancelAnimationFrame(imageFrame);
       repaintLatestFrame=undefined;
       requests.clear();
+      vectorCache.dispose();
       // Actor previews and exports can close while a separate stage is active.
       // Keep Pixi's global render pools valid for those remaining renderers.
       app.destroy({removeView:true,releaseGlobalResources:false},{children:true,texture:true,textureSource:true,context:true});

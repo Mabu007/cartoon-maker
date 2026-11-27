@@ -42,7 +42,7 @@ export function traceMouthCavity(g:Graphics,shape:MouthGeometry):Graphics {
 export function drawExpressionMouth(face:Container,character:Character,mood:FacialPerformance,x:number,view:View='front') {
   const layer=getLayer(face),model=mouthGeometry(character,mood,view);
   layer.root.visible=true;
-  layer.root.position.set(x,27);
+  layer.root.position.set(x,27+(character.wardrobe?.mouthHeight??0));
   layer.root.scale.set(model.profileScale,1);
   layer.cavity.clear();layer.mask.clear();layer.lips.clear();
   layer.inside.visible=model.open;
@@ -71,14 +71,6 @@ export function drawExpressionMouth(face:Container,character:Character,mood:Faci
     graphic.fill(tooth.fill).stroke({color:tooth.outline,width:.48});
     if(character.wardrobe?.toothStyle==='braces')graphic.rect(tooth.x,tooth.y+tooth.height*.36,tooth.width,1).fill('#9098aa');
   }
-  const {rx,top,bottom,cornerLeft,cornerRight}=model;
-  // Same lip control points and quadratic paths as SvgMouthRig.
-  layer.lips.moveTo(-rx,cornerLeft)
-    .quadraticCurveTo(-rx*.4,top-1.2,0,top-1.45)
-    .quadraticCurveTo(rx*.4,top-1.05,rx,cornerRight)
-    .stroke({color:character.wardrobe?.lipColor??'#713d4c',width:(character.mouth==='full'?2.1:1.65)*(character.wardrobe?.lipThickness??1),cap:'round'});
-  layer.lips.moveTo(-rx,cornerLeft)
-    .quadraticCurveTo(-rx*.35,bottom+.65,0,bottom+1.15)
-    .quadraticCurveTo(rx*.35,bottom+.65,rx,cornerRight)
-    .stroke({color:'#653946',width:1.35,cap:'round'});
+  layer.lips.path(illustratedPath(model.upperLipPath)).stroke({color:character.wardrobe?.lipColor??'#713d4c',width:(character.mouth==='full'?2.1:1.65)*(character.wardrobe?.lipThickness??1)*(character.wardrobe?.upperLipRatio??1),cap:'round'});
+  layer.lips.path(illustratedPath(model.lowerLipPath)).stroke({color:character.wardrobe?.lipColor??'#653946',width:1.35*(character.wardrobe?.lowerLipRatio??1),cap:'round'});
 }

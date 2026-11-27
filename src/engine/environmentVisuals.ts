@@ -1,3 +1,6 @@
+import {WorldSet} from './worldArtworkSchema.ts';
+import {SceneSecondary} from './secondaryMotionSchema.ts';
+import {VvleLight,VvleSettings} from './vvleSchema.ts';
 import { z } from 'zod';
 const n=(min:number,max:number)=>z.number().finite().min(min).max(max);
 const color=z.string().regex(/^#[a-f\d]{6}$/i);
@@ -9,11 +12,14 @@ export const Perspective=z.strictObject({enabled:z.boolean(),retimeMovement:z.bo
   if(p.nearY<=p.farY||p.farY<=p.horizon)ctx.addIssue({code:'custom',message:'Place horizon above far reference, and far reference above near reference.'});
   if(p.nearScale<p.farScale||p.minScale>p.maxScale)ctx.addIssue({code:'custom',message:'Near scale must be at least far scale; minimum must not exceed maximum.'});
 });
-export const Light=z.strictObject({id:z.string().min(1).max(80),x:n(-2000,3000),y:n(-2000,3000),color,intensity:n(0,2),radius:n(10,1500),falloff:n(.5,4),keys:z.array(z.strictObject({time:n(0,180),x:n(-2000,3000),y:n(-2000,3000),intensity:n(0,2)})).max(120).optional()}).superRefine((l,ctx)=>{
+export const Light=z.strictObject({id:z.string().min(1).max(80),x:n(-2000,3000),y:n(-2000,3000),color,intensity:n(0,2),radius:n(10,1500),falloff:n(.5,4),volume:VvleLight.optional(),keys:z.array(z.strictObject({time:n(0,180),x:n(-2000,3000),y:n(-2000,3000),intensity:n(0,2)})).max(120).optional()}).superRefine((l,ctx)=>{
   if(l.keys?.some((k,i)=>i>0&&k.time<=l.keys![i-1].time))ctx.addIssue({code:'custom',message:'Light keys must have unique increasing times.'});
 });
 export const EnvironmentVisual=z.strictObject({version:z.literal(1),quality:z.enum(['eco','balanced','high']),
   lighting:z.strictObject({enabled:z.boolean(),ambient:color,intensity:n(0,1.5),shadow:color,shadowOpacity:n(0,1),lights:z.array(Light).max(8)}).optional(),
+  volume:VvleSettings.optional(),
+  secondaryMotion:SceneSecondary.optional(),
+  world:WorldSet.optional(),
   perspective:Perspective.optional(),
   walkable:z.array(z.strictObject({x:n(-2000,3000),y:n(-2000,3000)})).min(3).max(80).optional()
 }).superRefine((v,ctx)=>{

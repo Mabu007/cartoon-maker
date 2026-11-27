@@ -88,14 +88,16 @@ export function mouthGeometry(character:Character,mood:FacialPerformance,view:Vi
   const curve=(character.wardrobe?.mouthCurve??0)*-4;
   const cornerLeft=curve+parameters.asymmetry*1.9-(mood.controls?.smileLeft??0)*2.9+(mood.controls?.frownLeft??0)*2.8;
   const cornerRight=curve-parameters.asymmetry*1.9-(mood.controls?.smileRight??0)*2.9+(mood.controls?.frownRight??0)*2.8;
-  const upperLipPath=`M ${fmt(-rx)} ${fmt(cornerLeft)} Q ${fmt(-rx*.4)} ${fmt(top-1.2)} 0 ${fmt(top-1.45)}
-    Q ${fmt(rx*.4)} ${fmt(top-1.05)} ${fmt(rx)} ${fmt(cornerRight)}`;
+  const upperRatio=character.wardrobe?.upperLipRatio??1,lowerRatio=character.wardrobe?.lowerLipRatio??1,cupid=character.wardrobe?.cupidBow;
+  const upperLipPath=cupid===undefined?`M ${fmt(-rx)} ${fmt(cornerLeft)} Q ${fmt(-rx*.4)} ${fmt(top-1.2)} 0 ${fmt(top-1.45)}
+    Q ${fmt(rx*.4)} ${fmt(top-1.05)} ${fmt(rx)} ${fmt(cornerRight)}`:
+    `M ${fmt(-rx)} ${fmt(cornerLeft)} Q ${fmt(-rx*.45)} ${fmt(top-1.2*upperRatio)} ${fmt(-rx*.18)} ${fmt(top-(1.2+cupid)*upperRatio)} Q 0 ${fmt(top-.8*upperRatio)} ${fmt(rx*.18)} ${fmt(top-(1.2+cupid)*upperRatio)} Q ${fmt(rx*.45)} ${fmt(top-1.2*upperRatio)} ${fmt(rx)} ${fmt(cornerRight)}`;
   const restY=mood.expression==='sad'?-2.6:1.4;
   const restPath=character.mouth==='wavy'
     ? `M ${-rx} ${cornerLeft} C ${-rx*.4} -4 ${rx*.4} 5 ${rx} ${cornerRight}`
     : `M ${-rx} ${cornerLeft} Q 0 ${restY} ${rx} ${cornerRight}`;
-  const lowerLipPath=`M ${fmt(-rx)} ${fmt(cornerLeft)} Q ${fmt(-rx*.35)} ${fmt(bottom+.65)} 0 ${fmt(bottom+1.15)}
-    Q ${fmt(rx*.35)} ${fmt(bottom+.65)} ${fmt(rx)} ${fmt(cornerRight)}`;
+  const lowerLipPath=`M ${fmt(-rx)} ${fmt(cornerLeft)} Q ${fmt(-rx*.35)} ${fmt(bottom+.65*lowerRatio)} 0 ${fmt(bottom+1.15*lowerRatio)}
+    Q ${fmt(rx*.35)} ${fmt(bottom+.65*lowerRatio)} ${fmt(rx)} ${fmt(cornerRight)}`;
   // Cubic path uses the exact points also used by Pixi's Graphics mask.
   const cavityPath=`M ${fmt(-rx)} ${fmt(cornerLeft)}
     C ${fmt(-rx*.76)} ${fmt(top*.9)} ${fmt(-rx*.36)} ${fmt(top)} 0 ${fmt(top)}

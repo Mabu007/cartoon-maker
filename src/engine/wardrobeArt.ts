@@ -1,4 +1,4 @@
-import { FillPattern, GraphicsPath, Matrix, Texture, type Graphics } from 'pixi.js';
+import { FillGradient, FillPattern, Matrix, Texture, type Graphics } from 'pixi.js';
 import { ellipse, INK, rect, segment } from './art.ts';
 import { illustratedPath, shade, type IllustratedView } from './illustration.ts';
 import type { Point } from './animation.ts';
@@ -8,7 +8,7 @@ import type { Character } from './schema.ts';
 type Closet = NonNullable<Character['wardrobe']>;
 export type CostumeTexture = (source: string) => Texture | undefined;
 
-export function vector(g: Graphics, path: string, fill = 'none', outline = INK, width = 1.8, matrix?: Matrix) {
+export function vector(g: Graphics, path: string, fill: string|FillGradient = 'none', outline = INK, width = 1.8, matrix?: Matrix) {
   const shape = positionedPath(path,matrix);
   const use = () => g.path(shape);
   if (fill !== 'none') use().fill(fill);
@@ -17,7 +17,9 @@ export function vector(g: Graphics, path: string, fill = 'none', outline = INK, 
 
 export function positionedPath(path: string, transform?: Matrix) {
   const shape = illustratedPath(path);
-  return transform ? new GraphicsPath().addPath(shape,transform) : shape;
+  // Keep the cached instructions independent of any later Graphics transform.
+  // A nested addPath shares its child when Pixi clones the outer path.
+  return transform ? shape.clone(true).transform(transform) : shape;
 }
 
 export function at(x: number, y: number, sx = 1, sy = sx, angle = 0) {
@@ -72,7 +74,7 @@ function fabricTile(kind: PatternKey, color: string) {
   return canvas;
 }
 const tileTextures = new WeakMap<HTMLCanvasElement, Texture>();
-export function drawFabric(g: Graphics, path: string, base: string, w: Closet | undefined, texture?: CostumeTexture, transform?: Matrix) {
+export function drawFabric(g: Graphics, path: string, base: string|FillGradient, w: Closet | undefined, texture?: CostumeTexture, transform?: Matrix) {
   vector(g,path,base,INK,0,transform);
   let image = w?.patternImage ? texture?.(w.patternImage) : undefined;
   if (!image && w?.pattern && w.pattern !== 'solid') {
@@ -103,7 +105,7 @@ export const topShapes = {
   'slip-dress':[16,16,22], sundress:[20,16,28], athleisure:[18,17,-18], 'fitted-turtleneck':[21,15,0], bikini:[23,16,0], shirtless:[24,18,0]
 } satisfies Record<Character['outfit'], [number,number,number]>;
 
-export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Point,hip: Point,texture?: CostumeTexture) {
+export function topContour(c:Character,view:IllustratedView,neck:Point,hip:Point){
   const w=c.wardrobe, kind=c.outfit, [shoulders,waist,hem]=topShapes[kind];
   const x=neck.x, top=neck.y+2, bx=hip.x, mid=hip.y+2;
   const dress=kind==='slip-dress'||kind==='sundress';
@@ -118,14 +120,19 @@ export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Poi
   const leftChest=x-a-(profile?0:chest), rightChest=x+a+(view.rear?0:chest);
   const leftHip=bx-end-(view.rear||view.profile?end*(build.hip-1)*.46:0);
   const legacyPath=`M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} L ${bx-b} ${mid-15+Math.min(0,hem)} L ${bx-end} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} L ${bx+b} ${mid-15+Math.min(0,hem)} L ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
-  const path=build.shoulder===1 && build.waist===1 && build.hip===1 && build.chest===0 ? legacyPath : `M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} Q ${leftChest} ${chestY} ${bx-b} ${bellyY} Q ${bx-b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${leftHip} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} Q ${bx+b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${bx+b} ${bellyY} Q ${rightChest+(profile?front*chest:0)} ${chestY} ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
+  const path=build.shoulder===1 && build.waist===1 && build.hip===1 && build.chest===0 && (c.visual?.abdomen??1)===1 ? legacyPath : `M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} Q ${leftChest} ${chestY} ${bx-b} ${bellyY} Q ${bx-b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${leftHip} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} Q ${bx+b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${bx+b} ${bellyY} Q ${rightChest+(profile?front*chest:0)} ${chestY} ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
+
+  return {path,w,kind,shoulders,waist,hem,x,top,bx,mid,dress,fit,bottom,build,a,waistBase,b,end,shoulderLine,chestY,bellyY,chest,front,profile,leftChest,rightChest,leftHip,legacyPath};
+}
+export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Point,hip: Point,texture?: CostumeTexture) {
+  const {path,w,kind,shoulders,waist,hem,x,top,bx,mid,dress,fit,bottom,build,a,waistBase,b,end,shoulderLine,chestY,bellyY,chest,front,profile,leftChest,rightChest,leftHip,legacyPath}=topContour(c,view,neck,hip);
   const bare=kind==='shirtless'||kind==='bikini';
   if(bare){
     vector(g,path,c.skin,INK,2.35);
     const contour=shade(c.skin,-.24);
     if(kind==='shirtless'){
       if(view.rear)vector(g,`M ${x} ${top+13} Q ${x-4} ${top+27} ${bx} ${mid-6}`,'none',contour,1.3);
-      else if(c.bodyBuild?.abs){
+      else if(c.bodyBuild?.abs||(c.visual?.muscleDefinition??.5)>.7){
         const center=x+(view.profile?a*.26:view.face*.16), scale=Math.min(1,a/22);
         vector(g,`M ${center-9*scale} ${top+18} Q ${center} ${top+24} ${center+10*scale} ${top+18} M ${center} ${top+25} L ${bx+(center-x)} ${mid-6}`,'none',contour,1.35);
         for(let row=0;row<3;row++){
@@ -249,13 +256,13 @@ export const bagPaths = {
   clutch:'M-14 -6H14V7H-14Z'
 } satisfies Record<Exclude<Closet['bag'],'none'|undefined>,string>;
 
-export function drawBag(g:Graphics,c:Character,art:IllustratedView,neck:Point,hip:Point,hand?:Point,texture?:CostumeTexture) {
+export function drawBag(g:Graphics,c:Character,art:IllustratedView,neck:Point,hip:Point,hand?:Point,texture?:CostumeTexture,swing?:readonly [number,number]) {
   const w=c.wardrobe,kind=w?.bag;
   if(!kind||kind==='none')return;
   const carry=['tote','duffle','clutch'].includes(kind);
   if(carry!==Boolean(hand))return;
   const color=w?.accessoryColor??'#404363', trim=w?.metal??'#e7ba65';
-  const x=hand?.x??neck.x+(kind==='shoulder-bag'?-17:art.face*.37);
+  const x=(hand?.x??neck.x+(kind==='shoulder-bag'?-17:art.face*.37))+(!carry&&['shoulder-bag','messenger'].includes(kind)?Math.max(-3,Math.min(3,swing?.[0]??0)):0);
   const y=hand ? hand.y+20 : kind==='waist-pack'?hip.y-4:neck.y+(kind==='messenger'?43:29);
   const t=at(x,y,hand?1:art.profile?.74:1,1);
   if(!carry && kind!=='waist-pack') {

@@ -198,3 +198,15 @@ export function handWidthScale(view: View, side: HandSide, twist: number) {
 }
 
 export const handSize = (thickness: number) => Math.max(.35, .91 * thickness);
+
+/** Finger DNA order: thumb,index,middle,ring,pinky. Keep each root and
+ * wrist fixed. Contact/captured gestures use unmodified solved geometry. */
+export function morphHandGeometry(geometry:ReturnType<typeof sampleHandRig>,ratios?:readonly number[],contact=false){
+  if(contact||!ratios||ratios.length!==5||ratios.every(v=>v===1))return geometry;
+  const scale=(path:FingerPath,value:number):FingerPath=>{
+    const n=Number.isFinite(value)?Math.max(.9,Math.min(1.1,value)):1;
+    const root=path[0],adjust=(pt:HandPoint):HandPoint=>[root[0]+(pt[0]-root[0])*n,root[1]+(pt[1]-root[1])*n];
+    return [root,adjust(path[1]),adjust(path[2])];
+  };
+  return {...geometry,thumb:scale(geometry.thumb,ratios[0]),fingers:geometry.fingers.map((path,i)=>scale(path,ratios[i+1]))};
+}

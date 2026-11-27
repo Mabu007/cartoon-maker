@@ -17,14 +17,14 @@ export function rasterDimensions(bytes:Uint8Array):{width:number;height:number}{
 }
 function verifyDimensions({width,height}:{width:number;height:number},max=2048){if(!width||!height||width>max||height>max)throw Error(`Artwork must be between 1 and ${max} pixels per edge.`);}
 export function sanitiseSvg(source:string){
-  if(source.length>1_000_000||/<!DOCTYPE|<!ENTITY/i.test(source))throw Error('SVG must be passive artwork under 1 MB without XML entities.');
+  if(source.length>1_000_000||/<!DOCTYPE|<!ENTITY|<\?xml-stylesheet/i.test(source))throw Error('SVG must be passive artwork under 1 MB without XML entities.');
   const doc=new DOMParser().parseFromString(source,'image/svg+xml');
   const tags=new Set(['svg','g','path','rect','circle','ellipse','line','polyline','polygon','defs','linearGradient','radialGradient','stop','clipPath','title','desc']);
   if(doc.querySelector('parsererror')||doc.documentElement.localName!=='svg')throw Error('Invalid SVG artwork.');
   for(const node of Array.from(doc.querySelectorAll('*'))){
     if(!tags.has(node.localName))throw Error(`SVG element ${node.localName} is not supported. Use paths and shapes.`);
     for(const attribute of Array.from(node.attributes)){
-      if(/^on/i.test(attribute.name)||/href|src|style/i.test(attribute.name))throw Error('SVG links, event handlers and CSS must be removed.');
+      if(/^on/i.test(attribute.name)||/href|src|style|filter/i.test(attribute.name))throw Error('SVG links, event handlers and CSS must be removed.');
       if(/url\s*\(/i.test(attribute.value)&&!/^url\(#[a-zA-Z0-9_-]+\)$/.test(attribute.value))throw Error('External SVG resources are not allowed.');
     }
   }

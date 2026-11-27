@@ -1,3 +1,7 @@
+import {deformBoneSurface} from './secondarySurface.ts';
+import type {SurfaceFill} from './vvleRender.ts';
+import type {PrimaryArtworkPose} from './primaryArtworkPose.ts';
+import { anatomicalSegments, type LimbRegion, type LimbMorphology } from './anatomicalVectorArt.ts';
 import type {Graphics} from 'pixi.js';
 import type {Point} from './animation.ts';
 import {at,vector} from './wardrobeArt.ts';
@@ -24,5 +28,19 @@ export function drawStudioLimb(g:Graphics,joints:Point[],width:number,color:stri
     vector(g,silhouette,color,shade(color,-.48),1.25,transform);
     vector(g,shadePanel,shade(color,-.19),'none',0,transform);
     vector(g,highlight,shade(color,.14),'none',0,transform);
+  }
+}
+
+/** Opt-in anatomy artwork. Existing illustrated and classic projects retain
+ * their original renderer. Geometry strings are fixed and use the shared path cache. */
+export function drawAnatomicalLimb(g:Graphics,joints:Point[],width:number,color:string,region:LimbRegion,morphology?:LimbMorphology,primary?:PrimaryArtworkPose,surface?:SurfaceFill,secondary?:readonly [number,number]){
+  for(const {frame,art} of anatomicalSegments(joints,width,region,morphology,primary)){
+    const transform=at(frame.x,frame.y,frame.length,frame.width,frame.angle);
+    const middle={x:frame.x+Math.cos(frame.angle*Math.PI/180)*frame.length*.5,y:frame.y+Math.sin(frame.angle*Math.PI/180)*frame.length*.5};
+    const normal=secondary&&(region==='thigh'||region==='upper-arm')?(-Math.sin(frame.angle*Math.PI/180)*secondary[0]+Math.cos(frame.angle*Math.PI/180)*secondary[1])*.5:0;
+    const shape=(d:string)=>normal?deformBoneSurface(d,normal,frame.width):d;
+    vector(g,shape(art.outline),surface?.(color,'skin',middle,frame.angle,'cylinder')??color,shade(color,-.34),.65,transform);
+    vector(g,shape(art.shadow),shade(color,-.16),'none',0,transform);
+    vector(g,shape(art.highlight),shade(color,.12),'none',0,transform);
   }
 }
