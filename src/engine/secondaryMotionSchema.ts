@@ -1,0 +1,12 @@
+import {z} from 'zod';
+import {LveMaterial} from './lveSimulation.ts';
+const n=(a:number,b:number)=>z.number().finite().min(a).max(b);
+export const secondaryComponents=['hair','accessories','body','cloth','face'] as const;
+export type SecondaryComponent=typeof secondaryComponents[number];
+const override=z.strictObject({enabled:z.boolean().optional(),strength:n(0,1).optional(),material:LveMaterial.partial().optional()});
+export const CharacterSecondary=z.strictObject({version:z.literal(1),enabled:z.boolean(),strength:n(0,1),components:z.partialRecord(z.enum(secondaryComponents),override).optional()});
+export type CharacterSecondaryData=z.infer<typeof CharacterSecondary>;
+export const characterSecondaryDefaults:CharacterSecondaryData={version:1,enabled:true,strength:.55};
+export const SceneSecondary=z.strictObject({version:z.literal(1),enabled:z.boolean(),strength:n(0,1),quality:z.enum(['eco','balanced']),seed:z.number().int().min(0).max(4294967295),windX:n(-80,80),windY:n(-80,80),turbulence:n(0,12),gusts:z.array(z.strictObject({time:n(0,180),x:n(-80,80),y:n(-80,80),duration:n(.1,4)})).max(16)}).superRefine((v,ctx)=>{if(v.gusts.some((g,i)=>i>0&&g.time<=v.gusts[i-1].time))ctx.addIssue({code:'custom',message:'Gust times must be unique and increasing'});});
+export type SceneSecondaryData=z.infer<typeof SceneSecondary>;
+export const sceneSecondaryDefaults:SceneSecondaryData={version:1,enabled:false,strength:.65,quality:'eco',seed:17,windX:0,windY:0,turbulence:0,gusts:[]};
