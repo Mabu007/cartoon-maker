@@ -1,3 +1,9 @@
+import {useReducer,useCallback,useMemo,type SetStateAction} from 'react';
+import {draftHistory,startDraft,characterAudition,randomizeWorkspace,type PreviewPhysics} from '../engine/characterWorkspace.ts';
+import {characterIdentity} from '../engine/characterIdentity.ts';
+import {CharacterSecondaryControls} from './SecondaryMotionControls.tsx';
+import {flagshipCharacters} from '../engine/visualPresets.ts';
+import {CharacterDefinition,HostedVoiceId} from '../engine/schema.ts';
 import {CharacterIdentityPanel} from './CharacterIdentityPanel.tsx';
 import {duplicateCharacterIdentity} from '../engine/characterIdentity.ts';
 import { CharacterVisualStudio } from './CharacterVisualStudio.tsx';
@@ -18,23 +24,29 @@ import { Avatar, IconButton, Modal, Select } from './shared.tsx';
 
 const sliders = { height: 'Height', head: 'Head size', thickness: 'Build', torso: 'Torso length', arms: 'Arm length', legs: 'Leg length', eyeSpacing: 'Eye spacing' } as const;
 const skinTones = ['#f2c49b', '#d89b70', '#b97550', '#925b40', '#76452f', '#503123'];
-const sections = ['Hair','Face','Outfit','Accessories','Body','Personality'] as const;
+const sections = ['Identity','Body','Face','Eyes','Brows','Nose','Mouth','Ears','Hair','Facial hair','Garments','Footwear','Accessories','Personality','Voice','Physics','Advanced art'] as const;
+const presets=[...flagshipCharacters,...characters];
 const personalityLabels:Record<Trait,string>={confidence:'Confidence',expressiveness:'Expressiveness',energy:'Energy',sociability:'Sociability',nervousness:'Nervousness',aggressiveness:'Aggressiveness',playfulness:'Playfulness',patience:'Patience',restlessness:'Restlessness',emotionalReactivity:'Emotional reactivity',gestureFrequency:'Gesture frequency',gestureAmplitude:'Gesture size',movementSpeed:'Movement speed',postureOpenness:'Posture openness',eyeContact:'Eye contact',personalSpace:'Personal space',reactionIntensity:'Reaction intensity',movementSmoothness:'Movement smoothness',breathingAmplitude:'Breathing amplitude',breathingRate:'Breathing rate',idleTiming:'Idle adjustment frequency',blinkFrequency:'Blink frequency',headOrientation:'Head orientation',responseTendency:'Listening responses'};
 const highImpactTraits:Trait[]=['confidence','expressiveness','energy','nervousness','gestureFrequency','gestureAmplitude','postureOpenness','eyeContact'];
 const viewLabels: Record<View, string> = { front: 'Front', 'three-quarter': '¾ Front', side: 'Side', 'back-quarter': '¾ Back', back: 'Back' };
 export function CharacterFactory({ source, save, close, remove }: { source?: Character; save: (value: Character) => void; close: () => void; remove: (id: string) => void }) {
-  const [draft, setDraft] = useState<Character>(() => source ?? { ...characters[0], id: uid(), name: 'New character' });
-  const [section, setSection] = useState<typeof sections[number]>('Hair'), [view, setView] = useState<View>('three-quarter');
+  const [initial]=useState<Character>(()=>source??{...structuredClone(flagshipCharacters[0]??characters[0]),id:uid(),name:'New character'});
+  const [history,dispatch]=useReducer(draftHistory,initial,startDraft),draft=history.present;
+  const setDraft=useCallback((update:SetStateAction<Character>,key?:string)=>dispatch({type:'edit',update,key,time:performance.now()}),[]);
+  const [playing,setPlaying]=useState(false),[physics,setPhysics]=useState<PreviewPhysics>('off'),[wind,setWind]=useState(0),[pan,setPan]=useState({x:0,y:0}),[status,setStatus]=useState('');
+  const drag=useRef<{x:number;y:number;px:number;py:number}|null>(null);
+  const [section, setSection] = useState<typeof sections[number]>('Identity'), [view, setView] = useState<View>('three-quarter');
   const [action, setAction] = useState<Action>('idle'), [expression, setExpression] = useState<Expression>('neutral');
   const [look, setLook] = useState<'auto'|'camera'|'left'|'right'|'up'>('auto');
   const [mouthTest,setMouthTest]=useState<'auto'|Viseme>('auto');
-  const [flip, setFlip] = useState(false), [scale, setScale] = useState(1.4), [fallback, setFallback] = useState(false);
+  const [flip, setFlip] = useState(false), [scale, setScale] = useState(1), [fallback, setFallback] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [advancedPersonality,setAdvancedPersonality]=useState(false);
   const [tooth,setTooth]=useState(0);
   const canvas = useRef<HTMLDivElement>(null);
-  const frame = useRef({ draft, action, expression, view, flip, scale, look, mouthTest });
-  frame.current = { draft, action, expression, view, flip, scale, look, mouthTest };
+  const audition=useMemo(()=>characterAudition(draft,action,expression,view,flip,physics,wind),[draft,action,expression,view,flip,physics,wind]);
+  const frame=useRef({draft,action,look,mouthTest,audition,playing});
+  frame.current={draft,action,look,mouthTest,audition,playing};
   useEffect(() => {
     let alive = true, handle = 0;
     let dispose = () => {};
@@ -55,44 +67,19 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         renderer.destroy();
       };
       canvas.current?.replaceChildren(renderer.canvas);
-      const scene: Scene = {
-        id: 'character-preview', name: 'Character', environment: 'Podcast studio', duration: 8,
-        actors: [{ id: 'preview', characterId: frame.current.draft.id, x: 480, y: 443, scale: 1, rotation: 0, depth: 0, view: 'three-quarter', flip: false, expression: 'neutral' }],
-        objects: [],
-        clips: [{ id: 'pose', track: 'body', layer: 'body', actor: 'preview', action: 'idle', start: 0, length: 8 },
-          { id: 'expression', track: 'face', expression: 'neutral', actor: 'preview', start: 0, length: 8 }]
-      };
-      let reset = performance.now(), lastAction = '', previous = -1;
-      const animate = (now: number) => {
-        const { draft, action, expression, view, flip, scale, look, mouthTest } = frame.current;
-        if (lastAction !== action) { lastAction = action; reset = now; }
-        const performance=animations[action];
-        // A full Sit -> hold -> Stand audition reveals weight transfer.
-        const span=action==='stand'?4:performance.loop||action==='sit'?8:Math.min(8,performance.duration+.75);
-        const time = ((now - reset) / 1000) % span;
-        if (!document.hidden && Math.floor(time * 24) !== previous) {
-          previous = Math.floor(time * 24);
-          const layout = fitCharacterPreview(draft, scale, action);
-          const actor = scene.actors[0];
-          actor.characterId = draft.id; actor.x = layout.x; actor.y = layout.y; actor.scale = layout.scale;
-          actor.view = view; actor.flip = flip; actor.expression = expression;
-          const body = scene.clips[0], face = scene.clips[1];
-          if (body.track === 'body'){
-            body.action=action==='stand'?'sit':action;
-            body.length=action==='stand'?1.8:action==='sit'||performance.loop?8:performance.duration+.22;
-          }
-          if (face.track === 'face') face.expression = expression;
-          if (action === 'talk') {
-            scene.clips[2] = { id: 'example-speech', track: 'dialogue', actor: 'preview', text: conversationAudition.text, asset: 'builtin:sbu-food',
-              start: conversationAudition.start, length: conversationAudition.duration, muted: false, volume: 1, offset: 0 };
-          } else if (action==='stand') {
-            scene.clips[2]={id:'rise',track:'body',layer:'body',actor:'preview',action:'stand',start:1.8,length:animations.stand.duration};
-          } else scene.clips.length = 2;
-          if(face.track==='face')face.start=expression==='neutral'?8:0;
+      let previous=-1,lastFrame:typeof frame.current|undefined,elapsed=0,lastNow=performance.now(),lastAction:Action|undefined;
+      const animate=(now:number)=>{
+        const current=frame.current,{draft,action,look,mouthTest,audition,playing}=current;
+        if(lastAction!==action){elapsed=0;lastAction=action;previous=-1;}
+        const dt=Math.min(.1,Math.max(0,(now-lastNow)/1000));lastNow=now;
+        if(playing&&!document.hidden)elapsed=(elapsed+dt)%audition.span;
+        const time=elapsed,changed=!lastFrame||lastFrame.audition!==audition||lastFrame.look!==look||lastFrame.mouthTest!==mouthTest||lastFrame.playing!==playing;
+        if(!document.hidden&&(changed||playing&&Math.floor(time*20)!==previous)){
+          previous=Math.floor(time*20);lastFrame=current;
           const gaze = look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } :
             look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 };
           try {
-            renderer.draw(scene,[draft],time,{characterPreview:true,previewFocus:gaze,previewCamera:look==='camera',
+            renderer.draw(audition.scene,[draft],time,{characterPreview:true,previewFocus:gaze,previewCamera:look==='camera',
               previewViseme:mouthTest==='auto'?undefined:mouthTest});
           } catch (cause) {
             useNativePreview(cause);
@@ -105,20 +92,20 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
     }).catch(useNativePreview);
     return () => { alive = false; cancelAnimationFrame(handle); try { dispose(); } catch { /* fallback already disposed the renderer */ } };
   }, []);
-  const update = <K extends keyof Character>(key: K, value: Character[K]) => setDraft(item => ({ ...item, [key]: value }));
+  const update = <K extends keyof Character>(key: K, value: Character[K]) => setDraft(item => ({ ...item, [key]: value }),String(key));
   type Closet = NonNullable<Character['wardrobe']>;
-  const updateCloset=<K extends keyof Closet>(key:K,value:Closet[K])=>setDraft(item=>({...item,wardrobe:{...item.wardrobe,[key]:value}}));
+  const updateCloset=<K extends keyof Closet>(key:K,value:Closet[K])=>setDraft(item=>({...item,wardrobe:{...item.wardrobe,[key]:value}}),'wardrobe.'+String(key));
   const updateBuild=<K extends keyof NonNullable<Character['bodyBuild']>>(key:K,value:NonNullable<Character['bodyBuild']>[K])=>
-    setDraft(item=>({...item,bodyBuild:{...item.bodyBuild,[key]:value}}));
+    setDraft(item=>({...item,bodyBuild:{...item.bodyBuild,[key]:value}}),'body.'+String(key));
   const updatePersonality = <K extends keyof NonNullable<Character['personality']>>(key:K,value:NonNullable<Character['personality']>[K])=>
-    setDraft(current=>({...current,personality:{...current.personality,[key]:value}}));
+    setDraft(current=>({...current,personality:{...current.personality,[key]:value}}),'personality.'+String(key));
   const activePersonality=resolvePersonality(draft.personality);
   const toothColors=Array.from({length:6},(_,index)=>draft.toothColors?.[index]??(draft.goldTeeth?.includes(index)?'#eac05c':'#fff4de'));
 
   return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
-    <div className="factory-grid"><div className="factory-preview"><div className="factory-canvas">{fallback ? <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={fitCharacterPreview(draft, scale, action).scale} focus={look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } : look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 }} mouthTest={mouthTest==='auto'?undefined:mouthTest}/> : <div className="factory-renderer-mount" ref={canvas}/>}</div><div className="factory-zoom"><IconButton title="Fit entire character" onClick={() => setScale(1.4)}><Maximize2 size={15}/></IconButton><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.75, n - .12))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(1.7, n + .12))}><Plus size={15}/></IconButton></div>
-      <div className="segmented view-choice" aria-label="Character view">{views.map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{viewLabels[item]}</button>)}</div>
-      <div className="field-row"><label>Preview action<Select aria="Preview action" value={action} onChange={setAction} options={actions}/></label><label>Expression<Select aria="Preview expression" value={expression} onChange={setExpression} options={expressions}/></label></div>
+    <div className="factory-grid workspace-grid" onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&!(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)){e.preventDefault();dispatch({type:e.shiftKey?'redo':'undo'});}}}><div className="factory-preview"><div className="workspace-preview-header"><strong>Character studio</strong><button type="button" aria-label={playing?'Pause audition':'Play audition'} onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><span>{fallback?'SVG fallback · approximate':'Scene renderer'}</span></div><div className="factory-canvas workspace-canvas" aria-label="Character preview" tabIndex={0} onKeyDown={e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();setPan(v=>({x:Math.max(-400,Math.min(400,v.x+(e.key==='ArrowLeft'?-16:e.key==='ArrowRight'?16:0))),y:Math.max(-400,Math.min(400,v.y+(e.key==='ArrowUp'?-16:e.key==='ArrowDown'?16:0)))}));}}} onPointerDown={e=>{if(e.button!==0)return;drag.current={x:e.clientX,y:e.clientY,px:pan.x,py:pan.y};e.currentTarget.setPointerCapture(e.pointerId);}} onPointerMove={e=>{const d=drag.current;if(d)setPan({x:Math.max(-400,Math.min(400,d.px+e.clientX-d.x)),y:Math.max(-400,Math.min(400,d.py+e.clientY-d.y))});}} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}><div className="workspace-preview-transform" style={{transform:`translate(${pan.x}px,${pan.y}px) scale(${scale})`}}>{fallback ? <NativeCharacterPreview character={draft} view={view} action={action} expression={expression} flip={flip} scale={fitCharacterPreview(draft, 1.4, action).scale} focus={look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } : look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 }} mouthTest={mouthTest==='auto'?undefined:mouthTest}/> : <div className="factory-renderer-mount" ref={canvas}/>}</div></div><div className="factory-zoom"><IconButton title="Fit entire character" onClick={() => {setScale(1);setPan({x:0,y:0});}}><Maximize2 size={15}/></IconButton><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.6, n - .2))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(3, n + .2))}><Plus size={15}/></IconButton></div>
+      <div className="segmented view-choice" aria-label="Character view">{views.map(item => <button key={item} className={view === item ? 'active' : ''} aria-pressed={view===item} onClick={() => setView(item)}>{viewLabels[item]}</button>)}</div>
+      <div className="workspace-auditions" aria-label="Quick auditions">{(['idle','walk','run','sit','stand','talk','wave','turn'] as const).map(a=><button key={a} type="button" aria-pressed={action===a} onClick={()=>{setAction(a);setPlaying(true);}}>{label(a)}</button>)}</div><div className="field-row"><label>Preview action<Select aria="Preview action" value={action} onChange={setAction} options={actions}/></label><label>Expression<Select aria="Preview expression" value={expression} onChange={setExpression} options={expressions}/></label></div>
       <label className="field preview-eye-focus">Eye focus<Select aria="Preview eye focus" value={look} onChange={setLook} options={['auto','camera','left','right','up'] as const}
         render={value => value === 'auto' ? 'Natural · moving eyes' : value === 'camera' ? 'Eye contact · camera' : 'Look ' + value}/></label>
       <label className="field">Mouth rig audition
@@ -126,18 +113,17 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           options={['auto',...visemeNames] as const}
           render={value=>value==='auto'?'Automatic · speech/audio':value.toUpperCase()}/>
       </label>
-    </div><div className="factory-edit"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
+      <details className="factory-details"><summary>Audition physics</summary><label>Physics preview<select aria-label="Audition physics" value={physics} onChange={e=>setPhysics(e.target.value as PreviewPhysics)}><option value="off">Off</option><option value="subtle">Subtle</option><option value="expressive">Expressive</option></select></label><label>Wind <input type="range" aria-label="Audition wind" min={-80} max={80} value={wind} onChange={e=>setWind(Number(e.target.value))}/></label><button type="button" onClick={()=>{setPhysics('off');setWind(0);}}>Reset audition settings</button><p className="small-text">Preview only. No scene settings are saved.</p></details>
+    </div><div className="factory-edit"><div className="workspace-history"><button type="button" disabled={!history.past.length} onClick={()=>dispatch({type:'undo'})}>Undo</button><button type="button" disabled={!history.future.length} onClick={()=>dispatch({type:'redo'})}>Redo</button><button type="button" onClick={()=>dispatch({type:'reset',value:initial})}>Reset draft</button></div><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
 
-      <CharacterIdentityPanel character={draft} change={setDraft}/>
-      <CharacterVisualStudio character={draft} change={setDraft}/>
-      <div className="factory-section-heading"><span>Start with a character</span><button type="button" className="surprise-button" onClick={() => {
-        const item = characters[Math.floor(Math.random() * characters.length)];
-        setDraft(current => ({ ...item, id: current.id, name: current.name }));
-      }}>Surprise me ✨</button></div>
-      <div className="preset-row" aria-label="Character presets">{characters.map(item => <button key={item.id} type="button" title={item.name} aria-label={`Use ${item.name} preset`} onClick={() => setDraft({ ...item, id: draft.id, name: draft.name })}><Avatar character={item}/><span>{item.name}</span></button>)}</div>
-      <div className="segmented factory-categories" role="group" aria-label="Character sections">{sections.map(item => <button key={item} type="button" onClick={() => setSection(item)} aria-pressed={item===section} className={item === section ? 'active' : ''}>{item}</button>)}</div>
+      <div className="segmented factory-categories workspace-categories" role="group" aria-label="Character sections">{sections.map(item=><button key={item} type="button" onClick={()=>setSection(item)} aria-pressed={item===section} className={item===section?'active':''}>{item}</button>)}</div>
+      <h3 className="workspace-category-title">{section}</h3>
+      {section==='Identity'&&<><CharacterIdentityPanel character={draft} change={setDraft}/><div className="factory-section-heading"><span>Start with a character</span><button type="button" className="surprise-button" onClick={()=>{try{setDraft(randomizeWorkspace(draft,(characterIdentity(draft).seed+1)>>>0));setStatus('Seeded identity applied');}catch(e){setStatus(String(e));}}}>Randomize unlocked</button></div><div className="preset-row" aria-label="Character presets">{presets.map(item=><button key={item.id} type="button" title={item.name} aria-label={`Use ${item.name} preset`} onClick={()=>setDraft({...structuredClone(item),id:draft.id,name:draft.name})}><Avatar character={item}/><span>{item.name}</span></button>)}</div></>}
+      {section==='Advanced art'&&<CharacterVisualStudio character={draft} change={setDraft}/>}
+      {section==='Physics'&&<CharacterSecondaryControls character={draft} change={value=>update('secondaryMotion',value)}/>}
+      {section==='Voice'&&<><label className="field">Voice preset<Select aria="Voice preset" value={draft.voicePreset??'warm'} options={['warm','bright','deep'] as const} onChange={v=>update('voicePreset',v)}/></label><label className="field">Optional hosted voice ID<input aria-label="Hosted voice ID" value={draft.hostedVoiceId??''} maxLength={120} onChange={e=>update('hostedVoiceId',e.target.value||undefined)}/></label><p className="small-text">Voice choice is saved with the identity. Hosted synthesis is optional; imported or recorded audio still works offline.</p></>}
       <div className="factory-fields">
-        {(section==='Hair'||section==='Face'||section==='Outfit'||section==='Accessories')&&<CharacterChoices key={section} section={section} character={draft} change={update} changeCloset={updateCloset}/>}
+        {(section==='Hair'||section==='Facial hair'||section==='Face'||section==='Eyes'||section==='Brows'||section==='Nose'||section==='Mouth'||section==='Ears'||section==='Garments'||section==='Footwear'||section==='Accessories')&&<CharacterChoices key={section} section={section} character={draft} change={update} changeCloset={updateCloset}/>}
         {section === 'Personality' && <div className="factory-personality">
           <div className="factory-build-field"><strong>Personality preset</strong>
             <Select aria="Personality preset" value={activePersonality.preset} options={personalityPresets}
@@ -186,7 +172,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
           <label className="check"><input type="checkbox" checked={draft.bodyBuild?.abs??false} onChange={event=>updateBuild('abs',event.currentTarget.checked)}/> Six-pack definition in shirtless outfits</label>
           {(['height', 'head', 'thickness'] as const).map(id => <label className="field slider" key={id}>{sliders[id]}<input type="range" min={id === 'thickness' ? .65 : .75} max={id === 'head' ? 1.35 : id === 'thickness' ? 1.45 : 1.3} step={.01} value={draft[id]} onChange={e => update(id, Number(e.target.value))}/></label>)}
         </>}
-        {section === 'Face' && <div className="factory-teeth-editor">
+        {section === 'Mouth' && <div className="factory-teeth-editor">
           <strong>Tooth color</strong>
           <div className="factory-teeth-row" role="group" aria-label="Select a tooth">
             {toothColors.map((color,index)=><button type="button" key={index} aria-pressed={tooth===index}
@@ -205,7 +191,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
               onChange={e=>updateCloset('teethIntensity',Number(e.target.value))}/>
           </label>
         </div>}
-        {section === 'Face' && <div className="factory-mouth-rig-editor">
+        {section === 'Mouth' && <div className="factory-mouth-rig-editor">
           <strong>Parametric SVG mouth rig</strong>
           <p className="small-text">Character-specific proportions. The visemes animate jaw opening, lip rounding and position, closure, teeth and tongue automatically.</p>
           {([
@@ -224,11 +210,11 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
               }}))}/>
           </label>)}
         </div>}
-        <div className="factory-skin"><span>Skin tone</span><div className="tone-swatches">{skinTones.map(tone => <button key={tone} type="button" className={draft.skin.toLowerCase() === tone ? 'selected' : ''} style={{ backgroundColor: tone }} title={tone} aria-label={`Skin tone ${tone}`} onClick={() => update('skin', tone)}/>)}</div><label className="custom-tone">Custom <input type="color" aria-label="Custom skin tone" value={draft.skin} onChange={e => update('skin', e.target.value)}/></label></div>
-        {(section === 'Face' || section === 'Body') && <><button type="button" className="advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(value => !value)}>{advanced ? '− Hide advanced proportions' : '+ Advanced proportions'}</button>
-        {advanced && <div className="factory-advanced">{(section === 'Face' ? ['eyeSpacing'] : ['torso', 'arms', 'legs']).map(key => { const id = key as keyof typeof sliders; return <label className="field slider" key={key}>{sliders[id]}<input type="range" min={id==='eyeSpacing'?.65:.75} max={id === 'eyeSpacing' ? 1.4 : 1.3} step={.01} value={draft[id]} onChange={event => update(id, Number(event.target.value))}/></label>; })}</div>}</>}
+        {(section==='Identity'||section==='Body'||section==='Face')&&<div className="factory-skin"><span>Skin tone</span><div className="tone-swatches">{skinTones.map(tone => <button key={tone} type="button" className={draft.skin.toLowerCase() === tone ? 'selected' : ''} style={{ backgroundColor: tone }} title={tone} aria-label={`Skin tone ${tone}`} onClick={() => update('skin', tone)}/>)}</div><label className="custom-tone">Custom <input type="color" aria-label="Custom skin tone" value={draft.skin} onChange={e => update('skin', e.target.value)}/></label></div>}
+        {(section === 'Eyes' || section === 'Body') && <><button type="button" className="advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(value => !value)}>{advanced ? '− Hide advanced proportions' : '+ Advanced proportions'}</button>
+        {advanced && <div className="factory-advanced">{(section === 'Eyes' ? ['eyeSpacing'] : ['torso', 'arms', 'legs']).map(key => { const id = key as keyof typeof sliders; return <label className="field slider" key={key}>{sliders[id]}<input type="range" min={id==='eyeSpacing'?.65:.75} max={id === 'eyeSpacing' ? 1.4 : 1.3} step={.01} value={draft[id]} onChange={event => update(id, Number(event.target.value))}/></label>; })}</div>}</>}
       </div>
     </div></div>
-    <footer className="modal-footer">{source && <><IconButton title="Delete character" onClick={() => remove(source.id)}><Trash2 size={17}/></IconButton><button className="quiet" disabled={!draft.name.trim()} onClick={() => save(duplicateCharacterIdentity(draft,uid()))}><Copy size={16}/> Duplicate</button></>}<span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!draft.name.trim()} onClick={() => save({ ...draft, name: draft.name.trim() })}><Save size={16}/> Save character</button></footer>
+    {status&&<p role="status" className="small-text">{status}</p>}<footer className="modal-footer">{source && <><IconButton title="Delete character" onClick={() => remove(source.id)}><Trash2 size={17}/></IconButton><button className="quiet" disabled={!draft.name.trim()} onClick={() => {try{save(duplicateCharacterIdentity(draft,uid()));}catch(e){setStatus(e instanceof Error?e.message:'Invalid character');}}}><Copy size={16}/> Duplicate</button></>}<span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!draft.name.trim()} onClick={() => {const parsed=CharacterDefinition.safeParse({...draft,name:draft.name.trim()});if(parsed.success)save(parsed.data);else setStatus(parsed.error.issues[0]?.message??'Invalid character');}}><Save size={16}/> Save character</button></footer>
   </Modal>;
 }
