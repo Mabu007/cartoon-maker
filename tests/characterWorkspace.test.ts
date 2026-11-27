@@ -21,6 +21,10 @@ test('draft edits coalesce per control, undo/redo/reset restore original and his
  s=draftHistory(s,{type:'reset',value:base});assert.equal(s.present,base);s=draftHistory(s,{type:'undo'});assert.equal(s.present,result);
  for(let i=0;i<50;i++)s=draftHistory(s,{type:'edit',update:c=>({...c,name:'Test '+i}),time:1000+i*500});
  assert.equal(s.past.length,32);assert.equal(s.future.length,0);
+ const nested=startDraft({...base,garmentDesign:garmentDefaults});
+ const top=draftHistory(nested,{type:'edit',key:'garmentDesign',time:1,update:c=>({...c,garmentDesign:{...c.garmentDesign!,top:'wrap-tunic'}})});
+ const bottom=draftHistory(top,{type:'edit',key:'garmentDesign',time:2,update:c=>({...c,garmentDesign:{...c.garmentDesign!,bottom:'wrap-skirt'}})});
+ assert.equal(bottom.past.length,2);assert.equal(draftHistory(bottom,{type:'undo'}).present.garmentDesign?.top,'wrap-tunic');assert.equal(draftHistory(bottom,{type:'undo'}).present.garmentDesign?.bottom,garmentDefaults.bottom);
 });
 test('targeted deterministic randomization preserves locked groups, imported identity and compatible modular outfits',()=>{
  const c=setIdentityLock({...base,garmentDesign:garmentDefaults},'body',true);

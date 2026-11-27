@@ -15,8 +15,17 @@ export function draftHistory(s:DraftHistory,a:DraftAction):DraftHistory{
  const next=typeof a.update==='function'?a.update(s.present):a.update;if(next===s.present)return s;
  // Coalesce consecutive edits to one control, never unrelated controls or
  // imports. Shallow immutable snapshots share unchanged large asset strings.
- const merge=Boolean(a.key&&a.key===s.lastKey&&a.time-s.lastTime<350&&s.past.length);
- return {past:merge?s.past:[...s.past,s.present].slice(-32),present:next,future:[],lastKey:a.key,lastTime:a.time};
+ // For an entire nested settings object, merge only a single changed leaf,
+ // not successive edits to different garment/hair/physics parameters.
+ const leaf=(before:unknown,after:unknown,prefix:string):string|undefined=>{
+  if(Object.is(before,after))return undefined;
+  if(!before||!after||typeof before!=='object'||typeof after!=='object'||Array.isArray(before)||Array.isArray(after))return prefix;
+  const a=before as Record<string,unknown>,b=after as Record<string,unknown>,keys=[...new Set([...Object.keys(a),...Object.keys(b)])].filter(k=>!Object.is(a[k],b[k]));
+  if(keys.length!==1)return undefined;return leaf(a[keys[0]],b[keys[0]],prefix+'.'+keys[0]);
+ };
+ const key=a.key&&!a.key.includes('.')&&a.key in s.present?leaf(s.present[a.key as keyof Character],next[a.key as keyof Character],a.key):a.key;
+ const merge=Boolean(key&&key===s.lastKey&&a.time-s.lastTime<350&&s.past.length);
+ return {past:merge?s.past:[...s.past,s.present].slice(-32),present:next,future:[],lastKey:key,lastTime:a.time};
 }
 export function randomizeWorkspace(c:Character,seed:number,group:IdentityLock|'all'='all'){
  const identity=characterIdentity(c);
