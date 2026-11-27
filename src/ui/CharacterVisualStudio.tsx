@@ -12,6 +12,7 @@ const controls=[['shoulders','Shoulder width',.8,1.25],['waist','Waist width',.7
 export function CharacterVisualStudio({character,change}:{character:Character;change:(c:Character)=>void}){
   const [workbench,setWorkbench]=useState(false),[status,setStatus]=useState(''),[prompt,setPrompt]=useState('');
   const [vectorView,setVectorView]=useState<View>('three-quarter');
+  const [vectorFacing,setVectorFacing]=useState<'both'|'normal'|'mirrored'>('both');
   const visual=character.visual??{version:1 as const,style:'classic' as const,profile:'average' as const};
   function patch(values:Partial<CharacterVisualData>){const result=CharacterVisual.safeParse({...visual,...values});if(!result.success){setStatus(result.error.issues[0]?.message??'Invalid artwork');return;}change({...character,visual:result.data});}
   function changeLimbArt(value:string){
@@ -29,15 +30,15 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
     const report=pack.category==='character'?characterCompatibility(pack):undefined;
     setWorkbench(false);setStatus(`${report?.incompleteViews.length?'Partial body import: native parts fill undeclared slots. ':''}Applied ${pack.name}. Other views retain the native artwork; test all declared views and match sleeve colour for clothing.`);
   }
-  const activeVector=visual.vectorComponents?.find(p=>p.slot==='forearm-left'&&p.view===vectorView);
+  const activeVector=visual.vectorComponents?.find(p=>p.slot==='forearm-left'&&p.view===vectorView&&(p.facing??'both')===vectorFacing);
   function editVector(update:Partial<NonNullable<CharacterVisualData['vectorComponents']>[number]>){
     if(!activeVector)return;
     const part=NativeVectorComponent.parse({...activeVector,...update});
     patch({vectorComponents:visual.vectorComponents!.map(p=>p===activeVector?part:p)});
   }
   function addVector(){
-    const part=NativeVectorComponent.parse({id:'forearm-fixture',slot:'forearm-left',view:vectorView,profiles:[...bodyProfiles],artwork:structuredClone(forearmVectorFixture)});
-    patch({vectorComponents:[...(visual.vectorComponents??[]).filter(p=>p.slot!==part.slot||p.view!==part.view),part],...(visual.components?{components:visual.components.filter(p=>p.slot!==part.slot||p.view!==part.view)}:{})});
+    const part=NativeVectorComponent.parse({id:'forearm-fixture',slot:'forearm-left',view:vectorView,profiles:[...bodyProfiles],...(vectorFacing==='both'?{}:{facing:vectorFacing}),fitMorphology:'anatomical-v1',artwork:structuredClone(forearmVectorFixture)});
+    patch({vectorComponents:[...(visual.vectorComponents??[]).filter(p=>p.slot!==part.slot||p.view!==part.view||(p.facing&&part.facing&&p.facing!==part.facing)),part],...(visual.components?{components:visual.components.filter(p=>p.slot!==part.slot||p.view!==part.view)}:{})});
     setStatus('Native forearm fixture added. Select the matching preview view; this replaces the left forearm artwork only.');
   }
   return <details className="character-visual-studio"><summary>Illustrated characters & imported artwork</summary>
@@ -52,7 +53,11 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
     <label className="field">Body profile<select aria-label="Body profile" value={visual.profile} onChange={e=>{change(applyProfile(character,e.target.value as CharacterVisualData['profile']));setStatus('Profile proportions applied. Incompatible artwork was detached; undo by closing without saving.');}}>{bodyProfiles.map(p=><option key={p}>{p}</option>)}</select></label>
     <details><summary>Native vector component · experimental</summary>
       <label className="field">Component view<select aria-label="Native vector view" value={vectorView} onChange={e=>setVectorView(e.target.value as View)}>{assetViews.map(v=><option key={v}>{v}</option>)}</select></label>
+      <label className="field">Facing<select aria-label="Native vector facing" value={vectorFacing} onChange={e=>setVectorFacing(e.target.value as typeof vectorFacing)}><option value="both">Mirror-safe both</option><option value="normal">Normal</option><option value="mirrored">Mirrored</option></select></label>
+      <label className="field">Import native component<input aria-label="Import native vector component" type="file" accept=".json" onChange={async e=>{const input=e.currentTarget,file=input.files?.[0];if(!file)return;try{if(file.size>500000)throw Error('Vector file exceeds 500 KB');const part=NativeVectorComponent.parse(JSON.parse(await file.text()));if(!part.profiles.includes(visual.profile))throw Error('Component profile mismatch');patch({vectorComponents:[...(visual.vectorComponents??[]).filter(p=>p.slot!==part.slot||p.view!==part.view||(p.facing&&part.facing&&p.facing!==part.facing)),part]});}catch(error){setStatus(error instanceof Error?error.message:'Invalid component');}finally{input.value='';}}}/></label>
       {!activeVector?<button type="button" onClick={addVector}>Add native forearm fixture</button>:<>
+        <label className="check"><input type="checkbox" checked={activeVector.fitMorphology==='anatomical-v1'} onChange={e=>editVector({fitMorphology:e.target.checked?'anatomical-v1':undefined})}/> Fit native contour to anatomy</label>
+        <button type="button" onClick={()=>downloadText(activeVector.id+'.json',JSON.stringify(activeVector,null,2))}>Export vector component</button>
         {Object.entries(activeVector.artwork.palette).map(([key,color])=><label className="field" key={key}>{key}<input aria-label={'Vector palette '+key} type="color" value={color} onChange={e=>editVector({artwork:{...activeVector.artwork,palette:{...activeVector.artwork.palette,[key]:e.target.value}}})}/></label>)}
         <label className="field">Authored deformation<input aria-label="Vector deformation" type="range" min={-.08} max={.08} step={.005} value={activeVector.authoredOffset?.[1]??0} onChange={e=>editVector({authoredOffset:[0,Number(e.target.value)]})}/></label>
         <button type="button" onClick={()=>patch({vectorComponents:visual.vectorComponents!.filter(p=>p!==activeVector)})}>Remove native forearm</button>

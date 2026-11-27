@@ -1,11 +1,33 @@
+import {isBoneSlot} from './artworkGeometry.ts';
+import {VectorArtworkV1} from './vectorArtwork.ts';
 import {vectorDrawList,worldPoint,type VectorDrawRegion,type VectorMatrix,type VectorCommand} from './vectorArtwork.ts';
 import type {NativeVectorComponentData,CompiledArtwork} from './visualAssets.ts';
 import type {Character,View} from './schema.ts';
 import type {Point} from './artworkGeometry.ts';
 /** Explicit facing art is selected in pre-global-mirror coordinates.
  * Unspecified direction requires mirror-safe geometry; fixed slots still fall back. */
+export function nativePartFor(c:Character,slot:CompiledArtwork['slot'],view:View,mirrored=false){
+  return c.visual?.vectorComponents?.find(p=>p.slot===slot&&p.view===view&&p.profiles.includes(c.visual!.profile)&&(p.facing?p.facing===(mirrored?'mirrored':'normal'):p.artwork.compatibility.mirrorSafe));
+}
+const fittedParts=new WeakMap<NativeVectorComponentData,Map<string,NativeVectorComponentData>>();
 export function nativeBoneFor(c:Character,slot:CompiledArtwork['slot'],view:View,mirrored=false){
-  return c.visual?.vectorComponents?.find(p=>p.slot===slot&&p.view===view&&p.profiles.includes(c.visual!.profile)&&p.artwork.units==='bone-normalized'&&(p.facing?p.facing===(mirrored?'mirrored':'normal'):p.artwork.compatibility.mirrorSafe));
+  const part=nativePartFor(c,slot,view,mirrored);
+  if(!part||!isBoneSlot(slot)||part.artwork.units!=='bone-normalized')return;
+  if(!part.fitMorphology)return part;
+  const v=c.visual,quant=(n:number)=>Math.round(n*20)/20;
+  const proximal=slot.startsWith('calf')?quant(v?.kneeWidth??1):1;
+  const distal=slot.startsWith('forearm')?quant(v?.wristWidth??1):slot.startsWith('thigh')?quant(v?.kneeWidth??1):slot.startsWith('calf')?quant(v?.ankleWidth??1):1;
+  const muscle=quant(v?.muscleDefinition??.5),soft=quant(v?.softness??.5);
+  if(proximal===1&&distal===1&&muscle===.5&&soft===.5)return part;
+  const key=[proximal,distal,muscle,soft].join('/');let cache=fittedParts.get(part);if(!cache){cache=new Map();fittedParts.set(part,cache);}const hit=cache.get(key);if(hit)return hit;
+  // Restrict opt-in deformation to untransformed simple bone-local geometry.
+  // Unknown masks, transforms and custom pose variants retain the source.
+  if(part.artwork.regions.some(r=>r.transform||r.clipRegionId||r.maskRegionId)||part.artwork.poses.length)return part;
+  const morph=(commands:VectorCommand[])=>commands.map(cmd=>{const values:(string|number)[]=[cmd[0]];for(let i=1;i<cmd.length;i+=2){const x=Number(cmd[i]),y=Number(cmd[i+1]),u=Math.max(0,Math.min(1,x));const belly=Math.sin(Math.PI*u);values.push(x,y*(proximal*(1-u)+distal*u)*(1+(muscle-.5)*.24*belly**2+(soft-.5)*.20*belly));}return values as VectorCommand;});
+  const [x0,y0,x1,y1]=part.artwork.bounds;
+  const result=VectorArtworkV1.safeParse({...part.artwork,bounds:[x0,y0*1.5,x1,y1*1.5],regions:part.artwork.regions.map(r=>({...r,commands:morph(r.commands)}))});
+  if(!result.success)return part;
+  const fitted={...part,artwork:result.data};if(cache.size>=8)cache.delete(cache.keys().next().value!);cache.set(key,fitted);return fitted;
 }
 export function boneVectorMatrix(start:Point,end:Point,thickness:number):VectorMatrix|undefined{
   const dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);

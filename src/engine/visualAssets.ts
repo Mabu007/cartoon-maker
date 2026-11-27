@@ -25,8 +25,11 @@ export const NativeVectorComponent = z.strictObject({
   profiles:z.array(z.enum(bodyProfiles)).min(1).max(bodyProfiles.length),
   artwork:VectorArtworkV1,
   facing:z.enum(['normal','mirrored']).optional(),
+  fitMorphology:z.literal('anatomical-v1').optional(),
   authoredOffset:z.tuple([number(-32,32),number(-32,32)]).optional()
 }).superRefine((part,ctx)=>{
+  if(part.fitMorphology&&!isBoneSlot(part.slot))ctx.addIssue({code:'custom',message:'Anatomical morphology applies only to normalized bone art.'});
+  if(!isBoneSlot(part.slot)&&part.artwork.units!=='rig')ctx.addIssue({code:'custom',message:'Fixed native slots require rig units.'});
   if(isBoneSlot(part.slot)&&(part.artwork.units!=='bone-normalized'||part.artwork.pivot[0]!==0||part.artwork.pivot[1]!==0||!part.artwork.anchors.some(a=>a.id==='end'&&a.point[0]===1&&a.point[1]===0)))ctx.addIssue({code:'custom',message:'Native bone parts require normalized origin and end anchor [1,0].'});
 });
 export type NativeVectorComponentData=z.infer<typeof NativeVectorComponent>;
