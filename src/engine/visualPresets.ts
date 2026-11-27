@@ -20,7 +20,7 @@ export const profileSettings:Record<CharacterVisualData['profile'],Partial<Chara
 };
 export function applyProfile(character:Character,profile:CharacterVisualData['profile']):Character{
   const settings=profileSettings[profile];
-  const visual={version:1 as const,style:character.visual?.style??'illustrated' as const,profile};
+  const visual={version:1 as const,style:character.visual?.style??'illustrated' as const,profile,limbArt:character.visual?.limbArt};
   const components=character.visual?.components?.filter(c=>c.profiles.includes(profile));
   return {...character,height:1,head:1,thickness:1,torso:1,arms:1,legs:1,...settings,
     wardrobe:{...character.wardrobe,...settings.wardrobe},visual:{...visual,components}};
@@ -44,13 +44,13 @@ export const studioCharacters:Character[]=[
     hair:'fade',hairColor:'#242120',beard:'goatee',shape:'oblong',eyes:'hooded',brows:'bold',nose:'flat',mouth:'smile',outfit:'biker',
     head:.78,height:1.15,legs:1.12,arms:1.03,thickness:1.06,
     wardrobe:{jawWidth:1.12,chinWidth:1.05,cheekWidth:.93,headStretch:1.04,noseWidth:1.12,trim:'#cba97b',footwear:'boot',sleeve:'long',bottoms:'straight'},
-    visual:{version:1,style:'illustrated',profile:'athletic',shoulders:1.08,waist:.91,hips:.94,armWidth:1.17,thighWidth:1.12,calfWidth:1.07,handSize:1.08,footSize:1.04},
+    visual:{version:1,style:'illustrated',profile:'athletic',limbArt:'anatomical-v1',shoulders:1.08,waist:.91,hips:.94,armWidth:1.17,thighWidth:1.12,calfWidth:1.07,handSize:1.08,footSize:1.04},
     personality:{preset:'confident',autoActing:'subtle'}},
   {...applyProfile(characters[1],'curvy'),id:'zee-studio',name:'Zee · Studio',
     skin:'#9c5b43',shirt:'#b46d50',pants:'#263b40',shoes:'#d9b482',
     hair:'braids',hairColor:'#302327',beard:'none',shape:'heart',eyes:'almond',brows:'arched',nose:'button',mouth:'smile',outfit:'blouse',
     head:.79,height:1.08,legs:1.12,arms:1.02,thickness:1,
     wardrobe:{jawWidth:.87,chinWidth:.9,cheekWidth:.95,headStretch:1.05,lipThickness:1.13,trim:'#e0b98c',footwear:'chelsea',sleeve:'rolled',bottoms:'wide-leg'},
-    visual:{version:1,style:'illustrated',profile:'curvy',shoulders:.94,waist:.83,hips:1.12,armWidth:1.02,thighWidth:1.08,calfWidth:1.02,handSize:1.02,footSize:.98},
+    visual:{version:1,style:'illustrated',profile:'curvy',limbArt:'anatomical-v1',shoulders:.94,waist:.83,hips:1.12,armWidth:1.02,thighWidth:1.08,calfWidth:1.02,handSize:1.02,footSize:.98},
     personality:{preset:'confident',autoActing:'subtle'}}
 ];

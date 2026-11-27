@@ -1,5 +1,5 @@
 import { drawComponent, drawBoneComponent } from './hybridArtwork.ts';
-import {drawStudioLimb} from './studioLimbArt.ts';
+import {drawStudioLimb,drawAnatomicalLimb} from './studioLimbArt.ts';
 import { propArm, propPlacement, type PropPose } from './propMotion.ts';
 import { bodyProportions } from './bodyBuild.ts';
 import { gaitProfiles, isSleep, type GaitStyle } from './performanceCatalog.ts';
@@ -61,7 +61,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const limbWidth = 10 * c.thickness;
   const build=bodyProportions(c);
   const bodyArt=g;
-  const stroke=c.visual?.style==='illustrated'?drawStudioLimb:classicStroke;
+  const legacyStroke=c.visual?.style==='illustrated'?drawStudioLimb:classicStroke;
+  const anatomical=c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1';
   const crying=action==='cry'&&!art.rear;
   // Captured hands must remain *in front* of clothing and faces whenever
   // they are raised. The old fixed back/front arm order buried one wrist
@@ -155,6 +156,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       armEndpoints[side]=endpoint;
     }
     const {elbow,hand}=endpoint;
+    const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===elbow?'forearm':'upper-arm')
+      :legacyStroke(target,points,width,color);
     const coverage=sleeveCoverage(c);
     const upper=coverage<=1;
     const cuffStart=upper?joint.shoulder:elbow, cuffEnd=upper?elbow:hand;
@@ -240,6 +244,9 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     if(!moving&&(action==='sit'||action==='stand')){
       [knee,foot]=seatedLeg(joint.upper,c.legs*c.height,lift,side);
     }
+    const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===knee?'calf':'thigh')
+      :legacyStroke(target,points,width,color);
     const bottom=c.wardrobe?.bottoms??(c.outfit==='athleisure'?'leggings':'straight');
     const swim=c.outfit==='bikini';
     const shorts=bottom==='shorts'||bottom==='biker-shorts';

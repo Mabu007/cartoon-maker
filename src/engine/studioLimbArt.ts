@@ -1,3 +1,4 @@
+import { anatomicalSegments, type LimbRegion } from './anatomicalVectorArt.ts';
 import type {Graphics} from 'pixi.js';
 import type {Point} from './animation.ts';
 import {at,vector} from './wardrobeArt.ts';
@@ -24,5 +25,16 @@ export function drawStudioLimb(g:Graphics,joints:Point[],width:number,color:stri
     vector(g,silhouette,color,shade(color,-.48),1.25,transform);
     vector(g,shadePanel,shade(color,-.19),'none',0,transform);
     vector(g,highlight,shade(color,.14),'none',0,transform);
+  }
+}
+
+/** Opt-in anatomy artwork. Existing illustrated and classic projects retain
+ * their original renderer. Geometry strings are fixed and use the shared path cache. */
+export function drawAnatomicalLimb(g:Graphics,joints:Point[],width:number,color:string,region:LimbRegion){
+  for(const {frame,art} of anatomicalSegments(joints,width,region)){
+    const transform=at(frame.x,frame.y,frame.length,frame.width,frame.angle);
+    vector(g,art.outline,color,shade(color,-.34),.65,transform);
+    vector(g,art.shadow,shade(color,-.16),'none',0,transform);
+    vector(g,art.highlight,shade(color,.12),'none',0,transform);
   }
 }
