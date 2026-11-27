@@ -10,6 +10,12 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
   const [workbench,setWorkbench]=useState(false),[status,setStatus]=useState(''),[prompt,setPrompt]=useState('');
   const visual=character.visual??{version:1 as const,style:'classic' as const,profile:'average' as const};
   function patch(values:Partial<CharacterVisualData>){change({...character,visual:{...visual,...values}});}
+  function changeLimbArt(value:string){
+    const next:CharacterVisualData={...visual};
+    if(value==='anatomical-v1')next.limbArt=value;
+    else delete next.limbArt;
+    change({...character,visual:next});
+  }
   function apply(pack:VisualAssetPack){
     if(!['hair','clothing','character'].includes(pack.category))throw Error('Use props and environments from the scene artwork library.');
     if(pack.style!==visual.style)throw Error(`This artwork requires the ${pack.style} art style. Change Art style before applying it.`);
@@ -25,7 +31,7 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
     <p className="small-text">Imported artwork examples</p>
     <div className="field-row">{illustratedCharacters.map(preset=><button type="button" key={preset.id} onClick={()=>change({...preset,id:character.id,name:character.name})}>Use {preset.name}</button>)}</div>
     <label className="field">Art style<select aria-label="Art style" value={visual.style} onChange={e=>{patch({style:e.target.value as CharacterVisualData['style'],components:[]});setStatus('Style changed; custom components were detached.');}}><option value="classic">Classic SIRVIBE</option><option value="illustrated">Illustrated studio</option></select></label>
-    {visual.style==='illustrated'&&<label className="field">Limb illustration<select aria-label="Limb illustration" value={character.visual?.limbArt??'legacy'} onChange={e=>patch({limbArt:e.target.value==='anatomical-v1'?'anatomical-v1':undefined})}><option value="legacy">Original illustrated</option><option value="anatomical-v1">Anatomical vector v1</option></select></label>}
+    {visual.style==='illustrated'&&<label className="field">Limb illustration<select aria-label="Limb illustration" value={visual.limbArt??'legacy'} onChange={e=>changeLimbArt(e.target.value)}><option value="legacy">Original illustrated</option><option value="anatomical-v1">Anatomical vector v1</option></select></label>}
     <label className="field">Body profile<select aria-label="Body profile" value={visual.profile} onChange={e=>{change(applyProfile(character,e.target.value as CharacterVisualData['profile']));setStatus('Profile proportions applied. Incompatible artwork was detached; undo by closing without saving.');}}>{bodyProfiles.map(p=><option key={p}>{p}</option>)}</select></label>
     {controls.map(([id,label,min,max])=><label className="field slider" key={id}>{label}<input aria-label={label} type="range" min={min} max={max} step={.01} value={visual[id]??1} onChange={e=>patch({[id]:Number(e.target.value)})}/></label>)}
     <div className="field-row"><button type="button" onClick={()=>patch(Object.fromEntries(controls.map(([id])=>[id,1])))}>Reset body adjustments</button><button type="button" onClick={()=>setWorkbench(true)}>Import / prepare artwork</button></div>

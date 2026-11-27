@@ -20,7 +20,9 @@ export const profileSettings:Record<CharacterVisualData['profile'],Partial<Chara
 };
 export function applyProfile(character:Character,profile:CharacterVisualData['profile']):Character{
   const settings=profileSettings[profile];
-  const visual={version:1 as const,style:character.visual?.style??'illustrated' as const,profile,limbArt:character.visual?.limbArt};
+  const limbArt=character.visual?.limbArt;
+  const visual:CharacterVisualData={version:1,style:character.visual?.style??'illustrated',profile};
+  if(limbArt)visual.limbArt=limbArt;
   const components=character.visual?.components?.filter(c=>c.profiles.includes(profile));
   return {...character,height:1,head:1,thickness:1,torso:1,arms:1,legs:1,...settings,
     wardrobe:{...character.wardrobe,...settings.wardrobe},visual:{...visual,components}};
