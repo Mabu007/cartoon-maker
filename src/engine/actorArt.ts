@@ -1,4 +1,5 @@
 import { drawComponent, drawBoneComponent } from './hybridArtwork.ts';
+import {drawStudioLimb} from './studioLimbArt.ts';
 import { propArm, propPlacement, type PropPose } from './propMotion.ts';
 import { bodyProportions } from './bodyBuild.ts';
 import { gaitProfiles, isSleep, type GaitStyle } from './performanceCatalog.ts';
@@ -29,7 +30,7 @@ export const viewArt: Record<View, { width: number; face: number; far: boolean; 
   'back-quarter': { width: .81, face: -15, far: false, rear: true, profile: false },
   back: { width: 1, face: 0, far: false, rear: true, profile: false }
 };
-function stroke(g: Graphics, joints: Point[], width: number, color: string) {
+function classicStroke(g: Graphics, joints: Point[], width: number, color: string) {
   line(g, joints, INK, width + 4.5);
   line(g, joints, color, width);
 }
@@ -60,6 +61,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const limbWidth = 10 * c.thickness;
   const build=bodyProportions(c);
   const bodyArt=g;
+  const stroke=c.visual?.style==='illustrated'?drawStudioLimb:classicStroke;
   const crying=action==='cry'&&!art.rear;
   // Captured hands must remain *in front* of clothing and faces whenever
   // they are raised. The old fixed back/front arm order buried one wrist
@@ -332,10 +334,14 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   const ears=profile?[-w*.47]:[-w+3,w-3];
   if(!profile)drawEar(g,c,ears[1],8*yScale,-1);
   const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture);
-  if(!customHead)vector(g,headOutline(c,art),c.skin,INK,3.5);
+  if(!customHead)vector(g,headOutline(c,art),c.skin,c.visual?.style==='illustrated'?shade(c.skin,-.48):INK,c.visual?.style==='illustrated'?1.9:3.5);
   if(!customHead)vector(g,`M ${-w*.81} 5 Q ${-w*.85} ${h*.63} ${-w*.32} ${h*.77} Q ${-w*.57} ${h*.55} ${-w*.81} 5Z`,shade(c.skin,-.10),INK,0);
   if(c.visual?.style==='illustrated'&&!rear){
     const tone=shade(c.skin,-.25);
+    if(!customHead){
+      vector(g,`M ${-w*.62} ${-h*.48} Q ${-w*.43} ${-h*.81} ${w*.13} ${-h*.79} Q ${-w*.28} ${-h*.56} ${-w*.62} ${-h*.48}Z`,shade(c.skin,.09),INK,0);
+      vector(g,`M ${w*.78} ${h*.03} Q ${w*.67} ${h*.58} ${w*.31} ${h*.8} Q ${w*.55} ${h*.33} ${w*.78} ${h*.03}Z`,shade(c.skin,-.15),INK,0);
+    }
     vector(g,`M ${-w*.65} ${h*.34} Q ${-w*.48} ${h*.45} ${-w*.29} ${h*.4} M ${w*.32} ${h*.4} Q ${w*.52} ${h*.43} ${w*.7} ${h*.29}`,'none',tone,.9);
     if(c.visual.profile==='mature'||c.visual.profile==='elderly')vector(g,`M ${-w*.35} ${-h*.47} Q 0 ${-h*.51} ${w*.38} ${-h*.45} M ${-w*.35} ${-h*.38} Q 0 ${-h*.42} ${w*.38} ${-h*.36}`,'none',tone,.8);
   }
