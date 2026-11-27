@@ -60,7 +60,7 @@ function bone(id:string,a:Point,b:Point,r0:number,r1:number,color:string,d:Garme
  const length=Math.hypot(b.x-a.x,b.y-a.y);if(length<.05)return [];
  const ux=(b.x-a.x)/length,uy=(b.y-a.y)/length,nx=-uy,ny=ux;
  const at=(t:number,r:number)=>p(a.x+ux*t+nx*r,a.y+uy*t+ny*r);
- const overlap=Math.min(2,length*.12),fold=Math.max(0,Math.min(1,compression))*d.folds;
+ const overlap=Math.min(1.6,length*.1),fold=Math.max(0,Math.min(1,compression))*d.folds;
  const contour='M'+at(-overlap,-r0)+'Q'+at(length*.4,-r0*(1+fold*.07))+' '+at(length+overlap,-r1)+'Q'+at(length+overlap+1,0)+' '+at(length+overlap,r1)+'Q'+at(length*.4,r0*(1+fold*.07))+' '+at(-overlap,r0)+'Z';
  const out=[path(id+'-panel',contour,color,ink,1.45,true),path(id+'-shade','M'+at(0,r0*.7)+'Q'+at(length*.55,r0*.75)+' '+at(length,r1*.72)+'L'+at(length,r1*.32)+'Q'+at(length*.55,r0*.48)+' '+at(0,r0*.36)+'Z',shade(color,-.17),'none',0)];
  if(d.seams)out.push(path(id+'-seam','M'+at(1,-r0*.65)+'L'+at(length-1,-r1*.65),'none',shade(color,-.3),.9));
@@ -91,7 +91,8 @@ export function garmentSkirt(c:Character,v:IllustratedView,hip:Point,seated=fals
  return [path('skirt','M'+p(x-w,y)+'Q'+p(x,y+4)+' '+p(x+w,y)+'L'+p(x+hem,y+h)+'Q'+p(x,y+h+6)+' '+p(x-hem,y+h)+'Z',c.pants,ink,1.6,true),path('skirt-fold','M'+p(x-w*.4,y+5)+'Q'+p(x-w*.22,y+h*.6)+' '+p(x-hem*.45,y+h-1),'none',shade(c.pants,-.3),1.2)];
 }
 export function garmentFoot(c:Character,foot:Point,toe:number,rear=false):GarmentPath[]{
- const d=c.garmentDesign;if(!d||d.footwear==='none')return [];
+ const d=c.garmentDesign;if(!d)return [];
+ if(d.footwear==='none'){const s=c.thickness*(c.visual?.footSize??1),x=foot.x,y=foot.y;return [path('bare-foot','M'+p(x-6*s,y-4*s)+'Q'+p(x+10*s,y-4*s)+' '+p(x+10*s,y+2*s)+'Q'+p(x+4*s,y+5*s)+' '+p(x-7*s,y+4*s)+'Z',c.skin,ink,1.2)];}
  const s=c.thickness*(c.visual?.footSize??1),x=foot.x,y=foot.y,dir=toe<0?-1:1;
  const at=(a:number,b:number)=>p(x+a*s*dir,y+b*s),sole=5,top=d.footwear==='boot'?-14:-6,tip=rear?7:14,heel=rear?-7:-10;
  const outline='M'+at(heel,sole)+'L'+at(heel,top)+'Q'+at(-2,top-2)+' '+at(2,-4)+'Q'+at(tip,-5)+' '+at(tip,2)+'L'+at(tip,sole)+'Z';

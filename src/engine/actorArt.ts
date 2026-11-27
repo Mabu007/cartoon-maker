@@ -1,3 +1,5 @@
+import {garmentEnabled,garmentTorso,garmentSleeve,garmentLeg,garmentSkirt,garmentFoot} from './garmentGeometry.ts';
+import {drawGarmentPaths} from './garmentRender.ts';
 import {nativePartFor,boneDrawList} from './nativeVectorBone.ts';
 import {buildLayeredHair,hasLayeredHair,hairRenderPaths} from './layeredHair.ts';
 import {morphHandGeometry} from './handRig.ts';
@@ -67,6 +69,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const build=bodyProportions(c);
   const bodyArt=g;
   const legacyStroke=c.visual?.style==='illustrated'?drawStudioLimb:classicStroke;
+  const garments=garmentEnabled(c);
   const anatomical=c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1';
   const crying=action==='cry'&&!art.rear;
   // Captured hands must remain *in front* of clothing and faces whenever
@@ -182,7 +185,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
         segment(g,(joint.shoulder.x+elbow.x)/2,(joint.shoulder.y+elbow.y)/2,
           elbow.x,elbow.y,shade(c.skin,-.18),1.2);
     }
-    if(coverage>0&&(customUpper||customLower)){
+    if(garments){drawGarmentPaths(g,c,garmentSleeve(c,joint.shoulder,elbow,hand,part,customUpper,customLower));}
+    else if(coverage>0&&(customUpper||customLower)){
       if(drawUpper&&!customUpper)stroke(g,[joint.shoulder,upper?cuff:elbow],limbWidth*build.arm+4,c.shirt);
       if(drawLower&&!customLower&&!upper)stroke(g,[elbow,cuff],limbWidth*build.arm+4,c.shirt);
     }else if(coverage>0){
@@ -258,7 +262,11 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const width={straight:11,cargo:16,joggers:13,shorts:15,'wide-leg':17,'skinny-jeans':8,skirt:10,'cargo-joggers':15,leggings:8,'biker-shorts':10}[bottom]*c.thickness*build.leg;
     const customThigh=drawBoneComponent(g,c,`thigh-${side}`,view,joint.upper,knee,c.thickness*build.leg,costume,appearance?.vectorCache,appearance?.mirrored);
     const customCalf=drawBoneComponent(g,c,`calf-${side}`,view,knee,foot,c.thickness*build.leg*build.calves,costume,appearance?.vectorCache,appearance?.mirrored);
-    if(customThigh||customCalf){
+    if(garments){
+      if(!customThigh)stroke(g,[joint.upper,knee],limbWidth*.82*build.leg,c.skin);
+      if(!customCalf)stroke(g,[knee,foot],limbWidth*.82*build.leg*build.calves,c.skin);
+      drawGarmentPaths(g,c,garmentLeg(c,joint.upper,knee,foot,customThigh,customCalf));
+    }else if(customThigh||customCalf){
       const color=swim||shorts||bottom==='skirt'?c.skin:c.pants;
       if(!customThigh)stroke(g,[joint.upper,knee],width,color);
       if(!customCalf)stroke(g,[knee,foot],width*build.calves,color);
@@ -276,6 +284,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     }
     const toe=moving||art.profile||(view!=='front'&&view!=='back')?Math.sign(forward):(side==='left'?-1:1);
     if(drawComponent(g,c,`shoe-${side}`,view,foot.x,foot.y,0,costume,appearance?.vectorCache,appearance?.mirrored))return;
+    if(garments){drawGarmentPaths(g,c,garmentFoot(c,foot,toe,art.rear));return;}
     const footScale=c.visual?.footSize??1;
     g.context.save().setTransform(at(foot.x*(1-footScale),foot.y*(1-footScale),footScale));
     drawShoe(g,c,foot,toe,costume,view==='back');
@@ -296,13 +305,17 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   // separated by the torso. At a crossing this created a visible hole.
   // The complete shoulder -> elbow -> wrist line and attached hand now
   // share one Graphics layer and one pair of solved endpoints.
-  if(c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
+  if(garments)drawGarmentPaths(g,c,garmentSkirt(c,art,r.hip,action==='sit'));
+  if(!garments&&c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
     const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
     vector(g,`M ${x-width} ${y-5}H${x+width}L${x+width*1.29} ${y+hem}Q${x} ${y+hem+7} ${x-width*1.29} ${y+hem}Z`,c.pants,INK,2.1);
     for(const offset of [-.57,0,.57]) segment(g,x+offset*width,y+2,x+offset*width*1.15,y+hem,shade(c.pants,-.28),1.1);
   }
-  if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume,appearance?.vectorCache,appearance?.mirrored))drawTop(g,c,art,r.neck,r.hip,costume);
+  if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume,appearance?.vectorCache,appearance?.mirrored)){
+    if(garments)drawGarmentPaths(g,c,garmentTorso(c,art,r.neck,r.hip,r.left.shoulder,r.right.shoulder,action==='sit'?1:Math.min(1,Math.abs(pose.torso??0)/35)));
+    else drawTop(g,c,art,r.neck,r.hip,costume);
+  }
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
   if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,carryingHand(frontArm));
