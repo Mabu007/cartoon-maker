@@ -1,5 +1,6 @@
 import { characterCoreSlots, isBoneSlot } from './artworkGeometry.ts';
 import { z } from 'zod';
+import { VectorArtworkV1 } from './vectorArtwork.ts';
 
 export const assetCategories = ['character','body-profile','face-component','hair','clothing','accessory','prop','environment','art-style'] as const;
 export const assetViews = ['front','three-quarter','side','back-quarter','back'] as const;
@@ -18,15 +19,28 @@ export const CompiledComponent = z.strictObject({
   symmetrical:z.boolean(), license:z.string().min(1).max(500), source:z.string().min(1).max(500)
 }).superRefine((part,ctx)=>{if(isBoneSlot(part.slot)&&(part.offsetX!==0||part.offsetY!==0))ctx.addIssue({code:'custom',message:'Use calibrated joint pivots instead of limb offsets.'});if(isBoneSlot(part.slot)&&(!part.end||Math.hypot((part.end.x-part.pivot.x)*part.width,(part.end.y-part.pivot.y)*part.height)<2))ctx.addIssue({code:'custom',message:'Limb parts need distinct start and end joint pivots, at least 2 rig units apart.'});});
 export type CompiledArtwork = z.infer<typeof CompiledComponent>;
+/** Optional native representation shares existing slot/view/profile identity. */
+export const NativeVectorComponent = z.strictObject({
+  id:identifier, slot:z.enum(componentSlots), view:z.enum(assetViews),
+  profiles:z.array(z.enum(bodyProfiles)).min(1).max(bodyProfiles.length),
+  artwork:VectorArtworkV1
+});
 export const CharacterVisual = z.strictObject({
   version:z.literal(1), style:z.enum(['classic','illustrated']), profile:z.enum(bodyProfiles),
   limbArt:z.literal('anatomical-v1').optional(),
   shoulders:number(.8,1.25).optional(), waist:number(.75,1.35).optional(), hips:number(.8,1.3).optional(),
   armWidth:number(.75,1.3).optional(), thighWidth:number(.75,1.3).optional(), calfWidth:number(.8,1.25).optional(),
   handSize:number(.75,1.3).optional(), footSize:number(.8,1.25).optional(), neckLength:number(.8,1.2).optional(),
-  components:z.array(CompiledComponent).max(80).optional()
+  components:z.array(CompiledComponent).max(80).optional(),
+  vectorComponents:z.array(NativeVectorComponent).max(12).optional()
 }).superRefine((visual,ctx)=>{
   const keys=new Set<string>();
+  for(const component of visual.vectorComponents??[]){
+    const key=component.slot+'/'+component.view;
+    if(keys.has(key))ctx.addIssue({code:'custom',message:'Duplicate native slot/view.'});
+    if(!component.profiles.includes(visual.profile))ctx.addIssue({code:'custom',message:'Native component profile mismatch.'});
+    keys.add(key);
+  }
   for(const component of visual.components??[]){
     const key=component.slot+'/'+component.view;
     if(keys.has(key))ctx.addIssue({code:'custom',message:'Only one artwork component may occupy each slot and view.'});

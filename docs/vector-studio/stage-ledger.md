@@ -31,3 +31,7 @@
 Stage 0 is blocked on a successful GitHub Actions run for the candidate. The hosted runner rejected the previous candidate before launching its job. Keep PR #43 in draft until the hosted checks can run and pass. Production is still verified at the starting baseline. A live webcam, the target N4020/UHD 600 laptop and target-device memory behavior are unverified.
 
 See [architecture decisions](architecture-decisions.md) for inventory and [the staged roadmap](roadmap.md) for next-stage contracts.
+
+## Stage 1. Vector artwork contract (partial draft)
+
+Development branch is stacked on Stage 0 candidate f9d1c9e; main remains d7783fa. PR #43 remains draft. Hosted verify job 140634616211 failed without steps and log retrieval returned BlobNotFound. This does not establish a new release baseline. This environment cannot clone GitHub (DNS unavailable) or run the dependency-backed application suite. The commit containing this entry adds an optional native component contract, validation/cache, bounded deformation demo, shared preview/Pixi adapters and fixture tests. Tests are authored, not executed. No live actor/UI integration, actual project reopen, full CI, browser parity or hardware measurements are claimed. See [contract draft](vector-artwork-v1.md) for limitations and follow-up contracts. Stage 1 gate remains open; no merge or deployment.
