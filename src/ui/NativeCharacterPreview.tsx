@@ -130,7 +130,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
           {garments&&<SvgGarmentPaths paths={garmentLeg(c,upper,knee,foot,hasBone(`thigh-${side}`),hasBone(`calf-${side}`))} patternId={patternId}/>}
           {hasFixed(`shoe-${side}`)?<FixedImage mirrored={flip} character={c} view={view} slot={`shoe-${side}`} x={foot.x} y={foot.y}/>:garments?<SvgGarmentPaths paths={garmentFoot(c,foot,Math.sign(shoe)||1,rear)} patternId={patternId}/>:<ellipse cx={foot.x+shoe} cy={foot.y+1} rx={13*c.thickness*(c.visual?.footSize??1)} ry={6.5*(c.visual?.footSize??1)} fill={c.shoes} stroke="#242037" strokeWidth="3"/>}
         </g>)}
-        {garments&&<SvgGarmentPaths paths={garmentSkirt(c,faceArt,bodyRig.hip,action==='sit')} patternId={patternId}/>}
+        {garments&&<SvgGarmentPaths paths={garmentSkirt(c,faceArt,bodyRig.hip,action==='sit',[legs[0].knee,legs[1].knee])} patternId={patternId}/>}
         {armParts.map(({side,shoulder,elbow,hand,primary})=><g key={side}>
           {hasBone(`upper-arm-${side}`)||hasBone(`forearm-${side}`)?<>
             <BoneImage primary={primary} mirrored={flip} character={c} view={view} slot={`upper-arm-${side}`} start={shoulder} end={elbow} thickness={c.thickness*build.arm} color={c.skin}/>

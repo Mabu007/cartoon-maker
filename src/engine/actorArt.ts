@@ -229,7 +229,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   // separated by the torso. At a crossing this created a visible hole.
   // The complete shoulder -> elbow -> wrist line and attached hand now
   // share one Graphics layer and one pair of solved endpoints.
-  if(garments)drawGarmentPaths(g,c,garmentSkirt(c,art,r.hip,action==='sit'));
+  if(garments)drawGarmentPaths(g,c,garmentSkirt(c,art,r.hip,action==='sit',[resolvedLegs.left.knee,resolvedLegs.right.knee]),costume);
   if(!garments&&c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
     const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
@@ -237,7 +237,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     for(const offset of [-.57,0,.57]) segment(g,x+offset*width,y+2,x+offset*width*1.15,y+hem,shade(c.pants,-.28),1.1);
   }
   if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume,appearance?.vectorCache,appearance?.mirrored)){
-    if(garments)drawGarmentPaths(g,c,garmentTorso(c,art,r.neck,r.hip,r.left.shoulder,r.right.shoulder,action==='sit'?1:Math.min(1,Math.abs(pose.torso??0)/35)));
+    if(garments)drawGarmentPaths(g,c,garmentTorso(c,art,r.neck,r.hip,r.left.shoulder,r.right.shoulder,action==='sit'?1:Math.min(1,Math.abs(pose.torso??0)/35)),costume);
     else drawTop(g,c,art,r.neck,r.hip,costume);
   }
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);

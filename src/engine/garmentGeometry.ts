@@ -3,7 +3,7 @@ import type {Point} from './animation.ts';
 import type {Character} from './schema.ts';
 import type {IllustratedView} from './illustration.ts';
 import type {GarmentDesign} from './garmentDesignSchema.ts';
-export type GarmentPath={id:string;d:string;fill:string;stroke:string;strokeWidth:number;fabric?:boolean};
+export type GarmentPath={id:string;d:string;fill:string;stroke:string;strokeWidth:number;fabric?:boolean;image?:string;imageBox?:{x:number;y:number;width:number;height:number}};
 export const materialProfiles={cotton:{stiffness:70,damping:12,wind:.25,displacement:4},denim:{stiffness:130,damping:17,wind:.12,displacement:2},knit:{stiffness:44,damping:9,wind:.35,displacement:5},leather:{stiffness:180,damping:22,wind:.08,displacement:1.5},linen:{stiffness:52,damping:10,wind:.45,displacement:6}} as const;
 const fitEase={tight:1.04,regular:1.13,relaxed:1.25,oversized:1.4} as const;
 export const garmentTemplates={
@@ -22,14 +22,14 @@ const xy=(v:Point)=>p(v.x,v.y);
 export function garmentEnabled(c:Character){return Boolean(c.garmentDesign)&&c.outfit!=='shirtless'&&c.outfit!=='bikini';}
 export function garmentPhysics(c:Character,anchors:Record<string,Point>){
  const d=c.garmentDesign;if(!d)return [];
- const mat=materialProfiles[d.material],keys=['top',...(d.bottom==='none'?[]:[d.bottom==='skirt'?'skirt':'trousers']),...(d.outer==='none'?[]:['outer']),...(d.footwear==='none'?[]:['footwear'])] as (keyof typeof garmentTemplates)[];
+ const mat=materialProfiles[d.material],keys=['top',...(d.bottom==='none'?[]:[(d.bottom==='skirt'||d.bottom==='wrap-skirt')?'skirt':'trousers']),...(d.outer==='none'?[]:['outer']),...(d.footwear==='none'?[]:['footwear'])] as (keyof typeof garmentTemplates)[];
  return keys.map(id=>{const t=garmentTemplates[id];return {id,layer:t.layer,materialId:d.material,...mat,displacement:id==='footwear'?0:mat.displacement,pins:t.pins.map(name=>({name,point:anchors[name],weight:1})),free:t.free.map(name=>{const a=name==='cuffs'?anchors.leftAnkle:anchors.pelvis,b=name==='cuffs'?anchors.rightAnkle:anchors.pelvis;return {id:id+'-'+name,weight:0,influence:1,rest:[{x:a.x-7*c.thickness,y:a.y+3},{x:(a.x+b.x)/2,y:(a.y+b.y)/2+5},{x:b.x+7*c.thickness,y:b.y+3}]};}),collisionProxies:[{id:'torso',a:anchors.neck,b:anchors.pelvis,radius:16*c.thickness},{id:'left-arm',a:anchors.leftShoulder,b:anchors.leftElbow,radius:6*c.thickness},{id:'right-arm',a:anchors.rightShoulder,b:anchors.rightElbow,radius:6*c.thickness},{id:'left-leg',a:anchors.leftHip,b:anchors.leftKnee,radius:7*c.thickness},{id:'right-leg',a:anchors.rightHip,b:anchors.rightKnee,radius:7*c.thickness}]};});
 }
 export function garmentTorso(c:Character,v:IllustratedView,neck:Point,hip:Point,left:Point,right:Point,compression=0):GarmentPath[]{
  const d=c.garmentDesign;if(!d)return [];
  const b=bodyProportions(c),e=fitEase[d.fit],out:GarmentPath[]=[];
  const build=(outer:boolean)=>{
-  const color=outer?d.outerColor:c.shirt,tag=outer?'outer':'top',dress=!outer&&d.top==='dress',tunic=!outer&&d.top==='tunic';
+  const color=outer?d.outerColor:c.shirt,tag=outer?'outer':'top',dress=!outer&&d.top==='dress',tunic=!outer&&(d.top==='tunic'||d.top==='wrap-tunic');
   const wide=e*(outer?1.09:d.top==='hoodie'?1.07:d.top==='blouse'?1.025:1),a=Math.max(Math.abs(left.x-neck.x),Math.abs(right.x-neck.x),18*v.width)*wide;
   const chest=a*(.92+b.chest*.15),waist=18*v.width*c.thickness*b.waist*d.waist*wide,hem=19*v.width*c.thickness*b.hip*d.hem*wide*(dress?1.6:1);
   const top=neck.y-3,mid=hip.y-13,bottom=hip.y+(outer?(d.outer==='coat'?28:7):dress?34:tunic?18:4)*d.length+(d.length-1)*18;
@@ -55,7 +55,9 @@ export function garmentTorso(c:Character,v:IllustratedView,neck:Point,hip:Point,
    if(!open&&(outer||d.closure!=='none')){seam('closure','M'+p(front,top+12)+'L'+p(hx,bottom-3),d.closure==='zipper'?d.accent:dark,1.5);
     if(d.closure==='buttons')for(let i=0;i<4;i++){const y=top+18+i*(bottom-top-24)/4;out.push(path(tag+'-button-'+i,'M'+p(front-1,y)+'h2v2h-2Z',d.accent,'none',0));}}
    if(d.pockets){const px=hx-waist*.48,py=bottom-16;seam('pocket','M'+p(px-4,py)+'L'+p(px+4,py+1)+'L'+p(px+3,py+7)+'L'+p(px-4,py+6)+'Z');}
-   if(d.logo!=='none'&&!outer&&!v.profile){const lx=front+a*.34,ly=top+19,s=3*d.logoScale;const logo=d.logo==='diamond'?'M'+p(lx,ly-s)+'L'+p(lx+s,ly)+'L'+p(lx,ly+s)+'L'+p(lx-s,ly)+'Z':'M'+p(lx-s,ly)+'Q'+p(lx,ly-s*1.8)+' '+p(lx+s,ly)+'Q'+p(lx,ly+s*1.8)+' '+p(lx-s,ly)+'Z';out.push(path('logo',logo,d.accent,'none',0));}
+   if(!outer&&!v.profile&&d.top==='wrap-tunic'){seam('wrap-diagonal','M'+p(cx-neckW,top+2)+'Q'+p(cx,top+22)+' '+p(hx+waist*.7,mid),d.accent,2);seam('wrap-band','M'+p(hx-waist*.85,mid+1)+'Q'+p(hx,mid+4)+' '+p(hx+waist*.85,mid+1),d.accent,2.5);}
+   if(c.wardrobe?.logoImage&&!outer&&!v.profile){const lx=front+a*.28,ly=top+20,sz=Math.min(5*d.logoScale,a*.17),box={x:lx-sz,y:ly-sz,width:sz*2,height:sz*2};out.push({...path('masked-logo','M'+p(box.x,box.y)+'L'+p(box.x+box.width,box.y)+'L'+p(box.x+box.width,box.y+box.height)+'L'+p(box.x,box.y+box.height)+'Z','none','none',0),image:c.wardrobe.logoImage,imageBox:box});}
+   else if(d.logo!=='none'&&!outer&&!v.profile){const lx=front+a*.34,ly=top+19,s=3*d.logoScale;const logo=d.logo==='diamond'?'M'+p(lx,ly-s)+'L'+p(lx+s,ly)+'L'+p(lx,ly+s)+'L'+p(lx-s,ly)+'Z':'M'+p(lx-s,ly)+'Q'+p(lx,ly-s*1.8)+' '+p(lx+s,ly)+'Q'+p(lx,ly+s*1.8)+' '+p(lx-s,ly)+'Z';out.push(path('logo',logo,d.accent,'none',0));}
   }
   if(d.folds>0&&!open){const y=mid+3,amp=(1+Math.max(0,Math.min(1,compression))*3)*d.folds;seam('waist-fold','M'+p(hx-waist*.7,y)+'Q'+p(hx-waist*.3,y+amp)+' '+p(hx+waist*.22,y+amp*.4),dark,.8+d.folds*.4);}
  };
@@ -88,14 +90,26 @@ export function garmentSleeve(c:Character,shoulder:Point,elbow:Point,hand:Point,
  build(false);if(d.outer!=='none')build(true);return out;
 }
 export function garmentLeg(c:Character,hip:Point,knee:Point,foot:Point,skipUpper=false,skipLower=false):GarmentPath[]{
- const d=c.garmentDesign;if(!d||d.bottom==='none'||d.bottom==='skirt'||d.top==='dress')return [];
+ const d=c.garmentDesign;if(!d||d.bottom==='none'||(d.bottom==='skirt'||d.bottom==='wrap-skirt')||d.top==='dress')return [];
  const b=bodyProportions(c),e=fitEase[d.fit]*(d.bottom==='leggings'?.92:1),r=7.2*c.thickness*b.leg*e,kr=5.4*c.thickness*b.leg*(c.visual?.kneeWidth??1)*e,fr=4.7*c.thickness*b.leg*b.calves*(c.visual?.ankleWidth??1)*e*d.hem,fold=bend(hip,knee,foot);
  return [...(skipUpper?[]:bone('trouser-upper',hip,d.bottom==='shorts'?mix(hip,knee,.62):knee,r,kr,c.pants,d,fold)),...(skipLower||d.bottom==='shorts'?[]:bone('trouser-lower',knee,foot,kr,fr,c.pants,d,fold))];
 }
-export function garmentSkirt(c:Character,v:IllustratedView,hip:Point,seated=false):GarmentPath[]{
- const d=c.garmentDesign;if(!d||d.bottom!=='skirt'||d.top==='dress')return [];
- const w=19*c.thickness*bodyProportions(c).hip*v.width*fitEase[d.fit],h=31*d.length*(seated?.68:1),x=hip.x,y=hip.y-5,hem=w*1.28*d.hem;
- return [path('skirt','M'+p(x-w,y)+'Q'+p(x,y+4)+' '+p(x+w,y)+'L'+p(x+hem,y+h)+'Q'+p(x,y+h+6)+' '+p(x-hem,y+h)+'Z',c.pants,ink,1.6,true),path('skirt-fold','M'+p(x-w*.4,y+5)+'Q'+p(x-w*.22,y+h*.6)+' '+p(x-hem*.45,y+h-1),'none',shade(c.pants,-.3),1.2)];
+export function garmentSkirt(c:Character,v:IllustratedView,hip:Point,seated=false,knees?:readonly [Point,Point]):GarmentPath[]{
+ const d=c.garmentDesign;if(!d||!['skirt','wrap-skirt'].includes(d.bottom)||d.top==='dress')return [];
+ const w=19*c.thickness*bodyProportions(c).hip*v.width*fitEase[d.fit],h=31*d.length,x=hip.x,y=hip.y-5;
+ const hem=w*1.28*d.hem;
+ // Approximate supported drape over the actual resolved knees, not a
+ // second leg pose. Limit shear and never extend below the standing hem.
+ const kx=seated&&knees?Math.max(-hem*.7,Math.min(hem*.7,(knees[0].x+knees[1].x)/2-x)):0;
+ const ky=seated&&knees?Math.max(y+h*.38,Math.min(y+h,Math.max(knees[0].y,knees[1].y)+3)):y+h*(seated?.68:1);
+ const left=seated&&knees?Math.min(x+kx-hem,Math.min(knees[0].x,knees[1].x)-4):x-hem;
+ const right=seated&&knees?Math.max(x+kx+hem,Math.max(knees[0].x,knees[1].x)+4):x+hem;
+ const lx=Math.max(x-hem*2,left),rx=Math.min(x+hem*2,right);
+ const out=[path('skirt','M'+p(x-w,y)+'Q'+p(x,y+4)+' '+p(x+w,y)+'Q'+p(x+w*.9,ky-10)+' '+p(rx,ky)+'Q'+p(x+kx,ky+6)+' '+p(lx,ky)+'Q'+p(x-w*.9,ky-10)+' '+p(x-w,y)+'Z',c.pants,ink,1.6,true)];
+ const dark=shade(c.pants,-.3);
+ for(const offset of [-.48,.35])out.push(path('skirt-fold-'+offset,'M'+p(x+w*offset,y+5)+'Q'+p(x+kx*.5+w*offset,ky-8)+' '+p(x+kx+hem*offset,ky-1),'none',dark,1.1));
+ if(d.bottom==='wrap-skirt')out.push(path('wrap-overlap','M'+p(x+w*.5,y+1)+'Q'+p(x+kx+w*.1,(y+ky)/2)+' '+p(x+kx-hem*.45,ky+1),'none',d.accent,2));
+ return out;
 }
 export function garmentFoot(c:Character,foot:Point,toe:number,rear=false):GarmentPath[]{
  const d=c.garmentDesign;if(!d)return [];
