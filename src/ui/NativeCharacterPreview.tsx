@@ -1,3 +1,4 @@
+import {topContour} from '../engine/wardrobeArt.ts';
 import {morphHandGeometry} from '../engine/handRig.ts';
 import {faceLandmarks,headOutline,eyeIdentity,pupils,faceDetailGeometry} from '../engine/faceIdentityGeometry.ts';
 import {viewArt} from '../engine/actorArt.ts';
@@ -89,7 +90,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const moving = action === 'walk' || action === 'run';
   const forward = viewForward(view);
   const lift = moving || action==='sit' || action==='stand' ? base.lift : 0;
-  const hasBone=(slot:CompiledArtwork['slot'])=>{const part=nativeBoneFor(c,slot,view);return Boolean(componentFor(c,slot,view)||(part&&nativeBonePreview(part,[1,0,0,1,0,0])));};
+  const hasBone=(slot:CompiledArtwork['slot'])=>{const part=nativeBoneFor(c,slot,view,flip);return Boolean(componentFor(c,slot,view)||(part&&nativeBonePreview(part,[1,0,0,1,0,0])));};
   const legs = (['left', 'right'] as const).map((side, index) => {
     const importedLeg=hasBone(`thigh-${side}`)||hasBone(`calf-${side}`);
     const upper = importedLeg?bodyRig[side].upper:{ x: (index ? 15 : -15) * width*build.hip, y: shirtBottom };
@@ -118,18 +119,18 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
       <g className={animated ? 'native-actor native-actor-' + action : ''} transform={lift ? `translate(0 ${-lift})` : undefined}>
         {legs.map(({ side, path, foot, shoe, upper, knee }) => <g key={side}>
           {hasBone(`thigh-${side}`)||hasBone(`calf-${side}`)?<>
-            <BoneImage character={c} view={view} slot={`thigh-${side}`} start={upper} end={knee} thickness={c.thickness*build.leg} color={c.pants}/>
-            <BoneImage character={c} view={view} slot={`calf-${side}`} start={knee} end={foot} thickness={c.thickness*build.leg*build.calves} color={c.pants}/>
+            <BoneImage mirrored={flip} character={c} view={view} slot={`thigh-${side}`} start={upper} end={knee} thickness={c.thickness*build.leg} color={c.pants}/>
+            <BoneImage mirrored={flip} character={c} view={view} slot={`calf-${side}`} start={knee} end={foot} thickness={c.thickness*build.leg*build.calves} color={c.pants}/>
           </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<AnatomicalLimb morphology={c.visual} points={[upper,knee,foot]} width={9*c.thickness*build.leg} region="thigh" color={swim?c.skin:c.pants}/>:<><path d={path} stroke="#211e33" strokeWidth={13*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={path} stroke={swim?c.skin:c.pants} strokeWidth={9*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/></>}
           {componentFor(c,`shoe-${side}`,view)?<FixedImage character={c} view={view} slot={`shoe-${side}`} x={foot.x} y={foot.y}/>:<ellipse cx={foot.x+shoe} cy={foot.y+1} rx={13*c.thickness*(c.visual?.footSize??1)} ry={6.5*(c.visual?.footSize??1)} fill={c.shoes} stroke="#242037" strokeWidth="3"/>}
         </g>)}
         {armParts.map(({side,shoulder,elbow,hand})=><g key={side}>
           {hasBone(`upper-arm-${side}`)||hasBone(`forearm-${side}`)?<>
-            <BoneImage character={c} view={view} slot={`upper-arm-${side}`} start={shoulder} end={elbow} thickness={c.thickness*build.arm} color={c.skin}/>
-            <BoneImage character={c} view={view} slot={`forearm-${side}`} start={elbow} end={hand} thickness={c.thickness*(.63+.37*build.arm)} color={c.skin}/>
+            <BoneImage mirrored={flip} character={c} view={view} slot={`upper-arm-${side}`} start={shoulder} end={elbow} thickness={c.thickness*build.arm} color={c.skin}/>
+            <BoneImage mirrored={flip} character={c} view={view} slot={`forearm-${side}`} start={elbow} end={hand} thickness={c.thickness*(.63+.37*build.arm)} color={c.skin}/>
           </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<><AnatomicalLimb morphology={c.visual} points={[shoulder,elbow,hand]} width={11*c.thickness*build.arm} region="upper-arm" color={c.skin}/>{!bare&&<AnatomicalLimb morphology={c.visual} points={[shoulder,elbow]} width={16*c.thickness} region="upper-arm" color={c.shirt}/>}</>:<><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke="#242037" strokeWidth={16*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke={c.skin} strokeWidth={11*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>{!bare&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`} stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}</>}
         </g>)}
-        {customTop&&topBox?<image preserveAspectRatio="none" href={customTop.image} x={topBox.x-customTop.pivot.x*topBox.width} y={topBox.y-customTop.pivot.y*topBox.height} width={topBox.width} height={topBox.height}/>:<path d={'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>}
+        {customTop&&topBox?<image preserveAspectRatio="none" href={customTop.image} x={topBox.x-customTop.pivot.x*topBox.width} y={topBox.y-customTop.pivot.y*topBox.height} width={topBox.width} height={topBox.height}/>:<path d={c.visual?.style==='illustrated'?topContour(c,faceArt,bodyRig.neck,bodyRig.hip).path:'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>}
         {swim&&<><path d={`M ${left*.8} ${shirtTop+15} Q 0 ${shirtTop+(rear?20:7)} ${right*.8} ${shirtTop+15} v12 Q0 ${shirtTop+34} ${left*.8} ${shirtTop+27}Z`} fill={c.shirt} stroke="#242037" strokeWidth="2"/>
           <path d={`M ${-hips} ${shirtBottom-5} Q0 ${shirtBottom-2} ${hips} ${shirtBottom-5} L7 ${shirtBottom+13} H-7 Z`} fill={c.pants} stroke="#242037" strokeWidth="2"/></>}
         {c.outfit==='shirtless'&&c.bodyBuild?.abs&&!rear&&<path d={`M0 ${shirtTop+24} V${shirtBottom-5} ${[0,1,2].map(offset=>`M-8 ${shirtTop+29+offset*5} q2 4 6 3 m4-3 q4 1 6-3`).join(' ')}`} fill="none" stroke="#754634" opacity=".58" strokeWidth="1.4"/>}
@@ -223,8 +224,8 @@ function FixedImage({character,view,slot,x,y}:{character:Character;view:View;slo
   const box=componentTransform(part,character,x,y);
   return <image preserveAspectRatio="none" href={part.image} x={box.x-part.pivot.x*box.width} y={box.y-part.pivot.y*box.height} width={box.width} height={box.height}/>;
 }
-function BoneImage({character,view,slot,start,end,thickness,color}:{character:Character;view:View;slot:CompiledArtwork['slot'];start:Point;end:Point;thickness:number;color:string}){
-  const native=nativeBoneFor(character,slot,view),world=native&&boneVectorMatrix(start,end,thickness);
+function BoneImage({character,view,slot,start,end,thickness,color,mirrored}:{mirrored?:boolean;character:Character;view:View;slot:CompiledArtwork['slot'];start:Point;end:Point;thickness:number;color:string}){
+  const native=nativeBoneFor(character,slot,view,mirrored),world=native&&boneVectorMatrix(start,end,thickness);
   const paths=native&&world&&nativeBonePreview(native,world);
   if(paths)return <g>{paths.map(({id,...props})=><path key={id} {...props} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
   const part=componentFor(character,slot,view),m=part&&boneArtworkTransform(part,start,end,thickness);

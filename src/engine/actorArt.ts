@@ -51,7 +51,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{vectorCache?:NativeBonePathCache;texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};capturedArms?:{left:boolean;right:boolean};
+  appearance?:{mirrored?:boolean;vectorCache?:NativeBonePathCache;texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};capturedArms?:{left:boolean;right:boolean};
     capturedFingers?:{left?:FingerCurls;right?:FingerCurls;thumbs?:ThumbPair;influence:number;confidence?:{left?:number;right?:number}};
     capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
     capturedHeadFacing?:PerformanceFacing;capturedHeadYaw?:number;
@@ -169,8 +169,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const cuff={x:cuffStart.x+(cuffEnd.x-cuffStart.x)*cover,y:cuffStart.y+(cuffEnd.y-cuffStart.y)*cover};
     const drawUpper=part==='all'||part==='upper';
     const drawLower=part==='all'||part==='lower';
-    const customUpper=drawUpper&&drawBoneComponent(g,c,`upper-arm-${side}`,view,joint.shoulder,elbow,c.thickness*build.arm,costume,appearance?.vectorCache);
-    const customLower=drawLower&&drawBoneComponent(g,c,`forearm-${side}`,view,elbow,hand,c.thickness*(.63+.37*build.arm),costume,appearance?.vectorCache);
+    const customUpper=drawUpper&&drawBoneComponent(g,c,`upper-arm-${side}`,view,joint.shoulder,elbow,c.thickness*build.arm,costume,appearance?.vectorCache,appearance?.mirrored);
+    const customLower=drawLower&&drawBoneComponent(g,c,`forearm-${side}`,view,elbow,hand,c.thickness*(.63+.37*build.arm),costume,appearance?.vectorCache,appearance?.mirrored);
     if(drawUpper&&drawLower&&build.arm===1&&!customUpper&&!customLower){
       stroke(g,[joint.shoulder,elbow,hand],limbWidth,c.skin);
     }else{
@@ -254,8 +254,8 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const swim=c.outfit==='bikini';
     const shorts=bottom==='shorts'||bottom==='biker-shorts';
     const width={straight:11,cargo:16,joggers:13,shorts:15,'wide-leg':17,'skinny-jeans':8,skirt:10,'cargo-joggers':15,leggings:8,'biker-shorts':10}[bottom]*c.thickness*build.leg;
-    const customThigh=drawBoneComponent(g,c,`thigh-${side}`,view,joint.upper,knee,c.thickness*build.leg,costume,appearance?.vectorCache);
-    const customCalf=drawBoneComponent(g,c,`calf-${side}`,view,knee,foot,c.thickness*build.leg*build.calves,costume,appearance?.vectorCache);
+    const customThigh=drawBoneComponent(g,c,`thigh-${side}`,view,joint.upper,knee,c.thickness*build.leg,costume,appearance?.vectorCache,appearance?.mirrored);
+    const customCalf=drawBoneComponent(g,c,`calf-${side}`,view,knee,foot,c.thickness*build.leg*build.calves,costume,appearance?.vectorCache,appearance?.mirrored);
     if(customThigh||customCalf){
       const color=swim||shorts||bottom==='skirt'?c.skin:c.pants;
       if(!customThigh)stroke(g,[joint.upper,knee],width,color);

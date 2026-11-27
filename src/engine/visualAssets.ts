@@ -24,6 +24,7 @@ export const NativeVectorComponent = z.strictObject({
   id:identifier, slot:z.enum(componentSlots), view:z.enum(assetViews),
   profiles:z.array(z.enum(bodyProfiles)).min(1).max(bodyProfiles.length),
   artwork:VectorArtworkV1,
+  facing:z.enum(['normal','mirrored']).optional(),
   authoredOffset:z.tuple([number(-32,32),number(-32,32)]).optional()
 }).superRefine((part,ctx)=>{
   if(isBoneSlot(part.slot)&&(part.artwork.units!=='bone-normalized'||part.artwork.pivot[0]!==0||part.artwork.pivot[1]!==0||!part.artwork.anchors.some(a=>a.id==='end'&&a.point[0]===1&&a.point[1]===0)))ctx.addIssue({code:'custom',message:'Native bone parts require normalized origin and end anchor [1,0].'});
@@ -39,12 +40,13 @@ export const CharacterVisual = z.strictObject({
   muscleDefinition:number(0,1).optional(), softness:number(0,1).optional(),
   handSize:number(.75,1.3).optional(), footSize:number(.8,1.25).optional(), neckLength:number(.8,1.2).optional(),
   components:z.array(CompiledComponent).max(80).optional(),
-  vectorComponents:z.array(NativeVectorComponent).max(12).optional()
+  vectorComponents:z.array(NativeVectorComponent).max(24).optional()
 }).superRefine((visual,ctx)=>{
-  const keys=new Set<string>();
+  const keys=new Set<string>(),facingKeys=new Set<string>();
   for(const component of visual.vectorComponents??[]){
-    const key=component.slot+'/'+component.view;
-    if(keys.has(key))ctx.addIssue({code:'custom',message:'Duplicate native slot/view.'});
+    const key=component.slot+'/'+component.view,orientation=key+'/'+(component.facing??'both');
+    if(facingKeys.has(orientation)||facingKeys.has(key+'/both')||(!component.facing&&keys.has(key)))ctx.addIssue({code:'custom',message:'Conflicting native slot/view/facing.'});
+    facingKeys.add(orientation);
     if(!component.profiles.includes(visual.profile))ctx.addIssue({code:'custom',message:'Native component profile mismatch.'});
     keys.add(key);
   }

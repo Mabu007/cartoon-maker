@@ -105,7 +105,7 @@ export const topShapes = {
   'slip-dress':[16,16,22], sundress:[20,16,28], athleisure:[18,17,-18], 'fitted-turtleneck':[21,15,0], bikini:[23,16,0], shirtless:[24,18,0]
 } satisfies Record<Character['outfit'], [number,number,number]>;
 
-export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Point,hip: Point,texture?: CostumeTexture) {
+export function topContour(c:Character,view:IllustratedView,neck:Point,hip:Point){
   const w=c.wardrobe, kind=c.outfit, [shoulders,waist,hem]=topShapes[kind];
   const x=neck.x, top=neck.y+2, bx=hip.x, mid=hip.y+2;
   const dress=kind==='slip-dress'||kind==='sundress';
@@ -121,13 +121,18 @@ export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Poi
   const leftHip=bx-end-(view.rear||view.profile?end*(build.hip-1)*.46:0);
   const legacyPath=`M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} L ${bx-b} ${mid-15+Math.min(0,hem)} L ${bx-end} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} L ${bx+b} ${mid-15+Math.min(0,hem)} L ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
   const path=build.shoulder===1 && build.waist===1 && build.hip===1 && build.chest===0 && (c.visual?.abdomen??1)===1 ? legacyPath : `M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} Q ${leftChest} ${chestY} ${bx-b} ${bellyY} Q ${bx-b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${leftHip} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} Q ${bx+b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${bx+b} ${bellyY} Q ${rightChest+(profile?front*chest:0)} ${chestY} ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
+
+  return {path,w,kind,shoulders,waist,hem,x,top,bx,mid,dress,fit,bottom,build,a,waistBase,b,end,shoulderLine,chestY,bellyY,chest,front,profile,leftChest,rightChest,leftHip,legacyPath};
+}
+export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Point,hip: Point,texture?: CostumeTexture) {
+  const {path,w,kind,shoulders,waist,hem,x,top,bx,mid,dress,fit,bottom,build,a,waistBase,b,end,shoulderLine,chestY,bellyY,chest,front,profile,leftChest,rightChest,leftHip,legacyPath}=topContour(c,view,neck,hip);
   const bare=kind==='shirtless'||kind==='bikini';
   if(bare){
     vector(g,path,c.skin,INK,2.35);
     const contour=shade(c.skin,-.24);
     if(kind==='shirtless'){
       if(view.rear)vector(g,`M ${x} ${top+13} Q ${x-4} ${top+27} ${bx} ${mid-6}`,'none',contour,1.3);
-      else if(c.bodyBuild?.abs){
+      else if(c.bodyBuild?.abs||(c.visual?.muscleDefinition??.5)>.7){
         const center=x+(view.profile?a*.26:view.face*.16), scale=Math.min(1,a/22);
         vector(g,`M ${center-9*scale} ${top+18} Q ${center} ${top+24} ${center+10*scale} ${top+18} M ${center} ${top+25} L ${bx+(center-x)} ${mid-6}`,'none',contour,1.35);
         for(let row=0;row<3;row++){

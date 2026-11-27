@@ -57,3 +57,11 @@ Vercel preview for a41aef8 is READY (deployment CmgFVz9jBmyPcrTEgGGXrgMwFC7B); 4
 Owner requested staged development through Stage 5 before cleanup. Branch feat/character-identity-morphology-v1 is stacked on Stage 1 a41aef8, not main; Stage 2 remains preproduction only. Added optional identity seed and randomization locks, strict character import/export/duplicate, identity editor, three starting profiles, abdomen and anatomical contour controls, bounded morphology cache, existing rig landmark tests. No new flagship art, solver or default migration. Source changes and authored tests only at commit time; local clone failed DNS. Actual hosted build, browser QA, before/after screenshots, offline and device benchmarks remain open. See [identity contract](character-identity-v1.md). Stage 3 acceptance not met; do not merge or deploy to production.
 
 Added a seeded randomization independence regression and a real device/portable backup code-path test. Hosted results remain to be recorded.
+
+### Stage 3 hosted update
+
+Vercel status for f3f12b5 was success (n47cEdsyb4xq5qywjFLczS7SgxVg); build log includes Vite built and Build Completed. Exact test count not retrieved in this audit. No GitHub Actions workflow for stacked commit, browser/offline/device evidence remains open.
+
+## Stage 4. Face identity and morphology follow-up — development candidate
+
+Branch feat/face-identity-v1 stacked on Stage 3 f3f12b5. Optional face identity controls, shared skull/eye/feature descriptors, identity lip paths, cosmetic details, independent finger length for noncontact poses, torso softness/muscle and shared illustrated torso contour, explicit facing native bone variants. Added regression tests and [face identity contract](face-identity-v1.md). Existing rig, timing and capture precedence unchanged by design, not yet verified by hosted candidate checks. Full native parity, custom fixed/raster morphology, Stage 2 authored art, browser recorded-line/visual evidence, offline export and device benchmarks remain open. No merge or production deployment.

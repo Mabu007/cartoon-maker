@@ -2,10 +2,10 @@ import {vectorDrawList,worldPoint,type VectorDrawRegion,type VectorMatrix,type V
 import type {NativeVectorComponentData,CompiledArtwork} from './visualAssets.ts';
 import type {Character,View} from './schema.ts';
 import type {Point} from './artworkGeometry.ts';
-/** Only explicitly mirror-safe normalized bone art is active in this slice.
- * Facing-specific asymmetric art and fixed slots retain the existing fallback. */
-export function nativeBoneFor(c:Character,slot:CompiledArtwork['slot'],view:View){
-  return c.visual?.vectorComponents?.find(p=>p.slot===slot&&p.view===view&&p.profiles.includes(c.visual!.profile)&&p.artwork.units==='bone-normalized'&&p.artwork.compatibility.mirrorSafe);
+/** Explicit facing art is selected in pre-global-mirror coordinates.
+ * Unspecified direction requires mirror-safe geometry; fixed slots still fall back. */
+export function nativeBoneFor(c:Character,slot:CompiledArtwork['slot'],view:View,mirrored=false){
+  return c.visual?.vectorComponents?.find(p=>p.slot===slot&&p.view===view&&p.profiles.includes(c.visual!.profile)&&p.artwork.units==='bone-normalized'&&(p.facing?p.facing===(mirrored?'mirrored':'normal'):p.artwork.compatibility.mirrorSafe));
 }
 export function boneVectorMatrix(start:Point,end:Point,thickness:number):VectorMatrix|undefined{
   const dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);
