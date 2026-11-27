@@ -11,7 +11,7 @@ Stages 0–14 converge in [consolidation PR #59](https://github.com/Mabu007/cart
 | 10–11 | Coordinated procedural acting and Character Factory auditions and editing. |
 | 12–13 | Reusable native vector packages and an optional schema-derived external asset specification. |
 | 14 | Living vector worlds, shared environmental forces and native props with existing contact anchors. |
-| Consolidation | Validate the combined application, clear required hosted CI, document limitations and release the intended commit through the existing production project. |
+| Consolidation | Validate the combined application, record local tests and browser release evidence, document limitations and release the intended commit through the existing production project. |
 | 15 | Parametric Deformation Engine. Start after consolidation. See the [interface inventory](architecture-decisions.md#002-consolidate-the-stage-14-stack-before-adding-new-deformation). |
 
 The release workload is a two- or three-character 720p scene in Chromium with dialogue, authored movement and camera, including an opt-in physics and lighting variant. Record p50 and p95 frame times, memory, seek time and active solver complexity on the N4020, UHD 600, 4 GB Linux laptop before certifying its 30 fps target. Record live webcam and long editing sessions separately.

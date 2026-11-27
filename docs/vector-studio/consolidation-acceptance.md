@@ -23,7 +23,7 @@
 
 ## Release gates
 
-- GitHub Actions is blocked by an account billing lock. The [workflow on PR #59](https://github.com/Mabu007/cartoon-maker/actions/runs/46061945751) reported the lock before any job step or runner assignment. Earlier main-target PRs #43 and #48 failed the same way. PRs targeting intermediate stack branches were outside the workflow's `pull_request.branches: [main]` filter.
+- GitHub Actions results are advisory for the consolidation release. GitHub prevented the job from starting because of an account billing lock. The [workflow on PR #59](https://github.com/Mabu007/cartoon-maker/actions/runs/46061945751) reported the lock before any job step or runner assignment. Earlier main-target PRs #43 and #48 failed the same way. PRs targeting intermediate stack branches were outside the workflow's `pull_request.branches: [main]` filter.
 - The built candidate passed the Chromium offline creator and export smoke, including local character creation, native asset installation, dialogue DSP, timeline playback, binary backup restoration and a video containing the imported dialogue. A same-origin update from the current main build preserved the saved project after offline reload. OS-level PWA installation remains open.
 - Record a real webcam take on the target device and review recorded-dropout and thumb/finger behavior. Run the target-load frame time, memory and long-session tests on the N4020 laptop. Hosted SwiftShader measurements characterize the test environment.
 - Keep professional character art acceptance open until all required views, motion and close-ups have visual approval.
