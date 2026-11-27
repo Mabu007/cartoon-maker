@@ -86,13 +86,14 @@ export function morphLimbArtwork(region:LimbRegion,m?:LimbMorphology):LimbArtwor
 const posedCache=new Map<string,LimbArtwork>();
 export function poseLimbArtwork(region:LimbRegion,rest:LimbArtwork,pose?:PrimaryArtworkPose):LimbArtwork{
  if(!pose||!pose.bend&&!pose.shortening)return rest;
+ const inside=pose.inside;
  const bend=Math.round(Math.max(0,Math.min(1,pose.bend))*8)/8,short=Math.round(Math.max(0,Math.min(1,pose.shortening))*8)/8;
  const key=[region,bend,short,pose.inside,rest.outline,rest.shadow,rest.highlight].join('|');const hit=posedCache.get(key);if(hit)return hit;
  const proximal=region==='forearm'||region==='calf';
  function deform(source:string){const tokens=source.match(/[MLQCZ]|-?(?:\d+(?:\.\d*)?|\.\d+)/g)!,out:string[]=[];
  for(let i=0;i<tokens.length;){const t=tokens[i++];out.push(t);if(t==='Z')continue;const count=t==='C'?3:t==='Q'?2:1;
  for(let j=0;j<count;j++){const x=Number(tokens[i++]),y=Number(tokens[i++]),u=Math.max(0,Math.min(1,x));
- const joint=proximal?(1-u)**3:u**3,inner=Math.sign(y)===pose.inside*(proximal?-1:1),weight=Math.sin(Math.PI*u);
+ const joint=proximal?(1-u)**3:u**3,inner=Math.sign(y)===inside*(proximal?-1:1),weight=Math.sin(Math.PI*u);
  // Keep seam tips intact, compress the inside and support the outer contour.
  const factor=1+(inner?-.16:.09)*bend*joint*weight+.10*short*weight;
  out.push(String(x),String(Math.round(y*factor*10000)/10000));}}

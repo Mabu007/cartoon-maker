@@ -56,6 +56,15 @@ try{
       await page.locator('canvas').screenshot({path:out+'/'+(['baseline','upgrade','garment'][set])+'-time-'+time+'.png'});
     }
   }
+  report.resolvedArtwork=await page.evaluate(()=>{
+    const {renderer,project,fixture,sets}=window.qa,scene=project.scenes[0],chars=fixture(sets[2]);
+    const samples=[];
+    for(const time of [1.2,9.45,17.6]){const frames=[];renderer.draw(scene,chars,time,{subtitles:true,onResolvedArtworkPose:frame=>frames.push(frame)});
+      if(!frames.length)throw Error('No resolved artwork snapshots');
+      for(const frame of frames){for(const side of ['left','right']){const a=frame.arms[side],hand=frame.hands[side];if(!a||!hand||Math.hypot(a.hand.x-hand.position.x,a.hand.y-hand.position.y)>1e-7)throw Error('Artwork wrist mismatch');}
+        samples.push({time,actor:frame.actorId,view:frame.view,headView:frame.headView,nearArm:frame.nearArm,viseme:frame.facial.viseme});}}
+    return samples;
+  });
   report.samples=await page.evaluate(()=>{
     const {renderer,project,fixture,sets}=window.qa,results=[];
     for(const set of [0,2,2,0]){

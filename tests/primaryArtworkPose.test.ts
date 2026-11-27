@@ -31,7 +31,11 @@ test('resolved arm geometry preserves authoritative prop and strict captured IK 
    const reference=solveStrictCapturedArm(r[side].shoulder,target,c.arms,side,side==='left'?-1:1);
    assert(Math.abs(length(solved.shoulder,solved.elbow)-28*c.arms)<1e-6);
    assert(Math.abs(length(solved.elbow,solved.hand)-28*c.arms)<1e-6);
-   assert(length(solved.hand,reference.hand)<1e-6);
+   // The original renderer deliberately applies the strict final safety gate
+   // after the first target solve. Compare to that exact two-pass contract.
+   const safe=solveStrictCapturedArm(r[side].shoulder,{x:(reference.hand.x-r[side].shoulder.x)/c.arms,y:(reference.hand.y-r[side].shoulder.y)/c.arms},c.arms,side,side==='left'?-1:1);
+   assert(length(solved.hand,safe.hand)<1e-6);
+   assert(solved.elbow.y>=solved.shoulder.y-1e-6);
   }
   assert.deepEqual(r,original);
  }
