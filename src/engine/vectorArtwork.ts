@@ -168,7 +168,9 @@ function freezeDeep<T>(value:T):T{
  */
 export class VectorArtworkCache{
   private entries=new Map<string,{input:unknown;art:VectorArtwork}>();
-  constructor(private readonly capacity=64){
+  private readonly capacity:number;
+  constructor(capacity=64){
+    this.capacity=capacity;
     if(!Number.isInteger(capacity)||capacity<1||capacity>256)throw Error('Invalid cache capacity');
   }
   prepare(key:string,input:unknown):VectorArtwork{

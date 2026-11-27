@@ -41,7 +41,8 @@ export function drawVectorRegions(g:Graphics,regions:readonly VectorDrawRegion[]
  * This is CPU path compilation, not a claim of persistent GPU tessellation. */
 export class NativeBonePathCache{
   private entries=new Map<NativeVectorComponentData,{region:VectorDrawRegion;path:GraphicsPath}[]|undefined>();
-  constructor(private readonly limit=64){if(!Number.isInteger(limit)||limit<1||limit>256)throw Error('Invalid native path cache capacity');}
+  private readonly limit:number;
+  constructor(limit=64){this.limit=limit;if(!Number.isInteger(limit)||limit<1||limit>256)throw Error('Invalid native path cache capacity');}
   get size(){return this.entries.size;}
   dispose(){this.entries.clear();}
   prepare(part:NativeVectorComponentData){
