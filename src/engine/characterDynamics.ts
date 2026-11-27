@@ -61,7 +61,7 @@ export function buildDynamics(scene:Scene,characters:readonly Character[],settin
 export function secondaryAnchor(actor:CharacterState,c:Character,view:View,flip:boolean,head:boolean,time=actor.actionTime):VectorMatrix{
  const r=rig(c,actor.pose,viewWidth[view]),yaw=actor.capturedHeadYaw??0,p=head?{x:r.head.x-yaw*3.6*c.head,y:r.head.y}:r.neck;
  const rotation=actor.rotation*Math.PI/180,cos=Math.cos(rotation),sin=Math.sin(rotation),sx=actor.scale*(flip?-1:1),sy=actor.scale;
- const localAngle=head?(r.angle+(actor.listening?Math.sin(time*2.4+actor.id.length*.7)*1.4:0))*Math.PI/180:0,lc=Math.cos(localAngle),ls=Math.sin(localAngle),headScale=head?c.head:1;
+ const localAngle=head?(r.angle+(actor.listening&&c.personality?.actingModel!=='coherent-v1'?Math.sin(time*2.4+actor.id.length*.7)*1.4:0))*Math.PI/180:0,lc=Math.cos(localAngle),ls=Math.sin(localAngle),headScale=head?c.head:1;
  const headMirror=head&&view!=='back'&&view!=='back-quarter'&&actor.capturedHeadFacing==='left'?-1:1;
  const a=cos*sx*lc-sin*sy*ls,b=sin*sx*lc+cos*sy*ls,d=-cos*sx*ls-sin*sy*lc,e=-sin*sx*ls+cos*sy*lc;
  const turn=head?actor.turnScale*(1-.09*Math.abs(yaw)):1;

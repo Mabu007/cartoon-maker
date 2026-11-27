@@ -1,3 +1,4 @@
+import {coherentEnabled,coherentFrame,applyCoherentPose,type ActingAuthority} from './coherentActing.ts';
 import { clamp, ease, mix } from './animation.ts';
 import { dialogueBeatAt, type DialoguePhrase } from './dialogueGestures.ts';
 import type { HandPose, HandSide } from './handRig.ts';
@@ -13,7 +14,7 @@ export const traitDefaults = {
   nervousness: 25, aggressiveness: 20, playfulness: 45, patience: 55,
   restlessness: 25, emotionalReactivity: 55, gestureFrequency: 55,
   gestureAmplitude: 55, movementSpeed: 50, postureOpenness: 55,
-  eyeContact: 65, personalSpace: 50, reactionIntensity: 55, movementSmoothness: 65
+  eyeContact: 65, personalSpace: 50, reactionIntensity: 55, movementSmoothness: 65, breathingAmplitude:35, breathingRate:45, idleTiming:40, blinkFrequency:40, headOrientation:50, responseTendency:50
 } as const;
 
 export type Trait = keyof typeof traitDefaults;
@@ -24,10 +25,11 @@ export type GestureKind = 'beat' | 'explain' | 'point' | 'question' | 'shrug' | 
 export type OccupiedHands = HandSide | 'both';
 
 const presets: Record<Preset,Partial<Record<Trait,number>>> = {
-  balanced:{}, confident:{confidence:92,postureOpenness:85,eyeContact:88,nervousness:8,gestureAmplitude:64},
-  shy:{confidence:19,postureOpenness:22,eyeContact:22,nervousness:78,gestureAmplitude:20,gestureFrequency:28},
-  nervous:{nervousness:91,restlessness:85,confidence:25,movementSmoothness:25,eyeContact:34},
-  relaxed:{energy:24,restlessness:10,movementSmoothness:92,aggressiveness:7,gestureFrequency:24},
+  balanced:{}, confident:{confidence:92,postureOpenness:85,eyeContact:88,nervousness:8,gestureAmplitude:64,headOrientation:40,blinkFrequency:28,responseTendency:62},
+  shy:{confidence:19,postureOpenness:22,eyeContact:22,nervousness:78,gestureAmplitude:20,gestureFrequency:28,headOrientation:72,responseTendency:35},
+  nervous:{nervousness:91,restlessness:85,confidence:25,movementSmoothness:25,eyeContact:34,breathingRate:75,breathingAmplitude:45,idleTiming:65,blinkFrequency:78,headOrientation:65},
+  relaxed:{energy:24,restlessness:10,movementSmoothness:92,aggressiveness:7,gestureFrequency:24,breathingRate:20,breathingAmplitude:45,idleTiming:20,blinkFrequency:22},
+  energetic:{energy:82,restlessness:42,expressiveness:76,gestureFrequency:75,gestureAmplitude:70,breathingRate:65,idleTiming:65,responseTendency:75},
   hyperactive:{energy:95,restlessness:90,expressiveness:96,gestureFrequency:91,gestureAmplitude:90},
   funny:{playfulness:90,expressiveness:88,energy:72,gestureAmplitude:85},
   serious:{playfulness:9,patience:85,expressiveness:32,gestureFrequency:26,movementSmoothness:87},
@@ -82,7 +84,7 @@ export function gestureAt(character: Character, input: ActingContext): GestureSa
   const traits = resolvePersonality(character.personality);
   if (traits.autoActing === 'off' || input.manualGesture || !spokenActions.has(input.action) || input.occupiedHands === 'both') return rest;
   const time = Math.max(0, Number.isFinite(input.time) ? input.time : 0);
-  const seed = hash(character.id);
+  const seed = hash(coherentEnabled(character)?character.id+'|'+input.actorId+'|'+(character.personality?.behaviorSeed??0):character.id);
   const primary = chance(seed, 0, 3) < .24 ? 'left' : 'right';
   let side: HandSide = input.occupiedHands === primary ? (primary === 'right' ? 'left' : 'right') : primary;
   const frequency = traits.gestureFrequency / 100;
@@ -126,7 +128,7 @@ export function gestureAt(character: Character, input: ActingContext): GestureSa
   const amplitude = mix(.26, 1.00, traits.gestureAmplitude / 100);
   const openness = mix(.70, 1.20, traits.confidence / 100);
   const energy = mix(.60, 1.20, traits.energy / 100);
-  const restraint = traits.autoActing === 'subtle' ? .42 : 1;
+  const restraint = (traits.autoActing === 'subtle' ? .42 : 1)*(coherentEnabled(character)?.72:1);
   const weight = clamp(gestureEnvelope(phase, traits) * amplitude * openness * energy * strength * restraint);
   return { kind, side, weight, phase, pointAngle };
 }
@@ -213,4 +215,13 @@ const gestureHands: Record<Exclude<GestureKind, 'rest'>, HandPose> = {
 export function gestureHand(sample: GestureSample, side: HandSide): HandPose | undefined {
   if (sample.kind === 'rest' || (sample.side !== side && sample.kind !== 'rub')) return undefined;
   return gestureHands[sample.kind];
+}
+
+/** V1 uses existing semantic gesture sampler and angle vocabulary, but only
+ * copies unclaimed arm channels from it. No legacy idle oscillation is stacked. */
+export function sampleCoherentActing(character:Character,input:ActingContext,base:JointPose,authority:ActingAuthority){
+ const p=resolvePersonality(character.personality),frame=coherentFrame(character,p,input,authority);
+ const gesture=frame.gestureFree&&frame.state!=='transition'?gestureAt(character,input):rest;
+ const gestured=gesture.weight>0?livingPose(character,input,base,gesture):base;
+ return {pose:applyCoherentPose(base,p,input,frame,gesture,gestured),gesture,frame};
 }

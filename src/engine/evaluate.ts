@@ -1,3 +1,5 @@
+import {coherentEnabled,type CoherentActingFrame} from './coherentActing.ts';
+import {sampleCoherentActing} from './livingCharacter.ts';
 import { sampleVisual } from './environmentVisuals.ts';
 import { movementPosition } from './movementPosition.ts';
 export { movementPosition } from './movementPosition.ts';
@@ -31,7 +33,7 @@ export type CharacterState = ActorData & { pose: JointPose; lift: number; visibl
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
   focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; heldHand?:HandSide; heldItems?:{left?:Prop;right?:Prop}; propPose?:PropPose; sitting:boolean; seat?:string;
   facialCapture?: {controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};
-  handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number}; authoredGaze?:boolean;
+  behavior?:CoherentActingFrame; handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number}; authoredGaze?:boolean;
   capturedFingers?:{left?:FingerCurls;right?:FingerCurls;thumbs?:ThumbPair;influence:number;confidence?:{left?:number;right?:number}};
   capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
   capturedHeadFacing?:import('./schema.ts').PerformanceFacing; capturedHeadYaw?:number;
@@ -143,7 +145,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const seat=body&&usesSeat(body.action)?body.target:undefined;
     const locomotion: Action = body?.action ?? travelling?.gait ?? (travelling ? 'walk' : 'idle');
     let action: Action = locomotion;
-    const gaitStyle=travelling?.style??'natural';
+    const personality=characters?.get(actor.characterId)?.personality;
+    const gaitStyle=travelling?.style??(!body&&travelling&&personality?.actingModel==='coherent-v1'&&personality.autoActing!=='off'?personality.walkStyle:undefined)??'natural';
     const profile=gaitProfiles[gaitStyle];
     const gaitTime=(t - (travelling?.start ?? body?.start ?? t))/profile.step;
     const gaitVelocity = travelling ? (() => {
@@ -308,6 +311,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const heldHand:HandSide|undefined=heldItems.right?'right':heldItems.left?'left':undefined;
     const character = characters?.get(actor.characterId);
     let handGesture: GestureSample | undefined;
+    let behavior:CoherentActingFrame|undefined;
     const speaking = Boolean(spoken) || action === 'talk';
     if (character) {
       // An authored gaze target can give a directional phrase a real point.
@@ -337,6 +341,11 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
           sourceDuration: spoken.lipSync?.analyzedDuration, cues: spoken.visemes
         } : undefined
       };
+      if(coherentEnabled(character)){
+        const claimedBody=Boolean(body&&!body.performance?.length),claimedArms=Boolean(gesture||propPose||heldItems.left||heldItems.right),claimedHead=Boolean(gesture||gaze||actor.gazeTarget||face?.intent&&face.intent!=='none');
+        const sample=sampleCoherentActing(character,acting,pose,{body:claimedBody||Boolean(travelling),arms:claimedArms,head:claimedHead,face:Boolean(face),gaze:Boolean(gaze||actor.gazeTarget||held),eyes:action==='blink',capture:Boolean(captured)});
+        behavior=sample.frame;pose=sample.pose;handGesture=sample.gesture;
+      }else{
       handGesture = gestureAt(character, acting);
       // The existing authored-action engine is unchanged when no camera
       // recording is present. During capture, only sub-degree breathing and
@@ -348,6 +357,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         });
       }else if(!captured || authoredGesture){
         pose=livingPose(character,acting,pose,handGesture);
+      }
       }
     }
     // Small, high-level body-language offsets support facial direction.
@@ -362,7 +372,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, expressionIntensity:face?.intensity??1,actingIntent:face?.intent,emotion:face?.emotion, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      authoredGaze:Boolean(gaze),speaking, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, capturedHeadFacing, capturedHeadYaw, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,heldHand,heldItems,propPose,sitting,seat };
+      authoredGaze:Boolean(gaze),speaking, behavior, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, capturedHeadFacing, capturedHeadYaw, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,heldHand,heldItems,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.

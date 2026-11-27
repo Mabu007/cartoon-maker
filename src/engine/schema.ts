@@ -60,7 +60,7 @@ export const PerformanceFacingSchema=z.enum(['front','left','right']);
 export type PerformanceFacing=z.infer<typeof PerformanceFacingSchema>;
 export const VoicePreset = z.enum(['warm','bright','deep']);
 export const HostedVoiceId = z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9_.:-]+$/);
-export const personalityPresets = ['balanced','confident','shy','nervous','relaxed','hyperactive','funny','serious','arrogant','mysterious','dramatic','grumpy','playful'] as const;
+export const personalityPresets = ['balanced','confident','shy','nervous','relaxed','hyperactive','energetic','funny','serious','arrogant','mysterious','dramatic','grumpy','playful'] as const;
 export const signatureMannerisms = ['none','point','touch-chin','rub-hands','shrug','tilt-head','hand-on-hip'] as const;
 export const PersonalityDefinition = z.strictObject({
   preset:z.enum(personalityPresets), autoActing:z.enum(['full','subtle','off']), signature:z.enum(signatureMannerisms),
@@ -69,7 +69,8 @@ export const PersonalityDefinition = z.strictObject({
   restlessness:num(0,100),emotionalReactivity:num(0,100),gestureFrequency:num(0,100),
   gestureAmplitude:num(0,100),movementSpeed:num(0,100),postureOpenness:num(0,100),
   eyeContact:num(0,100),personalSpace:num(0,100),reactionIntensity:num(0,100),
-  movementSmoothness:num(0,100)
+  movementSmoothness:num(0,100), actingModel:z.literal('coherent-v1'), behaviorSeed:z.number().int().min(0).max(4294967295),
+  breathingAmplitude:num(0,100),breathingRate:num(0,100),idleTiming:num(0,100),blinkFrequency:num(0,100),headOrientation:num(0,100),responseTendency:num(0,100),walkStyle:z.enum(gaitStyles)
 }).partial();
 export const identityLockGroups=['body','face','hair','palette','wardrobe','personality','voice'] as const;
 export const CharacterIdentityMetadata=z.strictObject({version:z.literal(1),seed:z.number().int().min(0).max(4294967295),locks:z.array(z.enum(identityLockGroups)).max(identityLockGroups.length).refine(v=>new Set(v).size===v.length,'Duplicate identity lock')});
