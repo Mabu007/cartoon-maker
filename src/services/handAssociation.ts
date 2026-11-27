@@ -11,13 +11,15 @@ type Side='left'|'right';
 export type HandAssignment={left?:Landmark[];right?:Landmark[]};
 const good=(p?:Landmark)=>Boolean(p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&
   (p.visibility??1)>=.5);
+// Hand Landmarker visibility is not a per-joint confidence measurement.
+export const validHandPoint=(p?:Landmark):p is Landmark=>!!p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
 const dist=(a:Landmark,b:Landmark)=>Math.hypot(a.x-b.x,a.y-b.y);
 export function associateObservedHands(
   detections:readonly Landmark[][],pose:readonly Landmark[],
   previous:HandAssignment={},maxDistance=.29
 ):HandAssignment{
   const result:HandAssignment={};
-  const valid=detections.filter(hand=>hand.length>=21&&good(hand[0])).slice(0,2);
+  const valid=detections.filter(hand=>hand.length>=21&&hand.slice(0,21).every(validHandPoint)).slice(0,2);
   if(!valid.length)return result;
   const wrist:{left?:Landmark;right?:Landmark}={
     left:good(pose[15])?pose[15]:undefined,

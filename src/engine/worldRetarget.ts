@@ -22,7 +22,7 @@ export const wrapDegrees = (angle:number) => ((angle + 180) % 360 + 360) % 360 -
 export const mixDegrees = (a:number,b:number,t:number) => a + wrapDegrees(b-a)*Math.max(0,Math.min(1,t));
 
 export function worldBodyProjector(points?: readonly Landmark[]): BodyProjector | undefined {
-  if(!points || points.length<29 || ![11,12,23,24].every(i=>isPoint(points[i])))return undefined;
+  if(!points || points.length<29 || ![11,12].every(i=>isPoint(points[i])))return undefined;
   const left=points[11],right=points[12];
   const axisX=right.x-left.x,axisZ=(right.z??0)-(left.z??0);
   const width=Math.hypot(axisX,axisZ);

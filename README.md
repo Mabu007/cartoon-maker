@@ -144,3 +144,9 @@ AI model is required. Existing camera clips remain compatible.
 **Important:** Project data uses existing internal `toonroom.*` storage keys and legacy `toonroom-backup-1` identifiers so rebranding does **not** delete or invalidate previous movies.
 
 The product was previously developed under the name Toonroom. SIRVIBE is its public-facing brand.
+
+### Visual asset studio (draft implementation)
+
+The character editor can apply body profiles and calibrated illustrated hair, head, torso, articulated limb and shoe artwork. Open **Artwork library / import** to crop, polygon/brush-mask, calibrate two joint pivots and save reusable artwork; scene settings include optional lighting and perspective, with draggable paused-stage calibration handles. **REVENENT demo** opens an original silent visual benchmark. The implementation scope, package format, AI prompts, templates and production-validation limits are documented in [docs/visual-assets/SPECIFICATION.md](docs/visual-assets/SPECIFICATION.md) and [docs/visual-assets/VALIDATION.md](docs/visual-assets/VALIDATION.md). Regenerate schemas/templates with `npm run docs:visual-assets`.
+
+**Delete all cartoons** on My cartoons explicitly clears this browser installation's saved cartoons, recovery versions and legacy migration entries. It never runs automatically.

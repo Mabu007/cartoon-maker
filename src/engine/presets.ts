@@ -53,6 +53,10 @@ function demoScene(): Scene {
   ], clips: [
     { id: uid(), track: 'actors', actor: s, start: 0, length: 30 }, { id: uid(), track: 'actors', actor: z, start: 0, length: 30 },
     move(s, 0, 4.65, 300, 446, 454), move(z, 20.25, 5.15, 617, 1020, 450), move(s, 21.15, 5.1, 446, 900, 454),
+    // Zee already picked up the nearby cup when this demo scene opens.
+    // The explicit attachment keeps the story compatible with physical grip
+    // rules instead of silently teleporting props into a gesture's hand.
+    {id:uid(),track:'props',actor:z,target:'cup',interaction:'equip',start:0,length:.1,hand:'right'},
     body(z, 'sit', 0, 18.8, 'body', 'sofa'), body(z, 'think', 0, 4.3, 'gesture', 'cup'), body(s, 'walk', .1, 4.55), body(s, 'stop', 4.65, .65), body(s, 'surprise', 5.3, 2.3), body(s, 'angry', 8.2, 4), body(s, 'talk', 8.7, 3, 'gesture'), body(z, 'laugh', 12.35, 3.7, 'gesture'), body(s, 'point', 15.7, 3, 'gesture'), body(z, 'stand', 18.8, .8), body(z, 'jump', 19.45, .8), body(z, 'run', 20.25, 5.15), body(s, 'run', 21.15, 5.1), body(s, 'stop', 26.25, .55), body(s, 'shrug', 26.8, 3.2),
     face(s, 'surprised', 4.8, 3.4), face(s, 'angry', 8.2, 10.6), face(z, 'happy', 12.35, 5.2), face(s, 'thinking', 26.8, 3.2),
     dialogue(z, 'Mmm. Extra spicy.', 'zee-spicy', .75, 2.3), dialogue(s, 'Hey! Who ate my food?', 'sbu-food', 8.65, 3.1), dialogue(z, 'I was just checking if it was safe.', 'zee-safe', 12.8, 3.45), dialogue(s, 'Zee! That was my lunch!', 'sbu-lunch', 16.5, 2.55), dialogue(s, 'Fine. I still have the receipt.', 'sbu-receipt', 27, 2.55),

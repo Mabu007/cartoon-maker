@@ -5,13 +5,17 @@
  * No React state updates, additional models, allocations of large arrays,
  * or frame-rate-dependent easing are required.
  */
+import { blendFacialControls } from './facialIntelligence.ts';
+import { facingForBodyYaw,type BodyFacing } from './humanReconstruction.ts';
+import { createMotionIntent } from './motionIntent.ts';
 import type { JointName } from './schema.ts';
 import type { PerformanceKey } from './performanceCapture.ts';
-import { decideFrontArm, contactHysteresis, type ArmSide } from './performanceArmIntelligence.ts';
+import { interpolateArmTarget, createObedientArm, decideFrontArm, contactHysteresis, type ArmSide } from './performanceArmIntelligence.ts';
+import { createThumbStabilizer, type ThumbPair } from './thumbIntelligence.ts';
 import { observedHandPose, type FingerCurls } from './performanceHandIntelligence.ts';
 import { constrainCapturedHead, headFacingForYaw } from './performanceHeadEye.ts';
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
-type FilterState={time:number;value:number;derivative:number};
+type FilterState={time:number;value:number;derivative:number;raw?:number};
 function coefficient(cutoff:number,dt:number){
   return 1/(1+1/(2*Math.PI*Math.max(.05,cutoff)*dt));
 }
@@ -20,20 +24,32 @@ export function oneEuroStep(
   minCutoff=2.1,beta=.035,derivativeCutoff=1.5,angular=false
 ):FilterState{
   if(!previous||!Number.isFinite(previous.value)||!Number.isFinite(time)||
-    time-previous.time>.32||time<=previous.time)
-    return {time,value:measurement,derivative:0};
-  const dt=clamp(time-previous.time,.012,.2);
+    time-previous.time>1.1||time<=previous.time)
+    return {time,value:measurement,derivative:0,raw:measurement};
+  const dt=clamp(time-previous.time,.012,.8);
   const rawDelta=angular
     ?((measurement-previous.value+540)%360)-180
     :measurement-previous.value;
-  const derivative=rawDelta/dt;
+  const lastRaw=previous.raw??previous.value;
+  const measuredDelta=angular?((measurement-lastRaw+540)%360)-180:measurement-lastRaw;
+  const derivative=measuredDelta/dt;
   const da=coefficient(derivativeCutoff,dt);
   const smoothedVelocity=previous.derivative+(derivative-previous.derivative)*da;
   const a=coefficient(minCutoff+beta*Math.abs(smoothedVelocity),dt);
-  return {time,value:previous.value+rawDelta*a,derivative:smoothedVelocity};
+  return {time,value:previous.value+rawDelta*a,derivative:smoothedVelocity,raw:measurement};
 }
 export function createPerformanceStabilizer(){
   const filters=new Map<string,FilterState>();
+  const obedient={left:createObedientArm('left'),right:createObedientArm('right')};
+  const hasEvidence={left:false,right:false};
+  const intents=new Map<string,ReturnType<typeof createMotionIntent>>();
+  function intentional(name:string,values:number[],time:number,threshold:number){
+    let gate=intents.get(name);
+    if(!gate){gate=createMotionIntent();intents.set(name,gate);}
+    return gate.update(values,time,threshold);
+  }
+  function clearSignal(name:string){filters.delete(name);intents.delete(name);}
+  const thumbFilters={left:createThumbStabilizer(),right:createThumbStabilizer()};
   const lastGoodHand:{left?:{time:number;curls:FingerCurls};right?:{time:number;curls:FingerCurls}}={};
   const bend:{left?:number;right?:number}={};
   const pendingBend:{left?:number;right?:number}={};
@@ -45,12 +61,17 @@ export function createPerformanceStabilizer(){
   let nearArm:ArmSide|undefined;
   let nearCandidate:ArmSide|undefined,nearFrames=0;
   let lastTime=-Infinity,lastObservation=-Infinity;
+  let missingObservation=false;
   let lastOutput:PerformanceKey|undefined;
   const lastJoint=new Map<JointName,{time:number;value:number}>();
   const lastTarget:{
     left?:{time:number;x:number;y:number};
     right?:{time:number;x:number;y:number}
   }={};
+  const missingArm:Partial<Record<ArmSide,number>>={};
+  const missedArmFrames:Record<ArmSide,number>={left:0,right:0};
+  const returningArm:Partial<Record<ArmSide,{since:number;weight:number}>>={};
+  let bodyFacing:BodyFacing='front',bodyCandidate:BodyFacing|undefined,bodyFrames=0,bodySeen=-Infinity;
   let trackedHead:'front'|'left'|'right'='front';
   let headCandidate:'front'|'left'|'right'|undefined,headFrames=0;
   let recentYaw:{time:number;value:number}|undefined;
@@ -72,6 +93,7 @@ export function createPerformanceStabilizer(){
   }
   function recover(time:number):PerformanceKey|undefined{
     if(!lastOutput||!Number.isFinite(time))return undefined;
+    missingObservation=true;
     const age=Math.max(0,time-lastObservation);
     if(age>=.72)return undefined;
     const fraction=clamp((age-.16)/.56,0,1);
@@ -88,11 +110,11 @@ export function createPerformanceStabilizer(){
         right:(last.armConfidence.right??1)*presence
       }}:{})};
   }
-  function update(key:PerformanceKey,smoothing=.25):PerformanceKey{
+  function update(key:PerformanceKey,smoothing=.65):PerformanceKey{
     const time=key.time;
     if(!Number.isFinite(time))return key;
     if(time<=lastTime)reset();
-    else if(time-lastTime>.22){
+    else if(time-lastTime>1.1||(missingObservation&&time-lastTime>.35)){
       const previous=recover(time);
       const hadCapture=lastOutput!==undefined;
       reset();
@@ -100,7 +122,7 @@ export function createPerformanceStabilizer(){
         time,pose:{},presence:0
       }};
     }
-    lastTime=time;
+    lastTime=time;missingObservation=false;
     const amount=clamp(smoothing,0,1);
     const pose={...key.pose};
     // Missing landmarks are not evidence of a new neutral joint. Preserve
@@ -109,7 +131,10 @@ export function createPerformanceStabilizer(){
     for(const [joint,previous] of lastJoint){
       if(pose[joint]!==undefined)continue;
       const age=time-previous.time;
-      if(age>=.58){lastJoint.delete(joint);continue;}
+      const side=joint.startsWith('left')?'left':joint.startsWith('right')?'right':undefined;
+      const arm=side&&(joint.endsWith('Shoulder')||joint.endsWith('Elbow')||joint.endsWith('Wrist'));
+      if(arm&&side&&key.armTargets?.[side]){pose[joint]=previous.value;continue;}
+      if(age>=.58){lastJoint.delete(joint);clearSignal('joint:'+joint);continue;}
       const fade=clamp((age-.16)/.42,0,1);
       pose[joint]=previous.value*(1-fade*fade*(3-2*fade));
     }
@@ -117,43 +142,81 @@ export function createPerformanceStabilizer(){
       if(!Number.isFinite(measurement))continue;
       const wrist=joint.endsWith('Wrist');
       const elbow=joint.endsWith('Elbow');
-      const base=wrist?3.1-amount*1.5:elbow?3.7-amount*1.5:4.7-amount*1.1;
-      const beta=wrist?.085:elbow?.070:.045;
       const head=joint==='head'||joint==='neck';
-      pose[joint]=clamp(filter('joint:'+joint,measurement,time,
-        head?2.2-amount*.75:base,head?0.016:beta,true,
-        head?(joint==='head'?135:95):undefined),-180,180);
-      if(key.pose[joint]!==undefined)lastJoint.set(joint,{time,value:pose[joint]!});
+      const name='joint:'+joint;
+      // Unwrap before intent detection so +179/-179 is a two-degree change.
+      const old=filters.get(name)?.value;
+      const unwrapped=old===undefined?measurement:old+((measurement-old+540)%360)-180;
+      const observed=key.pose[joint]!==undefined;
+      const threshold=amount===0?0:(head?1+amount*3: wrist?2+amount*7:elbow?1.8+amount*5:1.5+amount*5);
+      const target=observed?intentional(name,[unwrapped],time,threshold)[0]:measurement;
+      // Dropout relaxation must not be interpreted as an intentional pose.
+      pose[joint]=observed?clamp(filter(name,target,time,
+        head?2.8-amount*1.4:4.5-amount*2.6,head?.010:.019,true,
+        head?(joint==='head'?135:95):undefined),-180,180):measurement;
+      if(observed)lastJoint.set(joint,{time,value:pose[joint]!});
     }
     const targets:PerformanceKey['armTargets']={};
     const depths:PerformanceKey['armDepth']={};
     const bends:PerformanceKey['armBend']={};
+    const extensions:PerformanceKey['armExtension']={};
     const curls:PerformanceKey['fingerCurls']={};
+    const thumbs:ThumbPair={};
     const confidence:PerformanceKey['handConfidence']={};
     const armConfidence:PerformanceKey['armConfidence']={};
     const hands:NonNullable<PerformanceKey['hands']>={left:'relaxed',right:'relaxed'};
     for(const side of ['left','right'] as const){
       const point=key.armTargets?.[side];
-      if(point){
+      if(point&&Number.isFinite(point.x)&&Number.isFinite(point.y)){
+        missedArmFrames[side]=0;
+        // Gate the whole shoulder-local wrist vector, not independent axes.
+        // This preserves diagonal gestures and held hand positions.
+        const [x,y]=intentional(side+':target',[point.x,point.y],time,amount===0?0:.6+amount*3.8);
         targets[side]={
-          x:filter(side+':target-x',point.x,time,3.6-amount*1.6,.095),
-          y:filter(side+':target-y',point.y,time,3.6-amount*1.6,.095)
+          x:filter(side+':target-x',x,time,4.5-amount*2.6,.024),
+          y:filter(side+':target-y',y,time,4.5-amount*2.6,.024)
         };
+        if(missingArm[side]!==undefined){
+          returningArm[side]={since:time,weight:missingArm[side]!};
+          delete missingArm[side];
+        }
+        const returning=returningArm[side];
+        if(returning){
+          const t=clamp((time-returning.since)/.18,0,1);
+          armConfidence[side]=returning.weight+(1-returning.weight)*t*t*(3-2*t);
+          if(t>=1)delete returningArm[side];
+        }else armConfidence[side]=1;
         lastTarget[side]={time,...targets[side]!};
-        armConfidence[side]=1;
       }else{
         const observed=lastTarget[side],age=observed?time-observed.time:Infinity;
-        if(observed&&age<.6){
+        missedArmFrames[side]++;
+        // One failed inference is never enough to release an established arm.
+        // On slow devices a single observation can be hundreds of ms apart.
+        if(observed&&(age<.6||missedArmFrames[side]===1)){
           targets[side]={x:observed.x,y:observed.y};
           const fade=clamp((age-.12)/.48,0,1);
-          armConfidence[side]=1-fade*fade*(3-2*fade);
+          armConfidence[side]=missedArmFrames[side]===1?1:1-fade*fade*(3-2*fade);
+          missingArm[side]=armConfidence[side];delete returningArm[side];
+        }else if(observed){
+          lastTarget[side]=undefined;missingArm[side]=0;delete returningArm[side];
+          obedient[side].reset();hasEvidence[side]=false;
+          clearSignal(side+':target');clearSignal(side+':target-x');clearSignal(side+':target-y');
         }
       }
       const depth=key.armDepth?.[side];
       if(depth!==undefined)
         depths[side]=clamp(filter(side+':depth',depth,time,2.5,.012),-1,1);
+      else if(targets[side]&&lastOutput?.armDepth?.[side]!==undefined)
+        depths[side]=lastOutput.armDepth[side];
+      const evidence=key.armEvidence?.[side];
+      if(evidence)hasEvidence[side]=true;
+      if(targets[side]&&hasEvidence[side]){
+        const solved=obedient[side].update(targets[side]!,evidence);
+        targets[side]=solved.target;extensions[side]=solved.extension;bends[side]=solved.pole;
+        if(lastTarget[side])lastTarget[side]={...lastTarget[side]!,...solved.target};
+      }
       const measuredBend=key.armBend?.[side];
-      if(measuredBend!==undefined){
+      if(!hasEvidence[side]&&measuredBend!==undefined){
         if(bend[side]===undefined) bend[side]=measuredBend;
         else if(measuredBend!==bend[side]){
           counts[side]=pendingBend[side]===measuredBend?counts[side]+1:1;
@@ -161,7 +224,7 @@ export function createPerformanceStabilizer(){
           if(counts[side]>=3){bend[side]=measuredBend;counts[side]=0;pendingBend[side]=undefined;}
         }else{counts[side]=0;pendingBend[side]=undefined;}
         bends[side]=bend[side];
-      }else if(bend[side]!==undefined && lastTarget[side] &&
+      }else if(!hasEvidence[side]&&bend[side]!==undefined && lastTarget[side] &&
         time-lastTarget[side]!.time<.6){
         // Do not suddenly invert the elbow when its pole keypoint is briefly
         // hidden behind the chest. Keep the proven anatomical bend until
@@ -174,9 +237,9 @@ export function createPerformanceStabilizer(){
         // An old detector frame may remain visible briefly but never
         // restarts the hold timer. Its influence decays while the arm moves.
         if(quality>.92)lastGoodHand[side]={time,curls:detected};
-        confidence[side]=quality;
+        confidence[side]=clamp(quality*1.65,0,1);
         curls[side]=detected.map((value,index)=>
-          clamp(filter(side+':finger:'+index,value,time,2.3-amount*1.2,.22*quality),0,1)
+          clamp(filter(side+':finger:'+index,value,time,6-amount*2,.32*quality),0,1)
         ) as FingerCurls;
       }else{
         const held=lastGoodHand[side],age=held?time-held.time:Infinity;
@@ -189,9 +252,11 @@ export function createPerformanceStabilizer(){
           ) as FingerCurls;
         }
       }
+      const thumb=thumbFilters[side].update(key.thumbs?.[side],time,quality);
+      if(thumb&&curls[side]){thumbs[side]=thumb;curls[side]![0]=thumb.curl;}
       const state=handState[side];
       if(curls[side]&&(confidence[side]??0)>.1){
-        const classified=observedHandPose(curls[side]!);
+        const classified=observedHandPose(curls[side]!,thumbs[side]);
         if(state.current===undefined){state.current=classified;}
         else if(classified!==state.current){
           state.count=state.candidate===classified?state.count+1:1;
@@ -200,7 +265,7 @@ export function createPerformanceStabilizer(){
             state.current=classified;state.count=0;state.candidate=undefined;
           }
         }else{state.count=0;state.candidate=undefined;}
-      }else{state.candidate=undefined;state.count=0;}
+      }else{state.candidate=undefined;state.count=0;state.current=undefined;}
       hands[side]=state.current??key.hands?.[side]??'relaxed';
     }
     if(depths.left!==undefined||depths.right!==undefined){
@@ -220,7 +285,7 @@ export function createPerformanceStabilizer(){
     candidateContact=contact.candidate;
     candidateFrames=contact.count;
     const headYaw=key.headYaw!==undefined
-      ?clamp(filter('head:yaw',key.headYaw,time,2.8,.16),-1,1)
+      ?clamp(filter('head:yaw',intentional('head:yaw',[key.headYaw],time,amount*.12)[0],time,2.8,.16),-1,1)
       :recentYaw&&time-recentYaw.time<.5
         ?recentYaw.value*(1-clamp((time-recentYaw.time-.16)/.34,0,1))
         :undefined;
@@ -235,18 +300,37 @@ export function createPerformanceStabilizer(){
       }
     }
     const focus=key.focus?{
-      x:clamp(filter('eyes:x',key.focus.x,time,4,.15),-1,1),
-      y:clamp(filter('eyes:y',key.focus.y,time,4,.15),-1,1)
+      x:clamp(filter('eyes:x',intentional('eyes:x',[key.focus.x],time,amount*.09)[0],time,4,.15),-1,1),
+      y:clamp(filter('eyes:y',intentional('eyes:y',[key.focus.y],time,amount*.09)[0],time,4,.15),-1,1)
     }:undefined;
+    const bodyYaw=key.bodyYaw===undefined?undefined:clamp(filter('body:yaw',key.bodyYaw,time,3.8,.12),-1,1);
+    if(bodyYaw!==undefined){
+      bodySeen=time;const next=facingForBodyYaw(bodyYaw,bodyFacing);
+      if(next===bodyFacing){bodyCandidate=undefined;bodyFrames=0;}
+      else{bodyFrames=bodyCandidate===next?bodyFrames+1:1;bodyCandidate=next;
+        if(bodyFrames>=2){bodyFacing=next;bodyCandidate=undefined;bodyFrames=0;}}
+    }
+    // Preserve quick blinks and expressive mouth shapes while damping noisy
+    // brow/cheek coefficients independently of body smoothing.
+    const facial=key.facial&&lastOutput?.facial?{
+      ...blendFacialControls(lastOutput.facial,key.facial,.72),
+      blinkLeft:key.facial.blinkLeft,blinkRight:key.facial.blinkRight,
+      jawTension:key.facial.jawTension,lipRound:key.facial.lipRound
+    }:key.facial;
     const result:PerformanceKey={
-      ...key,pose:constrainCapturedHead(pose),focus,hands,
+      ...key,pose:constrainCapturedHead(pose),focus,hands:curls.left||curls.right?hands:undefined,facial,
+      ...(bodyYaw!==undefined?{bodyYaw}:{}),
+      ...(time-bodySeen<.85?{bodyFacing}:{}),
       ...(headYaw!==undefined?{headYaw,headFacing:trackedHead}:{}),
+      armEvidence:undefined,
+      armExtension:extensions.left!==undefined||extensions.right!==undefined?extensions:undefined,
       armTargets:targets.left||targets.right?targets:undefined,
       armConfidence:armConfidence.left!==undefined||armConfidence.right!==undefined?armConfidence:undefined,
       armDepth:depths.left!==undefined||depths.right!==undefined?depths:undefined,
       armBend:bends.left!==undefined||bends.right!==undefined?bends:undefined,
       nearArm,
       fingerCurls:curls.left||curls.right?curls:undefined,
+      thumbs:thumbs.left||thumbs.right?thumbs:undefined,
       handConfidence:confidence.left!==undefined||confidence.right!==undefined?confidence:undefined,
       contact:activeContact as PerformanceKey['contact']
     };
@@ -271,7 +355,7 @@ export function createPerformanceStabilizer(){
       if(prev.armTargets&&result.armTargets){
         for(const side of ['left','right'] as const){
           const old=prev.armTargets[side],next=result.armTargets[side];
-          if(old&&next)result.armTargets[side]={
+          if(old&&next)result.armTargets[side]=result.armExtension?.[side]!==undefined?interpolateArmTarget(old,next,t):{
             x:old.x+(next.x-old.x)*t,y:old.y+(next.y-old.y)*t
           };
         }
@@ -283,11 +367,16 @@ export function createPerformanceStabilizer(){
     return result;
   }
   function reset(){
-    filters.clear();
+    filters.clear();intents.clear();
+    obedient.left.reset();obedient.right.reset();hasEvidence.left=hasEvidence.right=false;
+    bodyFacing='front';bodyCandidate=undefined;bodyFrames=0;bodySeen=-Infinity;
+    missedArmFrames.left=0;missedArmFrames.right=0;
+    delete missingArm.left;delete missingArm.right;delete returningArm.left;delete returningArm.right;
     lastJoint.clear();lastTarget.left=undefined;lastTarget.right=undefined;
     lastOutput=undefined;lastObservation=-Infinity;recentYaw=undefined;
     trackedHead='front';headCandidate=undefined;headFrames=0;
     reacquire=undefined;
+    thumbFilters.left.reset();thumbFilters.right.reset();
     lastGoodHand.left=undefined;lastGoodHand.right=undefined;
     bend.left=undefined;bend.right=undefined;
     pendingBend.left=undefined;pendingBend.right=undefined;
@@ -300,7 +389,7 @@ export function createPerformanceStabilizer(){
     nearArm=undefined;nearCandidate=undefined;nearFrames=0;
     activeContact=undefined;candidateContact=undefined;
     candidateFrames=0;lastContactSeen=-Infinity;
-    lastTime=-Infinity;
+    lastTime=-Infinity;missingObservation=false;
   }
-  return {update,recover,reset};
+  return {update,recover,reset,armDiagnostics:()=>({left:obedient.left.debug(),right:obedient.right.debug()})};
 }

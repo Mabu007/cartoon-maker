@@ -45,8 +45,8 @@ test('head tracks front, slight left and slight right with separate hysteresis',
   assert.equal(headFacingForYaw(.15,'left'),'left');
   assert.equal(headFacingForYaw(-.15,'right'),'right');
   assert.equal(headFacingForYaw(0,'left'),'front');
-  assert((estimateHeadYaw({x:.47,y:.28},eyeA,eyeB)??0)>.3);
-  assert((estimateHeadYaw({x:.53,y:.28},eyeA,eyeB)??0)<-.3);
+  assert((estimateHeadYaw({x:.47,y:.28},eyeA,eyeB)??0)<-.3);
+  assert((estimateHeadYaw({x:.53,y:.28},eyeA,eyeB)??0)>.3);
 });
 test('head pose takes multiple observed frames to change and ignores one-frame flips',()=>{
   const filter=createPerformanceStabilizer();

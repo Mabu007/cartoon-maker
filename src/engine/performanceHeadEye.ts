@@ -53,7 +53,9 @@ export function observedIrisFocus(
     // Resolve the pupil in the eye's own coordinate frame. Using raw
     // horizontal/vertical deltas made iris movement appear to change as
     // the person tilted their head, even with both pupils stationary.
-    const dx=b.x-a.x,dy=b.y-a.y;
+    // Both eye frames must run left-to-right in raw camera space.
+    const direction=b.x>=a.x?1:-1;
+    const dx=(b.x-a.x)*direction,dy=(b.y-a.y)*direction;
     const width=Math.hypot(dx,dy);
     if(width<.014)continue;
     const tx=dx/width,ty=dy/width;
@@ -82,11 +84,13 @@ export function observedIrisFocus(
 export function estimateHeadYaw(
   nose:Landmark|undefined,eyeA:Landmark|undefined,eyeB:Landmark|undefined
 ):number|undefined{
-  if(!finite(nose)||!finite(eyeA)||!finite(eyeB))return undefined;
+  if(!nose||!eyeA||!eyeB||!finite(nose)||!finite(eyeA)||!finite(eyeB))return undefined;
   const width=Math.hypot(eyeA.x-eyeB.x,eyeA.y-eyeB.y);
   if(width<.018)return undefined;
   const center=(eyeA.x+eyeB.x)/2;
-  return clamp(-(nose.x-center)/(width*.35),-1,1);
+  // The camera is unmirrored; positive raw X is left in the selfie view.
+  // Positive yaw selects the left-facing artwork, not the right-facing one.
+  return clamp((nose.x-center)/(width*.35),-1,1);
 }
 /** Two thresholds separate entering/leaving a turn, preventing rapid
  * front/left/right oscillation from uncertain nose detections. */

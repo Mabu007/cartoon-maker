@@ -40,7 +40,9 @@ function clampCamera(camera:DirectedCamera,viewportWidth:number):DirectedCamera{
     y:clampAxis(camera.y,halfY,HEIGHT)};
 }
 function angleFrame(camera:DirectedCamera,clip:DirectedCameraClip,width:number):DirectedCamera{
-  const result={...camera};
+  // Explicit cinematic zoom is separate from the editor viewport zoom.
+  // Cap to 12× to avoid frame-infinite viewport transforms.
+  const result={...camera,zoom:clamp(camera.zoom*(clip.zoomMultiplier??1),.5,12)};
   switch(clip.angle){
     case 'high-angle':result.zoom=Math.max(1.16,result.zoom);result.y+=50;break;
     case 'low-angle':result.zoom=Math.max(1.16,result.zoom);result.y-=48;break;

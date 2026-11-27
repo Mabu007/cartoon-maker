@@ -243,3 +243,19 @@ export async function removeDeviceProject(scope:string,id:string) {
   observed.set(rowKey(scope,id),null);
   forgetEditorSession(scope,id);
 }
+
+/** Explicit local reset: remove cartoons and recovery rows across local account scopes.
+ * This is never called by startup/migration. Reusable art and external backups are independent. */
+export async function clearAllDeviceProjects(){
+  await Promise.all([...queues.values()].map(queue=>queue.catch(()=>{})));
+  const prefixes=['toonroom.projects.v1.','toonroom.last-session.v1.','toonroom.editor-session.v1.'];
+  const keys:string[]=[];
+  for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key&&prefixes.some(prefix=>key.startsWith(prefix)))keys.push(key);}
+  // Remove migration sources too, so a deleted cartoon cannot be re-imported on restart.
+  for(const key of keys)localStorage.removeItem(key);
+  await transaction(['projects','recovery','imports'],'readwrite',async tx=>{
+    const rows=await result<ProjectRow[]>(tx.objectStore('projects').getAll());
+    await Promise.all(['projects','recovery','imports'].map(name=>result(tx.objectStore(name).clear())));
+    for(const row of rows)observed.set(rowKey(row.scope,row.id),null);
+  });
+}

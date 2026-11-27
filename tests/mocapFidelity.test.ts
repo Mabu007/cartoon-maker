@@ -41,7 +41,10 @@ test('two visible eyes produce head roll and direction when nose alone would not
   averted.pose[0]=point(.54,.25);
   const facing=retargetCaptureFrame(averted)!;
   assert(Math.abs(facing.focus?.x??0)>.2);
-  assert(Math.abs(facing.pose.neck??0)>1);
+  // Horizontal facing is a head-art yaw channel, not a sideways neck roll.
+  assert.equal(facing.pose.neck,0);
+  assert.equal(facing.headFacing,'left');
+  assert((facing.headYaw??0)>.3);
 });
 test('face-only partial frame retains eyes and expression but never invents limbs',()=>{
   const frame=observed();

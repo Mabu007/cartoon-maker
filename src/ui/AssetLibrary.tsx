@@ -15,7 +15,7 @@ import type { Library } from '../studio.ts';
 import { Avatar, IconButton, propIcon } from './shared.tsx';
 
 const tabs = { Cast: UserRound, Worlds: Image, Props: Boxes, Actions: Clapperboard, Effects: Sparkles, Audio: Music2 };
-export type SavedWorld = {name:string;environment:Scene['environment'];objects:Prop[];backgroundImage?:string};
+export type SavedWorld = {name:string;environment:Scene['environment'];objects:Prop[];backgroundImage?:string;visual?:Scene['visual'];backgroundTransform?:Scene['backgroundTransform']};
 type AudioClip=Extract<Clip,{track:'dialogue'|'audio'|'music'}>;
 function audioName(clip:AudioClip,characters:Record<string,string>){
   if(clip.track==='dialogue')return (characters[clip.actor]??'Character')+': '+(clip.text||'Untitled dialogue');
@@ -25,8 +25,9 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
   duplicateCharacter,removeCharacter,addActor,setWorld,uploadWorld,savedWorlds,applySavedWorld,
   saveCurrentWorld,renameSavedWorld,duplicateSavedWorld,deleteSavedWorld,clearWorldImage,
   addProp,uploadProp,inspectProp,duplicateProp,deleteProp,addAction,selectActor,addVfx,addTransition,addText,holdObject,addSound,dialogue,audio,music,
-  inspectAudio,duplicateAudio,deleteAudio
+  inspectAudio,duplicateAudio,deleteAudio,openArtwork
 }:{
+  openArtwork:(sourceImage?:string)=>void;
   active:Library;change:(panel:Library)=>void;project:Project;characters:Character[];scene:Scene;
   newCharacter:()=>void;editCharacter:(character:Character)=>void;
   duplicateCharacter:(character:Character)=>void;removeCharacter:(character:Character)=>void;
@@ -86,6 +87,8 @@ export function AssetLibrary({ active, change, project, characters, scene, newCh
       <label className="search-field"><Search size={15}/>
         <input aria-label={`Search ${active.toLowerCase()}`} placeholder={`Find ${active.toLowerCase()}…`}
           value={filter} onChange={e=>setFilter(e.target.value)}/></label>
+      <button type="button" className="quiet full" onClick={()=>openArtwork()}>Artwork library / import</button>
+      {active==='Worlds'&&scene.backgroundImage&&<button type="button" className="quiet full" onClick={()=>openArtwork(scene.backgroundImage)}>Extract background object</button>}
       <div className="asset-list">
         {active==='Cast'&&<>
           {scene.actors.some(item=>match(names[item.id]))&&<div className="small-label">In this scene</div>}

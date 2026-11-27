@@ -1,0 +1,24 @@
+Baseline: 8f568d0f6db0692ce4dc600a195b4e1dd5bccd27
+Baseline tests: 344 passed, zero failures
+Baseline TypeScript check: passed
+
+Final npm run build:
+  Tests: 379 passed, zero failures, zero skipped
+  TypeScript --noEmit: passed
+  Vite production build: passed (12.43 seconds)
+  Build warning: some emitted chunks exceed 500 kB
+
+Final npm run verify:offline:
+  Verified offline bundle 569fb4b39c1ede34f63f
+  58 precached files, 3.36 MiB
+
+Git whitespace check: passed
+Native SVG fallback renders: created and inspected
+Accelerated browser visual QA: blocked by Vercel preview sign-in, not claimed
+Webcam capture: not performed
+Video export: not performed
+Celeron playback/memory profiling: not performed
+Production deployment: not performed
+
+Continuation adds modular body artwork, two-joint calibration, add/subtract brushes, SVG sizing fixes, direct light/ground handles and optional perspective-aware walking speed.
+Native preview rendered all 12 body parts during idle/walk/sit/point in automated tests.

@@ -9,7 +9,8 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "preview": "vite preview",
     "verify:offline": "node scripts/verify-offline.mjs",
-    "assets:performance": "node scripts/fetch-performance-assets.mjs"
+    "assets:performance": "node scripts/fetch-performance-assets.mjs",
+    "docs:visual-assets": "node --experimental-strip-types scripts/export-visual-spec.mjs"
   },
   "dependencies": {
     "@echogarden/flite-wasi": "^0.1.1",

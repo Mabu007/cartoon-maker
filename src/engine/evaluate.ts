@@ -1,7 +1,10 @@
-import { smoothPath } from './stagePath.ts';
+import { sampleVisual } from './environmentVisuals.ts';
+import { movementPosition } from './movementPosition.ts';
+export { movementPosition } from './movementPosition.ts';
 import { propPlacement, throwArc, transferFraction, type PropPose } from './propMotion.ts';
+import { resolveHandInteractions,mayAttachProp,type HandSide } from './objectInteractionEngine.ts';
 import { gaitProfiles, usesSeat, type GaitStyle } from './performanceCatalog.ts';
-import { animations, armIK, blend, clamp, ease, mix, rig, sample, viewForward, travelProgress, motionBlend, turnHeadScale } from './animation.ts';
+import { animations, armIK, blend, clamp, ease, mix, rig, sample, viewForward, motionBlend, turnHeadScale } from './animation.ts';
 import { actorWorldPoint, eyeWorldPoint, aimEyes } from './gaze.ts';
 import { anchorFor, compatibleObject } from './interactions.ts';
 import { audibleAudioTrack } from './audioMix.ts';
@@ -11,11 +14,13 @@ import { gestureAt, livingPose, type ActingContext, type GestureSample } from '.
 import { occupiedHands } from './handPerformance.ts';
 import { directCamera } from './cameraDirector.ts';
 import { samplePerformance, samplePerformanceHands } from './performanceCapture.ts';
+import { mirrorCapturedRig } from './humanReconstruction.ts';
 import { performanceFacingView } from './performanceFacing.ts';
 import { constrainCapturedHead } from './performanceHeadEye.ts';
 import { capturedMicroMotion } from './performanceMicroMotion.ts';
 import { directedActingPosture } from './actingPosture.ts';
 import type { HandPose } from './handRig.ts';
+import type { ThumbPair } from './thumbIntelligence.ts';
 import type { FingerCurls, CapturedContact } from './performanceHandIntelligence.ts';
 import type { ArmTargets, ArmBends, ArmDepths, ArmSide } from './performanceArmIntelligence.ts';
 import type { FacialControls } from './facialIntelligence.ts';
@@ -24,12 +29,12 @@ import { HEIGHT, WIDTH, views, type EmotionSpace, type ActingIntent, type Action
 export type CharacterState = ActorData & { pose: JointPose; lift: number; visible: boolean; expression: Expression; action: Action;
   speaking: boolean; actionTime: number; actionWeight:number; expressionIntensity:number; actingIntent?:ActingIntent; emotion?:EmotionSpace; locomotion: Action; gaitTime: number; gaitVelocity?: number;
   gaitStyle:GaitStyle; gaitWeight:number; turnScale:number; listening?:boolean; viseme?: { shape: Viseme; weight: number; from?:Viseme; blend?:number };
-  focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; propPose?:PropPose; sitting:boolean; seat?:string;
-  facialCapture?: {controls:FacialControls;influence:number};
-  handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number};
-  capturedFingers?:{left?:FingerCurls;right?:FingerCurls;influence:number;confidence?:{left?:number;right?:number}};
-  capturedRig?:{targets:ArmTargets;bends:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
-  capturedHeadFacing?:import('./schema.ts').PerformanceFacing;
+  focus?: { x: number; y: number }; gazePoint?: { x: number; y: number }; held?: Prop; heldHand?:HandSide; heldItems?:{left?:Prop;right?:Prop}; propPose?:PropPose; sitting:boolean; seat?:string;
+  facialCapture?: {controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};
+  handGesture?: GestureSample; capturedArms?:{left:boolean;right:boolean}; capturedFocus?:{x:number;y:number}; authoredGaze?:boolean;
+  capturedFingers?:{left?:FingerCurls;right?:FingerCurls;thumbs?:ThumbPair;influence:number;confidence?:{left?:number;right?:number}};
+  capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
+  capturedHeadFacing?:import('./schema.ts').PerformanceFacing; capturedHeadYaw?:number;
   capturedContact?:{type:CapturedContact;influence:number};
   capturedFacing?:import('./schema.ts').PerformanceFacing; handOverride?: {
     left:HandPose;right:HandPose;
@@ -42,21 +47,6 @@ export type CameraState = { x: number; y: number; zoom: number; roll?:number; vi
 const active = (clip: Clip, time: number) => clip.start <= time && time < clip.start + clip.length;
 const latest = <T extends Clip>(clips: T[]) => clips.reduce<T | undefined>((found, clip) => !found || found.start <= clip.start ? clip : found, undefined);
 const frameWeight = (clip: Clip, t: number) => ease(clamp(Math.min((t - clip.start) / .16, (clip.start + clip.length - t) / .15)));
-/** Pure deterministic sampler shared by preview, props and imported JSON playback. */
-export function movementPosition(clip: Extract<Clip, { track: 'movement' }>, progress: number): { x: number; y: number } {
-  const t = clamp(progress);
-  const keys = clip.keyframes;
-  if (!keys) {
-    const weight = clip.gait ? travelProgress(t) : ease(t);
-    return { x: mix(clip.fromX, clip.toX, weight), y: mix(clip.fromY, clip.toY, weight) };
-  }
-  if(clip.style)return smoothPath(keys,t);
-  const rightIndex = keys.findIndex(key => key.time >= t);
-  const right = keys[Math.max(1, rightIndex < 0 ? keys.length - 1 : rightIndex)];
-  const left = keys[Math.max(0, (rightIndex < 0 ? keys.length - 1 : rightIndex) - 1)];
-  const weight = clamp((t - left.time) / Math.max(1e-9, right.time - left.time));
-  return { x: mix(left.x, right.x, weight), y: mix(left.y, right.y, weight) };
-}
 export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<string,Character>, viewportWidth: number = WIDTH) {
   const t = clamp(time, 0, Math.max(0, scene.duration - .000001));
   const timelineClips = scene.clips.filter(clip => !scene.trackSettings?.[clip.track]?.muted);
@@ -69,7 +59,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const group=byActor.get(clip.actor);
     if(group)group.push(clip);else byActor.set(clip.actor,[clip]);
   }
-  const objectsById=new Map(scene.objects.map(object=>[object.id,object]));
+  const visualObjects=scene.objects.map(object=>sampleVisual(object,t,object.y,scene.visual?.perspective));
+  const objectsById=new Map(visualObjects.map(object=>[object.id,object]));
+  const positionAt=(clip:Extract<Clip,{track:'movement'}>,progress:number)=>movementPosition(clip,progress,scene.actors.find(actor=>actor.id===clip.actor)?.visual?.perspective===false?undefined:scene.visual?.perspective);
+  const {owned:handCustody,locations:propLocations,successfulReleases}=resolveHandInteractions(scene,t);
   type BodyClip=Extract<Clip,{track:'body'}>;
   type PropEvent={clip:BodyClip;at:number};
   const propEvents=new Map<string,PropEvent>();
@@ -82,6 +75,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     if(fraction===undefined||!object||!compatibleObject(object,clip.action))continue;
     const at=clip.start+clip.length*fraction;
     if(at>t)continue;
+    if(clip.action!=='pick-up'&&!successfulReleases.has(clip.id))continue;
     const event={clip,at}, prior=propEvents.get(clip.target);
     if(!prior||at>=prior.at)propEvents.set(clip.target,event);
     if(clip.action!=='pick-up'&&at>=(propDrops.get(clip.target)?.at??-1))propDrops.set(clip.target,event);
@@ -92,10 +86,12 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   const byId=new Map(scene.actors.map(actor=>[actor.id,actor]));
   function placedProp(object:Prop,event:PropEvent){
     const {clip,at}=event;
-    const owner=byId.get(clip.actor);
-    if(owner){
+    const sourceOwner=byId.get(clip.actor);
+    if(sourceOwner){
+      let owner=sourceOwner;
       const motion=latest((byActor.get(owner.id)??[]).filter((item):item is Extract<Clip,{track:'movement'}>=>item.track==='movement'&&item.start<=at));
-      const position=motion?movementPosition(motion,(at-motion.start)/motion.length):owner;
+      const position=motion?positionAt(motion,(at-motion.start)/motion.length):owner;
+      owner=sampleVisual({...owner,...position},at,position.y,scene.visual?.perspective);
       const facing=viewForward(owner.view)*(owner.flip?-1:1);
       if(clip.action==='put-down')return {...object,x:position.x+28*facing*owner.scale,y:position.y};
       if(clip.action!=='throw-prop')return object;
@@ -120,24 +116,19 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   }
   const actors = scene.actors.map((actor): CharacterState => {
     const clips = byActor.get(actor.id)??[];
-    const propCue = latest(clips.filter(clip => clip.track==='props' &&
-      (clip.interaction==='equip'||clip.interaction==='release')&&clip.start<=t));
-    let ownership=propCue ? {at:propCue.start,target:propCue.track==='props'&&propCue.interaction==='equip'?propCue.target:undefined} : undefined;
-    for(const event of (transfersByActor.get(actor.id)??[]).sort((a,b)=>a.at-b.at)){
-      if(event.at<(ownership?.at??-1))continue;
-      // Placing one prop down only clears custody of that prop.
-      if(event.clip.action==='pick-up'||!ownership?.target||ownership.target===event.clip.target)
-        ownership={at:event.at,target:event.clip.action==='pick-up'?event.clip.target:undefined};
-    }
+    // One deterministic custody model handles both explicit Equip/Release
+    // and body pick-up/put-down actions. Unreachable props never teleport
+    // into an actor's hand, even in imported historical projects.
     const gaze = latest(clips.filter(clip => clip.track === 'gaze' && active(clip, t)));
     const movement = latest(clips.filter((clip): clip is Extract<Clip, { track: 'movement' }> => clip.track === 'movement' && clip.start <= t));
     const progress = movement ? clamp((t - movement.start) / movement.length) : 0;
-    const position = movement ? movementPosition(movement, progress) : actor;
+    const position = movement ? positionAt(movement, progress) : actor;
     let x = position.x;
     let y = position.y;
+    actor=sampleVisual(actor,t,y,scene.visual?.perspective);
     const travelling = movement && active(movement, t) ? movement : undefined;
-    const lead = movement ? movementPosition(movement,clamp(progress+.003)) : undefined;
-    const trail = movement ? movementPosition(movement,clamp(progress-.003)) : undefined;
+    const lead = movement ? positionAt(movement,clamp(progress+.003)) : undefined;
+    const trail = movement ? positionAt(movement,clamp(progress-.003)) : undefined;
     const deltaX = lead && trail ? lead.x-trail.x : 0;
     const direction = Math.abs(deltaX)>.0001 ? Math.sign(deltaX) : movement ? Math.sign(movement.toX-movement.fromX) : 0;
     let flip = direction ? direction !== viewForward(actor.view) : actor.flip;
@@ -159,8 +150,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       // Finite difference samples the actual authored path, including user
       // keyframes and the same ease ramp used by visual position.
       const sampleWindow=.001;
-      const p1=movementPosition(travelling,clamp(progress+sampleWindow));
-      const p0=movementPosition(travelling,clamp(progress-sampleWindow));
+      const p1=positionAt(travelling,clamp(progress+sampleWindow));
+      const p0=positionAt(travelling,clamp(progress-sampleWindow));
       const delta=Math.max(.00001,(clamp(progress+sampleWindow)-clamp(progress-sampleWindow))*travelling.length);
       return Math.hypot(p1.x-p0.x,p1.y-p0.y)/delta/actor.scale;
     })() : undefined;
@@ -219,7 +210,9 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
         flip = progression > .66 ? !flip : flip;
       }
       if(target&&usesSeat(activeAction))view=anchorFor(target)?.facing??view;
-      if(target&&compatibleObject(target,activeAction)&&!usesSeat(activeAction)){
+      if(target&&compatibleObject(target,activeAction)&&!usesSeat(activeAction)&&
+        (activeAction!=='pick-up'||mayAttachProp(scene,actor.id,target.id,
+          clip.start+clip.length*(transfer??.5)))){
         const elapsed=t-clip.start, phase=elapsed/clip.length;
         const attaches=activeAction==='pick-up'?phase>=transfer!:
           activeAction==='throw-prop'||activeAction==='put-down'?phase<transfer!:true;
@@ -235,10 +228,10 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
           const angle=-actor.rotation*Math.PI/180;
           gripTarget={x:(dx*Math.cos(angle)-dy*Math.sin(angle))*(flip?-1:1)/actor.scale,
             y:(dx*Math.sin(angle)+dy*Math.cos(angle))/actor.scale+lift-(target.kind==='ball'?14:6)};
-          propPose={action:activeAction,time:elapsed,weight:weight*ease(approach),target:gripTarget};
+          propPose={action:activeAction,time:elapsed,weight:weight*ease(approach),target:gripTarget,hand:clip.hand??'right'};
         }else {
           if(activeAction==='throw-prop'&&clip.pointAt&&Math.abs(clip.pointAt.x-x)>7)flip=Math.sign(clip.pointAt.x-x)!==viewForward(view);
-          propPose={action:activeAction,time:transfer===undefined?elapsed:phase*definition.duration,weight};
+          propPose={action:activeAction,time:transfer===undefined?elapsed:phase*definition.duration,weight,hand:clip.hand??'right'};
         }
       }
     }
@@ -253,31 +246,37 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     let capturedRig:CharacterState['capturedRig'];
     let capturedContact:CharacterState['capturedContact'];
     let capturedHeadFacing:CharacterState['capturedHeadFacing'];
+    let capturedHeadYaw:CharacterState['capturedHeadYaw'];
     // A take owns its chosen facing throughout its interval, including
     // temporary tracking gaps. This does not mutate the source scene actor.
-    const capturedFacing=captured?.track==='performance'?captured.facing:undefined;
+    let capturedFacing=captured?.track==='performance'&&captured.performance[0]?.tracking?.torso!==false?captured.facing:undefined;
     if(capturedFacing){({view,flip}=performanceFacingView(capturedFacing));}
     const authoredGesture=Boolean(gesture && !gesture.performance && gesture.id!==captured?.id);
     if(captured?.performance && !authoredGesture){
       const progress=(t-captured.start)/captured.length;
-      const key=samplePerformance(captured.performance,progress);
+      const observedKey=samplePerformance(captured.performance,progress);
+      const mirror=(observedKey.bodyFacing??capturedFacing)==='left'||(!capturedFacing&&!observedKey.bodyFacing&&flip);
+      const key=mirror?mirrorCapturedRig(observedKey):observedKey;
       const weight=frameWeight(captured,t)*clamp(key.presence??1);
-      capturedArms={left:weight>.02&&key.pose.leftShoulder!==undefined,
-        right:weight>.02&&key.pose.rightShoulder!==undefined};
+      if(key.bodyFacing&&weight>.02){capturedFacing=key.bodyFacing;({view,flip}=performanceFacingView(capturedFacing));}
+      capturedArms={left:weight>.02&&(key.pose.leftShoulder!==undefined||!!key.armTargets?.left),
+        right:weight>.02&&(key.pose.rightShoulder!==undefined||!!key.armTargets?.right)};
       if(weight>.02&&key.fingerCurls)capturedFingers={
-        ...key.fingerCurls,influence:weight,confidence:key.handConfidence};
+        ...key.fingerCurls,thumbs:key.thumbs,influence:weight,confidence:key.handConfidence};
       if(weight>.02&&key.armTargets)capturedRig={
-        targets:key.armTargets,bends:key.armBend??{},
+        targets:key.armTargets,bends:key.armBend??{},extensions:key.armExtension,
         depths:key.armDepth??{},near:key.nearArm,influence:weight,confidence:key.armConfidence
       };
       if(weight>.02&&key.contact)capturedContact={type:key.contact,influence:weight};
       if(weight>.12&&key.headFacing)capturedHeadFacing=key.headFacing;
+      if(weight>.12&&key.headYaw!==undefined)capturedHeadYaw=key.headYaw;
       if(key.focus&&!gaze&&weight>.02)capturedFocus=key.focus;
       // Preserve the lower body and its floor contact in an authored sit,
       // walk, sleep or driving animation. A recording owns only observed
       // upper-body joints in this case.
       pose=blend(pose,constrainCapturedHead(key.pose),weight,Boolean(body));
-      const transition=samplePerformanceHands(captured.performance,progress);
+      const sampledHands=samplePerformanceHands(captured.performance,progress);
+      const transition=mirror&&sampledHands?{...sampledHands,from:{left:sampledHands.from.right,right:sampledHands.from.left},to:{left:sampledHands.to.right,right:sampledHands.to.left}}:sampledHands;
       if(transition)handOverride={
         ...transition.to,from:transition.from,
         progress:transition.progress,influence:weight,
@@ -288,7 +287,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       };
       if(key.expression&&!face&&weight>.45)expression=key.expression;
       // Explicit face clips retain ownership when captured facial acting overlaps.
-      if(key.facial&&!face)facialCapture={controls:key.facial,influence:weight};
+      if(key.facial&&!face)facialCapture={controls:key.facial,influence:weight,tracking:key.tracking};
     }
     if (face) expression = face.expression;
     const spoken = latest(sounds.filter((clip):clip is Extract<Clip,{track:'dialogue'}> =>
@@ -299,10 +298,14 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const viseme = spoken?.visemes?.length
       ? sampleTimedViseme(spoken.manualVisemes?.length ? effectiveCues(spoken.visemes, spoken.manualVisemes) : spoken.visemes,audioTime)
       : spoken ? sampleViseme(spoken.text,spoken.length,t-spoken.start) : undefined;
-    if(!held&&ownership?.target&&!propPose){
-      const latestForProp=propEvents.get(ownership.target);
-      if(!latestForProp||latestForProp.at<=ownership.at)held=objectsById.get(ownership.target);
-    }
+    const heldItems:{left?:Prop;right?:Prop}={};
+    for(const [propId,holder] of handCustody)
+      if(holder.actor===actor.id){
+        const prop=objectsById.get(propId);
+        if(prop)heldItems[holder.hand]=prop;
+      }
+    held=heldItems.right??heldItems.left;
+    const heldHand:HandSide|undefined=heldItems.right?'right':heldItems.left?'left':undefined;
     const character = characters?.get(actor.characterId);
     let handGesture: GestureSample | undefined;
     const speaking = Boolean(spoken) || action === 'talk';
@@ -314,7 +317,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       const targetActor = speaking && targetId && !targetProp ? scene.actors.find(other => other.id === targetId && other.id !== actor.id && visibleAt(byActor.get(other.id) ?? [])) : undefined;
       const targetMove = targetActor && latest((byActor.get(targetActor.id) ?? []).filter(
         (clip): clip is Extract<Clip, {track:'movement'}> => clip.track === 'movement' && clip.start <= t));
-      const targetPosition = targetMove ? movementPosition(targetMove, (t - targetMove.start) / targetMove.length) : targetActor;
+      const targetPosition = targetMove ? positionAt(targetMove, (t - targetMove.start) / targetMove.length) : targetActor;
       const target = targetProp ? { x: targetProp.x, y: targetProp.y - (targetProp.imageHeight ?? 50) * targetProp.scale * .55 } :
         targetPosition && targetActor ? { x: targetPosition.x, y: targetPosition.y - 153 * targetActor.scale } : undefined;
       let pointToward: ActingContext['pointToward'];
@@ -359,7 +362,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const actionWeight=performance?frameWeight(performance,t):1;
     return { ...actor, x, y, view, flip, pose, lift, expression, expressionIntensity:face?.intensity??1,actingIntent:face?.intent,emotion:face?.emotion, action,
       gazeTarget: gaze?.track === 'gaze' ? gaze.target : actor.gazeTarget,
-      speaking, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, capturedHeadFacing, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,propPose,sitting,seat };
+      authoredGaze:Boolean(gaze),speaking, handGesture, handOverride, facialCapture, capturedArms, capturedFingers, capturedRig, capturedContact, capturedFocus, capturedFacing, capturedHeadFacing, capturedHeadYaw, actionTime, actionWeight, locomotion, gaitTime, gaitVelocity, gaitStyle, gaitWeight, turnScale, viseme, visible: visibleAt(clips), held,heldHand,heldItems,propPose,sitting,seat };
   });
   // Directors can explicitly select a gaze target. Without one, the person
   // listening follows the current speaker, and the speaker picks a listener.
@@ -368,8 +371,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
   for (const actor of actors) {
     actor.listening = !actor.speaking && activeSpeakers.some(other=>other.id!==actor.id&&other.visible);
     const targetId = actor.gazeTarget;
-    if(actor.capturedFocus){actor.focus=actor.capturedFocus;continue;}
-    if (actor.action === 'look-away') {
+    if(!actor.authoredGaze&&actor.capturedFocus){actor.focus=actor.capturedFocus;continue;}
+    if (!actor.authoredGaze && actor.action === 'look-away') {
       actor.focus = { x: -viewForward(actor.view), y: -.2 };
       continue;
     }
@@ -393,15 +396,24 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
       focusY = eyes?.y??other.y - 150 * other.scale;
     } else if (actor.held&&(!targetId||targetId===actor.held.id)&&(!actor.speaking||targetProp)) {
       const character=characters?.get(actor.characterId);
-      if(character) {
-        const pose=rig(character,actor.pose,1), rear=actor.view==='back'||actor.view==='back-quarter';
-        const [,hand]=armIK(pose.right.shoulder,{x:pose.head.x+(rear?-26:45),y:pose.head.y+43},28*character.arms,28*character.arms,1);
-        const point=actorWorldPoint(actor,{x:hand.x+7,y:hand.y});
+      if(character){
+        const rear=actor.view==='back'||actor.view==='back-quarter';
+        const width=actor.view==='side'?.57:actor.view==='three-quarter'?.88:actor.view==='back-quarter'?.81:1;
+        const local=propPlacement(character,rig(character,actor.pose,width),
+          actor.propPose??{action:'idle',time:0,weight:1},
+          actor.held,rear,actor.heldHand??'right');
+        const point=actorWorldPoint(actor,local);
         focusX=point.x;focusY=point.y;
-      } else {focusX=actor.held.x;focusY=actor.held.y;}
+      }else{focusX=actor.held.x;focusY=actor.held.y;}
     } else if (targetProp) {
-      focusX = targetProp.x;
-      focusY = targetProp.y - (targetProp.imageHeight ?? 50) * targetProp.scale * .55;
+      const dropped=propDrops.get(targetProp.id);
+      const seen=dropped?placedProp(targetProp,dropped):{...targetProp,...(propLocations.get(targetProp.id)??{})};
+      // Aim at the actual interaction anchor or object's visible center.
+      // This makes pupils naturally look down at a floor object and to the
+      // side at an object elsewhere, while retaining the existing gaze math.
+      const anchor=anchorFor(seen);
+      focusX=seen.x+(anchor?.x??0)*seen.scale;
+      focusY=seen.y+(anchor?.y??-(seen.imageHeight??50)*.55)*seen.scale;
     }
     if (focusX !== undefined && focusY !== undefined) {
       actor.gazePoint={x:focusX,y:focusY};
@@ -421,24 +433,21 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     ?latest(cameraClips.filter(clip=>clip.start<cameraClip.start))
     :undefined;
   const camera:CameraState=directCamera(
-    cameraClip,previousCameraClip,actors,scene.objects,t,viewportWidth
+    cameraClip,previousCameraClip,actors,visualObjects,t,viewportWidth
   );
   const transition = latest(timelineClips.filter((clip): clip is Extract<Clip, { track: 'transition' }> => clip.track === 'transition' && active(clip, t)));
   const fade = transition ? clamp((t - transition.start) / transition.length) : 0;
-  const objects = scene.objects.map(object => {
+  const objects = visualObjects.map(object => {
     const cue = latest(timelineClips.filter(clip => clip.track === 'props' && clip.target === object.id && clip.start <= t));
     const lastDrop=propDrops.get(object.id);
-    if(lastDrop&&lastDrop.at>=(cue?.start??-1))
+    if(lastDrop&&lastDrop.at>=(cue?.start??-1)&&successfulReleases.has(lastDrop.clip.id))
       return placedProp(object,lastDrop);
     if(cue?.track==='props' && (cue.interaction==='open'||cue.interaction==='close')) {const progress=ease(clamp((t-cue.start)/Math.min(.7,cue.length)));return {...object,doorOpen:cue.interaction==='open'?progress:1-progress};}
-    if (cue?.track !== 'props' || cue.interaction !== 'release') return object;
-    const owner = scene.actors.find(actor => actor.id === cue.actor);
-    const move = latest(timelineClips.filter(clip => clip.track === 'movement' && clip.actor === cue.actor && clip.start <= cue.start));
-    if (move?.track !== 'movement') return owner ? { ...object, x: owner.x + 42, y: owner.y - 35 } : object;
-    const at = clamp((cue.start - move.start) / move.length);
-    const position = movementPosition(move, at);
-    return { ...object, x: position.x + 42, y: position.y - 35 };
-  });
+    // Release location comes from the same validated custody state used by
+    // pick-up and rendering; a non-owner cannot teleport a prop here.
+    const place=propLocations.get(object.id);
+    return place?{...object,...place}:object;
+  }).map(object=>{const source=scene.objects.find(item=>item.id===object.id);if(!source||source.y===object.y)return object;const placed=sampleVisual(source,t,object.y,scene.visual?.perspective);return {...object,scale:placed.scale};});
   const effects=timelineClips.filter((clip):clip is Extract<Clip,{track:'vfx'|'text'}>=>(clip.track==='vfx'||clip.track==='text')&&active(clip,t));
   return { actors, objects, sounds, camera, effects, transition:transition?{effect:transition.effect,progress:fade}:undefined, shot: cameraClip?.shot ?? 'wide', fade: transition?.effect === 'fade-in' ? 1 - fade : fade };
 }

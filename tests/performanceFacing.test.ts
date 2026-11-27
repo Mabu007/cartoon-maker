@@ -42,7 +42,10 @@ test('live studio preview honors the director facing while reusing the same capt
     assert.equal(state.view,view.view);
     assert.equal(state.flip,view.flip);
     assert.equal(state.capturedFacing,facing);
-    assert.deepEqual(state.focus,key.focus);
+    // Captured gaze is screen-relative; the local rig is mirrored for left
+    // facing, so compensate exactly once when comparing screen direction.
+    assert.deepEqual(state.focus,{x:view.flip?-key.focus.x:key.focus.x,y:key.focus.y});
+    assert.equal((state.flip?-1:1)*state.focus!.x,key.focus.x);
   }
   // Never mutate the actual actor's scene orientation when recording.
   assert.deepEqual(scene.actors.find(a=>a.id===actor.id),actor);

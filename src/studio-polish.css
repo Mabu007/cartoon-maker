@@ -499,3 +499,35 @@
   line-height:1.5;font-size:11px;color:var(--text-muted,#c4bad2)}
 .camera-direction-fields .field-row>.field{min-width:0}
 @media(max-width:560px){.camera-direction-fields>.field-row{grid-template-columns:1fr;gap:11px}}
+
+/* Editing viewport only — no influence on camera clips or exported video. */
+.mode-direct .stage-format {isolation:isolate;flex:none;overflow:hidden;overflow:clip;}
+.stage-zoom-world{position:absolute;inset:0;transform-origin:center;will-change:transform;}
+.stage-zoom-world .canvas-mount{position:absolute;inset:0;}
+.stage-zoom-world .stage-path-guide{position:absolute;inset:0;}
+.stage-recover-actor{
+  position:absolute;z-index:7;top:12px;left:10px;display:flex;gap:8px;align-items:center;
+  border:1px solid #a67cd8;background:#39244f;color:white;border-radius:10px;padding:9px 12px;
+  font-size:12px;font-weight:750;cursor:pointer;box-shadow:0 5px 20px #1b102988;
+}
+.stage-recover-actor:hover{background:#55327a}
+.stage-path-guide .stage-path-handle{filter:drop-shadow(0 1px 4px #1b102b);touch-action:none;}
+
+
+.stage-hidden-actors{position:absolute;z-index:8;top:10px;left:10px;
+  max-width:min(240px,75%);border:1px solid #8964b5;background:#2b213cf2;
+  color:#fff;border-radius:10px;box-shadow:0 4px 18px #130c2390}
+.stage-hidden-actors summary{display:flex;align-items:center;gap:7px;padding:9px 11px;
+  font-size:12px;font-weight:750;cursor:pointer}
+.stage-hidden-actors>div{display:grid;gap:5px;padding:4px 8px 9px;max-height:160px;overflow:auto}
+.stage-hidden-actors button{border:1px solid #795d9a;background:#4c336c;color:#fff;
+  border-radius:7px;text-align:left;padding:8px;font-size:11px;cursor:pointer}
+.stage-hidden-actors button:hover{background:#70549c}
+.stage-hidden-actors:has(+.stage-recover-actor) + .stage-recover-actor{display:none}
+
+.performance-tracking-parts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;border:1px solid var(--studio-outline,#665179);border-radius:10px;padding:12px;width:100%;min-width:0;box-sizing:border-box;}
+.performance-tracking-parts legend{font-weight:700;padding:0 5px;}
+.performance-tracking-parts label{display:flex;align-items:center;gap:7px;}
+.performance-tracking-presets,.performance-tracking-parts small{grid-column:1/-1;}
+.performance-tracking-presets{display:flex;flex-wrap:wrap;gap:5px;}
+.performance-tracking-presets button{padding:6px 9px;border-radius:6px;}

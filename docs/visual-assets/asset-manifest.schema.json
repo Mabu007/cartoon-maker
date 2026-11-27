@@ -1,0 +1,364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "const": "sirvibe-visual-assets"
+    },
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "character",
+        "body-profile",
+        "face-component",
+        "hair",
+        "clothing",
+        "accessory",
+        "prop",
+        "environment",
+        "art-style"
+      ]
+    },
+    "style": {
+      "type": "string",
+      "enum": [
+        "classic",
+        "illustrated"
+      ]
+    },
+    "rig": {
+      "type": "string",
+      "const": "sirvibe-native-v1"
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "provenance": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "tags": {
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 40
+      }
+    },
+    "dependencies": {
+      "maxItems": 30,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"
+      }
+    },
+    "files": {
+      "minItems": 1,
+      "maxItems": 80,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "maxLength": 180,
+            "pattern": "^[a-zA-Z0-9_-]+(?:\\/[a-zA-Z0-9_-]+)*\\.(?:png|webp)$"
+          },
+          "data": {
+            "type": "string",
+            "maxLength": 450000,
+            "pattern": "^data:image\\/(?:png|webp);base64,[A-Za-z0-9+/]+={0,2}$"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2048
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2048
+          }
+        },
+        "required": [
+          "path",
+          "data",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "parts": {
+      "minItems": 1,
+      "maxItems": 128,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"
+          },
+          "file": {
+            "type": "string",
+            "maxLength": 180,
+            "pattern": "^[a-zA-Z0-9_-]+(?:\\/[a-zA-Z0-9_-]+)*\\.(?:png|webp)$"
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "front",
+              "three-quarter",
+              "side",
+              "back-quarter",
+              "back"
+            ]
+          },
+          "slot": {
+            "type": "string",
+            "enum": [
+              "hair",
+              "top",
+              "head-base",
+              "upper-arm-left",
+              "forearm-left",
+              "upper-arm-right",
+              "forearm-right",
+              "thigh-left",
+              "calf-left",
+              "thigh-right",
+              "calf-right",
+              "shoe-left",
+              "shoe-right"
+            ]
+          },
+          "pivot": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false
+          },
+          "ground": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false
+          },
+          "placement": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": -2000,
+                "maximum": 3000
+              },
+              "y": {
+                "type": "number",
+                "minimum": -2000,
+                "maximum": 3000
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false
+          },
+          "width": {
+            "type": "number",
+            "minimum": 8,
+            "maximum": 960
+          },
+          "height": {
+            "type": "number",
+            "minimum": 8,
+            "maximum": 540
+          },
+          "offsetX": {
+            "type": "number",
+            "minimum": -80,
+            "maximum": 80
+          },
+          "offsetY": {
+            "type": "number",
+            "minimum": -100,
+            "maximum": 100
+          },
+          "fit": {
+            "type": "string",
+            "enum": [
+              "fixed",
+              "body"
+            ]
+          },
+          "profiles": {
+            "minItems": 1,
+            "maxItems": 12,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "slim",
+                "average",
+                "curvy",
+                "athletic",
+                "muscular",
+                "broad",
+                "larger",
+                "short",
+                "tall",
+                "young-adult",
+                "mature",
+                "elderly"
+              ]
+            }
+          },
+          "symmetrical": {
+            "type": "boolean"
+          },
+          "license": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "provenance": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "interaction": {
+            "type": "string",
+            "enum": [
+              "none",
+              "hold",
+              "sit"
+            ]
+          },
+          "interactionAnchor": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "file",
+          "view",
+          "pivot",
+          "width",
+          "height",
+          "offsetX",
+          "offsetY",
+          "fit",
+          "profiles",
+          "symmetrical"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "id",
+    "name",
+    "revision",
+    "category",
+    "style",
+    "rig",
+    "license",
+    "provenance",
+    "tags",
+    "dependencies",
+    "files",
+    "parts"
+  ],
+  "additionalProperties": false
+}

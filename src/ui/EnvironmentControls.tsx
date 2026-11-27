@@ -1,0 +1,42 @@
+import { useState } from 'react';
+import { defaultPerspective, EnvironmentVisual, lightingPresets, type EnvironmentVisualData } from '../engine/environmentVisuals.ts';
+import { uid, type ActorData, type Prop, type Scene } from '../engine/schema.ts';
+import { NumberField } from './shared.tsx';
+export function EnvironmentControls({scene,change,getPlayhead}:{scene:Scene;change:(patch:Partial<Scene>)=>void;getPlayhead:()=>number}){
+  const [error,setError]=useState('');
+  const visual=scene.visual??{version:1 as const,quality:'balanced' as const};
+  const light=visual.lighting??{enabled:false,ambient:'#ffffff',intensity:1,shadow:'#241b35',shadowOpacity:.3,lights:[]};
+  const perspective=visual.perspective??defaultPerspective;
+  function patch(values:Partial<EnvironmentVisualData>){const next=EnvironmentVisual.safeParse({...visual,...values});if(!next.success){setError(next.error.issues[0].message);return;}change({visual:next.data});setError('');}
+  return <details className="environment-controls"><summary>Lighting & perspective</summary>
+    <label className="check"><input type="checkbox" aria-label="Enable environmental lighting" checked={light.enabled} onChange={e=>patch({lighting:{...light,enabled:e.target.checked}})}/> Environmental lighting</label>
+    {light.enabled&&<><label>Lighting preset<select aria-label="Lighting preset" defaultValue="" onChange={e=>{const preset=lightingPresets[e.target.value as keyof typeof lightingPresets];if(preset)patch({lighting:{...light,...preset}});}}><option value="">Custom</option>{Object.keys(lightingPresets).map(p=><option key={p}>{p}</option>)}</select></label>
+      <label>Ambient colour<input aria-label="Ambient colour" type="color" value={light.ambient} onChange={e=>patch({lighting:{...light,ambient:e.target.value}})}/></label>
+      <NumberField text="Ambient intensity" min={0} max={1.5} step={.05} value={light.intensity} onChange={intensity=>patch({lighting:{...light,intensity}})}/>
+      <label>Shadow colour<input aria-label="Shadow colour" type="color" value={light.shadow} onChange={e=>patch({lighting:{...light,shadow:e.target.value}})}/></label>
+      <NumberField text="Contact shadow opacity" min={0} max={1} step={.05} value={light.shadowOpacity} onChange={shadowOpacity=>patch({lighting:{...light,shadowOpacity}})}/>
+      {light.lights.map(source=><details key={source.id} open><summary>Local light</summary><div className="field-row">{(['x','y'] as const).map(k=><NumberField key={k} text={`Light ${k.toUpperCase()}`} value={source[k]} min={-2000} max={3000} onChange={value=>patch({lighting:{...light,lights:light.lights.map(l=>l.id===source.id?{...l,[k]:value}:l)}})}/>)}</div>
+        <label>Light colour<input aria-label="Local light colour" type="color" value={source.color} onChange={e=>patch({lighting:{...light,lights:light.lights.map(l=>l.id===source.id?{...l,color:e.target.value}:l)}})}/></label>
+        {([['intensity','Light intensity',0,2,.05],['radius','Light radius',10,1500,10],['falloff','Light falloff',.5,4,.1]] as const).map(([id,label,min,max,step])=><NumberField key={id} text={label} min={min} max={max} step={step} value={source[id]} onChange={value=>patch({lighting:{...light,lights:light.lights.map(l=>l.id===source.id?{...l,[id]:value}:l)}})}/>)}
+        <button type="button" onClick={()=>{const time=Math.round(getPlayhead()*100)/100;patch({lighting:{...light,lights:light.lights.map(l=>l.id===source.id?{...l,keys:[...(l.keys??[]).filter(k=>k.time!==time),{time,x:l.x,y:l.y,intensity:l.intensity}].sort((a,b)=>a.time-b.time)}:l)}});}}>Key light at playhead</button>
+        {!!source.keys?.length&&<p className="small-text">Keys: {source.keys.map(k=>k.time+'s').join(', ')} <button type="button" onClick={()=>patch({lighting:{...light,lights:light.lights.map(l=>l.id===source.id?{...l,keys:undefined}:l)}})}>Clear light keys</button></p>}
+        <button type="button" onClick={()=>patch({lighting:{...light,lights:light.lights.filter(l=>l.id!==source.id)}})}>Remove light</button>
+      </details>)}
+      <button type="button" disabled={light.lights.length>=8} onClick={()=>patch({lighting:{...light,lights:[...light.lights,{id:uid(),x:480,y:280,color:'#ffbe73',intensity:.8,radius:260,falloff:1.5}]}})}>Add amber light</button></>}
+    <label className="check"><input aria-label="Enable perspective scaling" type="checkbox" checked={Boolean(visual.perspective?.enabled)} onChange={e=>patch({perspective:{...perspective,enabled:e.target.checked}})}/> Perspective scaling</label>
+    {visual.perspective?.enabled&&<><label className="check"><input aria-label="Perspective-aware walking speed" type="checkbox" checked={Boolean(perspective.retimeMovement)} onChange={e=>patch({perspective:{...perspective,retimeMovement:e.target.checked}})}/> Perspective-aware walking speed</label>{([['horizon','Horizon Y',-540,530,1],['farY','Far ground Y',0,1080,1],['nearY','Near ground Y',0,1080,1],['farScale','Far reference scale',.1,4,.05],['nearScale','Near reference scale',.1,4,.05],['minScale','Minimum perspective scale',.05,4,.05],['maxScale','Maximum perspective scale',.05,4,.05]] as const).map(([id,label,min,max,step])=><NumberField key={id} text={label} value={perspective[id]} min={min} max={max} step={step} onChange={value=>patch({perspective:{...perspective,[id]:value}})}/>)}<p className="small-text">Calibrate the ground position and size of a near and far character. Scale follows foot Y; camera zoom remains separate.</p></>}
+    <label>Preview quality<select aria-label="Environment preview quality" value={visual.quality} onChange={e=>patch({quality:e.target.value as EnvironmentVisualData['quality']})}><option>eco</option><option>balanced</option><option>high</option></select></label>
+    {error&&<p role="alert">{error}</p>}
+  </details>;
+}
+export function EntityVisualControls({entity,change,getPlayhead}:{entity:ActorData|Prop;change:(value:ActorData|Prop)=>void;getPlayhead:()=>number}){
+  const [manual,setManual]=useState(1),visual=entity.visual??{};
+  return <details className="environment-controls"><summary>Depth & scale animation</summary>
+    <label className="check"><input type="checkbox" checked={visual.perspective!==false} onChange={e=>change({...entity,visual:{...visual,perspective:e.target.checked}})}/> Follow scene perspective</label>
+    <label className="check"><input type="checkbox" checked={visual.lighting!==false} onChange={e=>change({...entity,visual:{...visual,lighting:e.target.checked}})}/> Respond to lighting</label>
+    <NumberField text="Object opacity" min={0} max={1} step={.05} value={visual.opacity??1} onChange={opacity=>change({...entity,visual:{...visual,opacity}})}/>
+    <NumberField text="Animated scale multiplier" min={.2} max={4} step={.05} value={manual} onChange={setManual}/>
+    <button type="button" onClick={()=>{const time=Math.round(getPlayhead()*100)/100;const key={time,scale:manual,opacity:visual.opacity??1,depth:entity.depth};change({...entity,visual:{...visual,keys:[...(visual.keys??[]).filter(k=>k.time!==time),key].sort((a,b)=>a.time-b.time)}});}}>Key scale / opacity / depth at playhead</button>
+    {!!visual.keys?.length&&<><p className="small-text">Keys share the scene clock and remain deterministic during scrubbing and export.</p>{visual.keys.map(k=><div className="field-row" key={k.time}><span>{k.time}s · {k.scale}×</span><button type="button" onClick={()=>{setManual(k.scale);}}>Use multiplier</button><button type="button" onClick={()=>change({...entity,visual:{...visual,keys:visual.keys!.filter(key=>key.time!==k.time)}})}>Remove {k.time}s key</button></div>)}</>}
+  </details>;
+}

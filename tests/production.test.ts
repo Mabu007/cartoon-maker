@@ -103,7 +103,8 @@ test('inherited scene state keeps movement, visibility, and a held prop across s
   assert.equal(evaluate(render.scenes[1], 1).actors[0].held?.id, 'cup');
   assert.equal(evaluate(render.scenes[1], 1).actors[0].x, 130);
   assert.equal(evaluate(render.scenes[1], 2.4).actors[0].held, undefined);
-  assert.equal(evaluate(render.scenes[1], 2.4).objects.find(item => item.id === 'cup')?.x, 172);
+  const actorAtRelease=render.scenes[1].actors.find(actor=>actor.id===evaluate(render.scenes[1],2.4).actors[0].id)!;
+  assert.equal(evaluate(render.scenes[1], 2.4).objects.find(item => item.id === 'cup')?.x,130+(actorAtRelease.flip?-1:1)*42*actorAtRelease.scale);
 });
 
 test('missing assets, impossible overlapping actions, invalid AI JSON and stale edit targets are handled', async () => {

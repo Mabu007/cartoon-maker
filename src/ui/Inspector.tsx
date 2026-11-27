@@ -1,3 +1,4 @@
+import { EnvironmentControls, EntityVisualControls } from './EnvironmentControls.tsx';
 import { useEffect, useState } from 'react';
 import { evaluate } from '../engine/evaluate.ts';
 import { type LayerMove } from '../engine/sceneLayers.ts';
@@ -15,9 +16,9 @@ import { resizeSceneTimeline } from '../engine/timelineEditing.ts';
 import { SoundClipEditor } from './SoundClipEditor.tsx';
 import { VoiceClipControls } from './VoiceClipControls.tsx';
 
-export function Inspector({ onPresence, scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, setDestination, previewPath, onWalk, onRecover, onOverlay, onLanding, onLayer, onUseProp, getPlayhead, precision, rerecord, regenerateVoice, restoreVoiceVersion, alignVoiceClip }: {
+export function Inspector({ onPresence, scene, actors, characters, selection, select, patchActor, patchObject, patchClip, patchScene, editCharacter, addDialogue, addAction, scenes, sceneIndex, openScenes, remove, duplicate, snap, setSnap, subtitles, setSubtitles, quality, setQuality, setDestination, previewPath, onWalk, onRecover, onOverlay, onLanding, onLayer, onUseProp, onPickUpProp, onReleaseHand, getPlayhead, precision, rerecord, regenerateVoice, restoreVoiceVersion, alignVoiceClip }: {
   onPresence:(id:string,action:'walk-in'|'run-in'|'walk-out'|'run-out'|'show'|'hide')=>void;
-  onLayer:(id:string,move:LayerMove)=>void; onUseProp:(id:string)=>void; onLanding:(clip:Extract<Clip,{track:'body'}>)=>void;
+  onLayer:(id:string,move:LayerMove)=>void; onUseProp:(id:string)=>void;onPickUpProp:(id:string)=>void;onReleaseHand:(id:string,hand:'left'|'right')=>void; onLanding:(clip:Extract<Clip,{track:'body'}>)=>void;
   previewPath:()=>void;onWalk:(id:string)=>void;onRecover:(id:string)=>void;onOverlay:(id:string)=>void;getPlayhead:()=>number;
   scene: Scene; actors: Record<string, string>; characters: Character[]; selection: Selection; select: (value: Selection) => void;
   patchActor: (actor: ActorData) => void; patchObject: (object: Prop) => void; patchClip: (clip: Clip) => void; patchScene: (patch: Partial<Scene>) => void;
@@ -39,6 +40,7 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
     return ()=>window.removeEventListener('toonroom-seek',update);
   },[actor,scene,getPlayhead]);
   const character = actor && characters.find(item => item.id === actor.characterId);
+  const actorWithProps=actor?evaluate(scene,getPlayhead()).actors.find(item=>item.id===actor.id):undefined;
   const object = scene.objects.find(item => item.id === selection?.id);
   const clip = scene.clips.find(item => item.id === selection?.id);
   const Icon = clip ? trackIcon[clip.track] : object ? propIcon[object.kind] : actor ? UserRound : Clapperboard;
@@ -48,10 +50,15 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
     <div className="inspector-scroll">
     {selected ? <>
       <div className="inspector-card"><div className="inspector-emblem">{character ? <Avatar character={character}/> : <Icon size={20}/>}</div><div><strong>{object?.name ?? character?.name ?? (clip && clipLabel(clip, actors))}</strong><small>{clip ? `${label(clip.track)} clip` : actor ? 'Selected actor' : 'Selected prop'}</small></div></div>
-      {object&&anchorFor(object)?.action==='hold'&&<button type="button" className="primary full" onClick={()=>onUseProp(object.id)}>Use prop in an action</button>}
+      {object&&anchorFor(object)?.action==='hold'&&<div className="object-grab-tools">
+        <button type="button" className="primary full" onClick={()=>onPickUpProp(object.id)}>Pick up with nearest character</button>
+        <button type="button" className="quiet full" onClick={()=>onUseProp(object.id)}>Use prop in an action</button>
+        <p className="small-text">A character must walk within arm's reach first. Objects attach to the chosen hand at contact and stay there until released.</p>
+      </div>}
       <SceneLayers scene={scene} names={actors} select={select} selection={selection} move={onLayer} open={!clip}/>
       {(actor || object) && <details open><summary>Transform</summary><div className="field-row"><NumberField text="X" value={(actor ?? object)!.x} min={-2000} max={3000} onChange={x => actor ? patchActor({ ...actor, x }) : patchObject({ ...object!, x })}/><NumberField text="Y" value={(actor ?? object)!.y} min={-2000} max={3000} onChange={y => actor ? patchActor({ ...actor, y }) : patchObject({ ...object!, y })}/></div>
       <div className="field-row"><NumberField text="Scale" value={(actor ?? object)!.scale} min={.2} max={4} step={.05} onChange={scale => actor ? patchActor({ ...actor, scale }) : patchObject({ ...object!, scale })}/><NumberField text="Rotation" value={(actor ?? object)!.rotation} min={-360} max={360} onChange={rotation => actor ? patchActor({ ...actor, rotation }) : patchObject({ ...object!, rotation })}/></div><NumberField text="Layer depth" value={(actor ?? object)!.depth} min={-1000} max={1000} onChange={depth => actor ? patchActor({ ...actor, depth }) : patchObject({ ...object!, depth })}/></details>}
+      {(actor||object)&&<EntityVisualControls key={(actor??object)!.id} entity={(actor??object)!} getPlayhead={getPlayhead} change={value=>actor?patchActor(value as ActorData):patchObject(value as Prop)}/>}
       {actor && <details open><summary>Performance</summary><label className="field">Facing<Select aria="Facing" value={actor.view} onChange={view => patchActor({ ...actor, view })} options={views}/></label><label className="field">Expression<Select aria="Actor expression" value={actor.expression} onChange={expression => patchActor({ ...actor, expression })} options={expressions}/></label><label className="field">Eye focus<Select aria="Eye focus" value={actor.gazeTarget ?? ''}
   onChange={value => { const { gazeTarget: _old, ...base } = actor; patchActor(value ? { ...base, gazeTarget: value } : base); }}
   options={['', 'camera', ...scene.actors.filter(item => item.id !== actor.id).map(item => item.id), ...scene.objects.map(item => item.id)]}
@@ -64,6 +71,12 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
        <button type="button" className={actor.view==='side'&&!actor.flip?'active':''} aria-pressed={actor.view==='side'&&!actor.flip} onClick={()=>patchActor({...actor,view:'side',flip:false})}><ArrowRight size={15}/> Face right</button>
        <button type="button" aria-label="Flip actor horizontally" title="Flip selected actor" onClick={()=>patchActor({...actor,flip:!actor.flip})}><FlipHorizontal size={16}/> Flip</button>
      </div>
+     {(actorWithProps?.heldItems?.left||actorWithProps?.heldItems?.right)&&<div className="object-grab-tools">
+       <strong>Held objects</strong>
+       {(['left','right'] as const).map(hand=>actorWithProps.heldItems?.[hand]?
+         <button key={hand} type="button" className="quiet full"
+           onClick={()=>onReleaseHand(actor.id,hand)}>Release {actorWithProps.heldItems?.[hand]?.name} ({hand} hand)</button>:null)}
+     </div>}
      <div className="actor-entrance-section">
        <strong>On-screen timing</strong>
        <p className="small-text">Position the playhead first. Entrance and exit clips are editable on the timeline.</p>
@@ -94,6 +107,13 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
       </details>}
       {clip && <><details open><summary>Timing</summary><div className="field-row"><NumberField text="Start" value={clip.start} min={0} max={scene.duration - .1} step={.01} onChange={start => patchClip(changeClipTiming(clip, start, clip.length, scene.duration))}/><NumberField text="Length" value={clip.length} min={.1} max={scene.duration - clip.start} step={.01} onChange={length => patchClip(changeClipTiming(clip, clip.start, length, scene.duration))}/></div></details><details open><summary>{label(clip.track)} settings</summary>
         {'actor' in clip && <label className="field">Actor<Select aria="Clip actor" value={clip.actor} onChange={actor => patchClip({ ...clip, actor })} options={Object.keys(actors)} render={id => actors[id]}/></label>}
+        {((clip.track==='props'&&['equip','release'].includes(clip.interaction))||
+          (clip.track==='body'&&['pick-up','put-down','throw-prop','eat','drink','write','read','phone-call'].includes(clip.action)))&&
+          <label className="field">Holding hand
+            <Select aria="Holding hand" value={clip.hand??'right'} options={['right','left'] as const}
+              render={hand=>hand==='right'?'Right hand':'Left hand'}
+              onChange={hand=>patchClip({...clip,hand})}/>
+          </label>}
         {clip.track === 'movement' && <>
           <button className="primary full" onClick={setDestination}>Edit path on stage</button>
           <button className="quiet full" onClick={previewPath}>Preview path</button>
@@ -201,6 +221,10 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
                 }} options={cameraMovements}/>
             </label>
           </div>
+          <NumberField text="Film camera zoom multiplier" value={clip.zoomMultiplier??1}
+            min={.5} max={8} step={.25}
+            onChange={zoomMultiplier=>patchClip({...clip,zoomMultiplier})}/>
+          <p className="small-text">Use up to 8× additional zoom for extreme close-ups. This affects the movie; the canvas zoom controls only affect editing.</p>
           {clip.movement&&clip.movement!=='none'&&
             <NumberField text="Movement intensity" value={clip.strength??1}
               min={.25} max={2.5} step={.25}
@@ -224,6 +248,7 @@ export function Inspector({ onPresence, scene, actors, characters, selection, se
       <div className="inspector-card"><div className="inspector-emblem"><Clapperboard size={21}/></div><div><strong>{scene.environment}</strong><small>Scene {String(sceneIndex + 1).padStart(2, '0')} of {String(scenes).padStart(2, '0')}</small></div></div>
       <details open><summary>Scene settings</summary><label className="field">Scene name<input aria-label="Scene name" key={scene.name} defaultValue={scene.name} maxLength={70} onBlur={e => { if (e.target.value.trim() && e.target.value.trim() !== scene.name) patchScene({ name: e.target.value.trim() }); }}/></label><NumberField text="Duration (s)" value={scene.duration} min={1} max={180} step={.1} onChange={duration => patchScene(resizeSceneTimeline(scene, duration))}/></details>
       {scene.backgroundImage&&<details><summary>Background framing</summary><NumberField text="Background X" min={-2000} max={3000} value={scene.backgroundTransform?.x??0} onChange={x=>patchScene({backgroundTransform:{x,y:scene.backgroundTransform?.y??0,scale:scene.backgroundTransform?.scale??1}})}/><NumberField text="Background Y" min={-2000} max={3000} value={scene.backgroundTransform?.y??0} onChange={y=>patchScene({backgroundTransform:{y,x:scene.backgroundTransform?.x??0,scale:scene.backgroundTransform?.scale??1}})}/><NumberField text="Background scale" min={.2} max={4} step={.05} value={scene.backgroundTransform?.scale??1} onChange={scale=>patchScene({backgroundTransform:{scale,x:scene.backgroundTransform?.x??0,y:scene.backgroundTransform?.y??0}})}/></details>}
+      <EnvironmentControls scene={scene} change={patchScene} getPlayhead={getPlayhead}/>
       <SceneLayers scene={scene} names={actors} select={select} selection={selection} move={onLayer}/>
       <details><summary>Preview settings <Settings2 size={13}/></summary><label className="check"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)}/> Snap to grid</label><label className="check"><input type="checkbox" checked={subtitles} onChange={e => setSubtitles(e.target.checked)}/> Subtitles</label><label className="check"><input type="checkbox" checked={quality} onChange={e => setQuality(e.target.checked)}/> Full preview resolution</label></details>
       <button className="quiet full manage-scenes" onClick={openScenes}><Layers3 size={15}/> Manage scenes<Plus size={14}/></button>

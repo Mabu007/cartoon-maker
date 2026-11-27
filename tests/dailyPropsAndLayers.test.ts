@@ -40,8 +40,8 @@ test('seated sleep closes eyes, keeps the actor position and survives removing t
   assert.deepEqual(compatibleObjects(scene,'drink').map(prop=>prop.id),[cup.id]);
 });
 
-test('a timed prop can be picked up, thrown, saved at the landing point and put down near the actor later',()=>{
-  const setup={...scene,clips:[
+test('a nearby prop can be picked up and thrown; a later unowned put-down cannot teleport it',()=>{
+  const setup={...scene,objects:scene.objects.map(prop=>prop.id===ball.id?{...prop,x:scene.actors[0].x+20,y:scene.actors[0].y}:prop),clips:[
     body('pick-up',1,1,ball.id),
     {...body('throw-prop',4,2,ball.id),pointAt:{x:730,y:425}},
     body('put-down',8,1,ball.id)
@@ -56,6 +56,6 @@ test('a timed prop can be picked up, thrown, saved at the landing point and put 
   assert.equal(parked.x,730);
   assert.equal(parked.y,425);
   const replaced=evaluate(setup,10.25,cast).objects.find(prop=>prop.id===ball.id)!;
-  assert.equal(replaced.y,scene.actors[0].y);
-  assert(Math.abs(replaced.x-scene.actors[0].x)<40);
+  assert.equal(replaced.x,730,'unowned put-down cannot relocate a thrown prop');
+  assert.equal(replaced.y,425);
 });
