@@ -165,6 +165,27 @@ export function solveStrictCapturedArm(shoulder:Point,target:Point,scale:number,
   // shoulder arc and solve the nearest permitted forearm angle analytically.
   const angleMin=side==='left'?Math.acos(.22):0;
   const angleMax=side==='right'?Math.acos(-.22):Math.PI;
+  // A measured straight arm remains straight even when its original
+  // screen direction violates the low-elbow envelope. Rotate the entire
+  // reach to the closest legal shoulder direction instead of inventing flexion.
+  if(desiredReach>=bone*2-.1){
+    const bend=Math.acos(clamp(desiredReach/(2*bone),-1,1));
+    const direction=Math.atan2(requested.y-shoulder.y,requested.x-shoulder.x);
+    let nearest:ReturnType<typeof solveCapturedArm>&{pole:number;restricted:boolean}|undefined;
+    let error=Infinity;
+    for(const candidate of [preferred,-preferred]){
+      const desiredAngle=direction+candidate*bend;
+      for(const turn of [-2*Math.PI,0,2*Math.PI]){
+        const upper=clamp(desiredAngle+turn,angleMin,angleMax);
+        const a=upper-candidate*bend;
+        const solution=solveCapturedArm(shoulder,{x:Math.cos(a)*desiredReach/scale,y:Math.sin(a)*desiredReach/scale},scale,candidate);
+        if(!legal(solution.elbow))continue;
+        const cost=distance(solution.hand,requested);
+        if(cost<error){nearest={...solution,pole:candidate,restricted:true};error=cost;}
+      }
+    }
+    if(nearest)return nearest;
+  }
   let best:{elbow:Point;hand:Point;reach:number;pole:number;restricted:boolean}|undefined;
   let bestCost=Infinity;
   const angleWrap=(n:number)=>Math.atan2(Math.sin(n),Math.cos(n));
