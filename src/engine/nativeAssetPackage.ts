@@ -24,7 +24,7 @@ export function boundedAssetJSON(text:string,limit=nativePackageLimits.bytes):un
   if(depth<0||tokens>nativePackageLimits.tokens)error('$','Invalid structure or token budget exceeded');
  }
  let value:unknown;try{value=JSON.parse(text);}catch{error('$','Invalid JSON');}
- const walk=(v:unknown,path:string)=>{if(typeof v==='number'&&!Number.isFinite(v))error(path,'Nonfinite number');if(v&&typeof v==='object'){for(const [k,x] of Object.entries(v)){if(['__proto__','prototype','constructor'].includes(k))error(path+'.'+k,'Unsafe key');walk(x,path+'.'+k);}}};walk(value,'$');return value;
+ const walk=(v:unknown,path:string)=>{if(typeof v==='number'&&!Number.isFinite(v))error(path,'Nonfinite number');if(typeof v==='string'&&(/<\s*\/?\s*[a-z!?]/i.test(v)||/^(?:https?:|data:|javascript:|file:|blob:|\/\/)/i.test(v.trim())))error(path,'Markup and external resource references are unsupported');if(Array.isArray(v)&&v.length>1024)error(path,'Array preflight limit exceeded');if(v&&typeof v==='object'){if(Object.keys(v).length>1024)error(path,'Object key budget exceeded');for(const [k,x] of Object.entries(v)){if(['__proto__','prototype','constructor'].includes(k))error(path+'.'+k,'Unsafe key');walk(x,path+'.'+k);}}};walk(value,'$');return value;
 }
 export function parseNativePackage(text:string):NativePackage{
  const raw=boundedAssetJSON(text),parsed=NativeAssetPackage.safeParse(raw);
@@ -38,7 +38,7 @@ export function parseNativePackage(text:string):NativePackage{
   for(const [j,c] of p.components.entries()){
    const field=at+'.components.'+j;components++;
    if(ids.has(c.id))error(field+'.id','Duplicate component ID in pack');ids.add(c.id);
-   if(c.packageSource)error(field+'.packageSource','Source metadata assigned by importer');
+   if(c.packageSource)error(field+'.packageSource','Source metadata assigned by importer');if(p.id.length+c.id.length+1>80)error(field+'.id','Embedded component ID exceeds 80 characters');
    if(p.category==='hair'&&c.slot!=='hair'||p.category==='clothing'&&!['top','shoe-left','shoe-right','upper-arm-left','upper-arm-right','forearm-left','forearm-right','thigh-left','thigh-right','calf-left','calf-right'].includes(c.slot)||p.category==='accessory'&&c.slot!=='head-accessory')error(field+'.slot','Category/slot mismatch');
    const slot=c.slot+'/'+c.view;if(slots.has(slot+'/'+(c.facing??'both'))||slots.has(slot+'/both')||!c.facing&&[...slots].some(s=>s.startsWith(slot+'/')))error(field+'.view','Conflicting slot/view/facing');slots.add(slot+'/'+(c.facing??'both'));
    if(!c.facing&&!c.artwork.compatibility.mirrorSafe)error(field+'.facing','Explicit facing required for asymmetric artwork');
@@ -78,7 +78,8 @@ export function applyNativePackage(character:Character,packs:NativeAssetPack[],r
  // Component IDs are bounded and unique after embedding; no silent truncation.
  const ids=new Set<string>();for(const c of parts){if(c.id.length>80||ids.has(c.id))error('components.id','Embedded component ID conflict or length limit');ids.add(c.id);}
  const replace=(old:{slot:string;view:string})=>parts.some(c=>c.slot===old.slot&&c.view===old.view);
- const next=CharacterVisual.safeParse({...visual,components:visual.components?.filter(c=>!replace(c)),vectorComponents:[...(visual.vectorComponents??[]).filter(c=>!replace(c)),...parts]});
+ const retained=(visual.vectorComponents??[]).filter(c=>!replace(c));if(retained.some(c=>ids.has(c.id)))error('components.id','Embedded identity conflicts with retained geometry');
+ const next=CharacterVisual.safeParse({...visual,components:visual.components?.filter(c=>!replace(c)),vectorComponents:[...retained,...parts]});
  if(!next.success)error('character.visual',next.error.issues.map(i=>i.path.join('.')+': '+i.message).join('; '));
  return CharacterDefinition.parse({...character,visual:next.data});
 }
