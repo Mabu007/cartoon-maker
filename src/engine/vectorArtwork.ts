@@ -19,7 +19,7 @@ const paint = z.union([
 const path = z.array(command).min(2).max(128).superRefine((commands,ctx)=>{
   let open=false, edges=0;
   for(const c of commands){
-    if(c[0]==='M'){open=true;edges=0;}
+    if(c[0]==='M'){if(open&&edges===0)ctx.addIssue({code:'custom',message:'Empty subpath'});open=true;edges=0;}
     else if(!open) ctx.addIssue({code:'custom',message:'A subpath must start with M'});
     else if(c[0]==='Z'){
       if(edges===0)ctx.addIssue({code:'custom',message:'Empty closed subpath'});

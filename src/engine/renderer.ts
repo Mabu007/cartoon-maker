@@ -1,3 +1,4 @@
+import {NativeBonePathCache} from './vectorArtworkRender.ts';
 import { lightAt, perspectiveScale } from './environmentVisuals.ts';
 import { drawVisualEffect, drawTransition, effectTime, titleStyle } from './visualEffects.ts';
 import { mediaUrl } from '../services/media.ts';
@@ -27,6 +28,7 @@ export type RenderOptions = { characterPreview?: boolean; previewFocus?: { x: nu
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
   const app = new Application();
+  const vectorCache=new NativeBonePathCache();
   const [width, height] = videoFormats[format].viewport;
   const [pixelWidth, pixelHeight] = dimensions(format, resolution);
   await app.init({ width: pixelWidth, height: pixelHeight, resolution: 1, antialias: true, autoStart: false, background: '#24202c', preference: ['webgl', 'webgpu', 'canvas'], preserveDrawingBuffer: capture, powerPreference: 'low-power', hello: false });
@@ -287,7 +289,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         actor.authoredGaze?targetFocus:resolvePreviewFocus(Boolean(options.characterPreview), options.previewFocus, targetFocus), options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
+        {vectorCache,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
       entity.face!.y -= lift;
       // Props are children of the same character Container as the hands:
       // the IK grip and object share one transform and move as one until
@@ -430,6 +432,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       cancelAnimationFrame(imageFrame);
       repaintLatestFrame=undefined;
       requests.clear();
+      vectorCache.dispose();
       // Actor previews and exports can close while a separate stage is active.
       // Keep Pixi's global render pools valid for those remaining renderers.
       app.destroy({removeView:true,releaseGlobalResources:false},{children:true,texture:true,textureSource:true,context:true});

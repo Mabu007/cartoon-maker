@@ -23,8 +23,12 @@ export type CompiledArtwork = z.infer<typeof CompiledComponent>;
 export const NativeVectorComponent = z.strictObject({
   id:identifier, slot:z.enum(componentSlots), view:z.enum(assetViews),
   profiles:z.array(z.enum(bodyProfiles)).min(1).max(bodyProfiles.length),
-  artwork:VectorArtworkV1
+  artwork:VectorArtworkV1,
+  authoredOffset:z.tuple([number(-32,32),number(-32,32)]).optional()
+}).superRefine((part,ctx)=>{
+  if(isBoneSlot(part.slot)&&(part.artwork.units!=='bone-normalized'||part.artwork.pivot[0]!==0||part.artwork.pivot[1]!==0||!part.artwork.anchors.some(a=>a.id==='end'&&a.point[0]===1&&a.point[1]===0)))ctx.addIssue({code:'custom',message:'Native bone parts require normalized origin and end anchor [1,0].'});
 });
+export type NativeVectorComponentData=z.infer<typeof NativeVectorComponent>;
 export const CharacterVisual = z.strictObject({
   version:z.literal(1), style:z.enum(['classic','illustrated']), profile:z.enum(bodyProfiles),
   limbArt:z.literal('anatomical-v1').optional(),

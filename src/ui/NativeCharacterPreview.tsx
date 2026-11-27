@@ -1,3 +1,5 @@
+import {nativeBoneFor,boneVectorMatrix} from '../engine/nativeVectorBone.ts';
+import {nativeBonePreview} from '../engine/vectorArtworkRender.ts';
 import { anatomicalSegments, type LimbRegion } from '../engine/anatomicalVectorArt.ts';
 import { boneArtworkTransform, type Point } from '../engine/artworkGeometry.ts';
 import type { CompiledArtwork } from '../engine/visualAssets.ts';
@@ -84,8 +86,9 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const moving = action === 'walk' || action === 'run';
   const forward = viewForward(view);
   const lift = moving || action==='sit' || action==='stand' ? base.lift : 0;
+  const hasBone=(slot:CompiledArtwork['slot'])=>{const part=nativeBoneFor(c,slot,view);return Boolean(componentFor(c,slot,view)||(part&&nativeBonePreview(part,[1,0,0,1,0,0])));};
   const legs = (['left', 'right'] as const).map((side, index) => {
-    const importedLeg=componentFor(c,`thigh-${side}`,view)||componentFor(c,`calf-${side}`,view);
+    const importedLeg=hasBone(`thigh-${side}`)||hasBone(`calf-${side}`);
     const upper = importedLeg?bodyRig[side].upper:{ x: (index ? 15 : -15) * width*build.hip, y: shirtBottom };
     const scale = importedLeg?c.legs*c.height:-shirtBottom / 76;
     const [knee, foot] = moving
@@ -115,14 +118,14 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
     <g transform={'translate(270 443) scale(' + (flip ? -scale : scale) + ' ' + scale + ')'}>
       <g className={animated ? 'native-actor native-actor-' + action : ''} transform={lift ? `translate(0 ${-lift})` : undefined}>
         {legs.map(({ side, path, foot, shoe, upper, knee }) => <g key={side}>
-          {componentFor(c,`thigh-${side}`,view)||componentFor(c,`calf-${side}`,view)?<>
+          {hasBone(`thigh-${side}`)||hasBone(`calf-${side}`)?<>
             <BoneImage character={c} view={view} slot={`thigh-${side}`} start={upper} end={knee} thickness={c.thickness*build.leg} color={c.pants}/>
             <BoneImage character={c} view={view} slot={`calf-${side}`} start={knee} end={foot} thickness={c.thickness*build.leg*build.calves} color={c.pants}/>
           </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<AnatomicalLimb points={[upper,knee,foot]} width={9*c.thickness*build.leg} region="thigh" color={swim?c.skin:c.pants}/>:<><path d={path} stroke="#211e33" strokeWidth={13*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={path} stroke={swim?c.skin:c.pants} strokeWidth={9*c.thickness*build.leg} strokeLinecap="round" strokeLinejoin="round" fill="none"/></>}
           {componentFor(c,`shoe-${side}`,view)?<FixedImage character={c} view={view} slot={`shoe-${side}`} x={foot.x} y={foot.y}/>:<ellipse cx={foot.x+shoe} cy={foot.y+1} rx={13*c.thickness*(c.visual?.footSize??1)} ry={6.5*(c.visual?.footSize??1)} fill={c.shoes} stroke="#242037" strokeWidth="3"/>}
         </g>)}
         {armParts.map(({side,shoulder,elbow,hand})=><g key={side}>
-          {componentFor(c,`upper-arm-${side}`,view)||componentFor(c,`forearm-${side}`,view)?<>
+          {hasBone(`upper-arm-${side}`)||hasBone(`forearm-${side}`)?<>
             <BoneImage character={c} view={view} slot={`upper-arm-${side}`} start={shoulder} end={elbow} thickness={c.thickness*build.arm} color={c.skin}/>
             <BoneImage character={c} view={view} slot={`forearm-${side}`} start={elbow} end={hand} thickness={c.thickness*(.63+.37*build.arm)} color={c.skin}/>
           </>:c.visual?.style==='illustrated'&&c.visual.limbArt==='anatomical-v1'?<><AnatomicalLimb points={[shoulder,elbow,hand]} width={11*c.thickness*build.arm} region="upper-arm" color={c.skin}/>{!bare&&<AnatomicalLimb points={[shoulder,elbow]} width={16*c.thickness} region="upper-arm" color={c.shirt}/>}</>:<><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke="#242037" strokeWidth={16*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y} L ${hand.x} ${hand.y}`} stroke={c.skin} strokeWidth={11*c.thickness*build.arm} strokeLinecap="round" strokeLinejoin="round" fill="none"/>{!bare&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`} stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}</>}
@@ -211,6 +214,9 @@ function FixedImage({character,view,slot,x,y}:{character:Character;view:View;slo
   return <image preserveAspectRatio="none" href={part.image} x={box.x-part.pivot.x*box.width} y={box.y-part.pivot.y*box.height} width={box.width} height={box.height}/>;
 }
 function BoneImage({character,view,slot,start,end,thickness,color}:{character:Character;view:View;slot:CompiledArtwork['slot'];start:Point;end:Point;thickness:number;color:string}){
+  const native=nativeBoneFor(character,slot,view),world=native&&boneVectorMatrix(start,end,thickness);
+  const paths=native&&world&&nativeBonePreview(native,world);
+  if(paths)return <g>{paths.map(({id,...props})=><path key={id} {...props} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
   const part=componentFor(character,slot,view),m=part&&boneArtworkTransform(part,start,end,thickness);
   if(!part||!m)return <path d={`M${start.x} ${start.y}L${end.x} ${end.y}`} stroke={color} strokeWidth={11*thickness} strokeLinecap="round"/>;
   return <image preserveAspectRatio="none" href={part.image} width={part.width} height={part.height} transform={`matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.tx} ${m.ty})`}/>;

@@ -1,0 +1,20 @@
+import 'fake-indexeddb/auto';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {makeRevenentDemo} from '../src/engine/revenentDemo.ts';
+import {studioCharacters} from '../src/engine/visualPresets.ts';
+import {NativeVectorComponent} from '../src/engine/visualAssets.ts';
+import {forearmVectorFixture} from '../src/engine/vectorArtworkFixture.ts';
+import {createMovieBackup,restoreMovie} from '../src/services/projectExchange.ts';
+import {saveDeviceProject,getDeviceProject} from '../src/services/deviceProjects.ts';
+const storage=new Map<string,string>();
+Object.defineProperty(globalThis,'localStorage',{value:{get length(){return storage.size;},key:(i:number)=>[...storage.keys()][i]??null,getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>{storage.set(key,value);},removeItem:(key:string)=>storage.delete(key)},configurable:true});
+test('native vector palette and authored deformation persist in device project and portable backup',async()=>{
+  const project=makeRevenentDemo();
+  const part=NativeVectorComponent.parse({id:'fixture',slot:'forearm-left',view:'front',profiles:['athletic'],artwork:{...forearmVectorFixture,palette:{skin:'#123456',ink:'#52362b'}},authoredOffset:[0,.045]});
+  project.characters[0]={...studioCharacters[0],id:project.characters[0].id,visual:{...studioCharacters[0].visual!,vectorComponents:[part]}};
+  await saveDeviceProject('guest',project);
+  assert.deepEqual((await getDeviceProject('guest',project.id)).project.characters[0].visual?.vectorComponents,[part]);
+  const restored=await restoreMovie(new File([await createMovieBackup(project)],'vector.sirvibe'));
+  assert.deepEqual(restored.characters[0].visual?.vectorComponents,[part]);
+});

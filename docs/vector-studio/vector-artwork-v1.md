@@ -11,3 +11,7 @@ Based on Stage 0 candidate f9d1c9e; PR #43 remains unreleased. No general physic
 - Fixture: opt-in forearm, recolouring, pinned endpoints, bounded deformation, JSON/schema round trip; no default character changes.
 
 Remaining before the gate: integrate the draw adapters into CharacterFactory/native preview and actorArt with explicit opt-in and legacy fallback; preserve native fields across profile/visual edits and actual device project backup/reopen; implement reusable compiled static Pixi shapes and resource disposal at renderer lifecycle; actual pixel parity, motion/offline/export and device benchmarks; full npm build/CI. Add migration coverage for unsupported future versions and real project storage tests. The candidate must not be merged until Stage 0 and Stage 1 gates pass.
+
+## Integration candidate
+
+The character editor now exposes a view-specific opt-in forearm fixture with palette and authored displacement controls. The actor renderer resolves native bone artwork before the legacy raster/native path using solved joint endpoints, without touching motion or grip logic. A per-renderer bounded CPU GraphicsPath cache compiles authored paths on source replacement and clears at destruction; this does not yet cache GPU tessellation across frames. SVG fallback consumes the same draw list and transformed geometry; the full fallback rig is still approximate. Native fixed slots, asymmetric facing, compound fills, clips/masks, browser QA and measured target-device performance remain open. No test pass is claimed.

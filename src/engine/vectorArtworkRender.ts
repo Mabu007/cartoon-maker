@@ -1,4 +1,6 @@
-import type {Graphics} from 'pixi.js';
+import {GraphicsPath,Matrix,type Graphics} from 'pixi.js';
+import {boneDrawList,composeVectorMatrix,positionedVectorRegion} from './nativeVectorBone.ts';
+import type {NativeVectorComponentData} from './visualAssets.ts';
 import {svgPath,worldPoint,type VectorDrawRegion,type VectorMatrix} from './vectorArtwork.ts';
 /** Generate a native SVG preview descriptor; no SVG DOM used by stage rendering. */
 export function nativeVectorPreview(regions:readonly VectorDrawRegion[]){
@@ -32,4 +34,49 @@ export function drawVectorRegions(g:Graphics,regions:readonly VectorDrawRegion[]
       emit();g.stroke({color:r.stroke.color,width:r.stroke.width*scale,cap:'round',join:'round'});
     }
   }
+}
+
+/** Per-renderer bounded cache of compiled rest/authored paths. The frame path
+ * is a deep clone, because Pixi transforms can mutate nested instructions.
+ * This is CPU path compilation, not a claim of persistent GPU tessellation. */
+export class NativeBonePathCache{
+  private entries=new Map<NativeVectorComponentData,{region:VectorDrawRegion;path:GraphicsPath}[]|undefined>();
+  constructor(private readonly limit=64){if(!Number.isInteger(limit)||limit<1||limit>256)throw Error('Invalid native path cache capacity');}
+  get size(){return this.entries.size;}
+  dispose(){this.entries.clear();}
+  prepare(part:NativeVectorComponentData){
+    if(this.entries.has(part)){
+      const hit=this.entries.get(part);this.entries.delete(part);this.entries.set(part,hit);return hit;
+    }
+    const result=boneDrawList(part)?.map(region=>{
+      const path=new GraphicsPath();
+      for(const c of region.commands){
+        switch(c[0]){
+          case 'M':path.moveTo(c[1],c[2]);break;
+          case 'L':path.lineTo(c[1],c[2]);break;
+          case 'Q':path.quadraticCurveTo(c[1],c[2],c[3],c[4]);break;
+          case 'C':path.bezierCurveTo(c[1],c[2],c[3],c[4],c[5],c[6]);break;
+          case 'Z':path.closePath();break;
+        }
+      }
+      return {region,path};
+    });
+    this.entries.set(part,result);
+    if(this.entries.size>this.limit){const oldest=this.entries.keys().next().value;if(oldest)this.entries.delete(oldest);}
+    return result;
+  }
+  draw(g:Graphics,part:NativeVectorComponentData,world:VectorMatrix){
+    const compiled=this.prepare(part);if(!compiled)return false;
+    for(const {region,path} of compiled){
+      const m=composeVectorMatrix(world,region.transform??[1,0,0,1,0,0]);
+      const shape=path.clone(true).transform(new Matrix(...m));
+      if(region.fill)g.path(shape).fill(region.fill);
+      if(region.stroke)g.path(shape.clone(true)).stroke({color:region.stroke.color,width:region.stroke.width*Math.sqrt(Math.abs(m[0]*m[3]-m[1]*m[2])),cap:'round',join:'round'});
+    }
+    return true;
+  }
+}
+export function nativeBonePreview(part:NativeVectorComponentData,world:VectorMatrix){
+  const draw=boneDrawList(part);
+  return draw&&nativeVectorPreview(draw.map(r=>positionedVectorRegion(r,world)));
 }

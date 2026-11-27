@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {NativeVectorComponent} from '../src/engine/visualAssets.ts';
+import {forearmVectorFixture} from '../src/engine/vectorArtworkFixture.ts';
+import {nativeBoneFor,boneVectorMatrix,boneDrawList,positionedVectorRegion} from '../src/engine/nativeVectorBone.ts';
+import {worldPoint} from '../src/engine/vectorArtwork.ts';
+import {applyProfile,studioCharacters} from '../src/engine/visualPresets.ts';
+const part=NativeVectorComponent.parse({id:'fixture',slot:'forearm-left',view:'front',profiles:['athletic','slim'],artwork:forearmVectorFixture,authoredOffset:[0,.08]});
+test('native bone is explicit, view-scoped, profile-compatible and pinned to solved endpoints',()=>{
+  const c={...studioCharacters[0],visual:{...studioCharacters[0].visual!,vectorComponents:[part]}};
+  assert.equal(nativeBoneFor(c,'forearm-left','front'),part);
+  assert.equal(nativeBoneFor(c,'forearm-left','side'),undefined);
+  assert.equal(nativeBoneFor(studioCharacters[0],'forearm-left','front'),undefined);
+  assert.deepEqual(applyProfile(c,'slim').visual?.vectorComponents,[part]);
+  assert.deepEqual(applyProfile(c,'curvy').visual?.vectorComponents,[]);
+  const m=boneVectorMatrix({x:10,y:20},{x:25,y:40},1)!;
+  assert.deepEqual(worldPoint(m,0,0),[10,20]);assert.deepEqual(worldPoint(m,1,0),[25,40]);
+  const region=positionedVectorRegion(boneDrawList(part)![0],m);
+  assert.deepEqual(region.commands[0],['M',10,20]);
+  assert.equal(region.commands[1][5],25);assert.equal(region.commands[1][6],40);
+  assert.notDeepEqual(boneDrawList(part),boneDrawList({...part,authoredOffset:[0,0]}));
+});
