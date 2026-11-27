@@ -79,7 +79,7 @@ export function applyNativePackage(character:Character,packs:NativeAssetPack[],r
  const ids=new Set<string>();for(const c of parts){if(c.id.length>80||ids.has(c.id))error('components.id','Embedded component ID conflict or length limit');ids.add(c.id);}
  const replace=(old:{slot:string;view:string})=>parts.some(c=>c.slot===old.slot&&c.view===old.view);
  const retained=(visual.vectorComponents??[]).filter(c=>!replace(c));if(retained.some(c=>ids.has(c.id)))error('components.id','Embedded identity conflicts with retained geometry');
- const next=CharacterVisual.safeParse({...visual,components:visual.components?.filter(c=>!replace(c)),vectorComponents:[...retained,...parts]});
+ const next=CharacterVisual.safeParse({...visual,...(visual.components?{components:visual.components.filter(c=>!replace(c))}:{}),vectorComponents:[...retained,...parts]});
  if(!next.success)error('character.visual',next.error.issues.map(i=>i.path.join('.')+': '+i.message).join('; '));
  return CharacterDefinition.parse({...character,visual:next.data});
 }
