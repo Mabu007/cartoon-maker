@@ -1,3 +1,4 @@
+import {WorldArtwork} from './worldArtworkSchema.ts';
 import {CharacterSecondary} from './secondaryMotionSchema.ts';
 import {GarmentDesignV1} from './garmentDesignSchema.ts';
 import {HairDesignV1} from './hairDesignSchema.ts';
@@ -125,7 +126,7 @@ export const CharacterDefinition = z.strictObject({
 });
 export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.string().min(1).max(60), color, ...position,
   imageData: propImageData.optional(), imageWidth: num(10, 800).optional(), imageHeight: num(10, 800).optional(),
-  visual:EntityVisual.optional(), interactionAnchor:z.strictObject({x:num(-1000,1000),y:num(-1000,1000)}).optional(),
+  worldArtwork:WorldArtwork.optional(), visual:EntityVisual.optional(), interactionAnchor:z.strictObject({x:num(-1000,1000),y:num(-1000,1000)}).optional(),
   interaction: z.enum(['none','sit','hold']).optional(), flip: z.boolean().optional()
 });
 export const Actor = z.strictObject({ id, characterId: id, ...position, visual:EntityVisual.optional(), view: CharacterView, flip: z.boolean(), expression: z.enum(expressions), gazeTarget: id.optional() });

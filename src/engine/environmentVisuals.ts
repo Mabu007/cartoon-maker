@@ -1,3 +1,4 @@
+import {WorldSet} from './worldArtworkSchema.ts';
 import {SceneSecondary} from './secondaryMotionSchema.ts';
 import {VvleLight,VvleSettings} from './vvleSchema.ts';
 import { z } from 'zod';
@@ -18,6 +19,7 @@ export const EnvironmentVisual=z.strictObject({version:z.literal(1),quality:z.en
   lighting:z.strictObject({enabled:z.boolean(),ambient:color,intensity:n(0,1.5),shadow:color,shadowOpacity:n(0,1),lights:z.array(Light).max(8)}).optional(),
   volume:VvleSettings.optional(),
   secondaryMotion:SceneSecondary.optional(),
+  world:WorldSet.optional(),
   perspective:Perspective.optional(),
   walkable:z.array(z.strictObject({x:n(-2000,3000),y:n(-2000,3000)})).min(3).max(80).optional()
 }).superRefine((v,ctx)=>{

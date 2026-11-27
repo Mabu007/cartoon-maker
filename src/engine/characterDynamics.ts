@@ -1,3 +1,4 @@
+import {sceneForces} from './sceneForces.ts';
 /** Scene-clock adapter. Physics only returns local artwork offsets.
  * Reference hair group IDs are stable across views; missing groups are omitted.
  * No actor, rig, prop, facial or timeline state is written by this module. */
@@ -98,10 +99,9 @@ export class CharacterDynamics{
    const t=tick/this.hz;
    if(this.cachedTick!==tick){const state=evaluate(scene,t,this.byId,width);this.cachedActors=new Map(state.actors.map(a=>[a.id,a]));this.cameraView=state.camera.view;this.cachedTick=tick;}
    const binding=bindingMap.get(id)!,a=this.cachedActors.get(binding.actorId),c=a&&this.byId.get(a.characterId);
-   const forces={gravity:{x:0,y:12},wind:{x:settings.windX,y:settings.windY},turbulence:settings.turbulence};
-   for(const g of settings.gusts){const p=(t-g.time)/g.duration;if(p>=0&&p<=1){const w=Math.sin(Math.PI*p);forces.wind.x+=g.x*w;forces.wind.y+=g.y*w;}}
+   const forces=sceneForces(settings,t,a?.x??0,a?.y??0);
    if(!a||!c||!a.visible)return {transform:[1,0,0,1,0,0],forces,sleep:true};
-   const view=this.cameraView??a.view,flip=a.flip!==(viewForward(view)!==viewForward(a.view));
+   const view=scene.visual?.world?a.view:this.cameraView??a.view,flip=a.flip!==(viewForward(view)!==viewForward(a.view));
    const m=secondaryAnchor(a,c,view,flip,binding.head,t),root=binding.root;
    return {transform:[m[0],m[1],m[2],m[3],m[4]+m[0]*root.x+m[2]*root.y,m[5]+m[1]*root.x+m[3]*root.y],forces};
   };
