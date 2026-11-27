@@ -6,6 +6,9 @@ import type { Character } from './schema.ts';
 import type { CharacterVisualData } from './visualAssets.ts';
 export const profileSettings:Record<CharacterVisualData['profile'],Partial<Character>>={
   slim:{height:1.06,head:.87,thickness:.83,bodyBuild:{frame:'slim',arms:'slim',legs:'slim'}},
+  lean:{height:1.1,head:.85,thickness:.91,bodyBuild:{frame:'slim',arms:'regular',legs:'slim'}},
+  heavyset:{height:1.02,head:.93,thickness:1.19,bodyBuild:{frame:'round',arms:'regular',legs:'full',hips:.5}},
+  petite:{height:.83,head:.91,thickness:.86,torso:.92,legs:.93,bodyBuild:{frame:'slim',arms:'slim',legs:'slim'}},
   average:{height:1.08,head:.88,bodyBuild:{frame:'regular',arms:'regular',legs:'regular'}},
   curvy:{height:1.02,head:.86,bodyBuild:{frame:'regular',arms:'regular',legs:'full',chest:.65,hips:.75}},
   athletic:{height:1.12,head:.85,bodyBuild:{frame:'broad',arms:'regular',legs:'muscular'}},

@@ -4,7 +4,7 @@ import { VectorArtworkV1 } from './vectorArtwork.ts';
 
 export const assetCategories = ['character','body-profile','face-component','hair','clothing','accessory','prop','environment','art-style'] as const;
 export const assetViews = ['front','three-quarter','side','back-quarter','back'] as const;
-export const bodyProfiles = ['slim','average','curvy','athletic','muscular','broad','larger','short','tall','young-adult','mature','elderly'] as const;
+export const bodyProfiles = ['slim','average','curvy','athletic','muscular','broad','larger','short','tall','young-adult','mature','elderly','lean','heavyset','petite'] as const;
 export const componentSlots = ['hair','top','head-base','upper-arm-left','forearm-left','upper-arm-right','forearm-right','thigh-left','calf-left','thigh-right','calf-right','shoe-left','shoe-right'] as const;
 const number = (min:number,max:number) => z.number().finite().min(min).max(max);
 export const assetPoint = z.strictObject({x:number(0,1),y:number(0,1)});
@@ -34,6 +34,8 @@ export const CharacterVisual = z.strictObject({
   limbArt:z.literal('anatomical-v1').optional(),
   shoulders:number(.8,1.25).optional(), waist:number(.75,1.35).optional(), hips:number(.8,1.3).optional(),
   armWidth:number(.75,1.3).optional(), thighWidth:number(.75,1.3).optional(), calfWidth:number(.8,1.25).optional(),
+  abdomen:number(.8,1.3).optional(), wristWidth:number(.85,1.15).optional(), kneeWidth:number(.85,1.15).optional(), ankleWidth:number(.85,1.15).optional(),
+  muscleDefinition:number(0,1).optional(), softness:number(0,1).optional(),
   handSize:number(.75,1.3).optional(), footSize:number(.8,1.25).optional(), neckLength:number(.8,1.2).optional(),
   components:z.array(CompiledComponent).max(80).optional(),
   vectorComponents:z.array(NativeVectorComponent).max(12).optional()

@@ -158,7 +158,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     }
     const {elbow,hand}=endpoint;
     const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
-      ?drawAnatomicalLimb(target,points,width,color,points[0]===elbow?'forearm':'upper-arm')
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===elbow?'forearm':'upper-arm',c.visual)
       :legacyStroke(target,points,width,color);
     const coverage=sleeveCoverage(c);
     const upper=coverage<=1;
@@ -246,7 +246,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
       [knee,foot]=seatedLeg(joint.upper,c.legs*c.height,lift,side);
     }
     const stroke=(target:Graphics,points:Point[],width:number,color:string)=>anatomical
-      ?drawAnatomicalLimb(target,points,width,color,points[0]===knee?'calf':'thigh')
+      ?drawAnatomicalLimb(target,points,width,color,points[0]===knee?'calf':'thigh',c.visual)
       :legacyStroke(target,points,width,color);
     const bottom=c.wardrobe?.bottoms??(c.outfit==='athleisure'?'leggings':'straight');
     const swim=c.outfit==='bikini';

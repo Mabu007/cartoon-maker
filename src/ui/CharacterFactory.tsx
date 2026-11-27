@@ -1,3 +1,5 @@
+import {CharacterIdentityPanel} from './CharacterIdentityPanel.tsx';
+import {duplicateCharacterIdentity} from '../engine/characterIdentity.ts';
 import { CharacterVisualStudio } from './CharacterVisualStudio.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Maximize2, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
@@ -126,6 +128,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       </label>
     </div><div className="factory-edit"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
 
+      <CharacterIdentityPanel character={draft} change={setDraft}/>
       <CharacterVisualStudio character={draft} change={setDraft}/>
       <div className="factory-section-heading"><span>Start with a character</span><button type="button" className="surprise-button" onClick={() => {
         const item = characters[Math.floor(Math.random() * characters.length)];
@@ -223,6 +226,6 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         {advanced && <div className="factory-advanced">{(section === 'Face' ? ['eyeSpacing'] : ['torso', 'arms', 'legs']).map(key => { const id = key as keyof typeof sliders; return <label className="field slider" key={key}>{sliders[id]}<input type="range" min={id==='eyeSpacing'?.65:.75} max={id === 'eyeSpacing' ? 1.4 : 1.3} step={.01} value={draft[id]} onChange={event => update(id, Number(event.target.value))}/></label>; })}</div>}</>}
       </div>
     </div></div>
-    <footer className="modal-footer">{source && <><IconButton title="Delete character" onClick={() => remove(source.id)}><Trash2 size={17}/></IconButton><button className="quiet" disabled={!draft.name.trim()} onClick={() => save({ ...draft, id: uid(), name: `${draft.name.trim().slice(0, 54)} copy` })}><Copy size={16}/> Duplicate</button></>}<span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!draft.name.trim()} onClick={() => save({ ...draft, name: draft.name.trim() })}><Save size={16}/> Save character</button></footer>
+    <footer className="modal-footer">{source && <><IconButton title="Delete character" onClick={() => remove(source.id)}><Trash2 size={17}/></IconButton><button className="quiet" disabled={!draft.name.trim()} onClick={() => save(duplicateCharacterIdentity(draft,uid()))}><Copy size={16}/> Duplicate</button></>}<span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!draft.name.trim()} onClick={() => save({ ...draft, name: draft.name.trim() })}><Save size={16}/> Save character</button></footer>
   </Modal>;
 }

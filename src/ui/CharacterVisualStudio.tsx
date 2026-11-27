@@ -8,7 +8,7 @@ import { applyProfile, illustratedCharacters, studioCharacters } from '../engine
 import { bodyProfiles, compileComponents, assetInstructions, type CharacterVisualData, type VisualAssetPack } from '../engine/visualAssets.ts';
 import type { Character } from '../engine/schema.ts';
 import { AssetWorkbench } from './AssetWorkbench.tsx';
-const controls=[['shoulders','Shoulder width',.8,1.25],['waist','Waist width',.75,1.35],['hips','Hip width',.8,1.3],['armWidth','Arm thickness',.75,1.3],['thighWidth','Thigh thickness',.75,1.3],['calfWidth','Calf thickness',.8,1.25],['handSize','Hand size',.75,1.3],['footSize','Foot size',.8,1.25],['neckLength','Neck length',.8,1.2]] as const;
+const controls=[['shoulders','Shoulder width',.8,1.25],['waist','Waist width',.75,1.35],['hips','Hip width',.8,1.3],['armWidth','Arm thickness',.75,1.3],['thighWidth','Thigh thickness',.75,1.3],['calfWidth','Calf thickness',.8,1.25],['handSize','Hand size',.75,1.3],['footSize','Foot size',.8,1.25],['neckLength','Neck length',.8,1.2],['abdomen','Abdomen',.8,1.3]] as const;
 export function CharacterVisualStudio({character,change}:{character:Character;change:(c:Character)=>void}){
   const [workbench,setWorkbench]=useState(false),[status,setStatus]=useState(''),[prompt,setPrompt]=useState('');
   const [vectorView,setVectorView]=useState<View>('three-quarter');
@@ -57,6 +57,8 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
       </>}
       <p className="small-text">Local editable geometry; matching view only. Saved with the character. Deformation is an authored offset, not live physics.</p>
     </details>
+    <label className="field slider">Chest / ribcage<input aria-label="Chest / ribcage" type="range" min={0} max={1} step={.01} value={character.bodyBuild?.chest??0} onChange={e=>change({...character,bodyBuild:{...character.bodyBuild,chest:Number(e.target.value)}})}/></label>
+    {visual.style==='illustrated'&&visual.limbArt==='anatomical-v1'&&<details><summary>Anatomical contour controls</summary><p className="small-text">Affects native anatomical limbs, not custom imported slots.</p>{([['wristWidth','Wrist width',.85,1.15,1],['kneeWidth','Knee width',.85,1.15,1],['ankleWidth','Ankle width',.85,1.15,1],['muscleDefinition','Muscle definition',0,1,.5],['softness','Softness',0,1,.5]] as const).map(([id,label,min,max,neutral])=><label className="field slider" key={id}>{label}<input aria-label={label} type="range" min={min} max={max} step={.05} value={visual[id]??neutral} onChange={e=>patch({[id]:Number(e.target.value)})}/></label>)}</details>}
     {controls.map(([id,label,min,max])=><label className="field slider" key={id}>{label}<input aria-label={label} type="range" min={min} max={max} step={.01} value={visual[id]??1} onChange={e=>patch({[id]:Number(e.target.value)})}/></label>)}
     <div className="field-row"><button type="button" onClick={()=>patch(Object.fromEntries(controls.map(([id])=>[id,1])))}>Reset body adjustments</button><button type="button" onClick={()=>setWorkbench(true)}>Import / prepare artwork</button></div>
     {!!visual.components?.length&&<><p className="small-text">{visual.components.map(p=>p.slot+' · '+p.view).join(', ')}</p><button type="button" onClick={()=>patch({components:[]})}>Use native artwork</button></>}

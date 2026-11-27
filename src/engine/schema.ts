@@ -68,6 +68,8 @@ export const PersonalityDefinition = z.strictObject({
   eyeContact:num(0,100),personalSpace:num(0,100),reactionIntensity:num(0,100),
   movementSmoothness:num(0,100)
 }).partial();
+export const identityLockGroups=['body','face','hair','palette','wardrobe','personality','voice'] as const;
+export const CharacterIdentityMetadata=z.strictObject({version:z.literal(1),seed:z.number().int().min(0).max(4294967295),locks:z.array(z.enum(identityLockGroups)).max(identityLockGroups.length).refine(v=>new Set(v).size===v.length,'Duplicate identity lock')});
 export const CharacterDefinition = z.strictObject({
   id, name: z.string().trim().min(1).max(60), skin: color, shirt: color, pants: color, hairColor: color, shoes: color,
   height: num(.75, 1.3), head: num(.75, 1.35), torso: num(.75, 1.3), arms: num(.75, 1.3), legs: num(.75, 1.3), thickness: num(.65, 1.45), eyeSpacing: num(.65, 1.4),
@@ -76,6 +78,7 @@ export const CharacterDefinition = z.strictObject({
   hair: z.enum(characterStyles.hair), beard: z.enum(characterStyles.beard), hat: z.enum(characterStyles.hat),
   glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(characterStyles.outfit), accessory: z.enum(characterStyles.accessory),
   visual:CharacterVisual.optional(),
+  identity:CharacterIdentityMetadata.optional(),
   bodyBuild:z.strictObject({
     frame:z.enum(bodyFrames), arms:z.enum(armBuilds),
     legs:z.enum(legBuilds), chest:num(0,1), hips:num(0,1), abs:z.boolean()

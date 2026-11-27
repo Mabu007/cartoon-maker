@@ -30,12 +30,52 @@ export function anatomicalBoneFrame(a:VectorPoint,b:VectorPoint,width:number){
   if(!Number.isFinite(length)||length<.01)return undefined;
   return {x:a.x,y:a.y,length,width,angle:Math.atan2(dy,dx)*180/Math.PI};
 }
-export function anatomicalSegments(joints:readonly VectorPoint[],width:number,first:LimbRegion){
+export function anatomicalSegments(joints:readonly VectorPoint[],width:number,first:LimbRegion,morphology?:LimbMorphology){
   const segments:{frame:NonNullable<ReturnType<typeof anatomicalBoneFrame>>;region:LimbRegion;art:LimbArtwork}[]=[];
   for(let i=1;i<joints.length;i++){
     const region=i===1?first:first==='upper-arm'?'forearm':first==='thigh'?'calf':first;
     const frame=anatomicalBoneFrame(joints[i-1],joints[i],width*(i===1?1:.83));
-    if(frame)segments.push({frame,region,art:limbArtwork[region]});
+    if(frame)segments.push({frame,region,art:morphLimbArtwork(region,morphology)});
   }
   return segments;
+}
+
+/** Optional identity controls alter only authored contour points, not solved joints.
+ * Inputs are quantized to 0.05 for a bounded reusable path cache. The unchanged
+ * identity takes the original Stage 0 strings by reference. */
+export type LimbMorphology={wristWidth?:number;kneeWidth?:number;ankleWidth?:number;muscleDefinition?:number;softness?:number};
+const morphologyCache=new Map<string,LimbArtwork>();
+const quant=(v:number|undefined,fallback:number,min:number,max:number)=>Math.round(Math.min(max,Math.max(min,Number.isFinite(v)?v!:fallback))*20)/20;
+export function morphLimbArtwork(region:LimbRegion,m?:LimbMorphology):LimbArtwork{
+  const wrist=quant(m?.wristWidth,1,.85,1.15),knee=quant(m?.kneeWidth,1,.85,1.15),ankle=quant(m?.ankleWidth,1,.85,1.15);
+  const muscle=quant(m?.muscleDefinition,.5,0,1),soft=quant(m?.softness,.5,0,1);
+  const proximal=region==='calf'?knee:1,distal=region==='forearm'?wrist:region==='thigh'?knee:region==='calf'?ankle:1;
+  if(proximal===1&&distal===1&&muscle===.5&&soft===.5)return limbArtwork[region];
+  const key=[region,proximal,distal,muscle,soft].join('/');
+  const hit=morphologyCache.get(key);if(hit)return hit;
+  const shape=(source:string)=>{
+    // Trusted built-in absolute M/L/Q/C/Z artwork only. Preserve command
+    // topology and x coordinates; paired joint centers remain exactly y=0.
+    const tokens=source.match(/[MLQCZ]|-?(?:\d+(?:\.\d*)?|\.\d+)/g)!;
+    const output:string[]=[];
+    for(let i=0;i<tokens.length;){
+      const t=tokens[i++];output.push(t);
+      if(t==='Z')continue;
+      const count=t==='C'?3:t==='Q'?2:1;
+      for(let j=0;j<count;j++){
+        const x=Number(tokens[i++]),y=Number(tokens[i++]);
+        const u=Math.min(1,Math.max(0,x));
+        const belly=Math.sin(Math.PI*u)**2;
+        const profile=1+(muscle-.5)*.24*belly+(soft-.5)*.20*Math.sin(Math.PI*u);
+        const factor=(proximal*(1-u)+distal*u)*profile;
+        output.push(String(x),String(Math.round(y*factor*10000)/10000));
+      }
+    }
+    return output.join(' ');
+  };
+  const rest=limbArtwork[region];
+  const art=Object.freeze({outline:shape(rest.outline),shadow:shape(rest.shadow),highlight:shape(rest.highlight)});
+  morphologyCache.set(key,art);
+  if(morphologyCache.size>64){const oldest=morphologyCache.keys().next().value;if(oldest!==undefined)morphologyCache.delete(oldest);}
+  return art;
 }

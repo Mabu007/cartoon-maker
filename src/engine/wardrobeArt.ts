@@ -120,7 +120,7 @@ export function drawTop(g: Graphics,c: Character,view: IllustratedView,neck: Poi
   const leftChest=x-a-(profile?0:chest), rightChest=x+a+(view.rear?0:chest);
   const leftHip=bx-end-(view.rear||view.profile?end*(build.hip-1)*.46:0);
   const legacyPath=`M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} L ${bx-b} ${mid-15+Math.min(0,hem)} L ${bx-end} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} L ${bx+b} ${mid-15+Math.min(0,hem)} L ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
-  const path=build.shoulder===1 && build.waist===1 && build.hip===1 && build.chest===0 ? legacyPath : `M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} Q ${leftChest} ${chestY} ${bx-b} ${bellyY} Q ${bx-b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${leftHip} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} Q ${bx+b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${bx+b} ${bellyY} Q ${rightChest+(profile?front*chest:0)} ${chestY} ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
+  const path=build.shoulder===1 && build.waist===1 && build.hip===1 && build.chest===0 && (c.visual?.abdomen??1)===1 ? legacyPath : `M ${x-9} ${top-4} Q ${x-a} ${top} ${x-a} ${top+shoulderLine} Q ${leftChest} ${chestY} ${bx-b} ${bellyY} Q ${bx-b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${leftHip} ${bottom-2} Q ${bx} ${bottom+5} ${bx+end} ${bottom-2} Q ${bx+b*build.bell/Math.max(1,build.waist)} ${bottom-5} ${bx+b} ${bellyY} Q ${rightChest+(profile?front*chest:0)} ${chestY} ${x+a} ${top+shoulderLine} Q ${x+a} ${top} ${x+9} ${top-4} Z`;
   const bare=kind==='shirtless'||kind==='bikini';
   if(bare){
     vector(g,path,c.skin,INK,2.35);
