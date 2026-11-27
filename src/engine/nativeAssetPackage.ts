@@ -15,7 +15,7 @@ const error=(path:string,message:string):never=>{throw Error(path+': '+message);
 /** Linear lexical preflight before JSON.parse. Bounds nesting and token count
  * without interpreting string content or expanding anything. Rejects archives
  * and raw XML, and counts encoded bytes rather than JS UTF-16 units. */
-export function boundedAssetJSON(text:string,limit=nativePackageLimits.bytes):unknown{
+export function boundedAssetJSON(text:string,limit:number=nativePackageLimits.bytes):unknown{
  if(text.length>limit||new TextEncoder().encode(text).length>limit)error('$','Package exceeds byte limit '+limit);
  if(!text.trimStart().startsWith('{'))error('$','Only plain JSON objects are accepted; ZIP, SVG and compressed files are unsupported');
  let depth=0,tokens=0,quoted=false,escaped=false;
