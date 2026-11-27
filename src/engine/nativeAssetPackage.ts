@@ -70,7 +70,8 @@ export function calibrateNative(value:NativePackage,packIndex:number,componentIn
 /** Apply closure atomically to a draft; copies geometry and provenance into the
  * project, so playback/backup never require the reusable library. */
 export function applyNativePackage(character:Character,packs:NativeAssetPack[],root:string):Character{
- const closure=nativeClosure(parseNativePackage(JSON.stringify({format:'sirvibe-assets',version:2,packs})).packs,root);
+ const selected=nativeClosure(packs,root);
+ const closure=parseNativePackage(JSON.stringify({format:'sirvibe-assets',version:2,packs:selected})).packs;
  const visual=character.visual??{version:1 as const,style:'classic' as const,profile:'average' as const};
  const parts:NativeVectorComponentData[]=[];
  for(const p of closure){if(p.style!==visual.style)error(p.name+'.style','Requires '+p.style+' art style');for(const c of p.components){if(!c.profiles.includes(visual.profile))error(p.name+'.profiles','Does not fit '+visual.profile);parts.push({...c,id:p.id+'-'+c.id,packageSource:{id:p.id,revision:p.revision,license:p.license,provenance:p.provenance}});}}

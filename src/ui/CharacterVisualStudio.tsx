@@ -1,3 +1,4 @@
+import {applyNativePackage,boundedAssetJSON,type NativeAssetPack} from '../engine/nativeAssetPackage.ts';
 import {forearmVectorFixture} from '../engine/vectorArtworkFixture.ts';
 import {assetViews,NativeVectorComponent} from '../engine/visualAssets.ts';
 import type {View} from '../engine/schema.ts';
@@ -30,6 +31,7 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
     const report=pack.category==='character'?characterCompatibility(pack):undefined;
     setWorkbench(false);setStatus(`${report?.incompleteViews.length?'Partial body import: native parts fill undeclared slots. ':''}Applied ${pack.name}. Other views retain the native artwork; test all declared views and match sleeve colour for clothing.`);
   }
+  function applyNative(packs:NativeAssetPack[],root:string){const next=applyNativePackage(character,packs,root);change(next);setWorkbench(false);setStatus('Native vector geometry applied to draft. Save to retain.');}
   const activeVector=visual.vectorComponents?.find(p=>p.slot==='forearm-left'&&p.view===vectorView&&(p.facing??'both')===vectorFacing);
   function editVector(update:Partial<NonNullable<CharacterVisualData['vectorComponents']>[number]>){
     if(!activeVector)return;
@@ -55,7 +57,7 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
     <details><summary>Native vector component · experimental</summary>
       <label className="field">Component view<select aria-label="Native vector view" value={vectorView} onChange={e=>setVectorView(e.target.value as View)}>{assetViews.map(v=><option key={v}>{v}</option>)}</select></label>
       <label className="field">Facing<select aria-label="Native vector facing" value={vectorFacing} onChange={e=>setVectorFacing(e.target.value as typeof vectorFacing)}><option value="both">Mirror-safe both</option><option value="normal">Normal</option><option value="mirrored">Mirrored</option></select></label>
-      <label className="field">Import native component<input aria-label="Import native vector component" type="file" accept=".json" onChange={async e=>{const input=e.currentTarget,file=input.files?.[0];if(!file)return;try{if(file.size>500000)throw Error('Vector file exceeds 500 KB');const part=NativeVectorComponent.parse(JSON.parse(await file.text()));if(!part.profiles.includes(visual.profile))throw Error('Component profile mismatch');patch({vectorComponents:[...(visual.vectorComponents??[]).filter(p=>p.slot!==part.slot||p.view!==part.view||(p.facing&&part.facing&&p.facing!==part.facing)),part]});}catch(error){setStatus(error instanceof Error?error.message:'Invalid component');}finally{input.value='';}}}/></label>
+      <label className="field">Import native component<input aria-label="Import native vector component" type="file" accept=".json" onChange={async e=>{const input=e.currentTarget,file=input.files?.[0];if(!file)return;try{if(file.size>500000)throw Error('Vector file exceeds 500 KB');const part=NativeVectorComponent.parse(boundedAssetJSON(await file.text(),500000));if(!part.profiles.includes(visual.profile))throw Error('Component profile mismatch');patch({vectorComponents:[...(visual.vectorComponents??[]).filter(p=>p.slot!==part.slot||p.view!==part.view||(p.facing&&part.facing&&p.facing!==part.facing)),part]});}catch(error){setStatus(error instanceof Error?error.message:'Invalid component');}finally{input.value='';}}}/></label>
       {!activeVector?<button type="button" onClick={addVector}>Add native forearm fixture</button>:<>
         <label className="check"><input type="checkbox" checked={activeVector.fitMorphology==='anatomical-v1'} onChange={e=>editVector({fitMorphology:e.target.checked?'anatomical-v1':undefined})}/> Fit native contour to anatomy</label>
         <button type="button" onClick={()=>downloadText(activeVector.id+'.json',JSON.stringify(activeVector,null,2))}>Export vector component</button>
@@ -74,6 +76,6 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
     <button type="button" className="quiet full" disabled={!visual.components?.length} onClick={()=>{try{downloadText(character.name.replace(/[^a-z0-9_-]/gi,'-')+'-body.sirvibe-assets',exportAssetPackage([exportCharacterArtwork(character)]));}catch(error){setStatus(error instanceof Error?error.message:'Could not export artwork.');}}}>Export character body artwork</button>
     <button type="button" className="quiet full" onClick={()=>{const text=assetInstructions('hair',visual.profile,visual.style);void navigator.clipboard.writeText(text).then(()=>setStatus('AI instructions copied.')).catch(()=>setPrompt(text));}}>Copy AI Asset Instructions</button>
     {prompt&&<textarea aria-label="AI character asset instructions" value={prompt} readOnly rows={5} onFocus={e=>e.target.select()}/>}{status&&<p role="status" className="small-text">{status}</p>}
-    {workbench&&<AssetWorkbench close={()=>setWorkbench(false)} profile={visual.profile} apply={apply}/>}
+    {workbench&&<AssetWorkbench close={()=>setWorkbench(false)} profile={visual.profile} apply={apply} applyNative={applyNative}/>}
   </details>;
 }

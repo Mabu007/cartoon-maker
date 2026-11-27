@@ -1,3 +1,5 @@
+import {NativeAssetLibrary} from './NativeAssetLibrary.tsx';
+import type {NativeAssetPack} from '../engine/nativeAssetPackage.ts';
 import { boneArtworkTransform, isBoneSlot } from '../engine/artworkGeometry.ts';
 import { maskSelectionBounds, type MaskStroke } from '../engine/selectionMask.ts';
 import { useEffect, useRef, useState } from 'react';
@@ -9,8 +11,8 @@ import { mediaUrl } from '../services/media.ts';
 import { Modal } from './shared.tsx';
 type Category='character'|'hair'|'clothing'|'prop'|'environment';
 const initial:Preparation={crop:{x:0,y:0,width:1,height:1},polygon:[],tolerance:25};
-export function AssetWorkbench({close,apply,profile='average',sourceImage}:{close:()=>void;apply:(pack:VisualAssetPack)=>void|Promise<void>;profile?:typeof bodyProfiles[number];sourceImage?:string}){
-  const [tab,setTab]=useState<'library'|'prepare'>(sourceImage?'prepare':'library'),[rows,setRows]=useState<AssetRow[]>([]),[query,setQuery]=useState('');
+export function AssetWorkbench({close,apply,applyNative,profile='average',sourceImage}:{close:()=>void;apply:(pack:VisualAssetPack)=>void|Promise<void>;applyNative?:(packs:NativeAssetPack[],root:string)=>void;profile?:typeof bodyProfiles[number];sourceImage?:string}){
+  const [tab,setTab]=useState<'library'|'prepare'|'native'>(sourceImage?'prepare':'library'),[rows,setRows]=useState<AssetRow[]>([]),[query,setQuery]=useState('');
   const [category,setCategory]=useState<Category>(sourceImage?'prop':'hair'),[name,setName]=useState('New artwork'),[view,setView]=useState<typeof assetViews[number]>('three-quarter');
   const [targetProfile,setProfile]=useState(profile),[image,setImage]=useState<HTMLImageElement>(),[settings,setSettings]=useState<Preparation>(initial);
   const [slot,setSlot]=useState<typeof componentSlots[number]>('head-base'),[end,setEnd]=useState({x:.5,y:.9}),[angle,setAngle]=useState(0);
@@ -57,13 +59,13 @@ export function AssetWorkbench({close,apply,profile='average',sourceImage}:{clos
   async function prompt(){const value=assetInstructions(category,targetProfile);try{await navigator.clipboard.writeText(value);setStatus('AI asset instructions copied.');}catch{setInstructions(value);}}
   function template(){const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="-100 -240 200 270"><rect x="-100" y="-240" width="200" height="270" fill="#f2edf8"/><g fill="none" stroke="#684695"><path d="M0 0V-76L0-130L0-166M-24-120L-30-93L-36-66M24-120L30-93L36-66M-12-76L-15-38L-18 0M12-76L15-38L18 0"/><ellipse cx="0" cy="-166" rx="38" ry="44"/><rect x="-30" y="-130" width="60" height="75"/></g><g font-family="sans-serif" font-size="5" fill="#302437"><text x="4" y="-166">Head / hair pivot</text><text x="4" y="-130">Neck / torso pivot</text><text x="4" y="0">Ground (0,0)</text></g></svg>`;downloadText('SIRVIBE-native-rig-template.svg',svg,'image/svg+xml');}
   return <Modal wide title="Asset preparation" description="Prepare artwork once. Reuse it in your cartoons." close={close}>
-    <div className="asset-workbench"><div className="segmented"><button type="button" aria-pressed={tab==='library'} onClick={()=>setTab('library')}>Your artwork</button><button type="button" aria-pressed={tab==='prepare'} onClick={()=>setTab('prepare')}>Prepare artwork</button></div>
+    <div className="asset-workbench"><div className="segmented"><button type="button" aria-pressed={tab==='library'} onClick={()=>setTab('library')}>Your artwork</button><button type="button" aria-pressed={tab==='prepare'} onClick={()=>setTab('prepare')}>Prepare artwork</button><button type="button" aria-pressed={tab==='native'} onClick={()=>setTab('native')}>Native vectors</button></div>
     <input ref={input} hidden type="file" accept="image/png,image/webp,image/svg+xml" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void load(file);}}/>
     <input ref={importInput} hidden type="file" accept=".sirvibe-assets,application/json" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPack(file);}}/>
     <div className="field-row"><button type="button" className="quiet" disabled={busy} onClick={()=>input.current?.click()}>Choose artwork</button><button type="button" className="quiet" disabled={busy} onClick={()=>importInput.current?.click()}>Import asset pack</button><button type="button" className="quiet" onClick={template}>Rig template</button></div>
     {busy&&<p role="status">Preparing artwork… <button type="button" onClick={()=>{token.current++;setBusy(false);}}>Cancel</button></p>}
     {error&&<p role="alert" className="form-error">{error}</p>}{status&&<p role="status">{status}</p>}
-    {tab==='library'?<><input aria-label="Search artwork" placeholder="Search names, categories and tags" value={query} onChange={e=>setQuery(e.target.value)}/>
+    {tab==='native'?<NativeAssetLibrary apply={applyNative}/>:tab==='library'?<><input aria-label="Search artwork" placeholder="Search names, categories and tags" value={query} onChange={e=>setQuery(e.target.value)}/>
       <div className="visual-asset-grid">{rows.filter(row=>(row.pack.name+' '+row.pack.category+' '+row.pack.tags.join(' ')).toLowerCase().includes(query.toLowerCase())).map(row=><article key={row.id}>
         <img src={row.pack.files[0].data} alt={row.pack.name}/><input aria-label={`Rename artwork ${row.pack.name}`} defaultValue={row.pack.name} maxLength={60} onBlur={e=>{if(e.target.value.trim()&&e.target.value!==row.pack.name)void updateVisualAsset(row.id,{name:e.target.value.trim()}).then(refresh).catch(fail);}}/>
         <p>{compatibility(row.pack)}</p><div className="field-row"><button type="button" className="primary" onClick={()=>{void Promise.resolve().then(()=>apply(row.pack)).catch(fail);}}>Use artwork</button><button type="button" aria-pressed={row.favorite} onClick={()=>void updateVisualAsset(row.id,{favorite:!row.favorite}).then(refresh).catch(fail)}>{row.favorite?'★':'☆'}</button></div>
