@@ -1,3 +1,4 @@
+import {CharacterSecondary} from './secondaryMotionSchema.ts';
 import {GarmentDesignV1} from './garmentDesignSchema.ts';
 import {HairDesignV1} from './hairDesignSchema.ts';
 import { CharacterVisual } from './visualAssets.ts';
@@ -83,6 +84,7 @@ export const CharacterDefinition = z.strictObject({
   identity:CharacterIdentityMetadata.optional(),
   hairDesign:HairDesignV1.optional(),
   garmentDesign:GarmentDesignV1.optional(),
+  secondaryMotion:CharacterSecondary.optional(),
   bodyBuild:z.strictObject({
     frame:z.enum(bodyFrames), arms:z.enum(armBuilds),
     legs:z.enum(legBuilds), chest:num(0,1), hips:num(0,1), abs:z.boolean()

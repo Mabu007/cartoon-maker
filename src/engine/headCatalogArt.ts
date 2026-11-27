@@ -280,7 +280,7 @@ const piercingPaths = {
   nostril:'M-1.5 0a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0 -3 0Z',
   eyebrow:'M-1 -4L1 4 M-2 -4H0 M0 4H2',lip:'M-3 -3a3 4 0 1 0 6 0 3 4 0 1 0 -6 0Z',bridge:'M-5 0H5 M-6 -1l1 2 M6 -1l-1 2'
 };
-export function drawPiercing(g:Graphics,c:Character,art:IllustratedView,ears:number[],center:number) {
+export function drawPiercing(g:Graphics,c:Character,art:IllustratedView,ears:number[],center:number,swing?:readonly [number,number]) {
   const w=c.wardrobe,kind=w?.piercing??(c.earrings?'huggie':'none');
   if(kind==='none')return;
   const metal=w?.metal??'#e7ba65', scale=w?.piercingSize??1, side=w?.piercingSide??'left';
@@ -293,7 +293,7 @@ export function drawPiercing(g:Graphics,c:Character,art:IllustratedView,ears:num
   }
   for(const [i,x] of ears.entries()){
     if ((side==='left'&&i!==0)||(side==='right'&&i!==1)) continue;
-    vector(g,piercingPaths[kind],['stud','gauge','drop'].includes(kind)?metal:'none',metal,1.7,at(x-2,13,scale));
+    vector(g,piercingPaths[kind],['stud','gauge','drop'].includes(kind)?metal:'none',metal,1.7,at(x-2,13,scale,kind==='drop'||kind==='hoop'||kind==='huggie'?Math.max(-12,Math.min(12,(swing?.[0]??0)*5)):0));
   }
 }
 
@@ -311,7 +311,7 @@ export const extraPaths:Record<Exclude<Closet['extra'],'none'|undefined>,string>
   crown:'M-25 1l-6 -19 16 8 15 -18 14 18 17 -8 -6 19Z',
   halo:'M-22 0a22 6 0 1 0 44 0 22 6 0 1 0 -44 0Z'
 };
-export function drawExtra(g:Graphics,c:Character,a:IllustratedView,w:number,h:number,part:'head'|'torso',x=0,y=0) {
+export function drawExtra(g:Graphics,c:Character,a:IllustratedView,w:number,h:number,part:'head'|'torso',x=0,y=0,swing?:readonly [number,number]) {
   const q=c.wardrobe, kind=q?.extra??c.accessory;
   if(kind==='none')return;
   const head=['earbuds','headphones','mask','sticker','bandage','headband','crown','halo'].includes(kind);
@@ -321,6 +321,9 @@ export function drawExtra(g:Graphics,c:Character,a:IllustratedView,w:number,h:nu
   const dx=kind==='sticker'?(a.profile?15:23):0,dy=kind==='sticker'?16:kind==='bandage'?8:
     kind==='headband'?-h*.52:kind==='crown'?-h+5:kind==='halo'?-h-29:0;
   const t=at(x+dx,y+dy,head?w/42:a.profile?.76:1,1,kind==='bandage'?-14:0);
+  if(swing&&(swing[0]||swing[1])&&kind==='chain'){
+    const dx=Math.max(-3,Math.min(3,swing[0])),dy=Math.max(-2,Math.min(2,swing[1]));vector(g,`M-15 1Q${dx} ${36+dy} 15 1`,'none',color,3,t);vector(g,`M${dx-3} ${22+dy}q3 -3 6 0q3 4 -3 7q-6 -3 -3 -7Z`,color,INK,1,t);return;
+  }
   const outlineOnly=['halo','chain','headphones'].includes(kind);
   vector(g,extraPaths[kind],outlineOnly?'none':color,outlineOnly?color:INK,outlineOnly?3:1.55,t);
   if(kind==='headphones')vector(g,'M-44 -10h8v25h-8Z M36 -10h8v25h-8Z',color,INK,1.4,t);

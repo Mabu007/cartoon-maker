@@ -121,3 +121,21 @@ export function garmentFoot(c:Character,foot:Point,toe:number,rear=false):Garmen
  if(!rear&&d.laceDetail&&d.footwear!=='loafer')for(let i=0;i<3;i++)out.push(path('lace-'+i,'M'+at(-3+i*2,-5+i*.6)+'L'+at(1+i*2,-4+i*.6),'none',d.laces,1));
  return out;
 }
+
+/** Bounded weighted deformation of trusted procedural garment M/L/Q/C/Z
+ * paths. Fitted upper region and all logo image boxes remain fixed.
+ * Shared field for silhouette, folds, seams and shadows; no bone changes. */
+export function deformGarmentPanels(paths:GarmentPath[],pinY:number,hemY:number,cloth:readonly [number,number],body:readonly [number,number]=[0,0]):GarmentPath[]{
+ if(![pinY,hemY,...cloth,...body].every(Number.isFinite)||hemY<=pinY||!cloth.some(Boolean)&&!body.some(Boolean))return paths;
+ const limit=(v:number,n:number)=>Math.max(-n,Math.min(n,v));
+ const field=(d:string)=>{
+  const tokens=d.match(/[A-Za-z]|-?(?:\d+(?:\.\d*)?|\.\d+)/g);if(!tokens||tokens.some(t=>/^[A-Za-z]$/.test(t)&&!['M','L','Q','C','Z'].includes(t)))return d;
+  const out:string[]=[];for(let i=0;i<tokens.length;){const command=tokens[i++];out.push(command);if(command==='Z')continue;
+   const count=command==='C'?3:command==='Q'?2:1;
+   for(let j=0;j<count;j++){const x=Number(tokens[i++]),y=Number(tokens[i++]);if(!Number.isFinite(x+y))return d;
+    const t=Math.max(0,Math.min(1,(y-pinY)/(hemY-pinY))),w=t*t*(3-2*t),soft=Math.sin(Math.PI*t)**2;
+    out.push(p(x+limit(cloth[0],4)*w+limit(body[0],1.6)*soft,y+limit(cloth[1],4)*w+limit(body[1],1.6)*soft));}
+  }return out.join(' ');
+ };
+ return paths.map(item=>item.image?item:{...item,d:field(item.d)});
+}

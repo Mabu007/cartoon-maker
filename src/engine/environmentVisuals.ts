@@ -1,3 +1,4 @@
+import {SceneSecondary} from './secondaryMotionSchema.ts';
 import {VvleLight,VvleSettings} from './vvleSchema.ts';
 import { z } from 'zod';
 const n=(min:number,max:number)=>z.number().finite().min(min).max(max);
@@ -16,6 +17,7 @@ export const Light=z.strictObject({id:z.string().min(1).max(80),x:n(-2000,3000),
 export const EnvironmentVisual=z.strictObject({version:z.literal(1),quality:z.enum(['eco','balanced','high']),
   lighting:z.strictObject({enabled:z.boolean(),ambient:color,intensity:n(0,1.5),shadow:color,shadowOpacity:n(0,1),lights:z.array(Light).max(8)}).optional(),
   volume:VvleSettings.optional(),
+  secondaryMotion:SceneSecondary.optional(),
   perspective:Perspective.optional(),
   walkable:z.array(z.strictObject({x:n(-2000,3000),y:n(-2000,3000)})).min(3).max(80).optional()
 }).superRefine((v,ctx)=>{

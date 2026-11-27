@@ -12,9 +12,9 @@ const viewWidth:Record<View,number>={front:1,'three-quarter':.88,side:.57,'back-
 const front={width:1,face:0,far:true,rear:false,profile:false};
 const clamp=(n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 export type Offset=readonly [number,number];
-export type SecondaryOffsets={hair:Readonly<Record<string,Offset>>;accessories:Offset;body:Offset;cloth:Offset;face:Offset};
+export type SecondaryOffsets={hair:Readonly<Record<string,Offset>>;accessories:Offset;earrings:Offset;body:Offset;cloth:Offset;face:Offset};
 const zero:Offset=[0,0];
-const blank=():SecondaryOffsets=>({hair:{},accessories:zero,body:zero,cloth:zero,face:zero});
+const blank=():SecondaryOffsets=>({hair:{},accessories:zero,earrings:zero,body:zero,cloth:zero,face:zero});
 type Binding={id:string;actorId:string;head:boolean;component:SecondaryComponent;group?:string;tip:string;strength:number};
 function material(c:Character,component:SecondaryComponent,base:LveMaterialData,max:number):LveMaterialData{
  const patch=c.secondaryMotion?.components?.[component]?.material??{};
@@ -43,7 +43,8 @@ export function buildDynamics(scene:Scene,characters:readonly Character[],settin
    }
   }
   const q=c.wardrobe;
-  if(c.earrings||q?.piercing&&q.piercing!=='none'||['chain','lanyard'].includes(q?.extra??c.accessory)||q?.bag&&q.bag!=='none')
+  if(c.earrings||q?.piercing&&q.piercing!=='none')add('accessories',true,[{x:0,y:0},{x:0,y:8}],[1,0],material(c,'accessories',{...lveMaterials.braid,gravityScale:.025,maxDisplacement:2},2),'earrings');
+  if(['chain','lanyard'].includes(q?.extra??c.accessory)||q?.bag&&q.bag!=='none')
     add('accessories',false,[{x:0,y:0},{x:0,y:12}],[1,0],material(c,'accessories',{...lveMaterials.braid,gravityScale:.04,maxDisplacement:3},3));
   if(c.garmentDesign){
    const rigid=c.garmentDesign.material==='leather'||c.garmentDesign.material==='denim';
@@ -101,7 +102,7 @@ export class CharacterDynamics{
   const tick=Math.min(180*this.hz,Math.max(0,Math.floor(time*this.hz+1e-7))),raw=this.sim.seek(tick,sampler),out=new Map<string,SecondaryOffsets>();
   for(const entity of raw){const b=bindingMap.get(entity.id);if(!b)continue;const n=entity.nodes.find(n=>n.id===b.tip);if(!n)continue;
    const q:Offset=[Math.round(n.dx*b.strength*100)/100,Math.round(n.dy*b.strength*100)/100],o=out.get(b.actorId)??blank();
-   if(b.component==='hair'&&b.group)o.hair={...o.hair,[b.group]:q};else if(b.component!=='hair')o[b.component]=q;
+   if(b.component==='hair'&&b.group)o.hair={...o.hair,[b.group]:q};else if(b.component==='accessories'&&b.group==='earrings')o.earrings=q;else if(b.component!=='hair')o[b.component]=q;
    out.set(b.actorId,o);
   }return out;
  }

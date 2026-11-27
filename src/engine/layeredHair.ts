@@ -130,3 +130,11 @@ export function hairRenderPaths(model:HairModel,layer:'background'|'foreground',
   let entry=restPaths.get(model);if(!entry){entry={};restPaths.set(model,entry);}
   return entry[layer]??(entry[layer]=freeze(compileHairPaths(model,layer,offset)));
 }
+
+/** Per-group LVE offsets. Keep all pin/influence weights and paint order. */
+export function dynamicHairPaths(model:HairModel,layer:'background'|'foreground',offsets?:Readonly<Record<string,readonly [number,number]>>){
+ if(!offsets||!Object.values(offsets).some(v=>v[0]||v[1]))return hairRenderPaths(model,layer);
+ const ids=layer==='background'?model.background:model.foreground;
+ const color=(p:VectorRegion['fill'])=>p?.kind==='palette'?model.artwork.palette[p.key]:p?.kind==='solid'?p.color:'none';
+ return model.artwork.regions.filter(r=>ids.includes(r.id)).sort((a,b)=>a.layer-b.layer).map(r=>{const q=r.material&&offsets[r.material.controlGroup];return {id:r.id,d:svgPath(q?deformRegion(r,q):r.commands),fill:color(r.fill),stroke:color(r.stroke?.paint),strokeWidth:r.stroke?.width??0};});
+}

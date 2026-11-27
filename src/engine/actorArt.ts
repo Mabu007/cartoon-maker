@@ -1,3 +1,6 @@
+import type {SecondaryOffsets} from './characterDynamics.ts';
+import {deformGarmentPanels} from './garmentGeometry.ts';
+import {dynamicHairPaths} from './layeredHair.ts';
 import type {SurfaceFill} from './vvleRender.ts';
 import {classifyArtworkPose} from './primaryArtworkPose.ts';
 import {resolveArtworkArm,resolveArtworkLeg,type ResolvedArtworkPose,type ResolvedLeg,type ResolvedHandArtwork} from './resolvedArtworkPose.ts';
@@ -58,7 +61,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   viseme?: { shape: Viseme; weight: number }, focus?: { x: number; y: number },
   locomotion: Action = action, lift = 0, gaitTime = time, velocity?: number, forward = viewForward(view),
   actionTime = time, gaitWeight=1, listening=false, turnScale=1,
-  appearance?:{surface?:SurfaceFill;onResolvedArtworkPose?:(frame:ResolvedArtworkPose)=>void;rearHairArt?:Graphics;mirrored?:boolean;vectorCache?:NativeBonePathCache;texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};capturedArms?:{left:boolean;right:boolean};
+  appearance?:{secondary?:SecondaryOffsets;surface?:SurfaceFill;onResolvedArtworkPose?:(frame:ResolvedArtworkPose)=>void;rearHairArt?:Graphics;mirrored?:boolean;vectorCache?:NativeBonePathCache;texture?:CostumeTexture;camera?:boolean;art?:Graphics;gaitStyle?:GaitStyle;gestureArt?:Graphics;actionWeight?:number;propPose?:PropPose;expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;facialCapture?:{controls:FacialControls;influence:number;tracking?:import('./trackingSelection.ts').TrackingSelection};capturedArms?:{left:boolean;right:boolean};
     capturedFingers?:{left?:FingerCurls;right?:FingerCurls;thumbs?:ThumbPair;influence:number;confidence?:{left?:number;right?:number}};
     capturedRig?:{targets:ArmTargets;bends:ArmBends;extensions?:ArmBends;depths:ArmDepths;near?:ArmSide;influence:number;confidence?:{left?:number;right?:number}};
     capturedHeadFacing?:PerformanceFacing;capturedHeadYaw?:number;
@@ -233,7 +236,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   // separated by the torso. At a crossing this created a visible hole.
   // The complete shoulder -> elbow -> wrist line and attached hand now
   // share one Graphics layer and one pair of solved endpoints.
-  if(garments)drawGarmentPaths(g,c,garmentSkirt(c,art,r.hip,action==='sit',[resolvedLegs.left.knee,resolvedLegs.right.knee]),costume,appearance?.surface,r.hip);
+  if(garments){const skirt=garmentSkirt(c,art,r.hip,action==='sit',[resolvedLegs.left.knee,resolvedLegs.right.knee]);const motion=appearance?.secondary;drawGarmentPaths(g,c,motion?deformGarmentPanels(skirt,r.hip.y-3,r.hip.y+28,motion.cloth,motion.body):skirt,costume,appearance?.surface,r.hip);}
   if(!garments&&c.outfit!=='bikini'&&c.wardrobe?.bottoms==='skirt' && !['slip-dress','sundress'].includes(c.outfit)) {
     const x=r.hip.x, y=r.hip.y, width=18*art.width*c.thickness*build.hip;
     const hem=24+(c.wardrobe.hem??0)*12;
@@ -241,11 +244,11 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     for(const offset of [-.57,0,.57]) segment(g,x+offset*width,y+2,x+offset*width*1.15,y+hem,shade(c.pants,-.28),1.1);
   }
   if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume,appearance?.vectorCache,appearance?.mirrored)){
-    if(garments)drawGarmentPaths(g,c,garmentTorso(c,art,r.neck,r.hip,r.left.shoulder,r.right.shoulder,action==='sit'?1:Math.min(1,Math.abs(pose.torso??0)/35)),costume,appearance?.surface,{x:(r.neck.x+r.hip.x)/2,y:(r.neck.y+r.hip.y)/2});
+    if(garments){const top=garmentTorso(c,art,r.neck,r.hip,r.left.shoulder,r.right.shoulder,action==='sit'?1:Math.min(1,Math.abs(pose.torso??0)/35));const motion=appearance?.secondary;drawGarmentPaths(g,c,motion?deformGarmentPanels(top,r.neck.y+12,r.hip.y+4,motion.cloth,motion.body):top,costume,appearance?.surface,{x:(r.neck.x+r.hip.x)/2,y:(r.neck.y+r.hip.y)/2});}
     else drawTop(g,c,art,r.neck,r.hip,costume);
   }
-  drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
-  drawBag(g,c,art,r.neck,r.hip,undefined,costume);
+  drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6,appearance?.secondary?.accessories);
+  drawBag(g,c,art,r.neck,r.hip,undefined,costume,appearance?.secondary?.accessories);
   if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,carryingHand(frontArm));
   for(const side of capturedOrder)
     arm(side,false,appearance?.gestureArt??g,'all');
@@ -279,10 +282,10 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
   const facialArt=appearance?.art??(face instanceof Graphics?face:undefined);
   const rearHair=appearance?.rearHairArt;
   if(rearHair){rearHair.clear();rearHair.position.set(face.position.x,face.position.y);rearHair.angle=face.angle;rearHair.scale.set(face.scale.x,face.scale.y);}
-  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume,rearHair,appearance?.vectorCache,Boolean(appearance?.mirrored)!==(trackedHead==='left'),appearance?.surface?((color,material,point,angle,shape)=>appearance.surface!(color,material,{x:face.x+point.x,y:face.y+point.y},face.angle+(angle??0),shape)):undefined);
+  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume,rearHair,appearance?.vectorCache,Boolean(appearance?.mirrored)!==(trackedHead==='left'),appearance?.surface?((color,material,point,angle,shape)=>appearance.surface!(color,material,{x:face.x+point.x,y:face.y+point.y},face.angle+(angle??0),shape)):undefined,appearance?.secondary);
   if(appearance?.onResolvedArtworkPose&&armEndpoints.left&&armEndpoints.right)appearance.onResolvedArtworkPose(structuredClone({actorId,view,headView,mirrored:Boolean(appearance.mirrored),lift,rig:r,arms:{left:{shoulder:r.left.shoulder,...armEndpoints.left},right:{shoulder:r.right.shoulder,...armEndpoints.right}},legs:resolvedLegs,head:{position:{x:face.x,y:face.y},angle:face.angle,scale:{x:face.scale.x,y:face.scale.y}},nearArm:nearest,hands:resolvedHands,facial:mood,action,locomotion,time}));
 }
-function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture,rearHair?:Graphics,vectorCache?:NativeBonePathCache,mirrored=false,surface?:SurfaceFill) {
+function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture,rearHair?:Graphics,vectorCache?:NativeBonePathCache,mirrored=false,surface?:SurfaceFill,secondary?:SecondaryOffsets) {
   const art=viewArt[view], {rear,profile}=art;
   const layers=resetEyeLayers(face);
   const {w,h}=headMetrics(c,art), q=c.wardrobe;
@@ -293,7 +296,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   const nativeHair=openHat?nativePartFor(c,'hair',view,mirrored):undefined;
   const customHairReady=Boolean(customHairPart&&texture?.(customHairPart.image)||nativeHair&&vectorCache&&boneDrawList(nativeHair));
   const layered=hasLayeredHair(c),hair=openHat&&!customHairReady?buildLayeredHair(c,art):undefined;
-  if(hair)for(const item of hairRenderPaths(hair,'background'))vector(rearHair??g,item.d,item.fill==='none'?item.fill:surface?.(item.fill,'hair',{x:0,y:-20})??item.fill,item.stroke,item.strokeWidth);
+  if(hair)for(const item of dynamicHairPaths(hair,'background',secondary?.hair))vector(rearHair??g,item.d,item.fill==='none'?item.fill:surface?.(item.fill,'hair',{x:0,y:-20})??item.fill,item.stroke,item.strokeWidth);
   if(!profile)drawEar(g,c,ears[1],8*yScale,-1);
   const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture,vectorCache,mirrored);
   if(!customHead)vector(g,headOutline(c,art),surface?.(c.skin,'skin',{x:0,y:0})??c.skin,c.visual?.style==='illustrated'?shade(c.skin,-.48):INK,c.visual?.style==='illustrated'?1.9:3.5);
@@ -309,7 +312,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   }
   const customHair=openHat&&drawComponent(g,c,'hair',view,0,0,0,texture,vectorCache,mirrored);
   if(hair&&!customHair){
-    for(const item of hairRenderPaths(hair,'foreground'))vector(g,item.d,item.fill==='none'?item.fill:surface?.(item.fill,'hair',{x:0,y:-20})??item.fill,item.stroke,item.strokeWidth);
+    for(const item of dynamicHairPaths(hair,'foreground',secondary?.hair))vector(g,item.d,item.fill==='none'?item.fill:surface?.(item.fill,'hair',{x:0,y:-20})??item.fill,item.stroke,item.strokeWidth);
   }else if(openHat&&!customHair&&!layered) {
     if(!drawCatalogHair(g,c,art,w,h))drawIllustratedHair(g,c,art,w,h);
   } else if(!customHair&&!layered&&['bob','hime','mullet','ponytail','waves','wolf-cut','braids','locs','curtain-bangs'].includes(c.hair)) {
@@ -319,7 +322,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   drawHat(g,c,art,w,h);
   if(rear) {
     hideExpressionMouth(face);
-    drawPiercing(g,c,art,ears,0);
+    drawPiercing(g,c,art,ears,0,secondary?.earrings);
     drawExtra(g,c,art,w,h,'head');
     return;
   }

@@ -1,3 +1,4 @@
+import {CharacterDynamics} from './characterDynamics.ts';
 import {sampleVolumeFrame,volumeColor,dominantLight,colorNumber} from './volumetricLighting.ts';
 import {VolumeGradientCache,type SurfaceFill} from './vvleRender.ts';
 import type {ResolvedArtworkPose} from './resolvedArtworkPose.ts';
@@ -33,6 +34,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   const app = new Application();
   const vectorCache=new NativeBonePathCache();
   const volumeCache=new VolumeGradientCache();
+  const dynamics=new CharacterDynamics();
   const [width, height] = videoFormats[format].viewport;
   const [pixelWidth, pixelHeight] = dimensions(format, resolution);
   await app.init({ width: pixelWidth, height: pixelHeight, resolution: 1, antialias: true, autoStart: false, background: '#24202c', preference: ['webgl', 'webgpu', 'canvas'], preserveDrawingBuffer: capture, powerPreference: 'low-power', hello: false });
@@ -135,6 +137,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     repaintLatestFrame=()=>{draw(scene,characters,time,options);};
     const characterById = new Map(characters.map(character => [character.id, character]));
     lastFrame = evaluate(scene, time, characterById, width);
+    const secondary=options.edit?undefined:dynamics.sample(scene,characters,time,width);
     const { actors, sounds, effects, transition } = lastFrame;
     const camera={...lastFrame.camera};
     for(const clip of effects){
@@ -303,7 +306,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         actor.authoredGaze?targetFocus:resolvePreviewFocus(Boolean(options.characterPreview), options.previewFocus, targetFocus), options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {vectorCache,surface,onResolvedArtworkPose:options.onResolvedArtworkPose,rearHairArt:entity.rearHairArt,mirrored:directionFlip,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
+        {vectorCache,secondary:secondary?.get(actor.id),surface,onResolvedArtworkPose:options.onResolvedArtworkPose,rearHairArt:entity.rearHairArt,mirrored:directionFlip,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
       entity.face!.y -= lift;
       entity.rearHairArt!.y -= lift;
       // Props are children of the same character Container as the hands:
@@ -440,12 +443,13 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     const hit = candidates.find(item => item.id === lastSelectedId) ?? candidates[0];
     return { id: hit?.id, x: point.x, y: point.y };
   }
-  return { canvas: app.canvas, draw, pick, width, height, prepareImages,
+  return { canvas: app.canvas, draw, pick, width, height, prepareImages, secondaryMetrics:()=>dynamics.instrumentation(),
     projectPoint: (point:{x:number;y:number})=>worldToScreen(point,currentCamera,{width,height},format),
     preloadBackground: (image: string | undefined) => {if (image) void loadImage(image).catch(()=>{});},
     destroy: () => {
       destroyed=true;
       volumeCache.dispose();
+      dynamics.dispose();
       cancelAnimationFrame(imageFrame);
       repaintLatestFrame=undefined;
       requests.clear();

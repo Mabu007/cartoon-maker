@@ -256,13 +256,13 @@ export const bagPaths = {
   clutch:'M-14 -6H14V7H-14Z'
 } satisfies Record<Exclude<Closet['bag'],'none'|undefined>,string>;
 
-export function drawBag(g:Graphics,c:Character,art:IllustratedView,neck:Point,hip:Point,hand?:Point,texture?:CostumeTexture) {
+export function drawBag(g:Graphics,c:Character,art:IllustratedView,neck:Point,hip:Point,hand?:Point,texture?:CostumeTexture,swing?:readonly [number,number]) {
   const w=c.wardrobe,kind=w?.bag;
   if(!kind||kind==='none')return;
   const carry=['tote','duffle','clutch'].includes(kind);
   if(carry!==Boolean(hand))return;
   const color=w?.accessoryColor??'#404363', trim=w?.metal??'#e7ba65';
-  const x=hand?.x??neck.x+(kind==='shoulder-bag'?-17:art.face*.37);
+  const x=(hand?.x??neck.x+(kind==='shoulder-bag'?-17:art.face*.37))+(!carry&&['shoulder-bag','messenger'].includes(kind)?Math.max(-3,Math.min(3,swing?.[0]??0)):0);
   const y=hand ? hand.y+20 : kind==='waist-pack'?hip.y-4:neck.y+(kind==='messenger'?43:29);
   const t=at(x,y,hand?1:art.profile?.74:1,1);
   if(!carry && kind!=='waist-pack') {
