@@ -10,7 +10,9 @@ Do not erase earlier evidence or merge just because subsequent stages are implem
 | 5 hair | Curated candidate library, sparse metadata, rear hair layer and lift correction | Twists, Bantu knots, waves, polished style variants, all views, collision/garment layering; Stage 9 dynamics |
 | 6 garments | Independent templates, materials, fit, procedural folds, wrap primitives, knee-supported skirt, bounded logo | Professional garment art, authentic cultural designs, seated dress/coat drape, arbitrary contour masks, exact pattern parity, clipping and coverage matrix |
 | 7 motion | Shared solved endpoints, optional snapshot, bounded topology-preserving contours, authored replacement contract | Full joint/torso/neck surface deformation, pose sheets, actual art transition hysteresis, depth/occlusion review, true foreshortening, hand contact visuals and SVG parity |
-| 8+ | Not started | Subsequent stage contracts and tests |
+| 8 LVE | Isolated fixed-step springs, chains, fabric, collision, checkpoint/seek, budget fallback | Real asset integration, force/anchor clock, collision feasibility, interpolation checkpoint proof, browser and target-device budgets |
+| 9+ | Not started | Runtime integration and subsequent stage contracts |
+| Special VVLE | Requested dedicated lighting stage | Separate lighting implementation and actual visual/performance acceptance |
 | Cross-stage | Existing automated suite and static offline manifests; browser harness authored | Exact commit CI, screenshots both renderers five views/mirrors/gestures, live camera, real offline saved project reopen/audio export, software and N4020 p50/p95/heap/RSS/GPU, production verification after authorized merge |
  
 Known environment blockers: Actions billing/runner failure on earlier consolidated PR; stacked PRs do not trigger main-target workflow; local dependency DNS restrictions. Vercel READY without explicit QA_RESULTS is not proof of Chromium execution. Run and preserve raw QA artifacts and record source SHA, environment, comparison, real failures and visual approvals. Never bypass checks or use build success as motion/visual acceptance.

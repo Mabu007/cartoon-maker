@@ -99,3 +99,9 @@ Stage 6 hosted evidence: Vercel 9ZZAmXUoQ7tpMi7uAHHcZV981bsr READY, source aeeaa
 ### Stage 7 hosted evidence (exact application source 189ad4270a23d7ec226454d0fda018333fc0a3ee)
 
 Vercel FkFpHoJUHxVTfrTSkVPp19ur4gJE: 474 tests passed, 0 failed, 0 skipped, 38.500 seconds. TypeScript passed (Vite started). Deployment state when recorded: BUILDING. Production bundle and static offline manifest not yet confirmed for this exact source. GitHub Actions has not run for stacked candidate. Local dependency DNS unavailable; no current Chromium/visual, offline runtime/export, real camera or N4020 benchmarks. No production release. This ledger-only commit records earlier source evidence; do not mistake it for a fresh validation run.
+
+Stage 7 application source 189ad427 Vercel READY; production build and static offline verification completed (59 files / 3.48 MiB). Main remains unchanged.
+
+## Stage 8 — isolated LVE simulation
+
+Branch feat/lve-simulation-v1, stacked on Stage 7. Validated materials/forces/definitions/config/checkpoint; deterministic fixed-tick springs, constrained chains and strips, capsule collision, budget fallback, seek/replay and canonical deformation adapter. Added fixtures, tests, standalone Node benchmark and [simulation contract](lve-simulation-v1.md). No integration switch. Hosted validation pending; browser/device evidence outstanding. Owner also requested independent special VVLE stage; track separately, not as Stage 9 physics integration.
