@@ -1,3 +1,4 @@
+import {resolveArtworkArm,resolveArtworkLeg} from '../engine/resolvedArtworkPose.ts';
 import {garmentEnabled,garmentTorso,garmentSleeve,garmentLeg,garmentSkirt,garmentFoot} from '../engine/garmentGeometry.ts';
 import {SvgGarmentPaths,GarmentPattern} from './SvgGarmentPaths.tsx';
 import {buildLayeredHair,hasLayeredHair,hairRenderPaths} from '../engine/layeredHair.ts';
@@ -82,7 +83,8 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const headY=bodyRig.head.y,shirtBottom=bodyRig.hip.y,shoulderY=bodyRig.neck.y+10,shirtTop=bodyRig.neck.y+2;
   const armParts = (['left', 'right'] as const).map(side => {
     const hand = handPerformance({ action, locomotion, side, carrying: occupying === side, gesture });
-    return { side, ...bodyRig[side], performance: hand };
+    const solved=resolveArtworkArm(c,bodyRig,side,faceArt,action,actionTime,occupying===side,false,false,action==='cry'&&occupying!==side);
+    return { side, ...solved, performance: hand };
   });
 
   const left = -24 * width * c.thickness*build.shoulder;
@@ -100,11 +102,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const legs = (['left', 'right'] as const).map((side, index) => {
     const upper=bodyRig[side].upper;
     const scale=c.legs*c.height;
-    const [knee, foot] = moving
-      ? gaitLeg(upper, scale, elapsed, action, side, forward, lift)
-      : action==='sit'||action==='stand'
-        ? seatedLeg(upper,scale,lift,side)
-        : [bodyRig[side].knee,bodyRig[side].foot];
+    const {knee,foot}=resolveArtworkLeg(c,bodyRig,side,auditionAction,locomotion,lift,elapsed,forward);
     const shoe = moving || q || profile ? forward * 6 : index ? 4 : -4;
     return { side, foot, shoe, upper, knee, path: `M ${upper.x} ${upper.y} L ${knee.x} ${knee.y} L ${foot.x} ${foot.y}` };
   });
