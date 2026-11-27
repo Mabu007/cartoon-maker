@@ -1,4 +1,4 @@
-import { FillPattern, GraphicsPath, Matrix, Texture, type Graphics } from 'pixi.js';
+import { FillPattern, Matrix, Texture, type Graphics } from 'pixi.js';
 import { ellipse, INK, rect, segment } from './art.ts';
 import { illustratedPath, shade, type IllustratedView } from './illustration.ts';
 import type { Point } from './animation.ts';
@@ -17,7 +17,9 @@ export function vector(g: Graphics, path: string, fill = 'none', outline = INK, 
 
 export function positionedPath(path: string, transform?: Matrix) {
   const shape = illustratedPath(path);
-  return transform ? new GraphicsPath().addPath(shape,transform) : shape;
+  // Keep the cached instructions independent of any later Graphics transform.
+  // A nested addPath shares its child when Pixi clones the outer path.
+  return transform ? shape.clone(true).transform(transform) : shape;
 }
 
 export function at(x: number, y: number, sx = 1, sy = sx, angle = 0) {
