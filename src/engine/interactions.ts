@@ -9,6 +9,7 @@ export type ObjectDependency = { clip: DependentAction; actorName: string; targe
 
 export function anchorFor(object: Prop): Anchor | undefined {
   if (object.kind === 'image') {
+    if(object.interactionAnchor&&object.interaction&&object.interaction!=='none')return {action:object.interaction,...object.interactionAnchor,facing:'side'};
     if (object.interaction === 'sit')
       return { action: 'sit', x: 0, y: -(object.imageHeight ?? 100) * .46, facing: 'side' };
     if (object.interaction === 'hold')

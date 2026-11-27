@@ -1,3 +1,5 @@
+import { CharacterVisual } from './visualAssets.ts';
+import { EntityVisual, EnvironmentVisual } from './environmentVisuals.ts';
 import { bodyFrames,armBuilds,legBuilds } from './bodyBuild.ts';
 import { dailyProps, extraActions, gaitStyles, transitionNames, vfxNames, soundDurations, type SoundName } from './performanceCatalog.ts';
 import { z } from 'zod';
@@ -73,6 +75,7 @@ export const CharacterDefinition = z.strictObject({
   nose: z.enum(characterStyles.nose), mouth: z.enum(characterStyles.mouth), ears: z.enum(characterStyles.ears),
   hair: z.enum(characterStyles.hair), beard: z.enum(characterStyles.beard), hat: z.enum(characterStyles.hat),
   glasses: z.boolean(), earrings: z.boolean(), outfit: z.enum(characterStyles.outfit), accessory: z.enum(characterStyles.accessory),
+  visual:CharacterVisual.optional(),
   bodyBuild:z.strictObject({
     frame:z.enum(bodyFrames), arms:z.enum(armBuilds),
     legs:z.enum(legBuilds), chest:num(0,1), hips:num(0,1), abs:z.boolean()
@@ -109,9 +112,10 @@ export const CharacterDefinition = z.strictObject({
 });
 export const SceneObject = z.strictObject({ id, kind: z.enum(props), name: z.string().min(1).max(60), color, ...position,
   imageData: propImageData.optional(), imageWidth: num(10, 800).optional(), imageHeight: num(10, 800).optional(),
+  visual:EntityVisual.optional(), interactionAnchor:z.strictObject({x:num(-1000,1000),y:num(-1000,1000)}).optional(),
   interaction: z.enum(['none','sit','hold']).optional(), flip: z.boolean().optional()
 });
-export const Actor = z.strictObject({ id, characterId: id, ...position, view: CharacterView, flip: z.boolean(), expression: z.enum(expressions), gazeTarget: id.optional() });
+export const Actor = z.strictObject({ id, characterId: id, ...position, visual:EntityVisual.optional(), view: CharacterView, flip: z.boolean(), expression: z.enum(expressions), gazeTarget: id.optional() });
 export const InteractionAnchor = z.strictObject({ x: num(-1000, 1000), y: num(-1000, 1000), action: z.enum(['sit', 'hold', 'open']), facing: CharacterView.optional() });
 export const joints = ['root', 'hips', 'torso', 'neck', 'head', 'leftShoulder', 'leftElbow', 'leftWrist', 'leftHand', 'rightShoulder', 'rightElbow', 'rightWrist', 'rightHand', 'leftHip', 'leftKnee', 'leftAnkle', 'leftFoot', 'rightHip', 'rightKnee', 'rightAnkle', 'rightFoot'] as const;
 export const Joint = z.enum(joints);
@@ -238,7 +242,7 @@ export const TimelineTrack = z.enum(tracks);
 export const TimelineMarker = z.strictObject({ id, name: z.string().trim().min(1).max(60), time: num(0, 180) });
 export const TimelineTrackSettings = z.strictObject({ muted: z.boolean().optional(), solo: z.boolean().optional(), locked: z.boolean().optional(), collapsed: z.boolean().optional() });
 export const SceneDefinition = z.strictObject({ id, name: z.string().trim().min(1).max(70), environment: z.enum(environments),
-  layersManual:z.boolean().optional(),
+  layersManual:z.boolean().optional(), visual:EnvironmentVisual.optional(),
   markers: z.array(TimelineMarker).max(60).optional(), trackSettings: z.partialRecord(TimelineTrack, TimelineTrackSettings).optional(),
   backgroundImage: imageData.optional(), backgroundTransform: z.strictObject({x:num(-2000,3000),y:num(-2000,3000),scale:num(.2,4)}).optional(), duration: num(1, 180),
   actors: z.array(Actor).max(24), objects: z.array(SceneObject).max(100), clips: z.array(TimelineClip).max(600) });
@@ -315,6 +319,8 @@ const sceneImageSize = (scene: Scene) => (scene.backgroundImage?.length ?? 0) +
   scene.objects.reduce((size, object) => size + (object.imageData?.length ?? 0), 0);
 
 function verifySceneRelationships(scene: Scene, characters: ReadonlySet<string>, ctx: z.RefinementCtx, path: (string | number)[]) {
+  for(const [i,entity] of [...scene.actors,...scene.objects].entries())if(entity.visual?.keys?.some(key=>key.time>scene.duration))ctx.addIssue({code:'custom',path:[...path,'visual'],message:'Visual key exceeds scene duration. Remove or retime it before shortening the scene.'});
+  for(const light of scene.visual?.lighting?.lights??[])if(light.keys?.some(key=>key.time>scene.duration))ctx.addIssue({code:'custom',path:[...path,'visual'],message:'Light key exceeds scene duration. Remove or retime it before shortening the scene.'});
   for (const message of cameraConflicts(scene.clips))
     ctx.addIssue({ code: 'custom', path: [...path, 'clips'], message });
   verifyIds([...scene.actors, ...scene.objects, ...scene.clips, ...(scene.markers ?? [])], ctx, path);
@@ -363,7 +369,7 @@ export const ProjectDocument = z.strictObject({ version: z.literal(1), id, name:
     verifyIds(screenplay.scenes.flatMap(scene => scene.elements), ctx, ['production', 'screenplay', 'elements']);
     verifyIds(graph.map(scene => ({ id: scene.sceneId })), ctx, ['production', 'graph']);
   }
-  if (project.scenes.reduce((size, scene) => size + sceneImageSize(scene), 0) > imageBudget)
+  if (project.scenes.reduce((size, scene) => size + sceneImageSize(scene), 0) + project.characters.reduce((n,c)=>n+(c.visual?.components??[]).reduce((sum,p)=>sum+p.image.length,0),0) > imageBudget)
     ctx.addIssue({ code: 'custom', path: ['scenes'], message: imageBudgetMessage });
   project.scenes.forEach((scene, index) => verifySceneRelationships(scene, characters, ctx, ['scenes', index]));
 });
@@ -372,7 +378,7 @@ export function parseEditedScene(project: Project, previous: Scene, next: Scene)
   const characters = new Set(project.characters.map(character => character.id));
   return SceneDefinition.superRefine((scene, ctx) => {
     verifySceneRelationships(scene, characters, ctx, []);
-    const combined = project.scenes.reduce((size, item) => size + sceneImageSize(item.id === previous.id ? scene : item), 0);
+    const combined = project.scenes.reduce((size, item) => size + sceneImageSize(item.id === previous.id ? scene : item), 0)+project.characters.reduce((sum,c)=>sum+(c.visual?.components??[]).reduce((n,p)=>n+p.image.length,0),0);
     if (combined > imageBudget) ctx.addIssue({ code: 'custom', message: imageBudgetMessage });
   }).parse(next);
 }

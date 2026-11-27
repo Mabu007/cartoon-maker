@@ -1,8 +1,8 @@
 /** Deterministic 2D reach and custody rules for hand-held props.
  * No object teleports into a hand: the actor must walk near the prop and
  * the grasp only engages at the scheduled contact moment. */
-import { clamp, ease, mix, travelProgress } from './animation.ts';
-import { smoothPath } from './stagePath.ts';
+import { movementPosition } from './movementPosition.ts';
+import { sampleVisual } from './environmentVisuals.ts';
 import type { ActorData, Prop, Scene } from './schema.ts';
 import { anchorFor } from './interactions.ts';
 
@@ -22,22 +22,11 @@ export function actorPositionAt(scene:Scene,actorId:string,time:number):Point|un
   const actor=scene.actors.find(item=>item.id===actorId);
   if(!actor)return undefined;
   const motion=scene.clips.filter((clip):clip is Extract<Scene['clips'][number],{track:'movement'}>=>
-    clip.track==='movement'&&clip.actor===actorId&&clip.start<=time)
+    clip.track==='movement'&&!scene.trackSettings?.movement?.muted&&clip.actor===actorId&&clip.start<=time)
     .reduce<Extract<Scene['clips'][number],{track:'movement'}>|undefined>(
       (latest,clip)=>!latest||clip.start>=latest.start?clip:latest,undefined);
   if(!motion)return actor;
-  const t=clamp((time-motion.start)/motion.length);
-  if(motion.keyframes?.length){
-    if(motion.style)return smoothPath(motion.keyframes,t);
-    const after=motion.keyframes.findIndex(key=>key.time>=t);
-    const i=Math.max(1,after<0?motion.keyframes.length-1:after);
-    const a=motion.keyframes[i-1],b=motion.keyframes[i];
-    const ratio=clamp((t-a.time)/Math.max(1e-9,b.time-a.time));
-    return {x:mix(a.x,b.x,ratio),y:mix(a.y,b.y,ratio)};
-  }
-  const weight=motion.gait?travelProgress(t):ease(t);
-  return {x:mix(motion.fromX,motion.toX,weight),
-    y:mix(motion.fromY,motion.toY,weight)};
+  return movementPosition(motion,(time-motion.start)/motion.length,actor.visual?.perspective===false?undefined:scene.visual?.perspective);
 }
 /** Resolve every hand transfer in timestamp order. The object location
  * changes only after a legitimate owner releases it; another character
@@ -85,6 +74,7 @@ function resolveHandState(scene:Scene,time:number){
     const prop=props.get(event.prop);
     const at=atPosition(event.actor,event.at);
     if(!actor||!prop||!at)continue;
+    const visualActor=sampleVisual({...actor,...at},event.at,at.y,scene.visual?.perspective);
     if(event.kind==='drop'){
       const current=owned.get(event.prop);
       if(current?.actor!==event.actor)continue;
@@ -92,16 +82,16 @@ function resolveHandState(scene:Scene,time:number){
       successfulReleases.add(event.id);
       const sign=actor.flip?-1:1;
       const next=event.action==='throw-prop'
-        ?event.pointAt??{x:at.x+sign*210*actor.scale,y:at.y}
+        ?event.pointAt??{x:at.x+sign*210*visualActor.scale,y:at.y}
         :event.action==='put-down'
-          ?{x:at.x+sign*28*actor.scale,y:at.y}
-          :{x:at.x+sign*42*actor.scale,y:at.y-35*actor.scale};
+          ?{x:at.x+sign*28*visualActor.scale,y:at.y}
+          :{x:at.x+sign*42*visualActor.scale,y:at.y-35*visualActor.scale};
       locations.set(event.prop,next);
       continue;
     }
     if(owned.has(event.prop)||anchorFor(prop)?.action!=='hold')continue;
     const place=locations.get(event.prop)??prop;
-    if(!event.inherited&&!assessHandReach({...actor,...at},place).canReach)continue;
+    if(!event.inherited&&!assessHandReach(visualActor,place).canReach)continue;
     // One prop per hand; custody persists until a matching release.
     if([...owned.values()].some(item=>item.actor===event.actor&&item.hand===event.hand))continue;
     owned.set(event.prop,{actor:event.actor,hand:event.hand,at:event.at});
@@ -117,7 +107,7 @@ export function mayAttachProp(scene:Scene,actorId:string,propId:string,time:numb
   const previous=resolveHandState(scene,Math.max(0,time-.0001));
   const current=previous.owned.get(propId);
   return Boolean(at&&(!current||current.actor===actorId)&&
-    assessHandReach({...actor,...at},previous.locations.get(propId)??prop).canReach);
+    assessHandReach(sampleVisual({...actor,...at},time,at.y,scene.visual?.perspective),previous.locations.get(propId)??prop).canReach);
 }
 export function propLocationAt(scene:Scene,propId:string,time:number):Point|undefined{
   return resolveHandState(scene,time).locations.get(propId);
@@ -131,7 +121,7 @@ export function pickupFeedback(scene:Scene,actorId:string,propId:string,time:num
   const state=resolveHandState(scene,Math.max(0,time-.0001));
   const current=state.owned.get(propId);
   if(current&&current.actor!==actorId)return prop.name+' is already being held by another character.';
-  const reach=assessHandReach({...actor,...at},state.locations.get(propId)??prop);
+  const reach=assessHandReach(sampleVisual({...actor,...at},time,at.y,scene.visual?.perspective),state.locations.get(propId)??prop);
   return reach.canReach?undefined:
     `Walk closer to ${prop.name} before picking it up (${Math.round(reach.distance)} units away; hand reach ${Math.round(reach.limit)}).`;
 }

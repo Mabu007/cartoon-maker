@@ -1,3 +1,6 @@
+import { makeRevenentDemo } from './engine/revenentDemo.ts';
+import { AssetWorkbench } from './ui/AssetWorkbench.tsx';
+import type { VisualAssetPack } from './engine/visualAssets.ts';
 import { OfflineStatus } from './ui/OfflineStatus.tsx';
 import { requestDurableStorage, storageError } from './services/localMedia.ts';
 import { projectAssets } from './services/audio.ts';
@@ -21,7 +24,7 @@ import { localStudioMode, LOCAL_PROJECT_SCOPE } from './services/localStudio.ts'
 import { audioLength, getOrFetchAudio, createAudioMixer, stopSoundPreview, setRemoteAudio, type Mixer } from './services/audio.ts';
 import { type Recognizer } from './services/lipSync.ts';
 import { duplicateProject, readPreference, lastEditorSession, editorSessionFor, rememberEditorSession, type SavedProject, type ProjectCollection } from './services/projects.ts';
-import { listDeviceProjects, mergeDeviceProjects, organizeDeviceProject, removeDeviceProject, renameDeviceProject, saveDeviceProject, migrateDeviceLibrary, previousDeviceProject, getDeviceProject, observeDeviceProject, takeDeviceWarnings } from './services/deviceProjects.ts';
+import { clearAllDeviceProjects, listDeviceProjects, mergeDeviceProjects, organizeDeviceProject, removeDeviceProject, renameDeviceProject, saveDeviceProject, migrateDeviceLibrary, previousDeviceProject, getDeviceProject, observeDeviceProject, takeDeviceWarnings } from './services/deviceProjects.ts';
 import { characterUsage, removeCharacterFromProject, propUsage } from './engine/assetSafety.ts';
 import { addMovieScene, duplicateMovieScene, renameMovieScene, reorderMovieScene, removeMovieScene } from './engine/sceneWorkflow.ts';
 
@@ -81,15 +84,15 @@ type Placement =
   | {kind:'point'|'recover'|'overlay';sceneId:string; start:number; id:string; action?:'point'|'reach'}
   | {kind:'prop-landing';sceneId:string;start:number;clip:Extract<Clip,{track:'body'}>;createProp?:Prop['kind'];editing?:boolean};
 type Dialog = 'projects' | 'scenes' | 'character' | 'clip' | 'audio' | 'export' | 'account' | 'help' | 'director' | 'confirm' | 'dependencies' | 'ai' | 'code' | 'lipsync' | 'performance' | null;
-type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[]; backgroundImage?: string };
+type WorldPreset = { name: string; environment: Scene['environment']; objects: Prop[]; backgroundImage?: string; visual?:Scene['visual']; backgroundTransform?:Scene['backgroundTransform'] };
 const worldKey = (scope: string) => `toonroom.worlds.v1.${scope}`;
 function worldPresets(scope: string): WorldPreset[] {
   try {
     const items: unknown = JSON.parse(localStorage.getItem(worldKey(scope)) ?? '[]');
     if (!Array.isArray(items)) return [];
     return items.flatMap(item => {
-      const parsed = SceneDefinition.safeParse({ id: 'world', name: item?.name, environment: item?.environment, objects: item?.objects, backgroundImage: item?.backgroundImage, actors: [], clips: [], duration: 30 });
-      return parsed.success ? [{ name: parsed.data.name, environment: parsed.data.environment, objects: parsed.data.objects, backgroundImage: parsed.data.backgroundImage }] : [];
+      const parsed = SceneDefinition.safeParse({ id: 'world', name: item?.name, environment: item?.environment, objects: item?.objects, backgroundImage: item?.backgroundImage, visual:item?.visual, backgroundTransform:item?.backgroundTransform, actors: [], clips: [], duration: 30 });
+      return parsed.success ? [{ name: parsed.data.name, environment: parsed.data.environment, objects: parsed.data.objects, backgroundImage: parsed.data.backgroundImage,visual:parsed.data.visual,backgroundTransform:parsed.data.backgroundTransform }] : [];
     });
   } catch { return []; }
 }
@@ -102,6 +105,7 @@ export default function App() {
   const workspace='direct';
   const [home, setHome] = useState<'landing' | 'projects' | 'studio'>(()=>localStudioMode||new URLSearchParams(location.search).has('studio')?'projects':'landing');
   const [placement,setPlacement]=useState<Placement>();
+  const [artwork,setArtwork]=useState<{sourceImage?:string}>();
   const [timelineTall,setTimelineTall]=useState(false);
   const arrowHold=useRef<{key:string;since:number}|undefined>(undefined);
   const [assetWidth, setAssetWidth] = useState(326), [inspectorWidth, setInspectorWidth] = useState(288);
@@ -648,17 +652,17 @@ export default function App() {
     editScene(current => ({ ...current, objects: [...current.objects, value] }));
     select({ id: value.id, kind: 'object' }); setMobilePanel('stage'); setArrange(true);
   }
-  function applyWorld(environment: Scene['environment'], furnished?: Prop[], backgroundImage?: string) {
+  function applyWorld(environment: Scene['environment'], furnished?: Prop[], backgroundImage?: string,visual?:Scene['visual'],backgroundTransform?:Scene['backgroundTransform']) {
     const preset = furnished ?? makeScene(environment).objects;
-    editScene(current => replaceWorldObjects({ ...current, environment, backgroundImage }, preset.map(object => ({ ...object, id: uid() }))));
+    editScene(current => replaceWorldObjects({ ...current, environment, backgroundImage, visual, backgroundTransform }, preset.map(object => ({ ...object, id: uid() }))));
     select(null); setMobilePanel('stage');
   }
-  function setWorld(environment: Scene['environment'], furnished?: Prop[], backgroundImage?: string) {
+  function setWorld(environment: Scene['environment'], furnished?: Prop[], backgroundImage?: string, visual?:Scene['visual'],backgroundTransform?:Scene['backgroundTransform']) {
     if (scene.environment === environment && !furnished && !scene.backgroundImage) return;
     if (scene.objects.length) {
       const used = scene.clips.filter(clip => clip.track === 'body' && clip.target && scene.objects.some(object => object.id === clip.target)).length;
-      ask('Change the furnished world?', 'This replaces the current props.' + (used ? ' ' + used + ' dependent timeline action(s) will safely change to standing/empty-handed actions.' : '') + ' Use Undo to restore the original world.', () => applyWorld(environment, furnished, backgroundImage));
-    } else applyWorld(environment, furnished, backgroundImage);
+      ask('Change the furnished world?', 'This replaces the current props.' + (used ? ' ' + used + ' dependent timeline action(s) will safely change to standing/empty-handed actions.' : '') + ' Use Undo to restore the original world.', () => applyWorld(environment, furnished, backgroundImage,visual,backgroundTransform));
+    } else applyWorld(environment, furnished, backgroundImage,visual,backgroundTransform);
   }
   function commitArtwork(command: (value: Scene) => Scene) {
     const state = useStudio.getState();
@@ -711,7 +715,7 @@ export default function App() {
       while(worlds.some(item=>item.name===name)){name=original.slice(0,58)+' '+n;n++;}
       storeWorlds([...worlds,{
         name,environment:value.environment,objects:structuredClone(value.objects),
-        backgroundImage:value.backgroundImage
+        backgroundImage:value.backgroundImage,visual:value.visual,backgroundTransform:value.backgroundTransform
       }]);
       tell('World "'+name+'" saved to your reusable sets.');
     } catch (error) { showError(error); }
@@ -804,6 +808,25 @@ export default function App() {
         select(null);
       });
     });
+  }
+  async function applySceneArtwork(pack:VisualAssetPack){
+    if(pack.category!=='prop'&&pack.category!=='environment')throw Error('Apply hair and clothing from Edit character → Illustrated characters & imported artwork.');
+    const part=pack.parts[0],file=pack.files.find(f=>f.path===part.file)!;
+    const blob=await (await fetch(file.data)).blob();
+    const prepared=await prepareArtwork(new File([blob],'artwork.webp',{type:blob.type}),pack.category==='environment'?'world':'prop');
+    if(pack.category==='environment')editScene(current=>({...current,backgroundImage:prepared.data}));
+    else {
+      const width=Math.max(10,Math.min(800,part.width)),height=Math.max(10,Math.min(800,part.height));
+      const framing=pack.tags.includes('scene-extraction')?scene.backgroundTransform:undefined;
+      const scale=framing?.scale??1;
+      const origin=part.placement??{x:480,y:420};
+      const prop=makeProp('image',(origin.x+(.5-part.pivot.x)*width)*scale+(framing?.x??0),(origin.y+(1-part.pivot.y)*height)*scale+(framing?.y??0),{
+        name:pack.name,imageData:prepared.data,imageWidth:width,imageHeight:height,scale,interaction:part.interaction??'none',
+        interactionAnchor:part.interactionAnchor?{x:(part.interactionAnchor.x-.5)*width,y:(part.interactionAnchor.y-1)*height}:undefined
+      });
+      editScene(current=>({...current,objects:[...current.objects,prop]}));select({kind:'object',id:prop.id});
+    }
+    setArtwork(undefined);tell(`${pack.name} applied to the scene.`);
   }
   function editCharacter(value?: Character) { pause(); setFactory(value); setDialog('character'); }
   function saveCharacter(value: Character) {
@@ -999,6 +1022,14 @@ export default function App() {
     try {localStorage.setItem('toonroom.started', '1');} catch { /* Optional onboarding preference. */ }
      setArrange(true); setMobilePanel('stage');
     useStudio.getState().setLibrary('Worlds');
+  }
+  function clearCartoons(){
+    ask('Delete all saved cartoons?', 'This permanently removes every cartoon and recovery version saved in this browser, including earlier account scopes. Downloaded backups and your reusable artwork remain separate.',()=>{
+      pause();for(const item of items)localDeletes.current.add(scope+'/'+item.project.id);
+      localDeletes.current.add(scope+'/'+useStudio.getState().project.id);
+      loadProject(makeProject(),false);
+      void clearAllDeviceProjects().then(()=>{setItems([]);close();setSaveStatus('Saved cartoons cleared');tell('All local saved cartoons and recovery versions were deleted.');}).catch(showError);
+    });
   }
   function deleteHomeProject(item: Project) { deleteProject(item); }
   async function organizeHomeProject(id:string,changes:{favorite?:boolean;collection?:ProjectCollection}){
@@ -1246,7 +1277,7 @@ export default function App() {
     }}/>;
   const noticeToast = notice && <div className={`toast ${notice.error ? 'toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{!notice.error && <Check size={16}/>}<span>{notice.message}</span><IconButton title="Dismiss notice" onClick={() => setNotice(null)}><X size={14}/></IconButton></div>;
   if (home !== 'studio') return <div data-theme={theme} className="studio-shell filmmaking-shell home-wrapper">
-    <Welcome screen={home==='projects'?'projects':'landing'} items={items} lastSession={lastEditorSession(scope)}
+    <Welcome openVisualDemo={()=>{void openProject(makeRevenentDemo(),true);}} clearCartoons={clearCartoons} screen={home==='projects'?'projects':'landing'} items={items} lastSession={lastEditorSession(scope)}
       account={account} localStudio={localStudioMode} authAvailable={cloudEnabled&&!localStudioMode} login={loginCreator}
       logout={async()=>{if(localStudioMode)return;await logout();setHome('landing');}}
       enter={()=>{void requestDurableStorage();setHome('projects');}}
@@ -1261,6 +1292,7 @@ export default function App() {
     {backupInput}
     <OfflineStatus status={saveStatus} save={()=>useStudio.getState().dirty?persist():Promise.resolve(true)}/>
     {noticeToast}
+    {artwork&&<AssetWorkbench close={()=>setArtwork(undefined)} sourceImage={artwork.sourceImage} apply={applySceneArtwork}/>}
     {content}
   </div>;
   return <div data-theme={theme} className={`studio-shell filmmaking-shell mode-${workspace} ${focus ? 'focus-mode' : ''} ${timelineTall?'timeline-tall':''}`}>
@@ -1273,12 +1305,12 @@ export default function App() {
     </header>
     {workspace === 'direct' && <><nav className="mobile-nav" aria-label="Workspace panels"><button className={mobilePanel === 'library' ? 'active' : ''} onClick={() => setMobilePanel('library')}>Assets</button><button className={mobilePanel === 'stage' ? 'active' : ''} onClick={() => setMobilePanel('stage')}>Stage</button><button className={mobilePanel === 'inspector' ? 'active' : ''} onClick={() => setMobilePanel('inspector')}>Inspector</button><IconButton title="Undo" disabled={!hasUndo} onClick={() => run(() => useStudio.getState().undo())}><Undo2 size={17}/></IconButton><IconButton title="Redo" disabled={!hasRedo} onClick={() => run(() => useStudio.getState().redo())}><Redo2 size={17}/></IconButton></nav>
     <main className={`workspace mobile-${mobilePanel}`} style={{ '--asset-width': `${assetWidth}px`, '--inspector-width': `${inspectorWidth}px` } as CSSProperties}>
-      <div className="library-shell"><AssetLibrary active={library} change={useStudio.getState().setLibrary}
+      <div className="library-shell"><AssetLibrary openArtwork={sourceImage=>{pause();setArtwork({sourceImage});}} active={library} change={useStudio.getState().setLibrary}
           project={project} characters={project.characters} scene={scene}
           newCharacter={()=>editCharacter()} editCharacter={editCharacter}
           duplicateCharacter={duplicateCastCharacter} removeCharacter={character=>deleteCharacter(character.id)}
           addActor={addActor} setWorld={setWorld} uploadWorld={uploadWorld}
-          savedWorlds={worlds} applySavedWorld={world=>setWorld(world.environment,world.objects,world.backgroundImage)}
+          savedWorlds={worlds} applySavedWorld={world=>setWorld(world.environment,world.objects,world.backgroundImage,world.visual,world.backgroundTransform)}
           saveCurrentWorld={()=>saveWorld(scene)} renameSavedWorld={renameWorldPreset}
           duplicateSavedWorld={duplicateWorldPreset} deleteSavedWorld={deleteWorldPreset}
           clearWorldImage={clearWorldImage} addProp={addObject} uploadProp={uploadProp}
@@ -1335,7 +1367,7 @@ export default function App() {
         </div>}
         <div className="viewer">
 
-          <Stage key={session} project={project} scene={scene} time={time}
+          <Stage changeEnvironment={visual=>editScene(current=>({...current,visual}))} key={session} project={project} scene={scene} time={time}
           playing={playing} onDestination={placement ? stagePlacement:undefined}
           editPath={(placement?.kind==='path'&&!!placement.editing)||(!placement&&!!pathClip)}
           smoothGuide={placement?.kind==='path'||!!pathClip?.style}
@@ -1433,6 +1465,7 @@ export default function App() {
     {backupInput}
     <OfflineStatus status={saveStatus} save={()=>useStudio.getState().dirty?persist():Promise.resolve(true)}/>
     {noticeToast}
+    {artwork&&<AssetWorkbench close={()=>setArtwork(undefined)} sourceImage={artwork.sourceImage} apply={applySceneArtwork}/>}
     {content}
   </div>;
 }

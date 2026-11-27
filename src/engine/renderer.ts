@@ -1,3 +1,4 @@
+import { lightAt, perspectiveScale } from './environmentVisuals.ts';
 import { drawVisualEffect, drawTransition, effectTime, titleStyle } from './visualEffects.ts';
 import { mediaUrl } from '../services/media.ts';
 import { aimEyes, eyeWorldPoint, resolvePreviewFocus } from './gaze.ts';
@@ -185,7 +186,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     ?[actor.heldItems?.left?.id,actor.heldItems?.right?.id,actor.held?.id].filter((value):value is string=>Boolean(value))
     :[]));
     const sourceActorById = new Map(scene.actors.map(actor => [actor.id, actor]));
-    for (const prop of options.edit ? scene.objects : lastFrame.objects) {
+    for (const rawProp of options.edit ? scene.objects : lastFrame.objects) {
+      const prop=options.edit?{...rawProp,scale:rawProp.scale*(rawProp.visual?.perspective===false?1:perspectiveScale(rawProp.y,scene.visual?.perspective))}:rawProp;
       const key = entityKey(prop.id, false);
       used.add(key);
       const entity = get(prop.id);
@@ -195,6 +197,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.position.set(point.x, point.y);
       entity.group.scale.set(prop.flip ? -prop.scale : prop.scale, prop.scale);
       entity.group.angle = prop.rotation;
+      entity.group.alpha=prop.visual?.opacity??1;
+      entity.group.tint=prop.visual?.lighting===false?0xffffff:lightAt(point.x,point.y-(prop.imageHeight??100)*prop.scale*.5,scene.visual,time);
       entity.group.zIndex = renderDepth(prop.depth, point.y);
       if(isSeating(prop.kind)) {
         if(!entity.foreground) {entity.foreground=new Graphics();elements.addChild(entity.foreground);}
@@ -243,7 +247,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         top: -h / prop.scale, bottom: 5 };
       hitboxes.push({ id: prop.id, rect, bounds: worldEntityBounds(rect), depth: entity.group.zIndex });
     }
-    for (const actor of actors) {
+    for (const evaluatedActor of actors) {
+      const actor=options.edit?{...evaluatedActor,scale:(sourceActorById.get(evaluatedActor.id)??evaluatedActor).scale*(evaluatedActor.visual?.perspective===false?1:perspectiveScale((sourceActorById.get(evaluatedActor.id)??evaluatedActor).y,scene.visual?.perspective))}:evaluatedActor;
       const character = characterById.get(actor.characterId);
       if (!character) continue;
       used.add(entityKey(actor.id, true));
@@ -255,13 +260,18 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       const lift = options.edit ? 0 : actor.lift;
       entity.group.position.set(point.x, point.y);
       entity.group.angle = actor.rotation;
+      entity.group.alpha=actor.visual?.opacity??1;
+      const tint=actor.visual?.lighting===false?0xffffff:lightAt(point.x,point.y-110*actor.scale,scene.visual,time);
+      entity.art.tint=tint;entity.face!.tint=tint;entity.gestureArt!.tint=tint;
       const view = (options.edit ? source.view : camera.view) ?? actor.view;
       const directionFlip = options.edit ? source.flip : actor.flip !== (viewForward(view) !== viewForward(actor.view));
       entity.group.scale.set((directionFlip ? -1 : 1) * actor.scale, actor.scale);
       entity.group.zIndex = renderDepth(actor.depth, point.y);
       entity.art.position.y = -lift;
       entity.gestureArt!.position.y=-lift;
-      ellipse(entity.shadow!.clear(), 0, 3, 39 - Math.min(10, Math.max(0, lift / 5)), 7, '#816a61');
+      const lighting=scene.visual?.lighting;
+      entity.shadow!.alpha=lighting?.enabled?lighting.shadowOpacity:1;
+      ellipse(entity.shadow!.clear(), 0, 3, (39 - Math.min(10, Math.max(0, lift / 5)))*(character.visual?character.thickness:1), !capture&&scene.visual?.quality==='eco'?5:7, lighting?.enabled?lighting.shadow:'#816a61');
       // Respect staged three-quarter dialogue angles. An automatic camera gaze
       // must not override the director's chosen front-left/front-right angle.
       const cameraGaze=actor.authoredGaze?actor.gazeTarget==='camera':actor.capturedFacing==='left'||actor.capturedFacing==='right'
@@ -304,6 +314,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
             if(left)entity.heldSpriteLeft=sprite;else entity.heldSprite=sprite;
           }
           const texture=textures.get(prop.imageData);
+          sprite.tint=tint;
           if(texture){
             sprite.texture=texture;
             const ratio=(prop.imageWidth??80)/Math.max(1,prop.imageHeight??80);
@@ -331,6 +342,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
             drawProp(art.clear(),prop);
             if(left)entity.heldArtKeyLeft=key;else entity.heldArtKey=key;
           }
+          art.tint=tint;
           art.position.set(grip.x,grip.y-lift);
           art.angle=grip.angle;
           art.scale.set(grip.scale);

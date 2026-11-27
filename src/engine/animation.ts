@@ -218,7 +218,7 @@ export function rig(c: Character, pose: JointPose, width: number) {
   const hip = { x: 0, y: -76 * c.legs * c.height };
   const torso = p('torso') + p('hips');
   const neck = along(hip, 180 - torso, 54 * c.torso * c.height);
-  const head = along(neck, 180 - torso - p('neck'), 36 * c.head);
+  const head = along(neck, 180 - torso - p('neck'), 36 * c.head * (c.visual?.neckLength??1));
   const limb = (side: 'left' | 'right', sign: number) => {
     const shoulder = { x: neck.x + sign * 24 * width * build.shoulder, y: neck.y + 10 };
     const armAngle = sign * 13 + p(`${side}Shoulder`) + torso;

@@ -1,3 +1,5 @@
+import { moveEnvironmentHandle, type EnvironmentHandle } from '../engine/environmentEditing.ts';
+import type { EnvironmentVisualData } from '../engine/environmentVisuals.ts';
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react';
 import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2, ArrowUpToLine, ArrowDownToLine, Eye } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
@@ -13,11 +15,11 @@ import type { Selection } from '../studio.ts';
 type Position = { x: number; y: number };
 type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
 export type PreviewTime = { scene: Scene; local: number; movie: number };
-export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, editPath, smoothGuide, movePathPoint, removePathPoint, edgePlacement, flipEntity, duplicateEntity, removeEntity, reorderEntity, dropProp, recoverActor, finishPathPoint }: {
+export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, editPath, smoothGuide, movePathPoint, removePathPoint, edgePlacement, flipEntity, duplicateEntity, removeEntity, reorderEntity, dropProp, recoverActor, finishPathPoint, changeEnvironment }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
   selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
   onDestination?: (position: Position, waypoint?: boolean) => void; pathPoints?: Position[]; editPath?:boolean; smoothGuide?:boolean; movePathPoint?:(index:number,point:Position)=>void; removePathPoint?:(index:number)=>void; edgePlacement?: boolean; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
-  reorderEntity?:(id:string,move:LayerMove)=>void;
+  reorderEntity?:(id:string,move:LayerMove)=>void; changeEnvironment?:(visual:EnvironmentVisualData)=>void;
   dropProp?:(kind:Prop['kind'],position:Position)=>void;
   recoverActor?:(id:string,position:Position)=>void;
   finishPathPoint?:(index:number,position:Position)=>void;
@@ -31,7 +33,9 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   const [draggedPath,setDraggedPath]=useState<{index:number;position:Position}|undefined>();
   const screenTransform={transform:`translate(${viewport.panX}px,${viewport.panY}px) scale(${viewport.zoom})`,
     transformOrigin:'center center'} as const;
-  const guide=useRef<SVGSVGElement>(null);
+  const guide=useRef<SVGSVGElement>(null),environmentGuide=useRef<SVGSVGElement>(null);
+  const [editingEnvironment,setEditingEnvironment]=useState(false);
+  const environmentDrag=useRef<{scene:Scene;handle:EnvironmentHandle;preview:EnvironmentVisualData;time:number}|undefined>(undefined);
   const currentPath=useRef({points:pathPoints,smooth:smoothGuide});
   currentPath.current={points:pathPoints,smooth:smoothGuide};
   const renderedFrame=useRef<ReturnType<typeof evaluate> | undefined>(undefined);
@@ -88,7 +92,8 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
           const index = lastScenes.findIndex(item => item.id === scene.id);
           renderer.preloadBackground(lastScenes[index + 1]?.backgroundImage);
         }
-        const frame = renderer.draw(scene, p.project.characters, local, {
+        const previewScene=environmentDrag.current?.scene===scene?{...scene,visual:environmentDrag.current.preview}:scene;
+        const frame = renderer.draw(previewScene, p.project.characters, local, {
           selected: p.selection?.kind !== 'clip' && !p.playing ? p.selection?.id : undefined,
            hovered: !p.playing ? hover.current : undefined,
           ...(drag.current?.moved && drag.current.sceneId === scene.id ? { staged: { [drag.current.id]: drag.current.current } } : {}),
@@ -129,6 +134,22 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     };
   }, [format, quality, restart]);
   function drawGuide(renderer:Renderer){
+    const environment=environmentGuide.current,scene=props.current.scene,visual=environmentDrag.current?.scene===scene?environmentDrag.current.preview:scene.visual;
+    if(environment&&visual){
+      environment.setAttribute('viewBox',`0 0 ${renderer.width} ${renderer.height}`);
+      for(const light of visual.lighting?.lights??[]){
+        const keys=light.keys,t=props.current.time.current.local,i=keys?.findIndex(k=>k.time>t)??-1,a=keys?.[i<0?keys.length-1:Math.max(0,i-1)],b=keys?.[i<0?keys.length-1:i],w=a&&b&&a!==b?clamp((t-a.time)/(b.time-a.time)):0;
+        const point=renderer.projectPoint(a&&b?{x:a.x+(b.x-a.x)*w,y:a.y+(b.y-a.y)*w}:light);
+        const circle=environment.querySelector(`[data-light="${CSS.escape(light.id)}"]`);circle?.setAttribute('cx',String(point.x));circle?.setAttribute('cy',String(point.y));
+      }
+      const p=visual.perspective;
+      if(p?.enabled){
+        const from=renderer.projectPoint({x:0,y:p.horizon}),to=renderer.projectPoint({x:960,y:p.horizon});
+        const line=environment.querySelector('line');line?.setAttribute('x1',String(from.x));line?.setAttribute('y1',String(from.y));line?.setAttribute('x2',String(to.x));line?.setAttribute('y2',String(to.y));
+        for(const kind of ['horizon','nearY','farY'] as const){const point=renderer.projectPoint({x:kind==='horizon'?480:120,y:p[kind]});const dot=environment.querySelector(`[data-ground="${kind}"]`);dot?.setAttribute('cx',String(point.x));dot?.setAttribute('cy',String(point.y));}
+      }
+    }
+
     const overlay=guide.current, {points:original,smooth}=currentPath.current;
     const path=original?.map((point,index)=>draggedPath&&draggedPath.index===index?draggedPath.position:point);
     if(!overlay||!path?.length)return;
@@ -144,7 +165,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       }
     });
   }
-  useEffect(()=>{if(engine.current)drawGuide(engine.current);},[pathPoints,editPath,smoothGuide,playing,draggedPath]);
+  useEffect(()=>{if(engine.current)drawGuide(engine.current);},[pathPoints,editPath,smoothGuide,playing,draggedPath,editingEnvironment,scene.visual]);
   useEffect(()=>{setViewport(defaultStageViewport);setDraggedPath(undefined);},[scene.id,format]);
   useEffect(()=>{
     const element=stage.current;
@@ -272,6 +293,19 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       onPointerLeave={event => { if (!drag.current) { hover.current = undefined; event.currentTarget.dataset.hoverEntity = 'false'; repaint.current(); } }}
        onPointerCancel={() => { drag.current = null;pan.current=undefined; repaint.current(); }}
       onLostPointerCapture={() => { drag.current = null;pan.current=undefined; repaint.current(); }} />
+    {!playing&&edit&&!onDestination&&!editPath&&changeEnvironment&&<button type="button" className="stage-environment-toggle" aria-pressed={editingEnvironment} onClick={()=>setEditingEnvironment(value=>!value)}>Edit lights & ground</button>}
+    {!playing&&editingEnvironment&&!onDestination&&!editPath&&scene.visual&&<svg className="stage-environment-guide" ref={environmentGuide} aria-label="Scene lighting and perspective handles"
+      onPointerMove={event=>{const drag=environmentDrag.current,hit=pointer(event);if(!drag||!hit||drag.scene!==scene)return;try{drag.preview=moveEnvironmentHandle(drag.scene.visual!,drag.handle,hit,drag.time);repaint.current();}catch{/* Keep the last valid calibration. */}}}
+      onPointerUp={()=>{const drag=environmentDrag.current;environmentDrag.current=undefined;if(drag&&drag.scene===scene)changeEnvironment?.(drag.preview);repaint.current();}}
+      onPointerCancel={()=>{environmentDrag.current=undefined;repaint.current();}} onLostPointerCapture={()=>{if(environmentDrag.current){environmentDrag.current=undefined;repaint.current();}}}>
+      <line stroke="#eed298" strokeWidth="2" strokeDasharray="7 5"/>
+      {(scene.visual.lighting?.enabled?scene.visual.lighting.lights:[]).map(light=><circle key={light.id} data-light={light.id} r="11" fill={light.color} stroke="#ffffff" strokeWidth="2" role="button" tabIndex={0} aria-label="Move scene light"
+        onPointerDown={event=>{event.preventDefault();event.stopPropagation();environmentDrag.current={scene,handle:{kind:'light',id:light.id},preview:scene.visual!,time:time.current.local};event.currentTarget.setPointerCapture(event.pointerId);}}
+        onKeyDown={event=>{const delta=event.key==='ArrowLeft'?{x:-5,y:0}:event.key==='ArrowRight'?{x:5,y:0}:event.key==='ArrowUp'?{x:0,y:-5}:event.key==='ArrowDown'?{x:0,y:5}:undefined;if(!delta)return;event.preventDefault();changeEnvironment?.(moveEnvironmentHandle(scene.visual!,{kind:'light',id:light.id},(()=>{const box=event.currentTarget.getBoundingClientRect(),current=pointer({clientX:box.x+box.width/2,clientY:box.y+box.height/2})??light;return {x:current.x+delta.x,y:current.y+delta.y};})(),time.current.local));}}/>) }
+      {scene.visual.perspective?.enabled&&(['horizon','nearY','farY'] as const).map(kind=><circle key={kind} data-ground={kind} r="10" fill={kind==='horizon'?'#eed298':kind==='nearY'?'#8bd1c3':'#ac9cf5'} stroke="#ffffff" strokeWidth="2" role="button" tabIndex={0} aria-label={`Move ${kind==='horizon'?'horizon':kind==='nearY'?'near ground reference':'far ground reference'}`}
+        onPointerDown={event=>{event.preventDefault();event.stopPropagation();environmentDrag.current={scene,handle:{kind},preview:scene.visual!,time:time.current.local};event.currentTarget.setPointerCapture(event.pointerId);}}
+        onKeyDown={event=>{if(event.key!=='ArrowUp'&&event.key!=='ArrowDown')return;event.preventDefault();changeEnvironment?.(moveEnvironmentHandle(scene.visual!,{kind},{x:0,y:scene.visual!.perspective![kind]+(event.key==='ArrowUp'?-5:5)},time.current.local));}}/>)}
+    </svg>}
     {!playing && !!displayPath?.length && <svg className="stage-path-guide" ref={guide} aria-hidden={editPath?undefined:true}>
       <polyline/><g>{displayPath!.map((point,index)=>{
         const removable=index>0&&index<displayPath!.length-1;

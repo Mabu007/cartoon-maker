@@ -6,7 +6,7 @@
 import type { JointPose } from './schema.ts';
 import type { Landmark } from './performanceCapture.ts';
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
-const finite=(p?:Landmark)=>Boolean(p&&Number.isFinite(p.x)&&Number.isFinite(p.y));
+const finite=(p?:Landmark): p is Landmark=>Boolean(p&&Number.isFinite(p.x)&&Number.isFinite(p.y));
 /** Never exceed a believable cartoon head/neck roll even if MediaPipe
  * briefly mistakes a tilted or partially occluded face for a full turn.
  * The complete torso+neck+head rotation drives the actual face container. */

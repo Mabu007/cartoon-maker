@@ -1,0 +1,28 @@
+import { z } from 'zod';
+import { ProjectDocument, environments, type Project } from './schema.ts';
+import { makeProject, makeScene } from './presets.ts';
+
+/**
+ * A portable authoring prompt, not an MCP server. Generated from the same schema
+ * and presets as the editor, with no access to a user's projects or API keys.
+ */
+export function filmAuthoringPrompt(example: Project = makeProject(true)): string {
+  const schema = z.toJSONSchema(ProjectDocument, { io: 'input', unrepresentable: 'any' });
+  const sample = ProjectDocument.parse(example);
+  const sets = Object.fromEntries(environments.map(environment => [environment, makeScene(environment).objects]));
+  return [
+    'SIRVIBE AI FILM AUTHORING PROTOCOL — project version 1',
+    'You are a SIRVIBE animation director. Create a COMPLETE, editable movie from my story request. Return a downloadable .sirvibe file, not merely a screenplay or instructions. If you cannot create files, return a complete generator script or valid backup JSON and disclose what is missing. Do not claim to have rendered or tested the movie unless you did.',
+    'FILE FORMAT: The simplest supported format is UTF-8 JSON saved as Movie-Name.sirvibe. Exact top-level object: {"format":"toonroom-backup-1","project":{...},"audio":{...}}. Do not wrap the file in Markdown. The project is version 1 and must conform to the JSON Schema below. Do not invent fields; validation uses strict objects. You may alternatively generate SIRVIBE2 binary: ASCII SIRVIBE2 followed by LF, 4-byte unsigned little-endian UTF-8 JSON header length, header {"format":"sirvibe-backup-2","project":{...},"audio":{"asset-id":{"type":"audio/wav","size":123,"sha256":"64 lowercase hex digits"}}}, then raw audio bytes in header audio key order. Compute sizes and hashes from real bytes. Header limit 4 MiB.',
+    'AUDIO: For JSON backups, each audio entry is keyed by the bare asset ID and is {"type":"audio/wav","data":"BASE64_OF_REAL_AUDIO_BYTES"} (no data URI prefix). Use actual playable WAV/MP3 audio, not fake base64 or URLs. Each audio asset must be 1 byte to 20 MiB; JSON backup max 160 MB. Every asset:<id> referenced by a dialogue/audio/music clip or alternate dialogue version must be included. Builtin assets need no audio entry. Builtin dialogue clips are fixed prerecorded lines, not arbitrary TTS: never reuse them for new text. For new dialogue use a TTS or user-supplied recording, measure the real duration, assign each utterance a unique asset ID, set offset:0, volume:1, muted:false, and length to its actual duration. If no audio generation is available, ask for recordings or use a clearly disclosed silent draft with genuine silent WAV files; do not claim that speech is present. SIRVIBE can estimate mouth shapes from dialogue text when visemes are omitted. Never copy credentials into a project or prompt.',
+    'DIRECTING: Stage size 960x540; x increases right and y down. Actors use foot/base positions; scale near 1 is normal. Start from the sample characters (or valid customized characters). Each actor instance has its own ID and references characterId. Each scene has its own actors, set objects and clips. Use the furnished presets below for consistent layouts. Use unique IDs for actors, objects, clips and markers within a scene; unique character IDs and scene IDs across the movie. All references must resolve: actor to scene actor, characterId to project character, camera focus to actor or prop, gaze target to actor/prop/camera, other target to scene prop. Do not assume missing props. Use action and facial expression names exactly as specified in schema. Keep dialogue readable: avoid simultaneous speaking unless intentional, give listeners reactions, give each character a personality, use purposeful gestures and pauses. Use camera wide/two-shot to establish geography, medium/close-up for dialogue, reaction close-ups for punchlines. Camera clips must never overlap; give all clips positive lengths. Keep actions in distinct body and gesture layers where needed, and do not overlap conflicting clips in the same lane. Use movement from/to positions and continuity; avoid impossible prop interactions. Test seating/prop anchors visually. Clip starts >=0, lengths >=0.1 seconds, and ends <= scene.duration. Scene duration 1–180 seconds, max 30 scenes, 600 clips per scene, 24 actors and 100 objects per scene. Split longer movies into scenes. Mouth cues must be ordered with positive duration and no overlap; movement/performance keyframes must start at normalized time 0, end at 1, and strictly increase. Omit optional production graph unless you can maintain all its signatures and references. Use editable timeline clips directly. Do not embed arbitrary executable code in a project.',
+    'DELIVER: Build the entire project, validate schema plus reference and timing constraints, verify audio checksums/durations when applicable, and supply the actual .sirvibe file. In SIRVIBE: My cartoons → Import backup → select the file → Play. Import creates a separate project; no source-code changes required.',
+    'PROJECT JSON SCHEMA (authoritative shape; additional relationship constraints above also apply):',
+    JSON.stringify(schema),
+    'WORKING EXAMPLE PROJECT (illustrative built-in voice lines only; do not copy dialogue assets for new dialogue):',
+    JSON.stringify(sample),
+    'FURNISHED SET PRESETS (copy as scene.objects; rename IDs if necessary):',
+    JSON.stringify(sets),
+    'Now use these instructions to create the film I request. Prioritize entertaining storytelling, convincing acting, coherent staging, and audio-synchronized timing.'
+  ].join('\n\n');
+}

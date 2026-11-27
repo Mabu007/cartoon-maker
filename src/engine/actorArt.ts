@@ -1,3 +1,4 @@
+import { drawComponent, drawBoneComponent } from './hybridArtwork.ts';
 import { propArm, propPlacement, type PropPose } from './propMotion.ts';
 import { bodyProportions } from './bodyBuild.ts';
 import { gaitProfiles, isSleep, type GaitStyle } from './performanceCatalog.ts';
@@ -159,16 +160,21 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const cuff={x:cuffStart.x+(cuffEnd.x-cuffStart.x)*cover,y:cuffStart.y+(cuffEnd.y-cuffStart.y)*cover};
     const drawUpper=part==='all'||part==='upper';
     const drawLower=part==='all'||part==='lower';
-    if(drawUpper&&drawLower&&build.arm===1){
+    const customUpper=drawUpper&&drawBoneComponent(g,c,`upper-arm-${side}`,view,joint.shoulder,elbow,c.thickness*build.arm,costume);
+    const customLower=drawLower&&drawBoneComponent(g,c,`forearm-${side}`,view,elbow,hand,c.thickness*(.63+.37*build.arm),costume);
+    if(drawUpper&&drawLower&&build.arm===1&&!customUpper&&!customLower){
       stroke(g,[joint.shoulder,elbow,hand],limbWidth,c.skin);
     }else{
-      if(drawUpper)stroke(g,[joint.shoulder,elbow],limbWidth*build.arm,c.skin);
-      if(drawLower)stroke(g,[elbow,hand],limbWidth*(.63+.37*build.arm),c.skin);
-      if(drawUpper&&build.arm>1)
+      if(drawUpper&&!customUpper)stroke(g,[joint.shoulder,elbow],limbWidth*build.arm,c.skin);
+      if(drawLower&&!customLower)stroke(g,[elbow,hand],limbWidth*(.63+.37*build.arm),c.skin);
+      if(drawUpper&&!customUpper&&build.arm>1)
         segment(g,(joint.shoulder.x+elbow.x)/2,(joint.shoulder.y+elbow.y)/2,
           elbow.x,elbow.y,shade(c.skin,-.18),1.2);
     }
-    if(coverage>0){
+    if(coverage>0&&(customUpper||customLower)){
+      if(drawUpper&&!customUpper)stroke(g,[joint.shoulder,upper?cuff:elbow],limbWidth*build.arm+4,c.shirt);
+      if(drawLower&&!customLower&&!upper)stroke(g,[elbow,cuff],limbWidth*build.arm+4,c.shirt);
+    }else if(coverage>0){
       if(part==='all'){
         stroke(g,upper?[joint.shoulder,cuff]:[joint.shoulder,elbow,cuff],limbWidth*build.arm+4,c.shirt);
         segment(g,cuff.x-3,cuff.y,cuff.x+3,cuff.y+1,c.wardrobe?.trim??shade(c.shirt,-.27),1.45);
@@ -208,7 +214,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const rotation = observed||appearance?.capturedFingers?.[side]
       ? handRotationParams(forearm,wristDegrees,geometry.params.wristBend,side)
       : handRotation(forearm,wristDegrees,performance.pose,performance.blend,side);
-    const scale = handSize(c.thickness)*(appearance?.capturedFingers?.[side]?1.12:1);
+    const scale = handSize(c.thickness)*(appearance?.capturedFingers?.[side]?1.12:1)*(c.visual?.handSize??1);
     const width = handWidthScale(view, side, geometry.params.wristTwist);
     g.context.save().setTransform(at(hand.x, hand.y, scale * width, scale, rotation * 180 / Math.PI));
     drawIllustratedHand(g, c.skin, geometry);
@@ -236,18 +242,30 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     const swim=c.outfit==='bikini';
     const shorts=bottom==='shorts'||bottom==='biker-shorts';
     const width={straight:11,cargo:16,joggers:13,shorts:15,'wide-leg':17,'skinny-jeans':8,skirt:10,'cargo-joggers':15,leggings:8,'biker-shorts':10}[bottom]*c.thickness*build.leg;
-    if(swim||shorts||bottom==='skirt') {
-      stroke(g,[joint.upper,knee,foot],limbWidth*.82*build.leg,c.skin);
+    const customThigh=drawBoneComponent(g,c,`thigh-${side}`,view,joint.upper,knee,c.thickness*build.leg,costume);
+    const customCalf=drawBoneComponent(g,c,`calf-${side}`,view,knee,foot,c.thickness*build.leg*build.calves,costume);
+    if(customThigh||customCalf){
+      const color=swim||shorts||bottom==='skirt'?c.skin:c.pants;
+      if(!customThigh)stroke(g,[joint.upper,knee],width,color);
+      if(!customCalf)stroke(g,[knee,foot],width*build.calves,color);
+    }else if(swim||shorts||bottom==='skirt') {
+      if(c.visual?.calfWidth!==undefined){stroke(g,[joint.upper,knee],limbWidth*.82*build.leg,c.skin);stroke(g,[knee,foot],limbWidth*.82*build.leg*build.calves,c.skin);}
+      else stroke(g,[joint.upper,knee,foot],limbWidth*.82*build.leg,c.skin);
       if(shorts&&!swim)stroke(g,[joint.upper,{x:(joint.upper.x+knee.x)/2,y:(joint.upper.y+knee.y)/2}],width,c.pants);
     } else {
-      stroke(g,[joint.upper,knee,foot],width,c.pants);
-      if(build.calves>1)stroke(g,[knee,{x:(knee.x+foot.x)/2,y:(knee.y+foot.y)/2}],width*build.calves,c.pants);
+      if(c.visual?.calfWidth!==undefined){stroke(g,[joint.upper,knee],width,c.pants);stroke(g,[knee,foot],width*build.calves,c.pants);}
+      else stroke(g,[joint.upper,knee,foot],width,c.pants);
+      if(c.visual?.calfWidth===undefined&&build.calves>1)stroke(g,[knee,{x:(knee.x+foot.x)/2,y:(knee.y+foot.y)/2}],width*build.calves,c.pants);
       if(bottom==='joggers'||bottom==='cargo-joggers')segment(g,knee.x,knee.y,foot.x,foot.y,c.wardrobe?.trim??shade(c.pants,.22),1.4);
       if(bottom==='cargo'||bottom==='cargo-joggers')rect(g,(joint.upper.x+knee.x)/2-5,(joint.upper.y+knee.y)/2-3,10,9,shade(c.pants,.13),2,1);
       if(bottom==='skinny-jeans'||bottom==='leggings')segment(g,foot.x-3,foot.y-5,foot.x+3,foot.y-5,shade(c.pants,.28),1.4);
     }
     const toe=moving||art.profile||(view!=='front'&&view!=='back')?Math.sign(forward):(side==='left'?-1:1);
+    if(drawComponent(g,c,`shoe-${side}`,view,foot.x,foot.y,0,costume))return;
+    const footScale=c.visual?.footSize??1;
+    g.context.save().setTransform(at(foot.x*(1-footScale),foot.y*(1-footScale),footScale));
     drawShoe(g,c,foot,toe,costume,view==='back');
+    g.context.restore();
   };
   leg(art.rear?'right':'left'); leg(art.rear?'left':'right');
   const rearArm=art.rear?'right':'left';
@@ -270,7 +288,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     vector(g,`M ${x-width} ${y-5}H${x+width}L${x+width*1.29} ${y+hem}Q${x} ${y+hem+7} ${x-width*1.29} ${y+hem}Z`,c.pants,INK,2.1);
     for(const offset of [-.57,0,.57]) segment(g,x+offset*width,y+2,x+offset*width*1.15,y+hem,shade(c.pants,-.28),1.1);
   }
-  drawTop(g,c,art,r.neck,r.hip,costume);
+  if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume))drawTop(g,c,art,r.neck,r.hip,costume);
   drawExtra(g,c,art,0,0,'torso',r.neck.x,r.neck.y+6);
   drawBag(g,c,art,r.neck,r.hip,undefined,costume);
   if(!cryHand(frontArm)&&!mocapFront(frontArm))arm(frontArm,carryingHand(frontArm));
@@ -304,21 +322,28 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     : lookAtCamera && (art.profile || art.rear)
       ? view === 'back' ? 'back' : 'three-quarter' : view;
   const facialArt=appearance?.art??(face instanceof Graphics?face:undefined);
-  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined);
+  if(facialArt)drawFace(face,facialArt,c,headView,mood,lookAtCamera,action==='cry'?actionTime:undefined,costume);
 }
-function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number) {
+function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPerformance,camera:boolean,cryTime?:number,texture?:CostumeTexture) {
   const art=viewArt[view], {rear,profile}=art;
   const layers=resetEyeLayers(face);
   const {w,h}=headMetrics(c,art), q=c.wardrobe;
   const yScale=h/45;
   const ears=profile?[-w*.47]:[-w+3,w-3];
   if(!profile)drawEar(g,c,ears[1],8*yScale,-1);
-  vector(g,headOutline(c,art),c.skin,INK,3.5);
-  vector(g,`M ${-w*.81} 5 Q ${-w*.85} ${h*.63} ${-w*.32} ${h*.77} Q ${-w*.57} ${h*.55} ${-w*.81} 5Z`,shade(c.skin,-.10),INK,0);
+  const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture);
+  if(!customHead)vector(g,headOutline(c,art),c.skin,INK,3.5);
+  if(!customHead)vector(g,`M ${-w*.81} 5 Q ${-w*.85} ${h*.63} ${-w*.32} ${h*.77} Q ${-w*.57} ${h*.55} ${-w*.81} 5Z`,shade(c.skin,-.10),INK,0);
+  if(c.visual?.style==='illustrated'&&!rear){
+    const tone=shade(c.skin,-.25);
+    vector(g,`M ${-w*.65} ${h*.34} Q ${-w*.48} ${h*.45} ${-w*.29} ${h*.4} M ${w*.32} ${h*.4} Q ${w*.52} ${h*.43} ${w*.7} ${h*.29}`,'none',tone,.9);
+    if(c.visual.profile==='mature'||c.visual.profile==='elderly')vector(g,`M ${-w*.35} ${-h*.47} Q 0 ${-h*.51} ${w*.38} ${-h*.45} M ${-w*.35} ${-h*.38} Q 0 ${-h*.42} ${w*.38} ${-h*.36}`,'none',tone,.8);
+  }
   const openHat=['none','visor','sun-visor','fascinator'].includes(c.hat);
-  if(openHat) {
+  const customHair=openHat&&drawComponent(g,c,'hair',view,0,0,0,texture);
+  if(openHat&&!customHair) {
     if(!drawCatalogHair(g,c,art,w,h))drawIllustratedHair(g,c,art,w,h);
-  } else if(['bob','hime','mullet','ponytail','waves','wolf-cut','braids','locs','curtain-bangs'].includes(c.hair)) {
+  } else if(!customHair&&['bob','hime','mullet','ponytail','waves','wolf-cut','braids','locs','curtain-bangs'].includes(c.hair)) {
     if(!drawCatalogHair(g,c,art,w,h*.83))drawIllustratedHair(g,c,art,w,h*.83);
   }
   drawEar(g,c,ears[0],8*yScale,1);
