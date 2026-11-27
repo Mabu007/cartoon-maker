@@ -1,3 +1,4 @@
+import { CharacterVisualStudio } from './CharacterVisualStudio.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Maximize2, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { armBuilds, bodyFrames, legBuilds } from '../engine/bodyBuild.ts';
@@ -125,6 +126,7 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       </label>
     </div><div className="factory-edit"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
 
+      <CharacterVisualStudio character={draft} change={setDraft}/>
       <div className="factory-section-heading"><span>Start with a character</span><button type="button" className="surprise-button" onClick={() => {
         const item = characters[Math.floor(Math.random() * characters.length)];
         setDraft(current => ({ ...item, id: current.id, name: current.name }));

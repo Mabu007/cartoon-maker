@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8"><title>SIRVIBE visual integration fixture</title></head><body style="margin:0;background:#171d2b;color:white;font-family:Arial"><nav style="padding:12px;display:flex;gap:16px;align-items:center"><label>Scene time <input id="seek" type="range" min="0" max="15.99" step=".01" value="0"></label><button id="export">Export silent test video</button><button id="profile">Measure CPU draw cost</button><button id="package-test">Verify example packages</button></nav><main id="stage"></main><p id="status">Loading</p><script type="module">
+import {createRenderer} from '/src/engine/renderer.ts';
+import {makeRevenentDemo} from '/src/engine/revenentDemo.ts';
+import {browserExporter} from '/src/services/export.ts';
+import {visualExamples} from '/src/engine/visualExamples.ts';
+import {verifyPackageImages,preparePixels,decodeArtwork} from '/src/services/assetPreparation.ts';
+import {createMovieBackup,restoreMovie} from '/src/services/projectExchange.ts';
+const project=makeRevenentDemo(),renderer=await createRenderer('16:9',1,true);
+await renderer.prepareImages(project.scenes,project.characters);document.querySelector('#stage').append(renderer.canvas);
+let time=0;renderer.draw(project.scenes[0],project.characters,time);
+window.visualQA={project,renderer,visualExamples,verifyPackageImages,preparePixels,decodeArtwork,createMovieBackup,restoreMovie,
+ draw(t){time=t;return renderer.draw(project.scenes[0],project.characters,t);},
+ async export(){const result=await browserExporter.run(project,'16:9',false,new AbortController().signal,n=>{document.querySelector('#status').textContent='Export '+Math.round(n*100)+'%';},'balanced');const a=document.createElement('a');a.href=URL.createObjectURL(result.blob);a.download='REVENENT-visual-test.'+result.extension;a.click();document.querySelector('#status').textContent='Exported '+result.blob.size+' bytes';return {size:result.blob.size,type:result.blob.type};},
+ async profile(){for(let i=0;i<24;i++)this.draw(i/24);const samples=[];for(let i=0;i<120;i++){const start=performance.now();this.draw(i/12);samples.push(performance.now()-start);}samples.sort((a,b)=>a-b);return {mean:samples.reduce((a,b)=>a+b,0)/samples.length,p50:samples[60],p95:samples[114],heap:performance.memory?.usedJSHeapSize};}
+};document.querySelector('#seek').oninput=event=>visualQA.draw(Number(event.target.value));document.querySelector('#export').onclick=()=>visualQA.export().catch(error=>document.querySelector('#status').textContent=error.message);document.querySelector('#profile').onclick=async()=>document.querySelector('#status').textContent='CPU draw submission cost (milliseconds): '+JSON.stringify(await visualQA.profile());document.querySelector('#package-test').onclick=async()=>{try{await verifyPackageImages(JSON.stringify({format:'sirvibe-assets',version:1,packs:visualExamples}));document.querySelector('#status').textContent='All four example packs decoded and validated.';}catch(error){document.querySelector('#status').textContent=error.message;}};document.querySelector('#status').textContent='Ready';
+</script></body></html>

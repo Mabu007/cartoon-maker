@@ -1,0 +1,21 @@
+Baseline: 8f568d0f6db0692ce4dc600a195b4e1dd5bccd27
+Baseline tests: 344 passed, zero failures
+Baseline TypeScript check: passed
+
+Final npm run build:
+  Tests: 365 passed, zero failures, zero skipped
+  TypeScript --noEmit: passed
+  Vite production build: passed (11.70 seconds)
+  Build warning: some emitted chunks exceed 500 kB
+
+Final npm run verify:offline:
+  Verified offline bundle 291daf9f3a2b26f546e9
+  45 precached files, 3.15 MiB
+
+Git whitespace check: passed
+Native SVG fallback renders: created and inspected
+Accelerated browser visual QA: blocked, not claimed
+Webcam capture: not performed
+Video export: not performed
+Celeron playback/memory profiling: not performed
+Production deployment: not performed

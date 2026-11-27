@@ -27,7 +27,7 @@ export function at(x: number, y: number, sx = 1, sy = sx, angle = 0) {
 
 export function costumeImages(character: Character) {
   const w = character.wardrobe;
-  return [w?.patternImage, w?.logoImage, w?.bagLogo, w?.shoeLogo].filter((image): image is string => Boolean(image));
+  return [...(character.visual?.components??[]).map(component=>component.image),w?.patternImage, w?.logoImage, w?.bagLogo, w?.shoeLogo].filter((image): image is string => Boolean(image));
 }
 type PatternKey = 'stripes' | 'plaid' | 'camo' | 'dots';
 const patterns = new WeakMap<Texture, Map<string,FillPattern>>();

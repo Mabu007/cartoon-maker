@@ -8,7 +8,7 @@ import type { Account } from '../services/cloud.ts';
 
 type Original=Omit<Parameters<typeof PreviousWelcome>[0], 'createAI'>;
 type Props=Original & {
-  openActingDemo:()=>void;
+  openActingDemo:()=>void; openVisualDemo:()=>void; clearCartoons:()=>void;
   account:Account|null; authAvailable:boolean; localStudio:boolean;
   login:(email:string,password:string,register:boolean,name?:string)=>Promise<void>;
   logout:()=>Promise<void>; enter:()=>void;
@@ -41,8 +41,8 @@ export function Welcome(props: Props){
       </div>
     </header>
     <section className="simple-projects">
-      <div className="projects-heading"><div><span className="eyebrow">{props.localStudio?'LOCAL WORKSPACE · NO ACCOUNT REQUIRED':'YOUR CREATOR UNIVERSE · FREE (BETA)'}</span><h1>My cartoons</h1><p>Every story starts somewhere. Pick up where you left off.</p></div><div className="home-tools"><button className="quiet" type="button" onClick={props.openActingDemo}><Film size={17}/>Acting demo</button><button className="primary" onClick={props.createManual}><Plus size={18}/>Create a Cartoon</button></div></div>
-      <div className="projects-tools"><input aria-label="Search cartoons" placeholder="Find a cartoon…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="quiet" onClick={()=>void copyFilmProtocol()} title="Copy AI instructions for creating editable .sirvibe movies"><Copy size={16}/>MCP Copy</button><button className="quiet" onClick={props.restore}>Import backup</button></div>
+      <div className="projects-heading"><div><span className="eyebrow">{props.localStudio?'LOCAL WORKSPACE · NO ACCOUNT REQUIRED':'YOUR CREATOR UNIVERSE · FREE (BETA)'}</span><h1>My cartoons</h1><p>Every story starts somewhere. Pick up where you left off.</p></div><div className="home-tools"><button className="quiet" type="button" onClick={props.openVisualDemo}>REVENENT demo</button><button className="quiet" type="button" onClick={props.openActingDemo}><Film size={17}/>Acting demo</button><button className="primary" onClick={props.createManual}><Plus size={18}/>Create a Cartoon</button></div></div>
+      <div className="projects-tools"><input aria-label="Search cartoons" placeholder="Find a cartoon…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="quiet" onClick={()=>void copyFilmProtocol()} title="Copy AI instructions for creating editable .sirvibe movies"><Copy size={16}/>MCP Copy</button><button className="quiet" onClick={props.restore}>Import backup</button><button className="quiet" type="button" onClick={props.clearCartoons}><Trash2 size={16}/>Delete all cartoons</button></div>
       {copyStatus&&<p role="status">{copyStatus}</p>}
       {manualPrompt&&<div><textarea aria-label="AI film authoring instructions" readOnly value={manualPrompt} rows={6} style={{width:'100%'}} onFocus={event=>event.currentTarget.select()}/><button className="quiet" onClick={()=>setManualPrompt('')}>Close instructions</button></div>}
       {error&&<p role="alert" className="form-error">{error}</p>}

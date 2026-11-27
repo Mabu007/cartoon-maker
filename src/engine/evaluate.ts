@@ -1,3 +1,4 @@
+import { sampleVisual } from './environmentVisuals.ts';
 import { smoothPath } from './stagePath.ts';
 import { propPlacement, throwArc, transferFraction, type PropPose } from './propMotion.ts';
 import { gaitProfiles, usesSeat, type GaitStyle } from './performanceCatalog.ts';
@@ -69,7 +70,8 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const group=byActor.get(clip.actor);
     if(group)group.push(clip);else byActor.set(clip.actor,[clip]);
   }
-  const objectsById=new Map(scene.objects.map(object=>[object.id,object]));
+  const visualObjects=scene.objects.map(object=>sampleVisual(object,t,object.y,scene.visual?.perspective));
+  const objectsById=new Map(visualObjects.map(object=>[object.id,object]));
   type BodyClip=Extract<Clip,{track:'body'}>;
   type PropEvent={clip:BodyClip;at:number};
   const propEvents=new Map<string,PropEvent>();
@@ -135,6 +137,7 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     const position = movement ? movementPosition(movement, progress) : actor;
     let x = position.x;
     let y = position.y;
+    actor=sampleVisual(actor,t,y,scene.visual?.perspective);
     const travelling = movement && active(movement, t) ? movement : undefined;
     const lead = movement ? movementPosition(movement,clamp(progress+.003)) : undefined;
     const trail = movement ? movementPosition(movement,clamp(progress-.003)) : undefined;
@@ -421,11 +424,11 @@ export function evaluate(scene: Scene, time: number, characters?: ReadonlyMap<st
     ?latest(cameraClips.filter(clip=>clip.start<cameraClip.start))
     :undefined;
   const camera:CameraState=directCamera(
-    cameraClip,previousCameraClip,actors,scene.objects,t,viewportWidth
+    cameraClip,previousCameraClip,actors,visualObjects,t,viewportWidth
   );
   const transition = latest(timelineClips.filter((clip): clip is Extract<Clip, { track: 'transition' }> => clip.track === 'transition' && active(clip, t)));
   const fade = transition ? clamp((t - transition.start) / transition.length) : 0;
-  const objects = scene.objects.map(object => {
+  const objects = visualObjects.map(object => {
     const cue = latest(timelineClips.filter(clip => clip.track === 'props' && clip.target === object.id && clip.start <= t));
     const lastDrop=propDrops.get(object.id);
     if(lastDrop&&lastDrop.at>=(cue?.start??-1))

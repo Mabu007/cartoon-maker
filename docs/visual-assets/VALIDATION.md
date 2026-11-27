@@ -1,0 +1,25 @@
+# Validation and remaining production checks
+
+Baseline: exact GitHub main `8f568d0f6db0692ce4dc600a195b4e1dd5bccd27`; 344 tests passed and TypeScript checking passed before implementation. The user's `/home/gift/Desktop/My-app/toonRoom/cartoon-maker` directory is not mounted here, so this work cannot be represented as an upgrade of that newer local checkout.
+
+Current automated result: **365 tests passed, zero failures** (21 new tests). `npm run build` runs the full suite, TypeScript checking and Vite production bundling. Build succeeds. Vite reports large chunks; this is not a measured playback-performance result. No lint command is configured in the repository.
+
+The new tests exercise manifest/package validation, safe paths and embedded formats, schema versions, dimensions and decoded-memory budgets, dependency cycles and missing files, asset-store transaction rollback and collisions, dependency-aware deletion, body-profile geometry and joint connectivity, calibrated garment transforms, view availability, AI instructions/schema export, ambient/light falloff, key interpolation and order, ground-anchor scaling, depth occlusion in the REVENENT path, walkable polygon mathematics, embedded artwork/project backup round trips, and explicit local cartoon reset without legacy resurrection. Existing hand, thumb, performance, lip-sync, timeline and camera tests continue to pass.
+
+`npm run verify:offline` passed: **45 precached files, 3.15 MiB**. It verifies that the emitted service worker precaches the app, lazy libraries, DSP worker, video exporters and local sample artwork. Optional MediaPipe models are not installed in this workspace; their existing explicit download workflow is unchanged.
+
+Actual native SVG preview components were server-rendered at a frozen time and rasterised for inspection. The resulting `qa/revenent-native.png` and `qa/nandi-native.png` are **fallback preview renders, not browser screenshots**. WebP image data was converted to PNG inside these QA-only SVG snapshots because the SVG rasteriser cannot decode embedded WebP. The production application retains its WebP textures. These previews confirmed imported garment/hair presence; the hair was adjusted after initial strands crossed an eye. The fallback renderer is an approximation of the main Pixi character renderer and does not establish accelerated-stage visual fidelity.
+
+Attempts to start Chromium-based visual testing failed: `/usr/bin/chromium` points to a missing executable, and the available browser could not reach the workspace's loopback preview. Therefore no accelerated screenshot, browser import interaction, webcam capture, real-time playback measurement, GPU-memory measurement, or video-export completion is claimed. No performance estimate is inferred from this host for the Celeron N4020/4 GB target.
+
+## Reproducible browser checks on the target machine
+
+1. Install project dependencies with the repository's normal package-manager workflow and run `npm run dev -- --host 127.0.0.1`.
+2. Open the printed local URL. From My cartoons, open REVENENT demo. Play, seek to the Behind car marker, then Under amber light. Edit lighting and reference scales. Confirm both character and prop picking remain aligned. Test an imported hair and torso image in every declared view and during gesture actions.
+3. Open `/tests/browser/visual-system.html` on the same dev origin. The fixture uses the real renderer and video exporter. Drag Scene time, verify example packages, then Export silent test video. It explicitly contains no generated voice. Inspect the resulting video and compare to the canvas.
+4. Use Measure CPU draw cost only as a draw-submission benchmark; it does not synchronise GPU completion and must not be reported as FPS. Record host hardware and browser version with results.
+5. Prepare custom PNG/WebP/SVG, crop a part, mark a polygon, inspect transparency, set its pivot/profile/view, save, rename, favourite, export, re-import on a separate browser profile, apply, save a movie and restore its `.sirvibe` backup. Try invalid SVG/script/link/path and dimension cases and confirm clear errors.
+6. Record a real seated MoCap take with gestures, thumb poses, head movement and speech. Test all supported orientations, wardrobe variants and body profiles. Export all three aspect ratios and confirm framing, tints, occlusion, attachment positions and audio synchronisation.
+7. In a disposable browser profile, create cartoons, use Delete all cartoons, reopen SIRVIBE and confirm an empty cartoon library and no recovery resurrection. This deletes the current browser installation's cartoons; no automatic deletion runs at startup.
+
+The static `.sirvibe` example in `public/visual-examples` is a silent visual test project. A complete voiced REVENENT production, final premium artwork approval, complete-character rigging, learned segmentation, background repair, advanced lights/parallax and the other deferred items in SPECIFICATION.md still require implementation or validation. This is a **draft review slice**, not completion of all requirements in the original brief.

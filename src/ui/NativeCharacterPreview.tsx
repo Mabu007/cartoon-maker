@@ -1,3 +1,4 @@
+import { componentFor, componentTransform } from '../engine/hybridArtwork.ts';
 import { useEffect, useId, useState } from 'react';
 import { bodyProportions } from '../engine/bodyBuild.ts';
 import { animations, gaitLeg, rig, sample, seatedLeg, viewForward } from '../engine/animation.ts';
@@ -43,7 +44,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const width = profile ? .65 : q ? .9 : 1;
   const headW = (c.shape === 'square' ? 41 : 44) * (profile ? .83 : 1) * c.head;
   const headH = (c.shape === 'round' ? 42 : 46) * c.head;
-  const headY = -(142 * c.height + 11 * c.torso);
+  const headY = -(142 * c.height + 11 * c.torso)-36*c.head*((c.visual?.neckLength??1)-1);
   const shirtBottom = -(71 * c.legs);
   const shoulderY = headY + headH + 17;
   const shirtTop = shoulderY - 5;
@@ -96,6 +97,9 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const silhouette = c.shape === 'square'
     ? 'M ' + (-headW + 14) + ' ' + (headY - headH) + ' Q ' + (-headW - 5) + ' ' + (headY - headH) + ' ' + (-headW) + ' ' + (headY - 9) + ' Q ' + (-headW - 4) + ' ' + (headY + headH) + ' 0 ' + (headY + headH) + ' Q ' + headW + ' ' + (headY + headH) + ' ' + headW + ' ' + (headY - 9) + ' Q ' + headW + ' ' + (headY - headH) + ' ' + (headW - 15) + ' ' + (headY - headH) + ' Z'
     : 'M 0 ' + (headY - headH) + ' C ' + (-headW * 1.3) + ' ' + (headY - headH) + ' ' + (-headW * 1.3) + ' ' + (headY + headH * .75) + ' 0 ' + (headY + headH) + ' C ' + (headW * 1.3) + ' ' + (headY + headH * 1.15) + ' ' + (headW * 1.3) + ' ' + (headY - headH) + ' 0 ' + (headY - headH) + ' Z';
+  const customHair=c.hat==='none'?componentFor(c,'hair',view):undefined;
+  const customTop=componentFor(c,'top',view);
+  const topBox=customTop?componentTransform(customTop,c,bodyRig.neck.x,bodyRig.neck.y):undefined;
   const mainHair = 'M ' + (-headW) + ' ' + (headY - 5) + ' C ' + (-headW - 13) + ' ' + (headY - headH - 9) + ' ' + (-headW / 2) + ' ' + (headY - headH - 13) + ' 2 ' + (headY - headH - 8) + ' C ' + headW + ' ' + (headY - headH - 14) + ' ' + (headW + 6) + ' ' + (headY - headH + 7) + ' ' + headW + ' ' + (headY - 6) + (rear ? ' Q 0 ' + (headY + headH) + ' ' + (-headW) + ' ' + (headY - 5) : ' Q 12 ' + (headY - 22) + ' -3 ' + (headY - 19) + ' Q ' + (-headW + 8) + ' ' + (headY - 10) + ' ' + (-headW) + ' ' + (headY - 5)) + ' Z';
   return <svg className="native-character-svg" viewBox={faceOnly?"175 215 190 145":"0 0 540 540"} role="img" aria-label={'Character preview: ' + c.name + ', ' + view + ' view'}>
     <rect width="540" height="540" fill="#665777"/>
@@ -118,7 +122,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
           {!bare&&<path d={`M ${shoulder.x} ${shoulder.y} L ${elbow.x} ${elbow.y}`}
             stroke={c.shirt} strokeWidth={16*c.thickness} strokeLinecap="round" fill="none"/>}
         </g>)}
-        <path d={'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>
+        {customTop&&topBox?<image href={customTop.image} x={topBox.x-customTop.pivot.x*topBox.width} y={topBox.y-customTop.pivot.y*topBox.height} width={topBox.width} height={topBox.height}/>:<path d={'M ' + left + ' ' + shirtTop + ' Q ' + (left - 8 - (profile?0:chest)) + ' ' + shoulderY + ' ' + (left + 3 - (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' L ' + (-hips) + ' ' + shirtBottom + ' Q 0 ' + (shirtBottom + 7) + ' ' + hips + ' ' + shirtBottom + ' L ' + (right - 3 + (build.waist-1)*14) + ' ' + (shoulderY + 34) + ' Q ' + (right + 8 + (rear?0:chest)) + ' ' + shoulderY + ' ' + right + ' ' + shirtTop + ' Q 0 ' + (shirtTop - 12) + ' ' + left + ' ' + shirtTop + ' Z'} fill={bare?c.skin:c.shirt} stroke="#242037" strokeWidth="3"/>}
         {swim&&<><path d={`M ${left*.8} ${shirtTop+15} Q 0 ${shirtTop+(rear?20:7)} ${right*.8} ${shirtTop+15} v12 Q0 ${shirtTop+34} ${left*.8} ${shirtTop+27}Z`} fill={c.shirt} stroke="#242037" strokeWidth="2"/>
           <path d={`M ${-hips} ${shirtBottom-5} Q0 ${shirtBottom-2} ${hips} ${shirtBottom-5} L7 ${shirtBottom+13} H-7 Z`} fill={c.pants} stroke="#242037" strokeWidth="2"/></>}
         {c.outfit==='shirtless'&&c.bodyBuild?.abs&&!rear&&<path d={`M0 ${shirtTop+24} V${shirtBottom-5} ${[0,1,2].map(offset=>`M-8 ${shirtTop+29+offset*5} q2 4 6 3 m4-3 q4 1 6-3`).join(' ')}`} fill="none" stroke="#754634" opacity=".58" strokeWidth="1.4"/>}
@@ -128,7 +132,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
           const forearm = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
           const rotation = handRotation(forearm, live[`${side}Wrist`] ?? 0, performance.pose, performance.blend, side) * 180 / Math.PI;
           const handRig = sampleHandRig(performance.pose, performance.blend);
-          const size = handSize(c.thickness);
+          const size = handSize(c.thickness)*(c.visual?.handSize??1);
           const widthScale = handWidthScale(view, side, handRig.params.wristTwist);
           const fingers = handRig.fingers.map(fingerPath);
           const thumb = fingerPath(handRig.thumb);
@@ -148,6 +152,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         {!profile && <ellipse cx={headW - 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>}
         <path d={silhouette} fill={c.skin} stroke="#252037" strokeWidth="4"/>
         <path d={'M ' + (-headW + 9) + ' ' + (headY + 8) + ' Q ' + (-headW + 6) + ' ' + (headY + 22) + ' ' + (-headW + 19) + ' ' + (headY + 32)} fill="none" stroke="#754634" strokeWidth="2" opacity=".4"/>
+        {customHair?<image href={customHair.image} x={customHair.offsetX-customHair.pivot.x*customHair.width*c.head} y={headY+customHair.offsetY-customHair.pivot.y*customHair.height*c.head} width={customHair.width*c.head} height={customHair.height*c.head}/>:<>
         {c.hair !== 'bald' && <path d={mainHair} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
         {(c.hair === 'fade' || c.hair === 'buzz') && <g>
           <path d={'M ' + (-headW+3) + ' ' + (headY-6) + ' Q ' + (-headW+3) + ' ' + (headY-26) + ' ' + (-headW+17) + ' ' + (headY-25) + ' Q ' + (-headW+19) + ' ' + (headY-12) + ' ' + (-headW+3) + ' ' + (headY-6) + ' Z'} fill={c.hair === 'fade' ? c.skin : c.hairColor} opacity={c.hair==='fade' ? .64 : 1}/>
@@ -170,6 +175,7 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
           const path = 'M ' + x + ' ' + (headY-headH+6) + ' Q ' + (x+side*9) + ' ' + (headY-12) + ' ' + (x+side*3) + ' ' + end;
           return <g key={side + '-' + i}><path d={path} stroke="#292437" strokeWidth={c.hair === 'braids' ? 9 : 12} strokeLinecap="round" fill="none"/><path d={path} stroke={c.hairColor} strokeWidth={c.hair === 'braids' ? 5.5 : 8} strokeLinecap="round" fill="none"/>{c.hair === 'braids' && Array.from({ length: 5 }, (_, n) => <path key={n} d={'M ' + (x-3) + ' ' + (headY-23+n*8) + ' l 6 4'} stroke="#928093" opacity=".6" strokeWidth="1.5"/>)}</g>;
         }))}
+        </>}
         {c.hat !== 'none' && <><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' Q 0 ' + (headY - headH - 35) + ' ' + (headW + 3) + ' ' + (headY - headH + 10) + ' Z'} fill={c.shirt} stroke="#252037" strokeWidth="3"/><path d={'M ' + (-headW - 3) + ' ' + (headY - headH + 10) + ' H ' + (headW + 3)} stroke="#252037" strokeWidth="5"/></>}
         {!rear && <g>
           {(emotion === 'happy' || emotion === 'excited' || emotion === 'sad') && !profile && [-24,24].map(offset => <ellipse key={offset} cx={Math.max(-headW+12,Math.min(headW-12,faceCenter+offset))} cy={headY+15} rx="6.5" ry="3.5" fill={emotion === 'happy' || emotion === 'excited' ? '#dc8877' : '#897195'} opacity=".22"/>)}

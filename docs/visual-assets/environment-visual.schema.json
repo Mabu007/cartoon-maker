@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "quality": {
+      "type": "string",
+      "enum": [
+        "eco",
+        "balanced",
+        "high"
+      ]
+    },
+    "lighting": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "ambient": {
+          "type": "string",
+          "pattern": "^#[a-f\\d]{6}$"
+        },
+        "intensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.5
+        },
+        "shadow": {
+          "type": "string",
+          "pattern": "^#[a-f\\d]{6}$"
+        },
+        "shadowOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "lights": {
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "x": {
+                "type": "number",
+                "minimum": -2000,
+                "maximum": 3000
+              },
+              "y": {
+                "type": "number",
+                "minimum": -2000,
+                "maximum": 3000
+              },
+              "color": {
+                "type": "string",
+                "pattern": "^#[a-f\\d]{6}$"
+              },
+              "intensity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 10,
+                "maximum": 1500
+              },
+              "falloff": {
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 4
+              },
+              "keys": {
+                "maxItems": 120,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "time": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 180
+                    },
+                    "x": {
+                      "type": "number",
+                      "minimum": -2000,
+                      "maximum": 3000
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": -2000,
+                      "maximum": 3000
+                    },
+                    "intensity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 2
+                    }
+                  },
+                  "required": [
+                    "time",
+                    "x",
+                    "y",
+                    "intensity"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "color",
+              "intensity",
+              "radius",
+              "falloff"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "enabled",
+        "ambient",
+        "intensity",
+        "shadow",
+        "shadowOpacity",
+        "lights"
+      ],
+      "additionalProperties": false
+    },
+    "perspective": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "horizon": {
+          "type": "number",
+          "minimum": -540,
+          "maximum": 530
+        },
+        "nearY": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1080
+        },
+        "farY": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1080
+        },
+        "nearScale": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 4
+        },
+        "farScale": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 4
+        },
+        "minScale": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 4
+        },
+        "maxScale": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 4
+        }
+      },
+      "required": [
+        "enabled",
+        "horizon",
+        "nearY",
+        "farY",
+        "nearScale",
+        "farScale",
+        "minScale",
+        "maxScale"
+      ],
+      "additionalProperties": false
+    },
+    "walkable": {
+      "minItems": 3,
+      "maxItems": 80,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "minimum": -2000,
+            "maximum": 3000
+          },
+          "y": {
+            "type": "number",
+            "minimum": -2000,
+            "maximum": 3000
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "version",
+    "quality"
+  ],
+  "additionalProperties": false
+}
