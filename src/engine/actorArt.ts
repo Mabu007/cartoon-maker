@@ -1,7 +1,8 @@
+import {buildLayeredHair,hasLayeredHair,hairRenderPaths} from './layeredHair.ts';
 import {morphHandGeometry} from './handRig.ts';
 import {faceLandmarks} from './faceIdentityGeometry.ts';
 import type {NativeBonePathCache} from './vectorArtworkRender.ts';
-import { drawComponent, drawBoneComponent } from './hybridArtwork.ts';
+import { drawComponent, drawBoneComponent, componentFor } from './hybridArtwork.ts';
 import {drawStudioLimb,drawAnatomicalLimb} from './studioLimbArt.ts';
 import { propArm, propPlacement, type PropPose } from './propMotion.ts';
 import { bodyProportions } from './bodyBuild.ts';
@@ -342,6 +343,11 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   const {w,h}=headMetrics(c,art), q=c.wardrobe;
   const yScale=h/45;
   const ears=profile?[-w*.47]:[-w+3,w-3];
+  const openHat=['none','visor','sun-visor','fascinator'].includes(c.hat);
+  const customHairPart=openHat?componentFor(c,'hair',view):undefined;
+  const customHairReady=Boolean(customHairPart&&texture?.(customHairPart.image));
+  const layered=hasLayeredHair(c),hair=openHat&&!customHairReady?buildLayeredHair(c,art):undefined;
+  if(hair)for(const item of hairRenderPaths(hair,'background'))vector(g,item.d,item.fill,item.stroke,item.strokeWidth);
   if(!profile)drawEar(g,c,ears[1],8*yScale,-1);
   const customHead=drawComponent(g,c,'head-base',view,0,0,0,texture);
   if(!customHead)vector(g,headOutline(c,art),c.skin,c.visual?.style==='illustrated'?shade(c.skin,-.48):INK,c.visual?.style==='illustrated'?1.9:3.5);
@@ -355,11 +361,12 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
     vector(g,`M ${-w*.65} ${h*.34} Q ${-w*.48} ${h*.45} ${-w*.29} ${h*.4} M ${w*.32} ${h*.4} Q ${w*.52} ${h*.43} ${w*.7} ${h*.29}`,'none',tone,.9);
     if(c.visual.profile==='mature'||c.visual.profile==='elderly')vector(g,`M ${-w*.35} ${-h*.47} Q 0 ${-h*.51} ${w*.38} ${-h*.45} M ${-w*.35} ${-h*.38} Q 0 ${-h*.42} ${w*.38} ${-h*.36}`,'none',tone,.8);
   }
-  const openHat=['none','visor','sun-visor','fascinator'].includes(c.hat);
   const customHair=openHat&&drawComponent(g,c,'hair',view,0,0,0,texture);
-  if(openHat&&!customHair) {
+  if(hair&&!customHair){
+    for(const item of hairRenderPaths(hair,'foreground'))vector(g,item.d,item.fill,item.stroke,item.strokeWidth);
+  }else if(openHat&&!customHair&&!layered) {
     if(!drawCatalogHair(g,c,art,w,h))drawIllustratedHair(g,c,art,w,h);
-  } else if(!customHair&&['bob','hime','mullet','ponytail','waves','wolf-cut','braids','locs','curtain-bangs'].includes(c.hair)) {
+  } else if(!customHair&&!layered&&['bob','hime','mullet','ponytail','waves','wolf-cut','braids','locs','curtain-bangs'].includes(c.hair)) {
     if(!drawCatalogHair(g,c,art,w,h*.83))drawIllustratedHair(g,c,art,w,h*.83);
   }
   drawEar(g,c,ears[0],8*yScale,1);

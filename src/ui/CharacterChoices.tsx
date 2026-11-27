@@ -1,3 +1,6 @@
+import {LayeredHairControls} from './LayeredHairControls.tsx';
+import {buildLayeredHair,hairRenderPaths} from '../engine/layeredHair.ts';
+import {hairDesignDefaults} from '../engine/hairDesignSchema.ts';
 import { useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { characterStyles, garmentDefaults, styleNames, wardrobeStyles } from '../engine/characterCatalog.ts';
@@ -43,6 +46,10 @@ const formatStyle = (field:Core|Addon,value:string)=>choiceNames[field]?.[value]
 function glyph(field:Core|Addon,value:string,c:Character):ReactNode {
   if(value==='none'||value==='auto')return null;
   const paths:Partial<Record<Core|Addon,Record<string,string>>> = {hair:hairPaths,hat:hatPaths,eyewear:eyewearPaths,extra:extraPaths,footwear:shoePaths,bag:bagPaths,handheld:handheldPaths};
+  if(field==='hair'){
+    const model=buildLayeredHair({...c,hair:value as Character['hair'],hairDesign:hairDesignDefaults},{width:1,face:0,far:true,rear:false,profile:false});
+    if(model)return <svg viewBox="-85 -115 170 225" aria-hidden="true">{(['background','foreground'] as const).flatMap(layer=>hairRenderPaths(model,layer)).map(({id,...item})=><path key={id} {...item} strokeLinecap="round" strokeLinejoin="round"/>)}</svg>;
+  }
   const d=paths[field]?.[value];
   const svg=(viewBox:string,d:string,fill:string)=> <svg viewBox={viewBox} aria-hidden="true"><path d={d} fill={fill} stroke="currentColor" strokeWidth={field==='shape'?4:2} strokeLinejoin="round"/></svg>;
   if(d) {
@@ -159,6 +166,7 @@ export function CharacterChoices({ section, character, change, changeCloset }:{
         </label>)}
       {error&&<p role="alert">{error}</p>}
     </div>}
+    {section==='Hair'&&<LayeredHairControls character={character} change={value=>change('hairDesign',value)}/>}
     <details className="factory-details">
       <summary>{section==='Outfit'?'Fit and artwork controls':section==='Hair'?'Hair and hat controls':section==='Face'?'Facial controls':'Accessory controls'}</summary>
       {controls[section].map(([key,title,min,max])=><label key={key} className="field slider">

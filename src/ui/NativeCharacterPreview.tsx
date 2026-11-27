@@ -1,3 +1,4 @@
+import {buildLayeredHair,hasLayeredHair,hairRenderPaths} from '../engine/layeredHair.ts';
 import {topContour} from '../engine/wardrobeArt.ts';
 import {morphHandGeometry} from '../engine/handRig.ts';
 import {faceLandmarks,headOutline,eyeIdentity,pupils,faceDetailGeometry} from '../engine/faceIdentityGeometry.ts';
@@ -52,6 +53,9 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
   const q = view === 'three-quarter' || view === 'back-quarter';
   const width = profile ? .65 : q ? .9 : 1;
   const faceArt=viewArt[view],faceFit=faceLandmarks(c,faceArt);
+  const layered=hasLayeredHair(c),hairOpen=['none','visor','sun-visor','fascinator'].includes(c.hat);
+  const model=layered&&hairOpen&&!componentFor(c,'hair',view)?buildLayeredHair(c,faceArt):undefined;
+  const hairLayer=(layer:'background'|'foreground')=>model&&<g transform={`translate(0 ${headY}) scale(${c.head})`}>{hairRenderPaths(model,layer).map(({id,...item})=><path key={id} {...item} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;
   const headW=faceFit.w*c.head,headH=faceFit.h*c.head;
   const headY = -(142 * c.height + 11 * c.torso)-36*c.head*((c.visual?.neckLength??1)-1);
   const shirtBottom = -(71 * c.legs);
@@ -156,11 +160,12 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
         })}
         {!customTop&&(c.outfit === 'jacket' || c.outfit === 'uniform') && <path d={'M 0 ' + shirtTop + ' V ' + shirtBottom + ' M -11 ' + shirtTop + ' l 11 21 l -17 3 M 11 ' + shirtTop + ' l -11 21 l 17 3'} fill="none" stroke="#33263c" strokeWidth="2"/>}
         {c.accessory === 'chain' && <path d={'M -13 ' + (shirtTop + 6) + ' Q 0 ' + (shirtTop + 36) + ' 13 ' + (shirtTop + 6)} fill="none" stroke="#f8d06d" strokeWidth="3"/>}
+        {hairLayer('background')}
         <ellipse cx={-headW + 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>
         {!profile && <ellipse cx={headW - 3} cy={headY + 8} rx="8" ry="9" fill={c.skin} stroke="#252037" strokeWidth="3"/>}
         {customHead?<g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage character={c} view={view} slot="head-base" x={0} y={0}/></g>:<path d={headOutline(c,faceArt)} transform={`translate(0 ${headY}) scale(${c.head})`} fill={c.skin} stroke="#252037" strokeWidth={c.visual?.style==='illustrated'?1.9:3.5}/>}
         <path d={'M ' + (-headW + 9) + ' ' + (headY + 8) + ' Q ' + (-headW + 6) + ' ' + (headY + 22) + ' ' + (-headW + 19) + ' ' + (headY + 32)} fill="none" stroke="#754634" strokeWidth="2" opacity=".4"/>
-        {customHair?<image preserveAspectRatio="none" href={customHair.image} x={customHair.offsetX-customHair.pivot.x*customHair.width*c.head} y={headY+customHair.offsetY-customHair.pivot.y*customHair.height*c.head} width={customHair.width*c.head} height={customHair.height*c.head}/>:<>
+        {customHair?<image preserveAspectRatio="none" href={customHair.image} x={customHair.offsetX-customHair.pivot.x*customHair.width*c.head} y={headY+customHair.offsetY-customHair.pivot.y*customHair.height*c.head} width={customHair.width*c.head} height={customHair.height*c.head}/>:layered?hairLayer('foreground'):<>
         {c.hair !== 'bald' && <path d={mainHair} fill={c.hairColor} stroke="#282036" strokeWidth="3"/>}
         {(c.hair === 'fade' || c.hair === 'buzz') && <g>
           <path d={'M ' + (-headW+3) + ' ' + (headY-6) + ' Q ' + (-headW+3) + ' ' + (headY-26) + ' ' + (-headW+17) + ' ' + (headY-25) + ' Q ' + (-headW+19) + ' ' + (headY-12) + ' ' + (-headW+3) + ' ' + (headY-6) + ' Z'} fill={c.hair === 'fade' ? c.skin : c.hairColor} opacity={c.hair==='fade' ? .64 : 1}/>
