@@ -1,3 +1,5 @@
+import {sampleVolumeFrame,volumeColor,dominantLight,colorNumber} from './volumetricLighting.ts';
+import {VolumeGradientCache,type SurfaceFill} from './vvleRender.ts';
 import type {ResolvedArtworkPose} from './resolvedArtworkPose.ts';
 import {NativeBonePathCache} from './vectorArtworkRender.ts';
 import { lightAt, perspectiveScale } from './environmentVisuals.ts';
@@ -30,6 +32,7 @@ export type RenderOptions = { onResolvedArtworkPose?:(frame:ResolvedArtworkPose)
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
   const app = new Application();
   const vectorCache=new NativeBonePathCache();
+  const volumeCache=new VolumeGradientCache();
   const [width, height] = videoFormats[format].viewport;
   const [pixelWidth, pixelHeight] = dimensions(format, resolution);
   await app.init({ width: pixelWidth, height: pixelHeight, resolution: 1, antialias: true, autoStart: false, background: '#24202c', preference: ['webgl', 'webgpu', 'canvas'], preserveDrawingBuffer: capture, powerPreference: 'low-power', hello: false });
@@ -128,6 +131,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     return entity;
   }
   function draw(scene: Scene, characters: Character[], time: number, options: RenderOptions = {}) {
+    volumeCache.begin();
     repaintLatestFrame=()=>{draw(scene,characters,time,options);};
     const characterById = new Map(characters.map(character => [character.id, character]));
     lastFrame = evaluate(scene, time, characterById, width);
@@ -174,7 +178,9 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       backdrop.texture = textures.get(image)!;
       backdrop.width = WIDTH * (scene.backgroundTransform?.scale??1); backdrop.height = HEIGHT * (scene.backgroundTransform?.scale??1); backdrop.visible = true;
     }
-    backdrop.x=scene.backgroundTransform?.x??0;backdrop.y=scene.backgroundTransform?.y??0;
+    const vvle=sampleVolumeFrame(scene.visual,time);
+    backdrop.x=(scene.backgroundTransform?.x??0)+(vvle?.settings.parallax??0)*(camera.x-480);
+    backdrop.y=(scene.backgroundTransform?.y??0)+(vvle?.settings.parallax??0)*(camera.y-270);
     if(image){backdrop.width=WIDTH*(scene.backgroundTransform?.scale??1);backdrop.height=HEIGHT*(scene.backgroundTransform?.scale??1);}
     currentCamera = camera;
     // Preview, export and stage picking share one exact camera projection.
@@ -201,7 +207,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.scale.set(prop.flip ? -prop.scale : prop.scale, prop.scale);
       entity.group.angle = prop.rotation;
       entity.group.alpha=prop.visual?.opacity??1;
-      entity.group.tint=prop.visual?.lighting===false?0xffffff:lightAt(point.x,point.y-(prop.imageHeight??100)*prop.scale*.5,scene.visual,time);
+      const propFrame=prop.visual?.lighting===false?undefined:sampleVolumeFrame(scene.visual,time,prop.depth);
+      entity.group.tint=prop.visual?.lighting===false?0xffffff:propFrame?colorNumber(volumeColor(propFrame,{x:point.x,y:point.y-(prop.imageHeight??100)*prop.scale*.5},[0,0,1],'#ffffff',prop.kind==='window'?'glass':prop.kind==='phone'||prop.kind==='lamp'?'metal':'fabric')):lightAt(point.x,point.y-(prop.imageHeight??100)*prop.scale*.5,scene.visual,time);
       entity.group.zIndex = renderDepth(prop.depth, point.y);
       if(isSeating(prop.kind)) {
         if(!entity.foreground) {entity.foreground=new Graphics();elements.addChild(entity.foreground);}
@@ -264,17 +271,23 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       entity.group.position.set(point.x, point.y);
       entity.group.angle = actor.rotation;
       entity.group.alpha=actor.visual?.opacity??1;
-      const tint=actor.visual?.lighting===false?0xffffff:lightAt(point.x,point.y-110*actor.scale,scene.visual,time);
+      const volume=actor.visual?.lighting===false?undefined:sampleVolumeFrame(scene.visual,time,actor.depth);
+      const tint=actor.visual?.lighting===false||volume?0xffffff:lightAt(point.x,point.y-110*actor.scale,scene.visual,time);
       entity.art.tint=tint;entity.rearHairArt!.tint=tint;entity.face!.tint=tint;entity.gestureArt!.tint=tint;
       const view = (options.edit ? source.view : camera.view) ?? actor.view;
       const directionFlip = options.edit ? source.flip : actor.flip !== (viewForward(view) !== viewForward(actor.view));
       entity.group.scale.set((directionFlip ? -1 : 1) * actor.scale, actor.scale);
+      const angle=actor.rotation*Math.PI/180,cos=Math.cos(angle),sin=Math.sin(angle);
+      const worldPoint=(p:{x:number;y:number})=>{const x=p.x*actor.scale*(directionFlip?-1:1),y=(p.y-lift)*actor.scale;return {x:point.x+x*cos-y*sin,y:point.y+x*sin+y*cos};};
+      const surface:SurfaceFill|undefined=volume?((base,material,center,rotation=0,shape)=>volumeCache.fill(volume,base,material,worldPoint(center),actor.rotation+(directionFlip?-rotation:rotation),directionFlip,shape)):undefined;
       entity.group.zIndex = renderDepth(actor.depth, point.y);
       entity.art.position.y = -lift;
       entity.gestureArt!.position.y=-lift;
       const lighting=scene.visual?.lighting;
       entity.shadow!.alpha=lighting?.enabled?lighting.shadowOpacity:1;
       ellipse(entity.shadow!.clear(), 0, 3, (39 - Math.min(10, Math.max(0, lift / 5)))*(character.visual?character.thickness:1), !capture&&scene.visual?.quality==='eco'?5:7, lighting?.enabled?lighting.shadow:'#816a61');
+      if(volume&&volume.settings.shadowLength>0){const dir=dominantLight(volume,{x:point.x,y:point.y-90*actor.scale}),len=Math.min(45,dir.weight*volume.settings.shadowLength*30),localX=(-dir.x*cos-dir.y*sin)*(directionFlip?-1:1),localY=dir.x*sin-dir.y*cos;
+        ellipse(entity.shadow!,localX*len,3+localY*len*.18,Math.max(12,28+len*.4),5,lighting?.shadow??'#241b35');}
       // Respect staged three-quarter dialogue angles. An automatic camera gaze
       // must not override the director's chosen front-left/front-right angle.
       const cameraGaze=actor.authoredGaze?actor.gazeTarget==='camera':actor.capturedFacing==='left'||actor.capturedFacing==='right'
@@ -290,7 +303,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
         options.characterPreview&&options.previewViseme
           ? {shape:options.previewViseme,weight:options.previewViseme==='rest'?0:1}:actor.viseme,
         actor.authoredGaze?targetFocus:resolvePreviewFocus(Boolean(options.characterPreview), options.previewFocus, targetFocus), options.edit ? 'idle' : actor.locomotion, lift, actor.gaitTime, actor.gaitVelocity, viewForward(view), actor.actionTime, actor.gaitWeight, actor.listening, actor.turnScale,
-        {vectorCache,onResolvedArtworkPose:options.onResolvedArtworkPose,rearHairArt:entity.rearHairArt,mirrored:directionFlip,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
+        {vectorCache,surface,onResolvedArtworkPose:options.onResolvedArtworkPose,rearHairArt:entity.rearHairArt,mirrored:directionFlip,texture:costumeTexture,camera:cameraGaze,art:entity.facialArt!.clear(),gaitStyle:actor.gaitStyle,gestureArt:entity.gestureArt!.clear(),actionWeight:actor.actionWeight,expressionIntensity:actor.expressionIntensity,actingIntent:actor.actingIntent,emotion:actor.emotion,facialCapture:actor.facialCapture,capturedArms:actor.capturedArms,capturedFingers:actor.capturedFingers,capturedRig:actor.capturedRig,capturedHeadFacing:actor.capturedHeadFacing,capturedHeadYaw:actor.capturedHeadYaw,capturedContact:actor.capturedContact,heldItems:actor.heldItems,propPose:actor.propPose,handOverride:actor.handOverride},options.edit ? undefined : actor.handGesture);
       entity.face!.y -= lift;
       entity.rearHairArt!.y -= lift;
       // Props are children of the same character Container as the hands:
@@ -407,6 +420,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     for(const [id,entry] of titleLabels)if(!activeTitles.has(id)){entry.text.destroy();titleLabels.delete(id);}
     if(!options.edit&&transition)drawTransition(fade,transition.effect,transition.progress,width,height);
     app.render();
+    volumeCache.end();
     return lastFrame;
   }
   function pick(x: number, y: number) {
@@ -431,6 +445,7 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     preloadBackground: (image: string | undefined) => {if (image) void loadImage(image).catch(()=>{});},
     destroy: () => {
       destroyed=true;
+      volumeCache.dispose();
       cancelAnimationFrame(imageFrame);
       repaintLatestFrame=undefined;
       requests.clear();

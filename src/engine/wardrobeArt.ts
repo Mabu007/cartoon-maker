@@ -1,4 +1,4 @@
-import { FillPattern, Matrix, Texture, type Graphics } from 'pixi.js';
+import { FillGradient, FillPattern, Matrix, Texture, type Graphics } from 'pixi.js';
 import { ellipse, INK, rect, segment } from './art.ts';
 import { illustratedPath, shade, type IllustratedView } from './illustration.ts';
 import type { Point } from './animation.ts';
@@ -8,7 +8,7 @@ import type { Character } from './schema.ts';
 type Closet = NonNullable<Character['wardrobe']>;
 export type CostumeTexture = (source: string) => Texture | undefined;
 
-export function vector(g: Graphics, path: string, fill = 'none', outline = INK, width = 1.8, matrix?: Matrix) {
+export function vector(g: Graphics, path: string, fill: string|FillGradient = 'none', outline = INK, width = 1.8, matrix?: Matrix) {
   const shape = positionedPath(path,matrix);
   const use = () => g.path(shape);
   if (fill !== 'none') use().fill(fill);
@@ -74,7 +74,7 @@ function fabricTile(kind: PatternKey, color: string) {
   return canvas;
 }
 const tileTextures = new WeakMap<HTMLCanvasElement, Texture>();
-export function drawFabric(g: Graphics, path: string, base: string, w: Closet | undefined, texture?: CostumeTexture, transform?: Matrix) {
+export function drawFabric(g: Graphics, path: string, base: string|FillGradient, w: Closet | undefined, texture?: CostumeTexture, transform?: Matrix) {
   vector(g,path,base,INK,0,transform);
   let image = w?.patternImage ? texture?.(w.patternImage) : undefined;
   if (!image && w?.pattern && w.pattern !== 'solid') {

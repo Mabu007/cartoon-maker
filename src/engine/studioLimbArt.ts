@@ -1,3 +1,4 @@
+import type {SurfaceFill} from './vvleRender.ts';
 import type {PrimaryArtworkPose} from './primaryArtworkPose.ts';
 import { anatomicalSegments, type LimbRegion, type LimbMorphology } from './anatomicalVectorArt.ts';
 import type {Graphics} from 'pixi.js';
@@ -31,10 +32,11 @@ export function drawStudioLimb(g:Graphics,joints:Point[],width:number,color:stri
 
 /** Opt-in anatomy artwork. Existing illustrated and classic projects retain
  * their original renderer. Geometry strings are fixed and use the shared path cache. */
-export function drawAnatomicalLimb(g:Graphics,joints:Point[],width:number,color:string,region:LimbRegion,morphology?:LimbMorphology,primary?:PrimaryArtworkPose){
+export function drawAnatomicalLimb(g:Graphics,joints:Point[],width:number,color:string,region:LimbRegion,morphology?:LimbMorphology,primary?:PrimaryArtworkPose,surface?:SurfaceFill){
   for(const {frame,art} of anatomicalSegments(joints,width,region,morphology,primary)){
     const transform=at(frame.x,frame.y,frame.length,frame.width,frame.angle);
-    vector(g,art.outline,color,shade(color,-.34),.65,transform);
+    const middle={x:frame.x+Math.cos(frame.angle*Math.PI/180)*frame.length*.5,y:frame.y+Math.sin(frame.angle*Math.PI/180)*frame.length*.5};
+    vector(g,art.outline,surface?.(color,'skin',middle,frame.angle,'cylinder')??color,shade(color,-.34),.65,transform);
     vector(g,art.shadow,shade(color,-.16),'none',0,transform);
     vector(g,art.highlight,shade(color,.12),'none',0,transform);
   }
