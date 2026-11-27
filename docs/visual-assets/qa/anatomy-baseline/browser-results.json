@@ -1,0 +1,115 @@
+{
+  "browser": "158.0.8127.0",
+  "system": {
+    "kernel": "6.18.57",
+    "model": "AMD EPYC 7763 64-Core Processor",
+    "visibleCpus": 9,
+    "memoryMiB": 9967
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "notes": [],
+  "smoke": {
+    "productionCharacterPreview": "Built app, WebGL, two characters × five views; walk, sit, wave and talk.",
+    "serviceWorker": {
+      "controlled": true,
+      "names": [
+        "sirvibe-shell-750fadc72b340df07c72"
+      ]
+    },
+    "offline": "Transport disabled after precache; reloaded, reopened the imported IndexedDB project, confirmed opt-in and played the stage.",
+    "evaluatedStage": "Confirmed Sbu walking, Zee sitting, right-hand cup custody and multiple speech visemes.",
+    "svgFallback": "Built app selected the SVG preview after graphics context loss; both presets contained authored contours."
+  },
+  "stage": {
+    "gl": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "runs": [
+      {
+        "mode": "legacy",
+        "samples": 160,
+        "p50Ms": 7.2000000001862645,
+        "p95Ms": 13.700000000186265,
+        "jsHeapMiB": 110.63
+      },
+      {
+        "mode": "anatomical-v1",
+        "samples": 160,
+        "p50Ms": 8,
+        "p95Ms": 19.899999999906868,
+        "jsHeapMiB": 110.63
+      },
+      {
+        "mode": "anatomical-v1",
+        "samples": 160,
+        "p50Ms": 7.600000000093132,
+        "p95Ms": 17.399999999906868,
+        "jsHeapMiB": 110.63
+      },
+      {
+        "mode": "legacy",
+        "samples": 160,
+        "p50Ms": 7.099999999627471,
+        "p95Ms": 16.59999999962747,
+        "jsHeapMiB": 110.63
+      }
+    ],
+    "scene": {
+      "canvas": [
+        960,
+        540
+      ],
+      "seconds": 30,
+      "actorCount": 2,
+      "propCount": 8,
+      "clipCount": 44
+    },
+    "cues": [
+      "closed",
+      "rest",
+      "wide",
+      "open",
+      "tongue"
+    ],
+    "heapBefore": {
+      "usedSize": 43527072,
+      "totalSize": 105246720,
+      "embedderHeapUsedSize": 2450168,
+      "backingStorageSize": 13069857
+    },
+    "heapAfter": {
+      "usedSize": 43803784,
+      "totalSize": 128380928,
+      "embedderHeapUsedSize": 1924104,
+      "backingStorageSize": 12853137
+    },
+    "measurement": "Synchronous renderer.draw() wall time, including CPU work and command submission. No GPU fence. Alternating runs and 60 warmup draws per run."
+  },
+  "pageErrors": [],
+  "offlineExport": {
+    "sourceSceneDurationSeconds": 3,
+    "network": "offline",
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "vp8",
+        "codec_type": "video",
+        "width": 1280,
+        "height": 720,
+        "r_frame_rate": "30/1"
+      },
+      {
+        "codec_name": "opus",
+        "codec_type": "audio",
+        "r_frame_rate": "0/0"
+      }
+    ],
+    "format": {
+      "format_name": "matroska,webm",
+      "duration": "3.020000",
+      "size": "1533449"
+    }
+  }
+}
