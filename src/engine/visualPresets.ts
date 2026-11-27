@@ -34,3 +34,23 @@ export const illustratedCharacters:Character[]=[
 
 illustratedCharacters[0].visual!.components=compileComponents(modularExample);
 illustratedCharacters[1].visual!.components=compileComponents(visualExamples.find(p=>p.category==='hair')!);
+
+/** Native premium presets intentionally use no baked raster components:
+ * every face, colour, body shape, hair and garment remains editable. The
+ * original imported-art examples remain available unchanged. */
+export const studioCharacters:Character[]=[
+  {...applyProfile(characters[0],'athletic'),id:'sbu-studio',name:'Sbu · Studio',
+    skin:'#a7684b',shirt:'#304a48',pants:'#28363e',shoes:'#d3c1a2',
+    hair:'fade',hairColor:'#242120',beard:'goatee',shape:'oblong',eyes:'hooded',brows:'bold',nose:'flat',mouth:'smile',outfit:'biker',
+    head:.78,height:1.15,legs:1.12,arms:1.03,thickness:1.06,
+    wardrobe:{jawWidth:1.12,chinWidth:1.05,cheekWidth:.93,headStretch:1.04,noseWidth:1.12,trim:'#cba97b',footwear:'boot',sleeve:'long',bottoms:'straight'},
+    visual:{version:1,style:'illustrated',profile:'athletic',shoulders:1.08,waist:.91,hips:.94,armWidth:1.17,thighWidth:1.12,calfWidth:1.07,handSize:1.08,footSize:1.04},
+    personality:{preset:'confident',autoActing:'subtle'}},
+  {...applyProfile(characters[1],'curvy'),id:'zee-studio',name:'Zee · Studio',
+    skin:'#9c5b43',shirt:'#b46d50',pants:'#263b40',shoes:'#d9b482',
+    hair:'braids',hairColor:'#302327',beard:'none',shape:'heart',eyes:'almond',brows:'arched',nose:'button',mouth:'smile',outfit:'blouse',
+    head:.79,height:1.08,legs:1.12,arms:1.02,thickness:1,
+    wardrobe:{jawWidth:.87,chinWidth:.9,cheekWidth:.95,headStretch:1.05,lipThickness:1.13,trim:'#e0b98c',footwear:'chelsea',sleeve:'rolled',bottoms:'wide-leg'},
+    visual:{version:1,style:'illustrated',profile:'curvy',shoulders:.94,waist:.83,hips:1.12,armWidth:1.02,thighWidth:1.08,calfWidth:1.02,handSize:1.02,footSize:.98},
+    personality:{preset:'confident',autoActing:'subtle'}}
+];

@@ -1,7 +1,7 @@
 import { exportCharacterArtwork, downloadText } from '../services/assetPreparation.ts';
 import { exportAssetPackage, characterCompatibility } from '../engine/visualAssets.ts';
 import { useState } from 'react';
-import { applyProfile, illustratedCharacters } from '../engine/visualPresets.ts';
+import { applyProfile, illustratedCharacters, studioCharacters } from '../engine/visualPresets.ts';
 import { bodyProfiles, compileComponents, assetInstructions, type CharacterVisualData, type VisualAssetPack } from '../engine/visualAssets.ts';
 import type { Character } from '../engine/schema.ts';
 import { AssetWorkbench } from './AssetWorkbench.tsx';
@@ -20,6 +20,9 @@ export function CharacterVisualStudio({character,change}:{character:Character;ch
     setWorkbench(false);setStatus(`${report?.incompleteViews.length?'Partial body import: native parts fill undeclared slots. ':''}Applied ${pack.name}. Other views retain the native artwork; test all declared views and match sleeve colour for clothing.`);
   }
   return <details className="character-visual-studio"><summary>Illustrated characters & imported artwork</summary>
+    <p className="small-text">Studio makeovers · fully editable native artwork and existing animation rig.</p>
+    <div className="field-row">{studioCharacters.map(preset=><button type="button" key={preset.id} onClick={()=>{change({...structuredClone(preset),id:character.id,name:character.name});setStatus(`Applied ${preset.name}. Body, face, colours, hair and clothing remain editable.`);}}>Use {preset.name}</button>)}</div>
+    <p className="small-text">Imported artwork examples</p>
     <div className="field-row">{illustratedCharacters.map(preset=><button type="button" key={preset.id} onClick={()=>change({...preset,id:character.id,name:character.name})}>Use {preset.name}</button>)}</div>
     <label className="field">Art style<select aria-label="Art style" value={visual.style} onChange={e=>{patch({style:e.target.value as CharacterVisualData['style'],components:[]});setStatus('Style changed; custom components were detached.');}}><option value="classic">Classic SIRVIBE</option><option value="illustrated">Illustrated studio</option></select></label>
     <label className="field">Body profile<select aria-label="Body profile" value={visual.profile} onChange={e=>{change(applyProfile(character,e.target.value as CharacterVisualData['profile']));setStatus('Profile proportions applied. Incompatible artwork was detached; undo by closing without saving.');}}>{bodyProfiles.map(p=><option key={p}>{p}</option>)}</select></label>
