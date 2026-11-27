@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {mkdir,writeFile,unlink} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import {dirname,join,delimiter} from 'node:path';
+import {existsSync} from 'node:fs';
+const require=createRequire(import.meta.url);
+function load(name){try{return require(name);}catch{for(const dir of process.env.PATH.split(delimiter)){const p=join(dirname(dir),name);if(existsSync(join(p,'package.json')))return require(p);}throw Error('QA dependency missing: '+name);}}
+const playwright=load('playwright'),chromium=load('@sparticuz/chromium'),out='dist/qa-workspace',harness='qa-workspace-fixture.html';
+await mkdir(out,{recursive:true});await writeFile(harness,'<!doctype html><html><body>fixture</body></html>');
+const dev=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','4179','--strictPort'],{stdio:'inherit'});
+const preview=spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port','4180','--strictPort'],{stdio:'inherit'});
+let browser;const report={source:process.env.VERCEL_GIT_COMMIT_SHA??'local',browser:'',checks:{},errors:[],samples:[]};
+try{
+ for(const port of [4179,4180]){let ready=false;for(let i=0;i<100;i++){try{ready=(await fetch('http://127.0.0.1:'+port)).ok;}catch{}if(ready)break;await new Promise(r=>setTimeout(r,250));}assert(ready,'Vite unavailable '+port);}
+ browser=await playwright.chromium.launch({headless:true,executablePath:await chromium.executablePath(),args:[...chromium.args.filter(a=>!a.startsWith('--disable-gpu')&&!a.startsWith('--use-angle')&&!a.startsWith('--use-gl')),'--enable-webgl','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+ report.browser=browser.version();
+ const source=await browser.newPage();await source.goto('http://127.0.0.1:4179/'+harness);
+ const backup=await source.evaluate(async()=>{const {makeProject}=await import('/src/engine/presets.ts');const project=makeProject(true);project.name='Workspace QA';return {format:'toonroom-backup-1',project,audio:{}};});await source.close();
+ const context=await browser.newContext({viewport:{width:1366,height:850},acceptDownloads:true});const page=await context.newPage();page.on('pageerror',e=>report.errors.push(e.message));
+ await page.addInitScript(()=>{window.cameraRequests=0;if(navigator.mediaDevices){Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:()=>{window.cameraRequests++;return Promise.reject(Error('QA camera must not start'));}});}});
+ await page.goto('http://127.0.0.1:4180/?studio=1');await page.waitForFunction(()=>navigator.serviceWorker.controller!==null,{},{timeout:60000});
+ await page.getByLabel('Import SIRVIBE project backup').setInputFiles({name:'workspace.sirvibe',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});
+ await page.getByLabel('Project name').waitFor({timeout:30000});
+ await page.getByRole('button',{name:'Characters',exact:true}).click();await page.getByRole('button',{name:'Create a new character'}).click();
+ const dialog=page.locator('dialog[open]').last(),cat=name=>dialog.getByRole('group',{name:'Character sections'}).getByRole('button',{name,exact:true});
+ await dialog.getByLabel('Character name').fill('Workspace Original');
+ await cat('Body').click();await dialog.getByLabel('Body profile').selectOption('athletic');
+ await cat('Hair').click();await dialog.getByRole('group',{name:'Hairstyle'}).getByRole('button',{name:'Locs',exact:true}).click();
+ await cat('Face').click();await dialog.getByRole('group',{name:'Head shape'}).getByRole('button',{name:'Square',exact:true}).click();
+ await cat('Garments').click();await dialog.getByText('Modular garments · vector v1',{exact:true}).click();await dialog.getByLabel('Use modular garments').check();await dialog.getByLabel('Garment Top').selectOption('wrap-tunic');await dialog.getByLabel('Garment Bottom').selectOption('wrap-skirt');
+ await dialog.getByRole('button',{name:'Undo',exact:true}).click();assert.notEqual(await dialog.getByLabel('Garment Bottom').inputValue(),'wrap-skirt');
+ await dialog.getByRole('button',{name:'Redo',exact:true}).click();assert.equal(await dialog.getByLabel('Garment Bottom').inputValue(),'wrap-skirt');report.checks.undoRedo=true;
+ await dialog.getByRole('button',{name:'Zoom in character'}).click();assert.match(await dialog.locator('.workspace-preview-transform').getAttribute('style'),/scale\(1\.2\)/);
+ await dialog.getByLabel('Character preview').focus();await dialog.getByLabel('Character preview').press('ArrowRight');assert.match(await dialog.locator('.workspace-preview-transform').getAttribute('style'),/16px/);await dialog.getByRole('button',{name:'Fit entire character'}).click();report.checks.zoomPan=true;
+ await cat('Personality').click();await dialog.getByLabel('Personality preset').selectOption('nervous');await dialog.getByLabel('Coordinated procedural acting (experimental)').check();
+ await dialog.getByText('Audition physics',{exact:true}).click();await dialog.getByLabel('Audition physics').selectOption('expressive');await dialog.getByLabel('Audition wind').fill('20');
+ await dialog.getByRole('button',{name:'Talk',exact:true}).click();await page.waitForTimeout(500);await dialog.getByRole('button',{name:'Pause audition'}).click();
+ assert.equal(await page.evaluate(()=>window.cameraRequests),0);report.checks.noCameraWithoutConsent=true;
+ await dialog.getByRole('button',{name:'Open webcam audition'}).click();await page.getByRole('button',{name:'Enable camera'}).waitFor();assert.equal(await page.evaluate(()=>window.cameraRequests),0);await page.locator('dialog[open]').last().getByRole('button',{name:'Close dialog'}).click();
+ await dialog.getByRole('button',{name:'Reset audition settings'}).click();assert.equal(await dialog.getByLabel('Audition physics').inputValue(),'off');
+ await page.screenshot({path:out+'/workspace-desktop.png',timeout:15000});
+ const times=[];for(const name of ['Identity','Body','Face','Eyes','Brows','Nose','Mouth','Ears','Hair','Facial hair','Garments','Footwear','Accessories','Personality','Voice','Physics','Advanced art']){const start=performance.now();await cat(name).click();await dialog.locator('.workspace-category-title').filter({hasText:name}).waitFor();times.push(performance.now()-start);}
+ times.sort((a,b)=>a-b);report.samples={categoryClickMedianMs:times[8],categoryClickP95Ms:times[16],count:times.length};
+ await dialog.getByRole('button',{name:'Save character'}).click();await page.getByRole('button',{name:'Edit Workspace Original'}).waitFor();await page.getByRole('button',{name:'Place Workspace Original at the playhead'}).click();
+ await page.getByRole('button',{name:'Home',exact:true}).click();await page.getByLabel('Rename Workspace QA').waitFor({timeout:30000});await context.setOffline(true);await page.reload({waitUntil:'domcontentloaded'});await page.getByLabel('Rename Workspace QA').waitFor({timeout:30000});await page.locator('article').filter({has:page.getByLabel('Rename Workspace QA')}).locator('.project-cover').click();
+ await page.getByRole('button',{name:'Characters',exact:true}).click();await page.getByRole('button',{name:'Edit Workspace Original'}).click();
+ const restored=page.locator('dialog[open]').last();await restored.getByRole('group',{name:'Character sections'}).getByRole('button',{name:'Garments',exact:true}).click();await restored.getByText('Modular garments · vector v1',{exact:true}).click();assert.equal(await restored.getByLabel('Garment Top').inputValue(),'wrap-tunic');assert.equal(await restored.getByLabel('Garment Bottom').inputValue(),'wrap-skirt');
+ report.checks.offlineReopen=true;await page.screenshot({path:out+'/workspace-offline.png',timeout:15000});
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:out+'/workspace-mobile.png',timeout:15000});report.checks.mobileCapture=true;
+ assert.equal(report.errors.length,0,report.errors.join('\n'));console.log('WORKSPACE_QA '+JSON.stringify(report));await context.close();
+}finally{await writeFile(out+'/results.json',JSON.stringify(report,null,2));await browser?.close();dev.kill();preview.kill();await unlink(harness);}

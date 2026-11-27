@@ -49,7 +49,7 @@ export function PerformanceStudio({scene,characters,selectedActor,start,close,co
   const [channels,setChannels]=useState<TrackingSelection>(()=>{try{const saved=JSON.parse(localStorage.getItem('sirvibe.tracking.channels')??'null');return Object.fromEntries(Object.entries(defaultTrackingSelection).map(([k,v])=>[k,typeof saved?.[k]==='boolean'?saved[k]:v])) as TrackingSelection;}catch{return {...defaultTrackingSelection};}});
   const channelsRef=useRef(channels);channelsRef.current=channels;
   const {hands}=channels;const face=channels.face||channels.eyes;
-  useEffect(()=>{try{localStorage.setItem('sirvibe.tracking.channels',JSON.stringify(channels));}catch{/* optional storage */}},[channels]);
+  useEffect(()=>{try{if(!previewOnly)localStorage.setItem('sirvibe.tracking.channels',JSON.stringify(channels));}catch{/* optional storage */}},[channels]);
   const channelLabels:Record<keyof TrackingSelection,string>={head:'Head turns & tilt',face:'Facial expressions',eyes:'Eyes, gaze & blinking',torso:'Torso & body turning',hips:'Pelvis / hips',legs:'Legs & knees',arms:'Arms & elbows',hands:'Hands & fingers'};
   function changeChannels(next:TrackingSelection){if(statusRef.current!=='idle')return;setChannels(next);motionStabilizer.current.reset();lastPreview.current=undefined;presentation.current=undefined;drawPose();}
   const [recordVoice,setRecordVoice]=useState(false);

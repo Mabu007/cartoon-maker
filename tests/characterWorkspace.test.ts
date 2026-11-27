@@ -11,6 +11,7 @@ import {characterSecondaryDefaults} from '../src/engine/secondaryMotionSchema.ts
 import {evaluate} from '../src/engine/evaluate.ts';
 import {saveDeviceProject,getDeviceProject} from '../src/services/deviceProjects.ts';
 import {createMovieBackup,restoreMovie} from '../src/services/projectExchange.ts';
+const storage=new Map<string,string>();Object.defineProperty(globalThis,'localStorage',{value:{get length(){return storage.size;},key:(i:number)=>[...storage.keys()][i]??null,getItem:(k:string)=>storage.get(k)??null,setItem:(k:string,v:string)=>{storage.set(k,v);},removeItem:(k:string)=>storage.delete(k)},configurable:true});
 const base=flagshipCharacters[1];
 test('draft edits coalesce per control, undo/redo/reset restore original and history is bounded',()=>{
  let s=startDraft(base);s=draftHistory(s,{type:'edit',update:c=>({...c,height:1.1}),key:'height',time:10});

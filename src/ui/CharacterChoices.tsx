@@ -1,4 +1,3 @@
-import {CharacterSecondaryControls} from './SecondaryMotionControls.tsx';
 import {GarmentControls} from './GarmentControls.tsx';
 import {LayeredHairControls} from './LayeredHairControls.tsx';
 import {buildLayeredHair,hairRenderPaths} from '../engine/layeredHair.ts';
