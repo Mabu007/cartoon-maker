@@ -117,3 +117,5 @@ Stage 8 source 90246963eda5ad97e26734f639caf6afd9780a7b, Vercel EufdSpbHzEgBgqvh
 ## Stage 9 — character dynamics integration candidate
 
 Branch feat/lve-character-dynamics-v1 stacked on VVLE bc314b0. Opt-in scene and character settings, per-component enable/strength/material, deterministic scene-clock adapter, sparse hair and accessory groups, weighted garment/limb/cheek surfaces. Existing motion/prop custody remains authoritative; no full body/cloth solver. Added scripted gust, tests and [Stage 9 contract](character-dynamics-v1.md). Prior VVLE QA did produce portrait screenshot but failed with screenshot timeout, not full acceptance. Stage 9 hosted validation pending at authoring; no release. Stop after Stage 9.
+
+Stage 9 intermediate 1733df6: hosted tests 481 passed; TypeScript rejected invalid earring enum 'hoop' and overly broad tick-rate type. Corrected against existing 'large-hoop'/'charm' variants and literal 30|60 Hz type. No validation bypass.

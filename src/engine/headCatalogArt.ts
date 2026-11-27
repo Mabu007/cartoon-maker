@@ -293,7 +293,7 @@ export function drawPiercing(g:Graphics,c:Character,art:IllustratedView,ears:num
   }
   for(const [i,x] of ears.entries()){
     if ((side==='left'&&i!==0)||(side==='right'&&i!==1)) continue;
-    vector(g,piercingPaths[kind],['stud','gauge','drop'].includes(kind)?metal:'none',metal,1.7,at(x-2,13,scale,kind==='drop'||kind==='hoop'||kind==='huggie'?Math.max(-12,Math.min(12,(swing?.[0]??0)*5)):0));
+    vector(g,piercingPaths[kind],['stud','gauge','drop'].includes(kind)?metal:'none',metal,1.7,at(x-2,13,scale,kind==='drop'||kind==='large-hoop'||kind==='charm'||kind==='huggie'?Math.max(-12,Math.min(12,(swing?.[0]??0)*5)):0));
   }
 }
 

@@ -68,7 +68,7 @@ export function secondaryAnchor(actor:CharacterState,c:Character,view:View,flip:
  return [a*headScale*headMirror*turn,b*headScale*headMirror*turn,d*headScale,e*headScale,actor.x+cos*sx*p.x-sin*sy*(p.y-actor.lift),actor.y+sin*sx*p.x+cos*sy*(p.y-actor.lift)];
 }
 export class CharacterDynamics{
- private sim?:LveSimulation;private scene?:Scene;private chars?:readonly Character[];private byId=new Map<string,Character>();private signature='';private bindings:Binding[]=[];private settings?:SceneSecondaryData;private width=960;private cachedTick=-1;private cachedActors=new Map<string,CharacterState>();private cameraView?:View;private hz=30;
+ private sim?:LveSimulation;private scene?:Scene;private chars?:readonly Character[];private byId=new Map<string,Character>();private signature='';private bindings:Binding[]=[];private settings?:SceneSecondaryData;private width=960;private cachedTick=-1;private cachedActors=new Map<string,CharacterState>();private cameraView?:View;private hz:30|60=30;
  private configure(scene:Scene,characters:readonly Character[],width:number){
   const settings=scene.visual?.secondaryMotion;
   if(!settings?.enabled||settings.strength===0){this.dispose();return false;}
