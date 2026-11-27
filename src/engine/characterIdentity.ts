@@ -26,6 +26,11 @@ export function setIdentityLock(c:Character,lock:IdentityLock,on:boolean):Charac
  * the random sequence of another group. No Math.random or runtime pose data. */
 function stream(seed:number,group:number){
   let state=(seed^Math.imul(group+1,0x9e3779b1))>>>0;
+  // Avalanche adjacent seeds before the LCG; a one-step seed change must
+  // not simply shift the first value by one LCG increment.
+  state=Math.imul(state^(state>>>16),0x85ebca6b)>>>0;
+  state=Math.imul(state^(state>>>13),0xc2b2ae35)>>>0;
+  state=(state^(state>>>16))>>>0;
   return ()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296;};
 }
 export function randomizeCharacterIdentity(c:Character,seed:number):Character{

@@ -15,7 +15,10 @@ test('legacy identity stays absent; explicit export, import and duplicate preser
   const randomized=randomizeCharacterIdentity(locked,420);
   assert.deepEqual(randomized,randomizeCharacterIdentity(locked,420));
   assert.equal(randomized.shape,locked.shape);assert.equal(randomized.nose,locked.nose);
-  assert.notEqual(randomized.height,randomizeCharacterIdentity(locked,421).height);
+  const other=randomizeCharacterIdentity(locked,421);
+  assert.notDeepEqual([randomized.height,randomized.head,randomized.shirt,randomized.hair],[other.height,other.head,other.shirt,other.hair]);
+  const unlocked=randomizeCharacterIdentity(setIdentityLock(locked,'face',false),420);
+  assert.equal(unlocked.height,randomized.height);assert.equal(unlocked.shirt,randomized.shirt);
   assert.equal(characterIdentity(randomized).seed,420);
   assert.deepEqual(importCharacterIdentity(exportCharacterIdentity(randomized),randomized.id),randomized);
   assert.deepEqual(importCharacterIdentity(JSON.stringify(old),old.id),old);

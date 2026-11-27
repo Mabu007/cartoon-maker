@@ -55,3 +55,5 @@ Vercel preview for a41aef8 is READY (deployment CmgFVz9jBmyPcrTEgGGXrgMwFC7B); 4
 ## Stage 3. Identity and morphology — isolated development candidate
 
 Owner requested staged development through Stage 5 before cleanup. Branch feat/character-identity-morphology-v1 is stacked on Stage 1 a41aef8, not main; Stage 2 remains preproduction only. Added optional identity seed and randomization locks, strict character import/export/duplicate, identity editor, three starting profiles, abdomen and anatomical contour controls, bounded morphology cache, existing rig landmark tests. No new flagship art, solver or default migration. Source changes and authored tests only at commit time; local clone failed DNS. Actual hosted build, browser QA, before/after screenshots, offline and device benchmarks remain open. See [identity contract](character-identity-v1.md). Stage 3 acceptance not met; do not merge or deploy to production.
+
+Added a seeded randomization independence regression and a real device/portable backup code-path test. Hosted results remain to be recorded.

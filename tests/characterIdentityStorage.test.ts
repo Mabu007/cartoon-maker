@@ -1,0 +1,21 @@
+import 'fake-indexeddb/auto';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {makeRevenentDemo} from '../src/engine/revenentDemo.ts';
+import {studioCharacters,applyProfile} from '../src/engine/visualPresets.ts';
+import {randomizeCharacterIdentity,setIdentityLock} from '../src/engine/characterIdentity.ts';
+import {createMovieBackup,restoreMovie} from '../src/services/projectExchange.ts';
+import {saveDeviceProject,getDeviceProject} from '../src/services/deviceProjects.ts';
+const storage=new Map<string,string>();
+Object.defineProperty(globalThis,'localStorage',{value:{get length(){return storage.size;},key:(i:number)=>[...storage.keys()][i]??null,getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>{storage.set(key,value);},removeItem:(key:string)=>storage.delete(key)},configurable:true});
+test('character DNA and contour controls survive device storage and portable movie backup',async()=>{
+  const project=makeRevenentDemo();
+  const base=applyProfile(studioCharacters[0],'heavyset');
+  const character=randomizeCharacterIdentity(setIdentityLock({...base,id:project.characters[0].id,visual:{...base.visual!,wristWidth:1.1,softness:.8,muscleDefinition:.25}},'body',true),91);
+  project.characters[0]=character;
+  await saveDeviceProject('guest',project);
+  const stored=(await getDeviceProject('guest',project.id)).project.characters[0];
+  assert.deepEqual(stored.identity,character.identity);assert.equal(stored.visual?.softness,.8);assert.equal(stored.visual?.profile,'heavyset');
+  const restored=await restoreMovie(new File([await createMovieBackup(project)],'dna.sirvibe'));
+  assert.deepEqual(restored.characters[0].identity,character.identity);assert.equal(restored.characters[0].visual?.wristWidth,1.1);
+});
