@@ -198,3 +198,7 @@ See the [acceptance matrix](consolidation-acceptance.md) and [integration interf
 Pinned main and READY production match e73985843f6808170f13bcf59d88f2cc67f47977. [Audit, limitations and validation instructions](stage-15a-baseline.md). Draft VisualFrame extraction and original editable art study only; no new PDE deformation, no schema or dependency changes. Gate OPEN: local git DNS failure, new checks unrun, visual/pixel and target device evidence absent, artist/owner approval open. Do not merge/promote.
 
 Hosted follow-up: initial draft c862e156 failed with `carrying` TDZ; corrected application source 97ca1eaa built READY (npm test, tsc, Vite 11.23s, static offline 59 files/3.59 MiB; exact test count omitted by connector, clean npm ci unconfirmed). [Raw events](stage-15a-build-evidence.json). Same-art benchmark added at 47773036 (unrun). Gate remains OPEN; no new browser captures, target measurements or owner art approval; main/production not promoted. See audit for reproduction and residual contact/legacy audit limits.
+
+## Stage 15 integration checkpoint
+
+See [the integration checkpoint](stage-15-integration-checkpoint.md) for the stage matrix, tested changes, open gates and device benchmark. The original draft remains the cumulative review branch. Release acceptance remains open.

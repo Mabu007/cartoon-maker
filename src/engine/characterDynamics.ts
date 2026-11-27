@@ -3,11 +3,12 @@ import {sceneForces} from './sceneForces.ts';
  * Reference hair group IDs are stable across views; missing groups are omitted.
  * No actor, rig, prop, facial or timeline state is written by this module. */
 import {evaluate,type CharacterState} from './evaluate.ts';
-import {rig,viewForward,type Point} from './animation.ts';
+import {rig,type Point} from './animation.ts';
 import {buildLayeredHair,type HairModel} from './layeredHair.ts';
-import {LveSimulation,LveMaterial,lveMaterials,lveDefaultConfig,type LveDefinitionData,type LveMaterialData,type LveSampler} from './lveSimulation.ts';
+import {LveSimulation,LveMaterial,lveMaterials,lveDefaultConfig,type LveDefinitionData,type LveMaterialData,type LveForceData,type LveSampler} from './lveSimulation.ts';
 import {characterSecondaryDefaults,type SceneSecondaryData,type SecondaryComponent} from './secondaryMotionSchema.ts';
 import type {Character,Scene,View} from './schema.ts';
+import {sampleHeadDeformation} from './headDeformation.ts';
 import type {VectorMatrix} from './vectorArtwork.ts';
 const viewWidth:Record<View,number>={front:1,'three-quarter':.88,side:.57,'back-quarter':.81,back:1};
 const front={width:1,face:0,far:true,rear:false,profile:false};
@@ -66,16 +67,20 @@ export function buildDynamics(scene:Scene,characters:readonly Character[],settin
  return {defs,bindings};
 }
 export function secondaryAnchor(actor:CharacterState,c:Character,view:View,flip:boolean,head:boolean,time=actor.actionTime):VectorMatrix{
- const r=rig(c,actor.pose,viewWidth[view]),yaw=actor.capturedHeadYaw??0,p=head?{x:r.head.x-yaw*3.6*c.head,y:r.head.y}:r.neck;
+ const r=rig(c,actor.pose,viewWidth[view]),yaw=actor.capturedHeadYaw??0;
+ const corrected=head&&sampleHeadDeformation(c,view,actor.capturedHeadYaw);
+ const p=head?{x:r.head.x-(corrected?0:yaw*3.6*c.head),y:r.head.y}:r.neck;
  const rotation=actor.rotation*Math.PI/180,cos=Math.cos(rotation),sin=Math.sin(rotation),sx=actor.scale*(flip?-1:1),sy=actor.scale;
  const localAngle=head?(r.angle+(actor.listening&&c.personality?.actingModel!=='coherent-v1'?Math.sin(time*2.4+actor.id.length*.7)*1.4:0))*Math.PI/180:0,lc=Math.cos(localAngle),ls=Math.sin(localAngle),headScale=head?c.head:1;
- const headMirror=head&&view!=='back'&&view!=='back-quarter'&&actor.capturedHeadFacing==='left'?-1:1;
+ const headMirror=head&&!corrected&&view!=='back'&&view!=='back-quarter'&&actor.capturedHeadFacing==='left'?-1:1;
  const a=cos*sx*lc-sin*sy*ls,b=sin*sx*lc+cos*sy*ls,d=-cos*sx*ls-sin*sy*lc,e=-sin*sx*ls+cos*sy*lc;
- const turn=head?actor.turnScale*(1-.09*Math.abs(yaw)):1;
+ const turn=head?actor.turnScale*(corrected?1:1-.09*Math.abs(yaw)):1;
  return [a*headScale*headMirror*turn,b*headScale*headMirror*turn,d*headScale,e*headScale,actor.x+cos*sx*p.x-sin*sy*(p.y-actor.lift),actor.y+sin*sx*p.x+cos*sy*(p.y-actor.lift)];
 }
+type PhysicalActor={head:VectorMatrix;body:VectorMatrix;forces:LveForceData};
+const historyTicks=240;
 export class CharacterDynamics{
- private sim?:LveSimulation;private scene?:Scene;private chars?:readonly Character[];private byId=new Map<string,Character>();private signature='';private bindings:Binding[]=[];private settings?:SceneSecondaryData;private width=960;private cachedTick=-1;private cachedActors=new Map<string,CharacterState>();private cameraView?:View;private hz:30|60=30;
+ private sim?:LveSimulation;private scene?:Scene;private chars?:readonly Character[];private byId=new Map<string,Character>();private signature='';private bindings=new Map<string,Binding>();private settings?:SceneSecondaryData;private width=960;private history=new Map<number,Map<string,PhysicalActor>>();private hz:30|60=30;
  private configure(scene:Scene,characters:readonly Character[],width:number){
   const settings=scene.visual?.secondaryMotion;
   if(!settings?.enabled||settings.strength===0){this.dispose();return false;}
@@ -85,36 +90,55 @@ export class CharacterDynamics{
   const signature=JSON.stringify([scene,characters,width]);
   if(this.signature!==signature){
    this.dispose();const {defs,bindings}=buildDynamics(scene,characters,settings);
-   this.settings=settings;this.bindings=bindings;this.hz=settings.quality==='eco'?30:60;
+   this.settings=settings;this.bindings=new Map(bindings.map(binding=>[binding.id,binding]));this.hz=settings.quality==='eco'?30:60;
    if(defs.length)this.sim=new LveSimulation(defs,{...lveDefaultConfig,seed:settings.seed,hz:this.hz,iterations:settings.quality==='eco'?2:4,maxSceneNodes:settings.quality==='eco'?96:192,maxNodesPerActor:48,checkpointInterval:this.hz,maxCheckpoints:16},scene.id);
-   this.signature=signature;this.byId=new Map(characters.map(c=>[c.id,c]));this.cachedTick=-1;
+   this.signature=signature;this.byId=new Map(characters.map(c=>[c.id,c]));
   }
   this.scene=scene;this.chars=characters;this.width=width;return Boolean(this.sim);
  }
  sample(scene:Scene,characters:readonly Character[],time:number,width=960):Map<string,SecondaryOffsets>{
   if(!this.configure(scene,characters,width)||!this.sim||!this.settings)return new Map();
-  const settings=this.settings,bindingMap=new Map(this.bindings.map(b=>[b.id,b]));
+  const settings=this.settings;
+  let activeTick=-1,activeActors:Map<string,PhysicalActor>;
   const sampler:LveSampler=(tick,id)=>{
    const t=tick/this.hz;
-   if(this.cachedTick!==tick){const state=evaluate(scene,t,this.byId,width);this.cachedActors=new Map(state.actors.map(a=>[a.id,a]));this.cameraView=state.camera.view;this.cachedTick=tick;}
-   const binding=bindingMap.get(id)!,a=this.cachedActors.get(binding.actorId),c=a&&this.byId.get(a.characterId);
-   const forces=sceneForces(settings,t,a?.x??0,a?.y??0);
-   if(!a||!c||!a.visible)return {transform:[1,0,0,1,0,0],forces,sleep:true};
-   const view=scene.visual?.world?a.view:this.cameraView??a.view,flip=a.flip!==(viewForward(view)!==viewForward(a.view));
-   const m=secondaryAnchor(a,c,view,flip,binding.head,t),root=binding.root;
-   return {transform:[m[0],m[1],m[2],m[3],m[4]+m[0]*root.x+m[2]*root.y,m[5]+m[1]*root.x+m[3]*root.y],forces};
+   if(activeTick!==tick){
+    activeTick=tick;
+    const existing=this.history.get(tick);
+    if(existing)activeActors=existing;
+    else{
+     activeActors=new Map();
+     for(const actor of evaluate(scene,t,this.byId,width).actors){
+      const character=this.byId.get(actor.characterId);
+      if(!character||!actor.visible)continue;
+      // The actor's facing determines physical roots. A camera cut may alter
+      // the painted view without imparting an impulse to a cloth or hair pin.
+      activeActors.set(actor.id,{
+       head:secondaryAnchor(actor,character,actor.view,actor.flip,true,t),
+       body:secondaryAnchor(actor,character,actor.view,actor.flip,false,t),
+       forces:sceneForces(settings,t,actor.x,actor.y)
+      });
+     }
+     this.history.set(tick,activeActors);
+     if(this.history.size>historyTicks)this.history.delete(this.history.keys().next().value!);
+    }
+   }
+   const binding=this.bindings.get(id)!,actor=activeActors.get(binding.actorId);
+   if(!actor)return {transform:[1,0,0,1,0,0],forces:sceneForces(settings,t,0,0),sleep:true};
+   const m=binding.head?actor.head:actor.body,root=binding.root;
+   return {transform:[m[0],m[1],m[2],m[3],m[4]+m[0]*root.x+m[2]*root.y,m[5]+m[1]*root.x+m[3]*root.y],forces:actor.forces};
   };
   // At most one fixed tick per 30/60Hz. Same random-access clock for export
   // and preview. Render interpolation uses current tick (no look-ahead).
   const tick=Math.min(180*this.hz,Math.max(0,Math.floor(time*this.hz+1e-7))),raw=this.sim.seek(tick,sampler),out=new Map<string,SecondaryOffsets>();
-  for(const entity of raw){const b=bindingMap.get(entity.id);if(!b)continue;const n=entity.nodes.find(n=>n.id===b.tip);if(!n)continue;
+  for(const entity of raw){const b=this.bindings.get(entity.id);if(!b)continue;const n=entity.nodes.find(n=>n.id===b.tip);if(!n)continue;
    const q:Offset=[Math.round(n.dx*b.strength*100)/100,Math.round(n.dy*b.strength*100)/100],o=out.get(b.actorId)??blank();
    if(b.nativeKey)o.native={...o.native,[b.nativeKey]:q};else if(b.component==='hair'&&b.group)o.hair={...o.hair,[b.group]:q};else if(b.component==='accessories'&&b.group==='earrings')o.earrings=q;else if(b.component!=='hair')o[b.component]=q;
    out.set(b.actorId,o);
   }return out;
  }
  instrumentation(){return this.sim?.instrumentation();}
- dispose(){this.sim?.dispose();this.sim=undefined;this.scene=undefined;this.chars=undefined;this.signature='';this.bindings=[];this.byId.clear();this.cachedActors.clear();this.cachedTick=-1;this.settings=undefined;}
+ dispose(){this.sim?.dispose();this.sim=undefined;this.scene=undefined;this.chars=undefined;this.signature='';this.bindings.clear();this.byId.clear();this.history.clear();this.settings=undefined;}
 }
 /** Stable weighted path deformation uses the existing material pins. */
 export function hairGroupOffsets(model:HairModel,offsets:SecondaryOffsets|undefined){if(!offsets)return undefined;const out:Record<string,Offset>={};for(const g of model.groups){const q=offsets.hair[g.id];if(q)out[g.id]=q;}return out;}

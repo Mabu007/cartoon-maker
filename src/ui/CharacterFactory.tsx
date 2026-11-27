@@ -10,8 +10,13 @@ import {CharacterDefinition} from '../engine/schema.ts';
 import {CharacterIdentityPanel} from './CharacterIdentityPanel.tsx';
 import {duplicateCharacterIdentity} from '../engine/characterIdentity.ts';
 import { CharacterVisualStudio } from './CharacterVisualStudio.tsx';
+import { cinematicPresets } from '../engine/vvlePresets.ts';
+import { EnvironmentVisual } from '../engine/environmentVisuals.ts';
+import {headAuditionLimits,supportsHeadDeformation,type HeadAudition} from '../engine/headDeformation.ts';
+import {headHandleLimit,headRigHandles,type HeadRigHandle} from '../engine/headRigRecipe.ts';
+import {prepareDialoguePreview} from '../services/audio.ts';
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Maximize2, Minus, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { Copy, Expand, Maximize2, Minus, Plus, Repeat2, RotateCcw, Save, Shrink, Trash2 } from 'lucide-react';
 import { armBuilds, bodyFrames, legBuilds } from '../engine/bodyBuild.ts';
 import { createRenderer } from '../engine/renderer.ts';
 import { resolvePersonality, traitDefaults, type Trait } from '../engine/livingCharacter.ts';
@@ -29,6 +34,9 @@ const sections = ['Identity','Body','Face','Eyes','Brows','Nose','Mouth','Ears',
 const presets=[...flagshipCharacters,...characters];
 const personalityLabels:Record<Trait,string>={confidence:'Confidence',expressiveness:'Expressiveness',energy:'Energy',sociability:'Sociability',nervousness:'Nervousness',aggressiveness:'Aggressiveness',playfulness:'Playfulness',patience:'Patience',restlessness:'Restlessness',emotionalReactivity:'Emotional reactivity',gestureFrequency:'Gesture frequency',gestureAmplitude:'Gesture size',movementSpeed:'Movement speed',postureOpenness:'Posture openness',eyeContact:'Eye contact',personalSpace:'Personal space',reactionIntensity:'Reaction intensity',movementSmoothness:'Movement smoothness',breathingAmplitude:'Breathing amplitude',breathingRate:'Breathing rate',idleTiming:'Idle adjustment frequency',blinkFrequency:'Blink frequency',headOrientation:'Head orientation',responseTendency:'Listening responses'};
 const highImpactTraits:Trait[]=['confidence','expressiveness','energy','nervousness','gestureFrequency','gestureAmplitude','postureOpenness','eyeContact'];
+const neutralHead:HeadAudition={yaw:0,pitch:0,roll:0};
+const gazeTargets={auto:undefined,camera:{x:0,y:0},left:{x:-.95,y:0},right:{x:.95,y:0},up:{x:0,y:-.95}} as const;
+const panBounds=(x:number,y:number)=>({x:Math.max(-400,Math.min(400,x)),y:Math.max(-400,Math.min(400,y))});
 const viewLabels: Record<View, string> = { front: 'Front', 'three-quarter': '¾ Front', side: 'Side', 'back-quarter': '¾ Back', back: 'Back' };
 export function CharacterFactory({ source, save, close, remove }: { source?: Character; save: (value: Character) => void; close: () => void; remove: (id: string) => void }) {
   const [initial]=useState<Character>(()=>source??{...structuredClone(flagshipCharacters[0]??characters[0]),id:uid(),name:'New character'});
@@ -36,6 +44,15 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   const setDraft=useCallback((update:SetStateAction<Character>,key?:string)=>dispatch({type:'edit',update,key,time:performance.now()}),[]);
   const [playing,setPlaying]=useState(false),[physics,setPhysics]=useState<PreviewPhysics>('off'),[wind,setWind]=useState(0),[pan,setPan]=useState({x:0,y:0}),[status,setStatus]=useState('');
   const [captureOpen,setCaptureOpen]=useState(false),[take,setTake]=useState<Clip[]>([]);
+  const [studioTab,setStudioTab]=useState<'Character'|'Deformation'|'Lighting'|'Render'>('Character');
+  const [mood,setMood]=useState<'off'|keyof typeof cinematicPresets>('off');
+  const [lightStrength,setLightStrength]=useState(1),[rimStrength,setRimStrength]=useState(1),[volumeEnabled,setVolumeEnabled]=useState(true);
+  const [previewTime,setPreviewTime]=useState(0),[rendererReady,setRendererReady]=useState(false);
+  const seekRequest=useRef({serial:0,time:0});
+  const [loop,setLoop]=useState(true),[expanded,setExpanded]=useState(false);
+  const [head,setHead]=useState<HeadAudition>();
+  const stage=useRef<HTMLDivElement>(null);
+  const [speechAmplitude,setSpeechAmplitude]=useState<Awaited<ReturnType<typeof prepareDialoguePreview>>>();
   const drag=useRef<{x:number;y:number;px:number;py:number}|null>(null);
   const [section, setSection] = useState<typeof sections[number]>('Identity'), [view, setView] = useState<View>('three-quarter');
   const [action, setAction] = useState<Action>('idle'), [expression, setExpression] = useState<Expression>('neutral');
@@ -46,9 +63,47 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
   const [advancedPersonality,setAdvancedPersonality]=useState(false);
   const [tooth,setTooth]=useState(0);
   const canvas = useRef<HTMLDivElement>(null);
-  const audition=useMemo(()=>characterAudition(draft,action,expression,view,flip,physics,wind,take),[draft,action,expression,view,flip,physics,wind,take]);
-  const frame=useRef({draft,action,look,mouthTest,audition,playing});
-  frame.current={draft,action,look,mouthTest,audition,playing};
+  const audition=useMemo(()=>{
+    const base=characterAudition(draft,action,expression,view,flip,physics,wind,take);
+    if(mood==='off')return base;
+    const preset=cinematicPresets[mood];
+    if(!preset.lighting||!preset.volume)return base;
+    const visual=EnvironmentVisual.parse({...base.scene.visual,version:1,quality:'balanced',
+      lighting:{...preset.lighting,intensity:Math.min(1.5,preset.lighting.intensity*lightStrength),
+        lights:preset.lighting.lights.map(l=>({...l,intensity:Math.min(2,l.intensity*lightStrength*(l.volume?.kind==='rim'?rimStrength:1))}))},
+      volume:{...preset.volume,enabled:volumeEnabled}});
+    return {...base,scene:{...base.scene,visual}};
+  },[draft,action,expression,view,flip,physics,wind,take,mood,lightStrength,rimStrength,volumeEnabled]);
+  const hasRim=mood!=='off'&&Boolean(cinematicPresets[mood].lighting?.lights.some(l=>l.volume?.kind==='rim'));
+  const seekPreview=(value:number)=>{if(!rendererReady||fallback)return;setPlaying(false);const t=Math.max(0,Math.min(audition.span-.001,value));seekRequest.current={serial:seekRequest.current.serial+1,time:t};setPreviewTime(t);};
+  const headControls=supportsHeadDeformation(draft,view);
+  const previewHead=headControls?head:undefined;
+  const frame=useRef({draft,action,look,mouthTest,audition,playing,loop,previewHead,speechAmplitude});
+  frame.current={draft,action,look,mouthTest,audition,playing,loop,previewHead,speechAmplitude};
+  const speechScene=action==='talk'?audition.scene:undefined;
+  useEffect(()=>{
+    if(!speechScene)return;
+    let current=true;
+    void prepareDialoguePreview(speechScene).then(amplitude=>{
+      if(current)setSpeechAmplitude(()=>amplitude);
+    },()=>{if(current)setSpeechAmplitude(undefined);});
+    return ()=>{current=false;};
+  },[speechScene]);
+  useEffect(()=>{
+    const updateFullscreen=()=>setExpanded(document.fullscreenElement===stage.current);
+    document.addEventListener('fullscreenchange',updateFullscreen);
+    return ()=>document.removeEventListener('fullscreenchange',updateFullscreen);
+  },[]);
+  const toggleFullscreen=()=>{
+    if(expanded)void document.exitFullscreen().catch(()=>setStatus('Could not exit fullscreen'));
+    else void stage.current?.requestFullscreen().catch(()=>setStatus('Fullscreen is unavailable'));
+  };
+  const togglePlayback=()=>{
+    if(!playing&&previewTime>=audition.span-.015){
+      seekRequest.current={serial:seekRequest.current.serial+1,time:0};
+    }
+    setPlaying(!playing);
+  };
   useEffect(() => {
     let alive = true, handle = 0;
     let dispose = () => {};
@@ -58,6 +113,8 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
       cancelAnimationFrame(handle);
       try { dispose(); } catch (error) { console.warn('Preview renderer cleanup failed.', error); }
       canvas.current?.replaceChildren();
+      setRendererReady(false);
+      setPlaying(false);
       setFallback(true);
     };
     createRenderer('1:1', .8).then(renderer => {
@@ -69,20 +126,28 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         renderer.destroy();
       };
       canvas.current?.replaceChildren(renderer.canvas);
-      let previous=-1,lastFrame:typeof frame.current|undefined,elapsed=0,lastNow=performance.now(),lastAction:Action|undefined;
+      let previous=-1,lastFrame:typeof frame.current|undefined,elapsed=0,lastNow=performance.now(),lastAction:Action|undefined,lastSeek=0,lastReported=-1,ready=false;
       const animate=(now:number)=>{
-        const current=frame.current,{draft,action,look,mouthTest,audition,playing}=current;
+        const current=frame.current,{draft,action,look,mouthTest,audition,playing,loop,previewHead,speechAmplitude}=current;
         if(lastAction!==action||lastFrame&&lastFrame.audition.span!==audition.span){elapsed=0;lastAction=action;previous=-1;}
         const dt=Math.min(.1,Math.max(0,(now-lastNow)/1000));lastNow=now;
-        if(playing&&!document.hidden)elapsed=(elapsed+dt)%audition.span;
-        const time=Math.min(elapsed,Math.max(0,audition.span-.001)),changed=!lastFrame||lastFrame.audition!==audition||lastFrame.look!==look||lastFrame.mouthTest!==mouthTest||lastFrame.playing!==playing;
+        const seeking=seekRequest.current.serial!==lastSeek;
+        if(seeking){lastSeek=seekRequest.current.serial;elapsed=Math.max(0,Math.min(audition.span-.001,seekRequest.current.time));previous=-1;}
+        else if(playing&&!document.hidden){
+          elapsed+=dt;
+          if(elapsed>=audition.span){
+            if(loop)elapsed%=audition.span;
+            else{elapsed=audition.span-.001;setPlaying(false);}
+          }
+        }
+        const time=Math.min(elapsed,Math.max(0,audition.span-.001)),changed=seeking||!lastFrame||lastFrame.audition!==audition||lastFrame.look!==look||lastFrame.mouthTest!==mouthTest||lastFrame.playing!==playing||lastFrame.previewHead!==previewHead||lastFrame.speechAmplitude!==speechAmplitude;
         if(!document.hidden&&(changed||playing&&Math.floor(time*20)!==previous)){
           previous=Math.floor(time*20);lastFrame=current;
-          const gaze = look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } :
-            look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 };
           try {
-            renderer.draw(audition.scene,[draft],time,{characterPreview:true,previewFocus:gaze,previewCamera:look==='camera',
-              previewViseme:mouthTest==='auto'?undefined:mouthTest});
+            renderer.draw(audition.scene,[draft],time,{characterPreview:true,previewFocus:gazeTargets[look],previewCamera:look==='camera',
+              previewViseme:mouthTest==='auto'?undefined:mouthTest,previewHead,amplitude:action==='talk'?speechAmplitude:undefined});
+            if(!ready){ready=true;setRendererReady(true);}
+            if(seeking||Math.abs(time-lastReported)>=.1||time===0||time>=audition.span-.001){lastReported=time;setPreviewTime(time);}
           } catch (cause) {
             useNativePreview(cause);
             return;
@@ -101,22 +166,86 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
     setDraft(item=>({...item,bodyBuild:{...item.bodyBuild,[key]:value}}),'body.'+String(key));
   const updatePersonality = <K extends keyof NonNullable<Character['personality']>>(key:K,value:NonNullable<Character['personality']>[K])=>
     setDraft(current=>({...current,personality:{...current.personality,[key]:value}}),'personality.'+String(key));
+  const calibrateHead=(handle:HeadRigHandle,axis:'x'|'y',value:number)=>setDraft(current=>{
+    if(!current.visual||!supportsHeadDeformation(current,view))return current;
+    const handles=current.visual.headRig?.handles??{};
+    const offset={x:0,y:0,...handles[handle],[axis]:value};
+    return {...current,visual:{...current.visual,headRig:{version:1,family:'catalog-head-v1',handles:{...handles,[handle]:offset}}}};
+  },`visual.headRig.${handle}.${axis}`);
+  const resetHeadCalibration=()=>setDraft(current=>{
+    if(!current.visual?.headRig)return current;
+    const {headRig,...visual}=current.visual;
+    return {...current,visual};
+  });
   const activePersonality=resolvePersonality(draft.personality);
   const toothColors=Array.from({length:6},(_,index)=>draft.toothColors?.[index]??(draft.goldTeeth?.includes(index)?'#eac05c':'#fff4de'));
 
-  return <Modal wide title={source ? 'Edit character' : 'Create character'} description="Pick a look, make it yours, and direct it from any angle." close={close}>
-    <div className="factory-grid workspace-grid" onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&!(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)){e.preventDefault();dispatch({type:e.shiftKey?'redo':'undo'});}}}><div className="factory-preview"><div className="workspace-preview-header"><strong>Character studio</strong><button type="button" aria-label={playing?'Pause audition':'Play audition'} onClick={()=>setPlaying(v=>!v)}>{playing?'Pause':'Play'}</button><span>{fallback?'SVG fallback · approximate':'Scene renderer'}</span></div><div className="factory-canvas workspace-canvas" aria-label="Character preview" tabIndex={0} onKeyDown={e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();setPan(v=>({x:Math.max(-400,Math.min(400,v.x+(e.key==='ArrowLeft'?-16:e.key==='ArrowRight'?16:0))),y:Math.max(-400,Math.min(400,v.y+(e.key==='ArrowUp'?-16:e.key==='ArrowDown'?16:0)))}));}}} onPointerDown={e=>{if(e.button!==0)return;drag.current={x:e.clientX,y:e.clientY,px:pan.x,py:pan.y};e.currentTarget.setPointerCapture(e.pointerId);}} onPointerMove={e=>{const d=drag.current;if(d)setPan({x:Math.max(-400,Math.min(400,d.px+e.clientX-d.x)),y:Math.max(-400,Math.min(400,d.py+e.clientY-d.y))});}} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}><div className="workspace-preview-transform" style={{transform:`translate(${pan.x}px,${pan.y}px) scale(${scale})`}}>{fallback ? <NativeCharacterPreview frozenTime={playing?undefined:0} character={draft} view={view} action={action} expression={expression} flip={flip} scale={fitCharacterPreview(draft, 1.4, action).scale} focus={look === 'auto' ? undefined : look === 'camera' ? { x: 0, y: 0 } : look === 'left' ? { x: -.95, y: 0 } : look === 'right' ? { x: .95, y: 0 } : { x: 0, y: -.95 }} mouthTest={mouthTest==='auto'?undefined:mouthTest}/> : <div className="factory-renderer-mount" ref={canvas}/>}</div></div><div className="factory-zoom"><IconButton title="Fit entire character" onClick={() => {setScale(1);setPan({x:0,y:0});}}><Maximize2 size={15}/></IconButton><IconButton title="Mirror character" active={flip} onClick={() => setFlip(value => !value)}><RotateCcw size={15}/></IconButton><IconButton title="Zoom out character" onClick={() => setScale(n => Math.max(.6, n - .2))}><Minus size={15}/></IconButton><IconButton title="Zoom in character" onClick={() => setScale(n => Math.min(3, n + .2))}><Plus size={15}/></IconButton></div>
-      <div className="segmented view-choice" aria-label="Character view">{views.map(item => <button key={item} className={view === item ? 'active' : ''} aria-pressed={view===item} onClick={() => setView(item)}>{viewLabels[item]}</button>)}</div>
-      <div className="workspace-auditions" aria-label="Quick auditions">{(['idle','walk','run','sit','stand','talk','wave','turn'] as const).map(a=><button key={a} type="button" aria-pressed={action===a} onClick={()=>{setTake([]);setAction(a);setPlaying(true);}}>{label(a)}</button>)}</div><div className="field-row"><label>Preview action<Select aria="Preview action" value={action} onChange={a=>{setTake([]);setAction(a);}} options={actions}/></label><label>Expression<Select aria="Preview expression" value={expression} onChange={setExpression} options={expressions}/></label></div>
-      <label className="field preview-eye-focus">Eye focus<Select aria="Preview eye focus" value={look} onChange={setLook} options={['auto','camera','left','right','up'] as const}
-        render={value => value === 'auto' ? 'Natural · moving eyes' : value === 'camera' ? 'Eye contact · camera' : 'Look ' + value}/></label>
-      <label className="field">Mouth rig audition
-        <Select aria="Preview mouth shape" value={mouthTest} onChange={setMouthTest}
-          options={['auto',...visemeNames] as const}
-          render={value=>value==='auto'?'Automatic · speech/audio':value.toUpperCase()}/>
-      </label>
-      <button type="button" disabled={fallback} onClick={()=>{setPlaying(false);setCaptureOpen(true);}}>Open webcam audition</button>{take.length>0&&<button type="button" onClick={()=>setTake([])}>Clear temporary capture</button>}<p className="small-text">Camera starts only inside Performance Studio after explicit consent. Temporary motion takes are not saved to character DNA.</p><details className="factory-details"><summary>Audition physics</summary><label>Physics preview<select aria-label="Audition physics" value={physics} onChange={e=>setPhysics(e.target.value as PreviewPhysics)}><option value="off">Off</option><option value="subtle">Subtle</option><option value="expressive">Expressive</option></select></label><label>Wind <input type="range" aria-label="Audition wind" min={-80} max={80} value={wind} onChange={e=>setWind(Number(e.target.value))}/></label><button type="button" onClick={()=>{setPhysics('off');setWind(0);}}>Reset audition settings</button><p className="small-text">Preview only. No scene settings are saved.</p></details>
-    </div><div className="factory-edit"><div className="workspace-history"><button type="button" disabled={!history.past.length} onClick={()=>dispatch({type:'undo'})}>Undo</button><button type="button" disabled={!history.future.length} onClick={()=>dispatch({type:'redo'})}>Redo</button><button type="button" onClick={()=>dispatch({type:'reset',value:initial})}>Reset draft</button></div><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
+  return <Modal wide title={source ? 'Edit character' : 'Create character'} description="SIRVIBE Character Studio" close={close}>
+    <div className="factory-grid workspace-grid" onKeyDown={event=>{
+      if(!(event.ctrlKey||event.metaKey)||event.key.toLowerCase()!=='z'||event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement)return;
+      event.preventDefault();dispatch({type:event.shiftKey?'redo':'undo'});
+    }}>
+      <div className="factory-preview">
+        <div className="studio-stage">
+          <div className="workspace-preview-header">
+            <button type="button" disabled={fallback} aria-label={playing?'Pause audition':'Play audition'} onClick={togglePlayback}>{playing?'Pause':'Play'}</button>
+            <button type="button" className={`icon-button${loop?' active':''}`} aria-label="Loop audition" title="Loop audition" aria-pressed={loop} disabled={fallback} onClick={()=>setLoop(value=>!value)}><Repeat2 size={16}/></button>
+            <span>{fallback?'Static SVG preview':rendererReady?'Scene renderer':'Starting renderer…'}</span>
+          </div>
+          <div ref={stage} className="factory-canvas workspace-canvas" aria-label="Character preview" tabIndex={0}
+            onKeyDown={event=>{
+              const delta=({ArrowLeft:[-16,0],ArrowRight:[16,0],ArrowUp:[0,-16],ArrowDown:[0,16]} as Record<string,[number,number]>)[event.key];
+              if(!delta)return;
+              event.preventDefault();setPan(value=>panBounds(value.x+delta[0],value.y+delta[1]));
+            }} onPointerDown={event=>{
+              if(event.button!==0||event.target instanceof Element&&event.target.closest('button'))return;
+              drag.current={x:event.clientX,y:event.clientY,px:pan.x,py:pan.y};event.currentTarget.setPointerCapture(event.pointerId);
+            }} onPointerMove={event=>{
+              const origin=drag.current;
+              if(origin)setPan(panBounds(origin.px+event.clientX-origin.x,origin.py+event.clientY-origin.y));
+            }} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}>
+            <div className="workspace-preview-transform" style={{transform:`translate(${pan.x}px,${pan.y}px) scale(${scale})`}}>
+              {fallback ? <NativeCharacterPreview frozenTime={0} character={draft} view={view} action={action} expression={expression}
+                flip={flip} scale={fitCharacterPreview(draft, 1.4, action).scale} focus={gazeTargets[look]} mouthTest={mouthTest==='auto'?undefined:mouthTest}/>
+                : <div className="factory-renderer-mount" ref={canvas}/>}
+            </div>
+            {expanded&&<IconButton title="Exit fullscreen" className="studio-fullscreen-exit" onClick={toggleFullscreen}><Shrink size={18}/></IconButton>}
+          </div>
+          <div className="factory-zoom">
+            {document.fullscreenEnabled&&<IconButton title="Fullscreen preview" onClick={toggleFullscreen}><Expand size={15}/></IconButton>}
+            <IconButton title="Fit entire character" onClick={()=>{setScale(1);setPan({x:0,y:0});}}><Maximize2 size={15}/></IconButton>
+            <IconButton title="Mirror character" active={flip} onClick={()=>setFlip(value=>!value)}><RotateCcw size={15}/></IconButton>
+            <IconButton title="Zoom out character" onClick={()=>setScale(value=>Math.max(.6,value-.2))}><Minus size={15}/></IconButton>
+            <IconButton title="Zoom in character" onClick={()=>setScale(value=>Math.min(3,value+.2))}><Plus size={15}/></IconButton>
+          </div>
+        </div>
+        <div className="studio-preview-controls">
+          <label className="studio-scrub">Audition time
+            <span>{previewTime.toFixed(2)} / {audition.span.toFixed(2)} s</span>
+            <input aria-label="Audition time" type="range" min={0} max={Math.max(0,audition.span-.001)} step={.01}
+              value={Math.min(previewTime,Math.max(0,audition.span-.001))} disabled={fallback||!rendererReady}
+              onChange={event=>seekPreview(Number(event.currentTarget.value))}/>
+          </label>
+          <div className="segmented view-choice" aria-label="Character view">
+            {views.map(item=><button type="button" key={item} className={view===item?'active':''} aria-pressed={view===item} onClick={()=>setView(item)}>{viewLabels[item]}</button>)}
+          </div>
+          <div className="workspace-auditions" aria-label="Quick auditions">
+            {(['idle','walk','run','sit','stand','talk','wave','turn'] as const).map(item=><button key={item} type="button" aria-pressed={action===item}
+              onClick={()=>{setTake([]);setAction(item);if(!fallback)setPlaying(true);}}>{label(item)}</button>)}
+          </div>
+          <label className="field">Preview action<Select aria="Preview action" value={action} options={actions} onChange={value=>{setTake([]);setAction(value);}}/></label>
+          <button type="button" disabled={fallback} onClick={()=>{setPlaying(false);setCaptureOpen(true);}}>Open webcam audition</button>
+          {take.length>0&&<button type="button" onClick={()=>setTake([])}>Clear temporary capture</button>}
+          <details className="factory-details">
+            <summary>Audition physics</summary>
+            <label className="field">Physics preview<select aria-label="Audition physics" value={physics} disabled={fallback}
+              onChange={event=>setPhysics(event.currentTarget.value as PreviewPhysics)}><option value="off">Off</option><option value="subtle">Subtle</option><option value="expressive">Expressive</option></select></label>
+            <label className="field">Wind<input type="range" aria-label="Audition wind" min={-80} max={80} value={wind} disabled={fallback} onChange={event=>setWind(Number(event.currentTarget.value))}/></label>
+            <button type="button" disabled={fallback} onClick={()=>{setPhysics('off');setWind(0);}}>Reset audition settings</button>
+          </details>
+        </div>
+      </div>
+      <div className="factory-edit"><div className="studio-tabs" role="group" aria-label="Studio panels">{(['Character','Deformation','Lighting','Render'] as const).map(t=><button key={t} type="button" aria-pressed={studioTab===t} onClick={()=>setStudioTab(t)}>{t}</button>)}</div><div className="workspace-history"><button type="button" disabled={!history.past.length} onClick={()=>dispatch({type:'undo'})}>Undo</button><button type="button" disabled={!history.future.length} onClick={()=>dispatch({type:'redo'})}>Redo</button><button type="button" onClick={()=>dispatch({type:'reset',value:initial})}>Reset draft</button></div><div hidden={studioTab!=='Character'} className="studio-panel"><label className="field">Name<input aria-label="Character name" maxLength={60} value={draft.name} onChange={e => update('name', e.target.value)}/></label>
 
       <div className="segmented factory-categories workspace-categories" role="group" aria-label="Character sections">{sections.map(item=><button key={item} type="button" onClick={()=>setSection(item)} aria-pressed={item===section} className={item===section?'active':''}>{item}</button>)}</div>
       <h3 className="workspace-category-title">{section}</h3>
@@ -216,6 +345,36 @@ export function CharacterFactory({ source, save, close, remove }: { source?: Cha
         {(section === 'Eyes' || section === 'Body') && <><button type="button" className="advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(value => !value)}>{advanced ? '− Hide advanced proportions' : '+ Advanced proportions'}</button>
         {advanced && <div className="factory-advanced">{(section === 'Eyes' ? ['eyeSpacing'] : ['torso', 'arms', 'legs']).map(key => { const id = key as keyof typeof sliders; return <label className="field slider" key={key}>{sliders[id]}<input type="range" min={id==='eyeSpacing'?.65:.75} max={id === 'eyeSpacing' ? 1.4 : 1.3} step={.01} value={draft[id]} onChange={event => update(id, Number(event.target.value))}/></label>; })}</div>}</>}
       </div>
+    </div>
+      <section hidden={studioTab!=='Deformation'} className="studio-panel" aria-label="Deformation audition"><h3>Acting audition</h3>
+        {headControls&&<fieldset disabled={fallback||!rendererReady}><legend>Head orientation</legend>
+          {(Object.keys(headAuditionLimits) as (keyof HeadAudition)[]).map(axis=><label key={axis} className="field slider">
+            <span>{label(axis)} <output>{head?.[axis]??0}°</output></span>
+            <input aria-label={`Head ${axis}`} type="range" min={-headAuditionLimits[axis]} max={headAuditionLimits[axis]}
+              value={head?.[axis]??0} onChange={event=>setHead({...head??neutralHead,[axis]:Number(event.currentTarget.value)})}/>
+          </label>)}
+          <button type="button" disabled={!head} onClick={()=>setHead(undefined)}>Reset head orientation</button>
+        </fieldset>}
+        {headControls&&<details className="factory-details"><summary>Calibrate facial landmarks</summary>
+          {headRigHandles.map(handle=><fieldset key={handle}><legend>{label(handle)}</legend>
+            {(['x','y'] as const).map(axis=><label key={axis} className="field slider">
+              {axis==='x'?'Horizontal':'Vertical'}
+              <input aria-label={`${label(handle)} ${axis}`} type="range" min={-headHandleLimit} max={headHandleLimit} step={.25}
+                value={draft.visual?.headRig?.handles[handle]?.[axis]??0}
+                onChange={event=>calibrateHead(handle,axis,Number(event.currentTarget.value))}/>
+            </label>)}
+          </fieldset>)}
+          <button type="button" disabled={!draft.visual?.headRig} onClick={resetHeadCalibration}>Reset facial calibration</button>
+        </details>}<label className="field">Expression<Select aria="Preview expression" value={expression} onChange={setExpression} options={expressions}/></label><label className="field preview-eye-focus">Eye focus<Select aria="Preview eye focus" value={look} onChange={setLook} options={['auto','camera','left','right','up'] as const}
+        render={value => value === 'auto' ? 'Natural · moving eyes' : value === 'camera' ? 'Eye contact · camera' : 'Look ' + value}/></label>
+      <label className="field">Mouth rig audition
+        <Select aria="Preview mouth shape" value={mouthTest} onChange={setMouthTest}
+          options={['auto',...visemeNames] as const}
+          render={value=>value==='auto'?'Automatic · speech/audio':value.toUpperCase()}/>
+      </label>
+      </section>
+      <section hidden={studioTab!=='Lighting'} className="studio-panel" aria-label="Studio lighting"><h3>Studio light audition</h3><p className="small-text">Lighting audition applies to this preview.</p><fieldset disabled={fallback||!rendererReady}><label className="field">Mood<select aria-label="Studio lighting mood" value={mood} onChange={e=>setMood(e.target.value as typeof mood)}><option value="off">Off</option>{Object.keys(cinematicPresets).map(k=><option key={k} value={k}>{k.replaceAll('-',' ')}</option>)}</select></label>{mood!=='off'&&<><label className="field">Light strength <output>{lightStrength.toFixed(2)}</output><input aria-label="Studio light strength" type="range" min={0} max={1.5} step={.05} value={lightStrength} onChange={e=>setLightStrength(Number(e.target.value))}/></label>{hasRim&&<label className="field">Rim strength <output>{rimStrength.toFixed(2)}</output><input aria-label="Studio rim strength" type="range" min={0} max={2} step={.05} value={rimStrength} onChange={e=>setRimStrength(Number(e.target.value))}/></label>}<label><input type="checkbox" checked={volumeEnabled} onChange={e=>setVolumeEnabled(e.target.checked)}/> Volume shading</label></>}<button type="button" onClick={()=>{setMood('off');setLightStrength(1);setRimStrength(1);setVolumeEnabled(true);}}>Reset studio light</button></fieldset></section>
+      <section hidden={studioTab!=='Render'} className="studio-panel" aria-label="Renderer status"><h3>Preview renderer</h3><p>{fallback?'Approximate SVG fallback':rendererReady?'Scene renderer active':'Renderer starting'}</p><button type="button" onClick={()=>{setScale(1);setPan({x:0,y:0});}}>Reset preview framing</button></section>
     </div></div>
     {status&&<p role="status" className="small-text">{status}</p>}<footer className="modal-footer">{source && <><IconButton title="Delete character" onClick={() => remove(source.id)}><Trash2 size={17}/></IconButton><button className="quiet" disabled={!draft.name.trim()} onClick={() => {try{save(duplicateCharacterIdentity(draft,uid()));}catch(e){setStatus(e instanceof Error?e.message:'Invalid character');}}}><Copy size={16}/> Duplicate</button></>}<span className="spacer"/><button className="quiet" onClick={close}>Cancel</button><button className="primary" disabled={!draft.name.trim()} onClick={() => {const parsed=CharacterDefinition.safeParse({...draft,name:draft.name.trim()});if(parsed.success)save(parsed.data);else setStatus(parsed.error.issues[0]?.message??'Invalid character');}}><Save size={16}/> Save character</button></footer>
     {captureOpen&&<PerformanceStudio scene={{...audition.scene,duration:180,clips:[]}} characters={[draft]} selectedActor="preview" start={0} previewOnly close={()=>setCaptureOpen(false)} commit={async clips=>{setTake(clips.filter(c=>c.track==='performance'||c.track==='body'));setAction('idle');setPlaying(true);}} saveActingDNA={()=>{}}/>}

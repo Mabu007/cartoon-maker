@@ -1,10 +1,11 @@
 import {AiVectorSpecification} from './AiVectorSpecification.tsx';
 import {explainNativeValidation} from '../engine/aiVectorSpecification.ts';
 import {nativePackageLimits} from '../engine/nativeAssetPackage.ts';
-import {bodyProfiles} from '../engine/visualAssets.ts';
-import type {Character} from '../engine/schema.ts';
+import {assetViews,bodyProfiles} from '../engine/visualAssets.ts';
+import {uid,type Character} from '../engine/schema.ts';
 import {useEffect,useState} from 'react';
 import {calibrateNative,exportNativePackage,nativeKey,parseNativePackage,type NativeAssetPack,type NativePackage} from '../engine/nativeAssetPackage.ts';
+import {nativeSvgByteLimit,normalizeNativeSvg,svgImportSlots,type SvgImportSlot} from '../engine/nativeSvg.ts';
 import {nativeExample} from '../engine/nativeAssetExamples.ts';
 import {vectorDrawList,svgPath} from '../engine/vectorArtwork.ts';
 import {deleteNativeAsset,exportInstalledNative,listNativeAssets,saveNativeAssets} from '../services/nativeAssetStore.ts';
@@ -12,19 +13,43 @@ import {downloadText} from '../services/assetPreparation.ts';
 export function NativeAssetLibrary({apply,profile='average',character}:{apply?:(packs:NativeAssetPack[],root:string)=>void;profile?:typeof bodyProfiles[number];character?:Character}){
  const [rows,setRows]=useState<NativeAssetPack[]>([]),[draft,setDraft]=useState<NativePackage>(),[pack,setPack]=useState(0),[component,setComponent]=useState(0),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [pasted,setPasted]=useState('');
+ const [svgSlot,setSvgSlot]=useState<SvgImportSlot>('head-base');
+ const [svgView,setSvgView]=useState<typeof assetViews[number]>('front');
+ const [svgLicense,setSvgLicense]=useState(''),[svgSource,setSvgSource]=useState('');
  const fail=(e:unknown)=>{const {message,hint}=explainNativeValidation(e);setMessage(message+' Repair: '+hint);};
  const refresh=async()=>setRows(await listNativeAssets());
  useEffect(()=>{void refresh().catch(fail);},[]);
  function stage(value:NativePackage){setDraft(value);setPack(0);setComponent(0);setMessage('Validated in quarantine. Nothing has been installed or applied.');}
  const current=draft?.packs[pack],part=current?.components[component];
  async function openFile(file:File){setDraft(undefined);setBusy(true);setMessage('');try{if(file.size>nativePackageLimits.bytes)throw Error('Package exceeds '+nativePackageLimits.bytes+' bytes');stage(parseNativePackage(await file.text()));}catch(e){fail(e);}finally{setBusy(false);}}
+ async function openSvg(file:File){
+  setDraft(undefined);setBusy(true);setMessage('');
+  try{
+   if(file.size>nativeSvgByteLimit)throw Error('SVG exceeds the 128 KB import limit.');
+   stage(normalizeNativeSvg(await file.text(),{id:uid(),name:file.name.replace(/\.svg$/i,'').slice(0,60),
+    license:svgLicense,provenance:svgSource,slot:svgSlot,view:svgView,style:character?.visual?.style??'classic',profile}));
+  }catch(error){fail(error);}finally{setBusy(false);}
+ }
  async function install(){if(!draft)return;setBusy(true);try{await saveNativeAssets(draft);await refresh();setDraft(undefined);setMessage('All package revisions installed atomically.');}catch(e){fail(e);}finally{setBusy(false);}}
  const change=(v:{palette?:Record<string,string>;pivot?:[number,number]})=>{if(draft)try{setDraft(calibrateNative(draft,pack,component,v));setMessage('Calibration validated.');}catch(e){fail(e);}};
  return <section className="factory-fields" aria-label="Native vector library">
- <h3>Native vector packages</h3><p className="small-text">Plain JSON v2, 2 MB maximum. SVG, ZIP, remote resources and executable content are not accepted. Existing raster packages use the original import tab.</p>
+ <h3>Native vector packages</h3><p className="small-text">Import a native package or a supported editable SVG drawing. Use the raster tab for image packages.</p>
  <AiVectorSpecification profile={profile} character={character}/>
  <details className="factory-details"><summary>Paste external vector JSON</summary><label className="field">Native package JSON<textarea aria-label="Paste native vector JSON" rows={6} maxLength={nativePackageLimits.bytes} value={pasted} disabled={busy} onChange={e=>setPasted(e.target.value)}/></label><button type="button" disabled={busy||!pasted.trim()} onClick={()=>{setDraft(undefined);try{stage(parseNativePackage(pasted));setPasted('');}catch(e){fail(e);}}}>Validate pasted package</button></details>
  <label className="field">Import native package<input aria-label="Import native package" type="file" accept=".sirvibe-assets,.json" disabled={busy} onChange={e=>{const input=e.currentTarget,file=input.files?.[0];input.value='';if(file)void openFile(file);}}/></label>
+ <details className="factory-details"><summary>Import editable SVG</summary>
+  <p className="small-text">Use absolute M, L, Q, C and Z path commands, solid hex colors and a rig-space viewBox that includes the origin.</p>
+  <label className="field">Artwork slot<select aria-label="SVG artwork slot" value={svgSlot} onChange={e=>setSvgSlot(e.target.value as SvgImportSlot)}>
+   {svgImportSlots.map(slot=><option key={slot} value={slot}>{slot}</option>)}
+  </select></label>
+  <label className="field">Artwork view<select aria-label="SVG artwork view" value={svgView} onChange={e=>setSvgView(e.target.value as typeof svgView)}>
+   {assetViews.map(view=><option key={view}>{view}</option>)}
+  </select></label>
+  <label className="field">Artwork rights<input aria-label="SVG artwork rights" value={svgLicense} maxLength={500} onChange={e=>setSvgLicense(e.target.value)}/></label>
+  <label className="field">Artwork source<input aria-label="SVG artwork source" value={svgSource} maxLength={500} onChange={e=>setSvgSource(e.target.value)}/></label>
+  <label className="field">SVG file<input aria-label="Import editable SVG" type="file" accept=".svg,image/svg+xml" disabled={busy||!svgLicense.trim()||!svgSource.trim()}
+   onChange={e=>{const input=e.currentTarget,file=input.files?.[0];input.value='';if(file)void openSvg(file);}}/></label>
+ </details>
  <p className="small-text">Built-in authored fixtures (not AI-generated):</p><div className="field-row">{(['hair','clothing','accessory'] as const).map(kind=><button key={kind} type="button" disabled={busy} onClick={()=>{try{stage(nativeExample(kind));}catch(e){fail(e);}}}>Example {kind}</button>)}</div>
  {draft&&current&&part&&<div className="factory-details"><h4>Quarantine preview</h4><label>Package<select aria-label="Quarantine package" value={pack} onChange={e=>{setPack(Number(e.target.value));setComponent(0);}}>{draft.packs.map((p,i)=><option key={nativeKey(p)} value={i}>{p.name} · r{p.revision}</option>)}</select></label>
  <label>Component<select aria-label="Quarantine component" value={component} onChange={e=>setComponent(Number(e.target.value))}>{current.components.map((p,i)=><option key={p.id} value={i}>{p.slot} / {p.view}</option>)}</select></label>
@@ -37,5 +62,5 @@ export function NativeAssetLibrary({apply,profile='average',character}:{apply?:(
 }
 function NativePreview({part}:{part:NativeAssetPack['components'][number]}){
  const a=part.artwork,[x,y,x1,y1]=a.bounds,draw=vectorDrawList(a)??[];
- return <svg role="img" aria-label="Quarantined native vector preview" viewBox={`${x-4} ${y-4} ${x1-x+8} ${y1-y+8}`} style={{width:'100%',height:210,background:'#4a4a55'}}>{draw.map(r=><path key={r.id} d={svgPath(r.commands)} fill={r.fill??'none'} stroke={r.stroke?.color??'none'} strokeWidth={r.stroke?.width} transform={r.transform?'matrix('+r.transform.join(' ')+')':undefined}/>) }<circle cx={a.pivot[0]} cy={a.pivot[1]} r={a.units==='rig'?1.6:.04} fill="#fbd397"/></svg>;
+ return <svg role="img" aria-label="Quarantined native vector preview" viewBox={`${x-4} ${y-4} ${x1-x+8} ${y1-y+8}`} style={{width:'100%',height:210,background:'#4a4a55'}}>{draw.map(r=><path key={r.id} d={svgPath(r.commands)} fill={r.fill??'none'} fillRule={r.fillRule} stroke={r.stroke?.color??'none'} strokeWidth={r.stroke?.width} transform={r.transform?'matrix('+r.transform.join(' ')+')':undefined}/>) }<circle cx={a.pivot[0]} cy={a.pivot[1]} r={a.units==='rig'?1.6:.04} fill="#fbd397"/></svg>;
 }

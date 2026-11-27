@@ -45,6 +45,7 @@ export async function portableProject(project: Project):Promise<Project> {
 const MAGIC='SIRVIBE2\n';
 const binaryHeader=z.strictObject({
   format:z.literal('sirvibe-backup-2'),project:z.unknown(),
+  audioClosure:z.literal('timeline-and-graph').optional(),
   audio:z.record(z.string().regex(/^[a-zA-Z0-9-]+$/),z.strictObject({
     type:z.string().max(100),size:z.number().int().min(1).max(20*1024*1024),sha256:z.string().regex(/^[a-f0-9]{64}$/)
   }))
@@ -55,14 +56,18 @@ const checksum=async(blob:Blob)=>Array.from(new Uint8Array(await crypto.subtle.d
 export async function createMovieBackup(project:Project):Promise<Blob>{
   const offline=await portableProject(project);
   const audio:z.infer<typeof binaryHeader>['audio']={};
-  const parts:Blob[]=[];
-  for(const id of projectAssets(offline)){
+  const files=new Map<string,Blob>();
+  const required=projectAssets(offline);
+  const graphAudio=offline.production&&required.length>projectAssets(offline,'timeline').length;
+  for(const id of required){
     const file=await getOrFetchAudio(id);
     if(!file)throw Error(`Missing audio ${id}. Restore or reattach the original before backing up.`);
     audio[id]={type:file.type,size:file.size,sha256:await checksum(file)};
-    parts.push(file);
+    files.set(id,file);
   }
-  const header=new TextEncoder().encode(JSON.stringify(binaryHeader.parse({format:'sirvibe-backup-2',project:offline,audio})));
+  const header=new TextEncoder().encode(JSON.stringify(binaryHeader.parse({format:'sirvibe-backup-2',
+    project:offline,...(graphAudio?{audioClosure:'timeline-and-graph'}:{}),audio})));
+  const parts=Object.keys(audio).map(id=>files.get(id)!);
   if(header.byteLength>4*1024*1024)throw Error('The project metadata is too large to back up.');
   const size=new Uint8Array(4);new DataView(size.buffer).setUint32(0,header.byteLength,true);
   return new Blob([MAGIC,size,header,...parts],{type:'application/octet-stream'});
@@ -70,20 +75,26 @@ export async function createMovieBackup(project:Project):Promise<Blob>{
 export async function backupMovie(project:Project){
   download(`${fileName(project.name)}.sirvibe`,await createMovieBackup(project));
 }
-export async function restoreMovie(file: File) {
+function recoverableAudio(project:Project,audio:Record<string,unknown>,complete=false) {
+  const required=projectAssets(project,complete?'project':'timeline');
+  if(required.some(id=>!Object.hasOwn(audio,id)))throw Error('The project backup is missing audio.');
+  const assets=complete?required:projectAssets(project).filter(id=>Object.hasOwn(audio,id));
+  if(complete&&Object.keys(audio).length!==assets.length)throw Error('The project backup includes unreferenced audio.');
+  return assets;
+}
+async function readMovieBackup(file: File) {
   if(file.size>2_000_000_000)throw Error('This backup is larger than the supported 2 GB limit.');
-  const mapping=new Map<string,string>();
   let project:Project;
   const audioFiles=new Map<string,Blob>();
-  if(await file.slice(0,MAGIC.length).text()===MAGIC){
+  const binary=await file.slice(0,MAGIC.length).text()===MAGIC;
+  if(binary){
     if(file.size<MAGIC.length+4)throw Error('The backup header is incomplete.');
     const size=new DataView(await file.slice(MAGIC.length,MAGIC.length+4).arrayBuffer()).getUint32(0,true);
     const start=MAGIC.length+4;
     if(!size||size>4*1024*1024||start+size>file.size)throw Error('The backup header is invalid or incomplete.');
     const document=binaryHeader.parse(JSON.parse(await file.slice(start,start+size).text()));
     project=parseStoredProject(document.project);
-    const assets=projectAssets(project);
-    for(const id of assets)if(!Object.hasOwn(document.audio,id))throw Error('The project backup is missing audio.');
+    const assets=recoverableAudio(project,document.audio,document.audioClosure==='timeline-and-graph');
     let offset=start+size;
     const files=new Map<string,Blob>();
     for(const [id,meta] of Object.entries(document.audio)){
@@ -94,21 +105,31 @@ export async function restoreMovie(file: File) {
     for(const id of assets){
       const blob=files.get(id)!;
       if(await checksum(blob)!==document.audio[id].sha256)throw Error('A backup audio file is damaged. No existing cartoon has been changed.');
-      mapping.set(id,uid());audioFiles.set(id,blob);
+      audioFiles.set(id,blob);
     }
   } else {
     // Read all earlier JSON backups; source IDs are never reused on import.
     if(file.size>160_000_000)throw Error('Legacy JSON backups are limited to 160 MB. Re-export in the current SIRVIBE format.');
     const document=backup.parse(JSON.parse(await file.text()));
     project=parseStoredProject(document.project);
-    for(const id of projectAssets(project))if(!Object.hasOwn(document.audio,id))throw Error('The project backup is missing audio.');
-    for(const id of projectAssets(project)){
+    for(const id of recoverableAudio(project,document.audio)){
       const {type,data}=document.audio[id];
       const bytes=Uint8Array.from(atob(data),value=>value.charCodeAt(0));
       if(!bytes.length||bytes.length>20*1024*1024)throw Error('A backup audio file is empty or exceeds 20 MB.');
-      mapping.set(id,uid());audioFiles.set(id,new Blob([bytes],{type}));
+      audioFiles.set(id,new Blob([bytes],{type}));
     }
   }
+  return {format:binary?'sirvibe-backup-2':'toonroom-backup-1',project,audioFiles} as const;
+}
+/** Validate with the same parser and media integrity checks as restore. */
+export async function inspectMovieBackup(file:File){
+  const {format,project,audioFiles}=await readMovieBackup(file);
+  return {format,projectName:project.name,scenes:project.scenes.length,characters:project.characters.length,
+    audioFiles:audioFiles.size,missingGraphAudio:projectAssets(project).filter(id=>!audioFiles.has(id))};
+}
+export async function restoreMovie(file: File) {
+  const {project,audioFiles}=await readMovieBackup(file);
+  const mapping=new Map(Array.from(audioFiles.keys(),id=>[id,uid()]));
   const remap = (asset: string) => mapping.has(asset.slice(6)) && asset.startsWith('asset:') ? `asset:${mapping.get(asset.slice(6))}` : asset;
   const remapClip=(clip:Record<string,unknown>):Record<string,unknown>=>{
     if(typeof clip.asset!=='string')return clip;

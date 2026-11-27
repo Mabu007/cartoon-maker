@@ -4,7 +4,6 @@ import { createRenderer } from '../engine/renderer.ts';
 import { locate, MOVIE_FRAME_RATE, projectDuration } from '../engine/evaluate.ts';
 import type { Project } from '../engine/schema.ts';
 import { createAudioMixer } from './audio.ts';
-import { exportScale } from '../engine/videoFormats.ts';
 import { audioBitrate, hasFrameEncoder, videoBitrate, type VideoContainer, type VideoExporter } from './exportTypes.ts';
 
 const mimeTypes: Record<VideoContainer, string[]> = {
@@ -32,11 +31,21 @@ const recorderExporter = (mimeType: string): VideoExporter => ({
         const { scene, local } = locate(project.scenes, time);
         renderer!.draw(scene, project.characters, local, { subtitles, amplitude: (id, t) => mixer.amplitude(scene, id, t) });
       };
-      renderAt(0);
+      const canvas=renderer.canvas;
+      Object.assign(canvas.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
+      canvas.setAttribute('aria-hidden','true');
+      document.body.appendChild(canvas);
       const duration = projectDuration(project.scenes);
       const destination = mixer.context.createMediaStreamDestination();
       mixer.output.connect(destination);
-      stream = renderer.canvas.captureStream(MOVIE_FRAME_RATE);
+      stream=canvas.captureStream(0);
+      let videoTrack=stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack|undefined;
+      if(typeof videoTrack?.requestFrame!=='function'){
+        stream.getTracks().forEach(track=>track.stop());
+        stream=canvas.captureStream(MOVIE_FRAME_RATE);
+        videoTrack=undefined;
+      }
+      const paintFrame=(time:number)=>{renderAt(time);videoTrack?.requestFrame();};
       for (const track of destination.stream.getAudioTracks()) stream.addTrack(track);
       if (!stream.getVideoTracks().length || !stream.getAudioTracks().length) throw new Error('The browser did not provide both export tracks.');
       recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: videoBitrate, audioBitsPerSecond: audioBitrate });
@@ -44,7 +53,7 @@ const recorderExporter = (mimeType: string): VideoExporter => ({
       let frame = 0;
       let frameHandle = 0;
       const movie = await new Promise<Blob>((resolve, reject) => {
-        const finish = (reason: unknown) => { clean(); cancelAnimationFrame(frameHandle); reject(reason); };
+        const finish = (reason: unknown) => { clean(); clearTimeout(frameHandle); reject(reason); };
         const abort = () => finish(new DOMException('Export cancelled', 'AbortError'));
         const onVisibility = () => { if (document.hidden) finish(new Error('The editor was hidden during recording. Keep this tab visible and try again.')); };
         const clean = () => { signal.removeEventListener('abort', abort); document.removeEventListener('visibilitychange', onVisibility); };
@@ -53,19 +62,19 @@ const recorderExporter = (mimeType: string): VideoExporter => ({
         recorder!.onstop = () => { clean(); resolve(new Blob(chunks, { type: recorder!.mimeType || mimeType })); };
         signal.addEventListener('abort', abort, { once: true });
         document.addEventListener('visibilitychange', onVisibility);
-        try { recorder!.start(500); } catch (error) { clean(); finish(error); return; }
+        try { recorder!.start(500); paintFrame(0); } catch (error) { finish(error); return; }
         const start = mixer.context.currentTime + .045;
         mixer.schedule(project.scenes, 0, start);
         const tick = () => {
           try {
             const time = Math.max(0, mixer.context.currentTime - start);
-            if (time >= duration) { renderAt(duration); progress(1); recorder!.stop(); return; }
+            if (time >= duration) { progress(1); recorder!.stop(); return; }
             const next = Math.floor(time * MOVIE_FRAME_RATE);
-            if (next !== frame) { renderAt(next / MOVIE_FRAME_RATE); frame = next; progress(time / duration); }
-            frameHandle = requestAnimationFrame(tick);
+            if (next !== frame) { paintFrame(next / MOVIE_FRAME_RATE); frame = next; progress(time / duration); }
+            frameHandle=window.setTimeout(tick,1000/(MOVIE_FRAME_RATE*2));
           } catch (error) { clean(); finish(error); }
         };
-        frameHandle = requestAnimationFrame(tick);
+        frameHandle=window.setTimeout(tick,1000/(MOVIE_FRAME_RATE*2));
       });
       if (!movie.size) throw new Error('The encoder returned an empty recording.');
       if (movie.type.includes('mp4')) return { blob: movie, extension: 'mp4' };
@@ -75,6 +84,7 @@ const recorderExporter = (mimeType: string): VideoExporter => ({
     } finally {
       if (recorder && recorder.state !== 'inactive') recorder.stop();
       stream?.getTracks().forEach(track => track.stop());
+      renderer?.canvas.remove();
       renderer?.destroy(); mixer.close();
     }
   }

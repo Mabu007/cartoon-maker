@@ -36,16 +36,38 @@ function sourceVector(l:VolumeSource,p:Point):{dir:Vec3;weight:number}{
  if(l.kind==='spot'){const distance=Math.hypot(dx,dy)||1,angle=(-dx*Math.cos(az)-dy*Math.sin(az))/distance,edge=Math.cos(rad(l.cone/2));weight*=clamp((angle-edge)/Math.max(.02,l.softness*.4));}
  return {dir,weight};
 }
+export function prepareVolumeSurface(frame:VolumeFrame,point:Point) {
+ const lights=frame.lights.map(light=>{
+  const {dir,weight}=sourceVector(light,point);
+  return {light,dir,weight,half:norm(dir[0],dir[1],dir[2]+1)};
+ });
+ let x=0,y=0,weight=0;
+ for(const item of lights){x+=item.dir[0]*item.weight;y+=item.dir[1]*item.weight;weight+=item.weight;}
+ const {settings,ambient}=frame;
+ const exposure=Math.pow(2,settings.exposure),depthHaze=settings.depthHaze*clamp(-frame.depth/1000);
+ return {
+  direction:{x,y,weight},
+  paint(base:string,material:SurfaceMaterial){
+   const pigment=rgb(base),m=surfaceMaterials[material],gloss=4+(1-m.roughness)*32;
+   return (normal:Vec3)=>{
+    const occlusion=1-settings.occlusion*(1-normal[2])*.5;
+    const sum=ambient.map(value=>value*occlusion),spec=[0,0,0];
+    for(const {light,dir,weight,half} of lights){
+     const lambert=clamp((dot(normal,dir)+light.softness*.2)/(1+light.softness*.2));
+     const rim=light.kind==='rim'?Math.pow(1-clamp(normal[2]),2):0;
+     const diffuse=(light.kind==='fill'?.45+.55*lambert:lambert)*m.diffuse+rim*.65;
+     const shine=Math.pow(clamp(dot(normal,half)),gloss)*m.specular;
+     for(let i=0;i<3;i++){sum[i]+=light.rgb[i]*weight*diffuse;spec[i]+=light.rgb[i]*weight*shine;}
+    }
+    const colors=pigment.map((v,i)=>clamp(((v*sum[i]+spec[i]*.4)*exposure-.5)*settings.contrast+.5)*(1-depthHaze)+ambient[i]*depthHaze);
+    const gray=colors[0]*.2126+colors[1]*.7152+colors[2]*.0722;
+    return hex(colors.map(v=>gray+(v-gray)*settings.saturation));
+   };
+  }
+ };
+}
 export function volumeColor(frame:VolumeFrame,point:Point,normal:Vec3,base:string,material:SurfaceMaterial):string{
- const m=surfaceMaterials[material],c=rgb(base),sum=frame.ambient.map(x=>x*(1-frame.settings.occlusion*(1-normal[2])*.5)),spec=[0,0,0];
- for(const l of frame.lights){const {dir,weight}=sourceVector(l,point),lambert=clamp((dot(normal,dir)+l.softness*.2)/(1+l.softness*.2)),rim=l.kind==='rim'?Math.pow(1-clamp(normal[2]),2):0;
-  const diffuse=(l.kind==='fill'?.45+.55*lambert:lambert)*m.diffuse+rim*.65;
-  const h=norm(dir[0],dir[1],dir[2]+1),shine=Math.pow(clamp(dot(normal,h)),4+(1-m.roughness)*32)*m.specular;
-  for(let i=0;i<3;i++){sum[i]+=l.rgb[i]*weight*diffuse;spec[i]+=l.rgb[i]*weight*shine;}}
- const exposure=Math.pow(2,frame.settings.exposure),depthHaze=frame.settings.depthHaze*clamp(-frame.depth/1000);
- const out=c.map((v,i)=>clamp(((v*sum[i]+spec[i]*.4)*exposure-.5)*frame.settings.contrast+.5)*(1-depthHaze)+frame.ambient[i]*depthHaze);
- const gray=out[0]*.2126+out[1]*.7152+out[2]*.0722;
- return hex(out.map(v=>gray+(v-gray)*frame.settings.saturation));
+ return prepareVolumeSurface(frame,point).paint(base,material)(normal);
 }
 export type VolumePaint={point:(p:Point)=>Point;normal:(x:number,y:number,z:number)=>Vec3;frame:VolumeFrame;fill:(color:string,material:SurfaceMaterial,point:Point,angle?:number,shape?:'ellipsoid'|'cylinder')=>unknown};
 /** Dominant screen-space light direction, weighted by influence at the surface. */

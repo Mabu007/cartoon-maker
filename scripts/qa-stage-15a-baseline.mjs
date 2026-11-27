@@ -30,6 +30,8 @@ const {chromium}=loadPlaywright();
 const out=resolve(process.env.QA_OUT??'qa-stage-15a-results');
 const sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 const port=Number(process.env.QA_PORT??4189);
+const exportQuality=process.env.QA_EXPORT_QUALITY??'balanced';
+assert(['balanced','full'].includes(exportQuality),'Unknown QA_EXPORT_QUALITY');
 const harness='qa-stage-15a-runtime.html';
 assert(!existsSync(harness),'Refusing to overwrite harness');
 assert(!existsSync(join(out,'report.json')),'Use a fresh QA_OUT directory per run');
@@ -66,7 +68,7 @@ try{
    dialogue('speech-two','zee-safe','I was just checking if it was safe.',4.1,3.45),
    clip('camera','camera',{shot:'two-shot',transition:'cut'})];
   const base={...source,id:'qa15a-scene',name:'Same-art listening beat',duration:8,actors,clips};
-  const seated={...structuredClone(base),clips:[...structuredClone(clips),clip('seated','body',{actor:z,action:'sit',layer:'body',target:'sofa'}),clip('cup','props',{actor:z,target:'cup',interaction:'equip',start:0,length:.1,hand:'right'})]};
+  const seated={...structuredClone(base),clips:[...structuredClone(clips),clip('seated','body',{actor:z,action:'sit',layer:'body',target:'sofa'}),clip('equip-cup','props',{actor:z,target:'cup',interaction:'equip',start:0,length:.1,hand:'right'})]};
   const capture={...structuredClone(base),clips:[...structuredClone(clips),clip('captured','performance',{actor:s,start:1,length:6,name:'Synthetic dropout',performanceOrigin:'mocap',performance:[
    {time:0,pose:{head:3,leftShoulder:10},presence:1,headYaw:.15,headFacing:'front',armTargets:{left:{x:-24,y:23}},armBend:{left:-1},hands:{left:'open',right:'relaxed'}},
    {time:.35,pose:{head:9,leftShoulder:20},presence:1,headYaw:.3,headFacing:'right',armTargets:{left:{x:-20,y:15}},armBend:{left:-1},hands:{left:'point',right:'relaxed'}},
@@ -114,20 +116,19 @@ try{
  if(process.env.QA_EXPORTS==='1'){
   for(const mode of ['frame','recorder']){
    try{
-    const download=page.waitForEvent('download',{timeout:180000});
-    const details=await page.evaluate(async mode=>{
+    const [download,details]=await Promise.all([page.waitForEvent('download',{timeout:180000}),page.evaluate(async ({mode,quality})=>{
      const {project}=window.qa;let exporter;
      const old=Object.getOwnPropertyDescriptor(globalThis,'VideoEncoder');
      try{
       if(mode==='frame'){exporter=(await import('/src/services/frameExport.ts')).frameExporter('webm');}
       else{Object.defineProperty(globalThis,'VideoEncoder',{value:undefined,configurable:true});exporter=(await import('/src/services/export.ts')).browserExporter;}
-      const result=await exporter.run(project,'16:9',false,new AbortController().signal,()=>{});
+      const result=await exporter.run(project,'16:9',false,new AbortController().signal,()=>{},quality);
       if(!result.blob.size)throw Error('Empty export');
       const link=document.createElement('a'),url=URL.createObjectURL(result.blob);link.href=url;link.download=mode+'.'+result.extension;link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
       return {bytes:result.blob.size,type:result.blob.type,extension:result.extension};
      }finally{if(mode==='recorder'){if(old)Object.defineProperty(globalThis,'VideoEncoder',old);else delete globalThis.VideoEncoder;}}
-    },mode);
-    await (await download).saveAs(join(out,mode+'.'+details.extension));report.exports[mode]=details;
+    },{mode,quality:exportQuality})]);
+    await download.saveAs(join(out,mode+'.'+details.extension));report.exports[mode]=details;
    }catch(e){report.exports[mode]={error:String(e)};}
   }
  }

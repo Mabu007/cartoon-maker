@@ -19,7 +19,8 @@ test('15A frame preserves legacy resolver endpoints, facial cue and mirror acros
    assert.equal(f.hands[side].position,f.arms[side].hand);
    assert.equal(f.attachments.feet[side],f.legs[side].foot);
   }
-  const left=!viewArt[view].rear;
+  const left=!viewArt[view].rear&&!f.headDeformation;
+  if(f.headDeformation){assert.equal(f.head.position.x,r.head.x);assert.equal(f.head.scale.x,c.head);}
   assert.equal(f.headMirrored,mirrored!==left);
   assert.equal(f.headPitch,0);assert.equal(f.headYaw,.2);
   assert.equal(f.speech.shape,'closed');assert.equal(f.speech.mouthOpen,0);

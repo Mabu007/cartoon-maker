@@ -16,9 +16,8 @@ export function drawVectorRegions(g:Graphics,regions:readonly VectorDrawRegion[]
   for(const r of regions){
     const m=r.transform??[1,0,0,1,0,0] as const;
     const p=(x:number,y:number)=>worldPoint(world,...worldPoint(m,x,y));
-    const emit=()=>{
-      g.beginPath();
-      for(const c of r.commands){
+    const emit=(commands:readonly VectorDrawRegion['commands'][number][])=>{
+      for(const c of commands){
         switch(c[0]){
           case 'M':g.moveTo(...p(c[1],c[2]));break;
           case 'L':g.lineTo(...p(c[1],c[2]));break;
@@ -28,10 +27,24 @@ export function drawVectorRegions(g:Graphics,regions:readonly VectorDrawRegion[]
         }
       }
     };
-    if(r.fill){emit();g.fill(r.fill);}
+    if(!r.fill&&!r.stroke)continue;
+    if(r.fill&&r.compound){
+      for(const shape of r.compound){
+        g.beginPath();emit(shape.outer);g.fill(r.fill);
+        if(shape.holes.length){
+          g.beginPath();
+          for(const hole of shape.holes)emit(hole);
+          g.cut();
+        }
+      }
+      if(r.stroke){g.beginPath();emit(r.commands);}
+    }else{
+      g.beginPath();emit(r.commands);
+      if(r.fill)g.fill(r.fill);
+    }
     if(r.stroke){
       const scale=Math.sqrt(Math.abs((m[0]*m[3]-m[1]*m[2])*(world[0]*world[3]-world[1]*world[2])));
-      emit();g.stroke({color:r.stroke.color,width:r.stroke.width*scale,cap:'round',join:'round'});
+      g.stroke({color:r.stroke.color,width:r.stroke.width*scale,cap:'round',join:'round'});
     }
   }
 }
@@ -69,10 +82,11 @@ export class NativeBonePathCache{
   draw(g:Graphics,part:NativeVectorComponentData,world:VectorMatrix){
     const compiled=this.prepare(part);if(!compiled)return false;
     for(const {region,path} of compiled){
+      if(region.compound){drawVectorRegions(g,[region],world);continue;}
       const m=composeVectorMatrix(world,region.transform??[1,0,0,1,0,0]);
-      const shape=path.clone(true).transform(new Matrix(...m));
-      if(region.fill)g.path(shape).fill(region.fill);
-      if(region.stroke)g.path(shape.clone(true)).stroke({color:region.stroke.color,width:region.stroke.width*Math.sqrt(Math.abs(m[0]*m[3]-m[1]*m[2])),cap:'round',join:'round'});
+      g.path(path.clone(true).transform(new Matrix(...m)));
+      if(region.fill)g.fill(region.fill);
+      if(region.stroke)g.stroke({color:region.stroke.color,width:region.stroke.width*Math.sqrt(Math.abs(m[0]*m[3]-m[1]*m[2])),cap:'round',join:'round'});
     }
     return true;
   }

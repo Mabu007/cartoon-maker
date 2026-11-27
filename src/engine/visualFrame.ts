@@ -1,8 +1,8 @@
 /** Stage 15A: borrowed, actor-local primary geometry before paint.
  * The frame is read-only by contract, consumed synchronously, never persisted.
- * No new deformation, retargeting, or secondary simulation occurs here.
+ * Head deformation is sampled from the same resolved capture and preview inputs.
  */
-import {rig,type Point} from './animation.ts';
+import {clamp,rig,type Point} from './animation.ts';
 import {coherentEnabled,type CoherentActingFrame} from './coherentActing.ts';
 import {resolveArtworkArm,resolveArtworkLeg,type ArtworkPoseAuthority,type ResolvedArtworkPose,type ResolvedHandArtwork} from './resolvedArtworkPose.ts';
 import {facialPerformance} from './facialAnimation.ts';
@@ -15,6 +15,7 @@ import type {FingerCurls} from './performanceHandIntelligence.ts';
 import type {ThumbPair} from './thumbIntelligence.ts';
 import type {GestureSample} from './livingCharacter.ts';
 import type {VisemeSample} from './visemes.ts';
+import {headAuditionLimits,sampleHeadDeformation,type HeadAudition,type HeadDeformation} from './headDeformation.ts';
 import type {Action,ActingIntent,Character,EmotionSpace,Expression,JointPose,PerformanceFacing,Prop,View} from './schema.ts';
 
 export const viewArt: Record<View, { width: number; face: number; far: boolean; rear: boolean; profile: boolean }> = {
@@ -30,7 +31,7 @@ export type VisualFrameAuthority=ArtworkPoseAuthority & {
   expressionIntensity?:number;actingIntent?:ActingIntent;emotion?:EmotionSpace;
   facialCapture?:{controls:FacialControls;influence:number;tracking?:TrackingSelection};
   capturedFingers?:{left?:FingerCurls;right?:FingerCurls;thumbs?:ThumbPair;influence:number;confidence?:{left?:number;right?:number}};
-  capturedHeadFacing?:PerformanceFacing;capturedHeadYaw?:number;heldItems?:{left?:Prop;right?:Prop};
+  capturedHeadFacing?:PerformanceFacing;capturedHeadYaw?:number;headAudition?:HeadAudition;heldItems?:{left?:Prop;right?:Prop};
   handOverride?:{left:HandPose;right:HandPose;from:{left:HandPose;right:HandPose};progress:number;influence:number;observed?:{left:boolean;right:boolean}};
 };
 export type VisualFrameInputs={
@@ -42,8 +43,9 @@ export type VisualFrameInputs={
 };
 export type VisualFrame=Readonly<Omit<ResolvedArtworkPose,'hands'>> & {
   readonly hands:Readonly<Record<ArmSide,ResolvedHandArtwork>>;
-  /** Existing normalized capture yaw, not degrees. No authoritative pitch channel yet. */
-  readonly headYaw:number;readonly headPitch:0;
+  /** Recorded yaw is normalized. Pitch is available during rehearsal. */
+  readonly headYaw:number;readonly headPitch:number;
+  readonly headDeformation?:HeadDeformation;
   readonly speech:Readonly<{cue?:VisemeSample;shape:VisemeSample['shape'];strength:number;mouthOpen:number}>;
   readonly attachments:Readonly<{head:ResolvedArtworkPose['head'];palms:Readonly<Record<ArmSide,ResolvedHandArtwork>>;feet:Readonly<Record<ArmSide,Point>>}>;
   readonly headMirrored:boolean;
@@ -116,29 +118,26 @@ export function resolveVisualFrame(input:VisualFrameInputs):VisualFrame{
   }
   const hands={left:resolveHand('left'),right:resolveHand('right')};
   const headYaw=appearance?.capturedHeadYaw??0;
-  // Use the already stabilized yaw as a subtle continuous transition,
-  // while the front/three-quarter artwork supplies the three discrete poses.
-  const position={x:r.head.x-headYaw*3.6*c.head,y:r.head.y};
-  const angle = r.angle + (listening&&!coherentEnabled(c) ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
-  // Three modest head poses are independent from the body facing selected
-  // by the director. Mirroring the three-quarter head does not rotate the
-  // whole torso or change the saved character viewpoint.
-  const trackedHead=art.rear?undefined:appearance?.capturedHeadFacing;
-  const scale={x:c.head*turnScale*(1-.09*Math.abs(headYaw))*(trackedHead==='left'?-1:1),y:c.head};
+  const headDeformation=sampleHeadDeformation(c,view,appearance?.capturedHeadYaw,appearance?.headAudition);
+  const trackedHead=art.rear||headDeformation?undefined:appearance?.capturedHeadFacing;
+  const position={x:r.head.x-(headDeformation?0:headYaw*3.6*c.head),y:r.head.y};
+  const roll=headDeformation&&appearance?.headAudition?clamp(appearance.headAudition.roll,-headAuditionLimits.roll,headAuditionLimits.roll):0;
+  const angle = r.angle + roll + (listening&&!coherentEnabled(c) ? Math.sin(time*2.4+actorId.length*.7)*1.4 : 0);
+  const scale={x:c.head*turnScale*(headDeformation?1:1-.09*Math.abs(headYaw))*(trackedHead==='left'?-1:1),y:c.head};
   // Never add synthetic random jaw motion over audio-aligned silence.
   const localFocus=trackedHead==='left'&&focus?{x:-focus.x,y:focus.y}:focus;
   const mood = facialPerformance(time, actorId, action, expression, amplitude, viseme, localFocus, c.personality,appearance?.expressionIntensity??1,appearance?.actingIntent,appearance?.emotion,appearance?.behavior);
   if(appearance?.facialCapture) mood.controls=blendSelectedFace(
     mood.controls??{...neutralFacialControls},appearance.facialCapture.controls,appearance.facialCapture.influence,appearance.facialCapture.tracking);
   if (action === 'blink' && actionTime < .22) mood.blink = Math.max(mood.blink, 1 - Math.abs(actionTime - .11) / .11);
-  const headView:View = trackedHead
+  const headView:View = headDeformation&&appearance?.capturedHeadYaw!==undefined&&!appearance.headAudition ? 'front' : trackedHead
     ? trackedHead==='front'?'front':'three-quarter'
     : lookAtCamera && (art.profile || art.rear)
       ? view === 'back' ? 'back' : 'three-quarter' : view;
 
   const head={position,angle,scale};
   return {actorId,view,headView,mirrored:Boolean(appearance?.mirrored),lift,rig:r,arms,legs,head,nearArm:nearest,hands,facial:mood,action,locomotion,time,
-    headYaw,headPitch:0,speech:{cue:viseme,shape:mood.viseme,strength:viseme?.weight??0,mouthOpen:mood.mouthOpen},
+    headYaw,headPitch:(headDeformation?.pitch??0)*headAuditionLimits.pitch,headDeformation,speech:{cue:viseme,shape:mood.viseme,strength:viseme?.weight??0,mouthOpen:mood.mouthOpen},
     attachments:{head,palms:hands,feet:{left:legs.left.foot,right:legs.right.foot}},
     headMirrored:Boolean(appearance?.mirrored)!==(trackedHead==='left'),capturedOrder,carrying:carryingBySide,cry,capturedFront};
 }
