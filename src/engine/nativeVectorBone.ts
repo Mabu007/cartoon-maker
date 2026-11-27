@@ -7,7 +7,7 @@ import type {Character,View} from './schema.ts';
 import type {Point} from './artworkGeometry.ts';
 /** Explicit facing art is selected in pre-global-mirror coordinates.
  * Unspecified direction requires mirror-safe geometry; fixed slots still fall back. */
-export function nativePartFor(c:Character,slot:CompiledArtwork['slot'],view:View,mirrored=false){
+export function nativePartFor(c:Character,slot:NativeVectorComponentData['slot'],view:View,mirrored=false){
   return c.visual?.vectorComponents?.find(p=>p.slot===slot&&p.view===view&&p.profiles.includes(c.visual!.profile)&&(p.facing?p.facing===(mirrored?'mirrored':'normal'):p.artwork.compatibility.mirrorSafe));
 }
 const poseParts=new WeakMap<NativeVectorComponentData,Map<ArtworkPoseClass,NativeVectorComponentData>>();
@@ -68,4 +68,12 @@ export function fixedVectorMatrix(part:NativeVectorComponentData,x:number,y:numb
   if(part.artwork.units!=='rig'||![x,y,angle].every(Number.isFinite))return;
   const r=angle*Math.PI/180,a=Math.cos(r),b=Math.sin(r),[px,py]=part.artwork.pivot;
   return [a,b,-b,a,x-a*px+b*py,y-b*px-a*py];
+}
+
+/** Sparse native group deformation, preserving region pins. */
+export function dynamicNativeDrawList(part:NativeVectorComponentData,offsets:Readonly<Record<string,readonly [number,number]>>){
+ const rest=boneDrawList(part);if(!rest||!part.dynamics?.length)return rest;
+ const art=part.artwork,byId=new Map(art.regions.map(r=>[r.id,r]));
+ return rest.map(r=>{const group=byId.get(r.id)?.material?.controlGroup,q=group&&offsets[part.id+'/'+group];if(!q||!q.some(Boolean))return r;
+ const draw=vectorDrawList(art,{}, {ownerId:part.id,regionId:r.id,localToWorld:[1,0,0,1,0,0],displacement:q,velocity:[0,0]});return draw?.find(d=>d.id===r.id)??r;});
 }

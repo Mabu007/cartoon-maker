@@ -1,3 +1,4 @@
+import {LveMaterial} from './lveSimulation.ts';
 import {artworkPoseClasses} from './primaryArtworkPose.ts';
 import { characterCoreSlots, isBoneSlot } from './artworkGeometry.ts';
 import { z } from 'zod';
@@ -7,6 +8,8 @@ export const assetCategories = ['character','body-profile','face-component','hai
 export const assetViews = ['front','three-quarter','side','back-quarter','back'] as const;
 export const bodyProfiles = ['slim','average','curvy','athletic','muscular','broad','larger','short','tall','young-adult','mature','elderly','lean','heavyset','petite'] as const;
 export const componentSlots = ['hair','top','head-base','upper-arm-left','forearm-left','upper-arm-right','forearm-right','thigh-left','calf-left','thigh-right','calf-right','shoe-left','shoe-right'] as const;
+export const nativeComponentSlots=[...componentSlots,'head-accessory'] as const;
+export type NativeSlot=typeof nativeComponentSlots[number];
 const number = (min:number,max:number) => z.number().finite().min(min).max(max);
 export const assetPoint = z.strictObject({x:number(0,1),y:number(0,1)});
 const identifier = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/);
@@ -22,14 +25,21 @@ export const CompiledComponent = z.strictObject({
 export type CompiledArtwork = z.infer<typeof CompiledComponent>;
 /** Optional native representation shares existing slot/view/profile identity. */
 export const NativeVectorComponent = z.strictObject({
-  id:identifier, slot:z.enum(componentSlots), view:z.enum(assetViews),
+  id:identifier, slot:z.enum(nativeComponentSlots), view:z.enum(assetViews),
   profiles:z.array(z.enum(bodyProfiles)).min(1).max(bodyProfiles.length),
   artwork:VectorArtworkV1,
   facing:z.enum(['normal','mirrored']).optional(),
   fitMorphology:z.literal('anatomical-v1').optional(),
   poseArtwork:z.array(z.strictObject({pose:z.enum(artworkPoseClasses),artwork:VectorArtworkV1})).max(6).optional(),
-  authoredOffset:z.tuple([number(-32,32),number(-32,32)]).optional()
+  authoredOffset:z.tuple([number(-32,32),number(-32,32)]).optional(),
+  packageSource:z.strictObject({id:identifier,revision:z.number().int().min(1).max(1_000_000),license:z.string().min(1).max(500),provenance:z.string().min(1).max(500)}).optional(),
+  dynamics:z.array(z.strictObject({group:identifier,points:z.array(z.tuple([number(-180,180),number(-180,180)])).min(2).max(5),material:LveMaterial,proxyIds:z.array(identifier).max(4)})).max(4).optional()
 }).superRefine((part,ctx)=>{
+  const groups=new Set<string>();for(const d of part.dynamics??[]){
+    const art=part.artwork,refs=art.regions.filter(r=>r.material?.controlGroup===d.group);
+    if(groups.has(d.group)||!['hair','top','head-accessory'].includes(part.slot)||!refs.length||!art.controlGroups.includes(d.group)||d.material.maxDisplacement>8||d.proxyIds.some(id=>!art.collisionProxies.some(p=>p.id===id))||new Set(d.proxyIds).size!==d.proxyIds.length||d.points.some(([x,y],i)=>x<art.bounds[0]||x>art.bounds[2]||y<art.bounds[1]||y>art.bounds[3]||i>0&&Math.hypot(x-d.points[i-1][0],y-d.points[i-1][1])<.01)||!refs.some(r=>r.material!.weights.some(w=>w.pin===1))||!refs.some(r=>r.material!.weights.some(w=>w.pin<1&&w.influence>0)))ctx.addIssue({code:'custom',path:['dynamics'],message:'Invalid native simulation group, pins, bounds, material or proxy reference'});
+    groups.add(d.group);
+  }
   const poseKeys=new Set<string>();for(const variant of part.poseArtwork??[]){
     if(poseKeys.has(variant.pose)||variant.pose==='rest')ctx.addIssue({code:'custom',message:'Duplicate or redundant pose artwork'});poseKeys.add(variant.pose);
     if(!isBoneSlot(part.slot)||variant.artwork.units!=='bone-normalized'||variant.artwork.pivot.some(n=>n!==0)||!variant.artwork.anchors.some(a=>a.id==='end'&&a.point[0]===1&&a.point[1]===0)||(!part.facing&&!variant.artwork.compatibility.mirrorSafe))ctx.addIssue({code:'custom',message:'Pose variants must preserve normalized bone anchors and facing compatibility'});

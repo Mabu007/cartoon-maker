@@ -223,13 +223,14 @@ export function NativeCharacterPreview({ character: c, view, action, expression,
           {action==='cry'&&<g fill={c.skin} stroke="#27213a" strokeWidth="2.1"><ellipse cx={faceCenter+12} cy={eyeY+2} rx="7" ry="8"/>{!profile&&<ellipse cx={faceCenter-12} cy={eyeY+2} rx="7" ry="8"/>}<ellipse fill="#80d8f3" stroke="none" cx={faceCenter+13} cy={eyeY+15+elapsed*23%16} rx="2" ry="4"/></g>}
           {c.earrings && <circle cx={-headW + 2} cy={headY + 18} r="5" fill="none" stroke="#f5cf6b" strokeWidth="3"/>}
         </g>}
+        <g transform={`translate(0 ${headY}) scale(${c.head})`}><FixedImage mirrored={flip} character={c} view={view} slot="head-accessory" x={0} y={0}/></g>
         </g>
       </g>
     </g>
   </svg>;
 }
 
-function FixedImage({character,view,slot,x,y,angle=0,mirrored=false}:{character:Character;view:View;slot:CompiledArtwork['slot'];x:number;y:number;angle?:number;mirrored?:boolean}){
+function FixedImage({character,view,slot,x,y,angle=0,mirrored=false}:{character:Character;view:View;slot:import('../engine/visualAssets.ts').NativeSlot;x:number;y:number;angle?:number;mirrored?:boolean}){
   const native=nativePartFor(character,slot,view,mirrored),matrix=native&&fixedVectorMatrix(native,x,y,angle);
   const paths=native&&matrix&&nativeBonePreview(native,matrix);
   if(paths)return <g>{paths.map(({id,...props})=><path key={id} {...props} strokeLinecap="round" strokeLinejoin="round"/>)}</g>;

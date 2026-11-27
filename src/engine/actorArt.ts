@@ -246,7 +246,7 @@ export function drawActor(g:Graphics,face:Container,c:Character, view: View, pos
     vector(g,`M ${x-width} ${y-5}H${x+width}L${x+width*1.29} ${y+hem}Q${x} ${y+hem+7} ${x-width*1.29} ${y+hem}Z`,c.pants,INK,2.1);
     for(const offset of [-.57,0,.57]) segment(g,x+offset*width,y+2,x+offset*width*1.15,y+hem,shade(c.pants,-.28),1.1);
   }
-  if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume,appearance?.vectorCache,appearance?.mirrored)){
+  if(!drawComponent(g,c,'top',view,r.neck.x,r.neck.y,-(pose.torso??0)-(pose.hips??0),costume,appearance?.vectorCache,appearance?.mirrored,appearance?.secondary?.native)){
     if(garments){const top=garmentTorso(c,art,r.neck,r.hip,r.left.shoulder,r.right.shoulder,action==='sit'?1:Math.min(1,Math.abs(pose.torso??0)/35));const motion=appearance?.secondary;drawGarmentPaths(g,c,motion?deformGarmentPanels(top,r.neck.y+12,r.hip.y+4,motion.cloth,motion.body):top,costume,appearance?.surface,{x:(r.neck.x+r.hip.x)/2,y:(r.neck.y+r.hip.y)/2});}
     else drawTop(g,c,art,r.neck,r.hip,costume);
   }
@@ -313,7 +313,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
     vector(g,`M ${-w*.65} ${h*.34} Q ${-w*.48} ${h*.45} ${-w*.29} ${h*.4} M ${w*.32} ${h*.4} Q ${w*.52} ${h*.43} ${w*.7} ${h*.29}`,'none',tone,.9);
     if(c.visual.profile==='mature'||c.visual.profile==='elderly')vector(g,`M ${-w*.35} ${-h*.47} Q 0 ${-h*.51} ${w*.38} ${-h*.45} M ${-w*.35} ${-h*.38} Q 0 ${-h*.42} ${w*.38} ${-h*.36}`,'none',tone,.8);
   }
-  const customHair=openHat&&drawComponent(g,c,'hair',view,0,0,0,texture,vectorCache,mirrored);
+  const customHair=openHat&&drawComponent(g,c,'hair',view,0,0,0,texture,vectorCache,mirrored,secondary?.native);
   if(hair&&!customHair){
     for(const item of dynamicHairPaths(hair,'foreground',secondary?.hair))vector(g,item.d,item.fill==='none'?item.fill:surface?.(item.fill,'hair',{x:0,y:-20})??item.fill,item.stroke,item.strokeWidth);
   }else if(openHat&&!customHair&&!layered) {
@@ -327,6 +327,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
     hideExpressionMouth(face);
     drawPiercing(g,c,art,ears,0,secondary?.earrings);
     drawExtra(g,c,art,w,h,'head');
+    drawComponent(g,c,'head-accessory',view,0,0,0,texture,vectorCache,mirrored,secondary?.native);
     return;
   }
   const {center,eyes,eyeY,noseX,mouthX}=faceLandmarks(c,art);
@@ -356,6 +357,7 @@ function drawFace(face:Container,g:Graphics,c:Character,view:View,mood:FacialPer
   drawBeard(g,c,art,mouthX,w,h);
   drawPiercing(g,c,art,ears,profile?mouthX:noseX,secondary?.earrings);
   drawExtra(g,c,art,w,h,'head');
+    drawComponent(g,c,'head-accessory',view,0,0,0,texture,vectorCache,mirrored,secondary?.native);
   if(q?.extra==='mask') hideExpressionMouth(face);
   else drawExpressionMouth(face,c,mood,mouthX,view);
 }
