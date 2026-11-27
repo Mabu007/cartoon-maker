@@ -60,3 +60,7 @@ Annotate before/after images with actual view, pose, camera, commit and known de
 5. Document actual checks, unresolved rig/art gaps and tested commit. No merge, production promotion, mass asset expansion or further stage until the relevant gates pass.
 
 This document does not establish visual quality or animation fidelity. No new model sheets or application screenshots are supplied by this preproduction brief.
+
+## Consolidation update
+
+Explicit upgrade presets `sbu-vector-v1` and `zee-vector-v1` now integrate existing authored anatomy, identity-specific face controls, new hair and morphology. Original presets remain. These are editable integrated benchmark candidates, not independently hand-authored production model sheets. Browser QA harness now captures both orientations, scene frames and SVG preview; final artistic approval and target-device checks remain outstanding.
