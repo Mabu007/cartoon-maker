@@ -480,7 +480,7 @@ export function Timeline({
                 </button>
                 <div className="movie-scene-resize-handle" role="slider" tabIndex={0}
                   aria-label={`Resize Scene ${span.index+1} duration: ${span.scene.name}`}
-                  aria-valuemin={1} aria-valuemax={180} aria-valuenow={span.scene.duration}
+                  aria-orientation="horizontal" aria-valuemin={1} aria-valuemax={180} aria-valuenow={span.scene.duration}
                   aria-valuetext={`${span.scene.duration.toFixed(1)} seconds; later scenes move automatically`}
                   title={`Drag to change ${span.scene.name} duration. Later scenes move automatically. Arrow keys adjust by 0.1s; Shift + arrows by 1s.`}
                   onPointerDown={event=>beginSceneResize(event,span.scene)}
@@ -504,7 +504,7 @@ export function Timeline({
                 seekScene(target.id,local);
                 apply({...target,markers:[...markers,{id:uid(),name:'Marker '+(markers.length+1),time:local}]});
               }}>
-              {ticks.map(value=><span key={value} className={value===movie.duration?'last-tick':''} style={{left:percent(value)}}>{value<60?`${value}s`:clock(value).split('.')[0]}</span>)}
+              {ticks.map(value=><span key={value} className={value===movieView.duration?'last-tick':''} style={{left:percent(value)}}>{value<60?`${value}s`:clock(value).split('.')[0]}</span>)}
               {visible.flatMap(span=>(span.scene.markers??[]).map(marker=><button type="button" key={span.scene.id+'/'+marker.id}
                 className="timeline-ruler-marker" title={marker.name+' · '+clock(span.start+marker.time)+' (right-click to remove)'}
                 aria-label={marker.name} style={{left:percent(span.start+marker.time)}} onPointerDown={event=>event.stopPropagation()}
