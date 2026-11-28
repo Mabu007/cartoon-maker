@@ -1,6 +1,6 @@
 import { moveEnvironmentHandle, type EnvironmentHandle } from '../engine/environmentEditing.ts';
 import type { EnvironmentVisualData } from '../engine/environmentVisuals.ts';
-import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2, ArrowUpToLine, ArrowDownToLine, Eye } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
 import { type Project, type Scene, type Prop } from '../engine/schema.ts';
@@ -181,7 +181,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     });
   }
   useEffect(()=>{if(engine.current)drawGuide(engine.current);},[pathPoints,editPath,smoothGuide,playing,draggedPath,editingEnvironment,scene.visual]);
-  useEffect(()=>{setViewport(defaultStageViewport);setDraggedPath(undefined);},[scene.id,format]);
+  useEffect(()=>{scaleDrag.current=undefined;setSelectedBounds(null);setViewport(defaultStageViewport);setDraggedPath(undefined);},[scene.id,format]);
   useEffect(()=>{
     const element=stage.current;
     if(!element||typeof ResizeObserver==='undefined')return;
@@ -241,15 +241,15 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     scaleDrag.current=undefined;
     repaint.current();
   }
-  function keyboardResizeEntity(event:React.KeyboardEvent<SVGCircleElement>) {
+  function keyboardResizeEntity(event:ReactKeyboardEvent<SVGCircleElement>) {
     const entity=selectedActor??selectedObject;
     if(!entity||!resizeEntity)return;
     const direction=event.key==='ArrowRight'||event.key==='ArrowUp'?1:
       event.key==='ArrowLeft'||event.key==='ArrowDown'?-1:0;
     if(!direction&&event.key!=='Home'&&event.key!=='End')return;
     event.preventDefault();event.stopPropagation();
-    const step=event.altKey?.01:event.shiftKey?.25:snap?.05:.01;
-    const next=event.key==='Home'?.2:event.key==='End'?4:
+    const step=event.altKey ? 0.01 : event.shiftKey ? 0.25 : snap ? 0.05 : 0.01;
+    const next=event.key==='Home' ? 0.2 : event.key==='End' ? 4 :
       clamp(Math.round((entity.scale+direction*step)*100)/100,.2,4);
     if(next!==entity.scale)resizeEntity(entity.id,next);
   }
