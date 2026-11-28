@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { ChevronDown, ChevronUp, Copy, Keyboard, Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Lock, Unlock, Volume2, VolumeX, Headphones, ChevronRight, ListFilter, Clapperboard, Image, CopyPlus, Camera, ClipboardPaste, PanelBottom } from 'lucide-react';
 import { AudioWaveform } from './AudioWaveform.tsx';
 import { animations, clamp } from '../engine/animation.ts';
-import { movieTicks, type MovieTiming, type MovieCursor } from '../engine/movieTime.ts';
+import { movieTicks, movieTiming, type MovieTiming, type MovieCursor } from '../engine/movieTime.ts';
 import { TimelineResize } from './TimelineResize.tsx';
 import { actionLayer, actionUsesProp, soundDurations, type SoundName } from '../engine/performanceCatalog.ts';
 import { actions, tracks, trackNames, uid, type Action, type Character, type Clip, type Scene, type Track } from '../engine/schema.ts';
@@ -15,6 +15,7 @@ type DragSession = {
   sceneId: string; ids: string[]; clip: Clip; startX: number; edge: 'move'|'in'|'out';
   moved: boolean; preview: Scene; base: Scene; collapseOnClick: boolean; guides: number[]; lastDelta: number;
 };
+type SceneResizeSession = { sceneId: string; pointerId: number; startX: number; startDuration: number; duration: number; pixelsPerSecond: number };
 type ContextMenu = {x:number;y:number;id:string;at:number}|null;
 
 const standardTracks = new Set<Track>(['actors','movement','body','performance','face','dialogue','audio','music','camera','transition','vfx','text']);
@@ -49,7 +50,7 @@ function packedTracks(scene: Scene) {
 export function Timeline({
   scene, movie, characters, selection, selectedClipIds, selectedKeyframe, selectClips, selectKeyframe,
   seek, seekMovie, seekScene, addScene, deleteScene, manageScenes, tall, onTall, onPath, onPoint, onPropAction, add, remove, duplicate, copy, cut, paste, split,
-  apply, compact, playing, onCompact, onResizeScene, playhead, onPerformance
+  apply, compact, playing, onCompact, onResizeScene, onResizeMovieScene, onSceneResizeStart, playhead, onPerformance
 }: {
   scene: Scene; movie: MovieTiming; characters: Character[]; selection: Selection;
   selectedClipIds: string[]; selectedKeyframe: Keyframe;
@@ -62,27 +63,34 @@ export function Timeline({
   addScene:()=>void; deleteScene:(scene:Scene)=>void; manageScenes:()=>void; add: (track?:Track) => void;
   remove: () => void; duplicate: () => void; copy: () => void; cut: () => void; paste: () => void; split: () => void;
   apply: (next:Scene, ids?:string[]) => void; compact:boolean; playing:boolean; onCompact:()=>void;
-  onResizeScene:(duration:number)=>void; playhead:number; onPerformance:()=>void;
+  onResizeScene:(duration:number)=>void; onResizeMovieScene:(sceneId:string,duration:number)=>void; onSceneResizeStart:()=>void; playhead:number; onPerformance:()=>void;
 }) {
   const [zoom,setZoom]=useState(1), [viewport,setViewport]=useState(900), [scrollLeft,setScrollLeft]=useState(0);
   const [snap,setSnap]=useState(true),[shortcuts,setShortcuts]=useState(false);
   const [menu,setMenu]=useState<ContextMenu|null>(null),[preview,setPreview]=useState<Scene|null>(null);
   const [drop,setDrop]=useState<{track:Track;sceneId:string}|null>(null);
+  const [sceneResizePreview,setSceneResizePreview]=useState<{sceneId:string;duration:number}|null>(null);
+  const [sceneResizeScale,setSceneResizeScale]=useState<number|null>(null);
   const viewportRef=useRef<HTMLDivElement>(null),surface=useRef<HTMLDivElement>(null),needle=useRef<HTMLDivElement>(null);
-  const playheadRef=useRef(playhead),drag=useRef<DragSession|null>(null),scrub=useRef(false);
+  const playheadRef=useRef(playhead),drag=useRef<DragSession|null>(null),sceneResize=useRef<SceneResizeSession|null>(null),scrub=useRef(false);
   const anchor=useRef<{sceneId:string;clipId:string}|null>(null);
   const [labelWidth,setLabelWidth]=useState(200);
   const fitWidth=Math.max(viewport-labelWidth, 120);
-  const sheetWidth=labelWidth+fitWidth*zoom;
-  const unitsPerPixel=movie.duration/(sheetWidth-labelWidth);
-  const pixelsPerSecond=1/unitsPerPixel;
+  const movieView=useMemo(()=>sceneResizePreview
+    ? movieTiming(movie.spans.map(span=>span.scene.id===sceneResizePreview.sceneId
+      ? {...span.scene,duration:sceneResizePreview.duration}:span.scene))
+    : movie,[movie,sceneResizePreview]);
+  // Hold the pixels-per-second scale steady while trimming so the boundary follows the pointer.
+  const pixelsPerSecond=sceneResizeScale??fitWidth*zoom/movie.duration;
+  const sheetWidth=labelWidth+movieView.duration*pixelsPerSecond;
+  const unitsPerPixel=1/pixelsPerSecond;
   const maxZoom=Math.max(9, movie.duration * 95 / fitWidth);
   const chosen=new Set(selectedClipIds);
   const cast=useMemo(()=>new Map(characters.map(character=>[character.id,character.name])),[characters]);
-  const models=useMemo(()=>movie.spans.map(span=>({
+  const models=useMemo(()=>movieView.spans.map(span=>({
     ...span, packs:packedTracks(span.scene),
     names:Object.fromEntries(span.scene.actors.map(actor=>[actor.id,cast.get(actor.characterId)??'Character']))
-  })),[movie.spans,cast]);
+  })),[movieView.spans,cast]);
   const visibleStart=scrollLeft*unitsPerPixel;
   const visibleEnd=(scrollLeft+viewport-labelWidth)*unitsPerPixel;
   const visible=models.filter(span=>span.scene.id===scene.id ||
@@ -102,21 +110,21 @@ export function Timeline({
   useEffect(()=>{
     const time=(event:Event)=>{
       const {at,reveal}=(event as CustomEvent<MovieCursor>).detail;
-      playheadRef.current=clamp(at,0,movie.duration);
-      if(needle.current)needle.current.style.left=(playheadRef.current/movie.duration*100)+'%';
+      playheadRef.current=clamp(at,0,movieView.duration);
+      if(needle.current)needle.current.style.left=(playheadRef.current/movieView.duration*100)+'%';
       const el=viewportRef.current;
-      if(!el || (!playing&&!reveal) || scrub.current || drag.current) return;
+      if(!el || (!playing&&!reveal) || scrub.current || drag.current || sceneResize.current) return;
       const x=labelWidth+playheadRef.current*pixelsPerSecond;
       if(x < el.scrollLeft+labelWidth-1 || x > el.scrollLeft+el.clientWidth-12)
         el.scrollLeft=Math.max(0,x-labelWidth-20);
     };
     window.addEventListener('sirvibe-movie-time',time);
     return()=>window.removeEventListener('sirvibe-movie-time',time);
-  },[movie.duration, labelWidth, pixelsPerSecond, playing]);
+  },[movieView.duration, labelWidth, pixelsPerSecond, playing]);
   useEffect(()=>{
     playheadRef.current=playhead;
-    if(needle.current)needle.current.style.left=(playhead/movie.duration*100)+'%';
-  },[playhead,movie.duration,compact]);
+    if(needle.current)needle.current.style.left=(playhead/movieView.duration*100)+'%';
+  },[playhead,movieView.duration,compact]);
   useEffect(()=>{
     if(!menu)return;
     const dismiss=(event:globalThis.PointerEvent)=>{
@@ -129,7 +137,7 @@ export function Timeline({
   useEffect(()=>{
     if(drag.current?.sceneId!==scene.id){drag.current=null;setPreview(null);}
     const el=viewportRef.current;
-    if (!el || drag.current || scrub.current) return;
+    if (!el || drag.current || sceneResize.current || scrub.current) return;
     const x=playheadRef.current*pixelsPerSecond;
     if(x<el.scrollLeft || x>el.scrollLeft+el.clientWidth-labelWidth-18)
       el.scrollLeft=Math.max(0,x-16);
@@ -158,7 +166,7 @@ export function Timeline({
   },[zoom,fitWidth,labelWidth,movie.duration,maxZoom]);
   const timeAt=(event:{clientX:number})=>{
     const box=surface.current?.getBoundingClientRect();
-    return box ? Math.round(clamp((event.clientX-box.left)/box.width)*movie.duration*100)/100 : 0;
+    return box ? Math.round(clamp((event.clientX-box.left)/box.width)*movieView.duration*100)/100 : 0;
   };
   const selectionFor=(source:Scene,id:string,event:{shiftKey:boolean;metaKey:boolean;ctrlKey:boolean})=>{
     const active=source.id===scene.id;
@@ -227,6 +235,51 @@ export function Timeline({
       if(next!==scene)apply(next,data.ids);
     }catch{ /* App edit boundary reports validation errors. */ }
   }
+  function beginSceneResize(event:PointerEvent<HTMLDivElement>,source:Scene) {
+    if(event.button!==0)return;
+    event.preventDefault();event.stopPropagation();
+    onSceneResizeStart();
+    sceneResize.current={sceneId:source.id,pointerId:event.pointerId,startX:event.clientX,
+      startDuration:source.duration,duration:source.duration,pixelsPerSecond};
+    setSceneResizeScale(pixelsPerSecond);
+    setSceneResizePreview({sceneId:source.id,duration:source.duration});
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveSceneResize(event:PointerEvent<HTMLDivElement>) {
+    const data=sceneResize.current;
+    if(!data||data.pointerId!==event.pointerId)return;
+    event.preventDefault();event.stopPropagation();
+    const raw=data.startDuration+(event.clientX-data.startX)/data.pixelsPerSecond;
+    const precision=snap?10:100;
+    const duration=clamp(Math.round(raw*precision)/precision,1,180);
+    if(duration===data.duration)return;
+    data.duration=duration;
+    setSceneResizePreview({sceneId:data.sceneId,duration});
+  }
+  function finishSceneResize(event:PointerEvent<HTMLDivElement>) {
+    const data=sceneResize.current;
+    if(!data||data.pointerId!==event.pointerId)return;
+    event.preventDefault();event.stopPropagation();
+    sceneResize.current=null;
+    setSceneResizePreview(null);setSceneResizeScale(null);
+    if(Math.abs(data.duration-data.startDuration)>=.005)
+      onResizeMovieScene(data.sceneId,data.duration);
+  }
+  function cancelSceneResize(event:PointerEvent<HTMLDivElement>) {
+    const data=sceneResize.current;
+    if(!data||data.pointerId!==event.pointerId)return;
+    sceneResize.current=null;
+    setSceneResizePreview(null);setSceneResizeScale(null);
+  }
+  function keyboardResizeScene(event:ReactKeyboardEvent<HTMLDivElement>,source:Scene) {
+    const direction=event.key==='ArrowLeft'?-1:event.key==='ArrowRight'?1:0;
+    if(!direction&&event.key!=='Home'&&event.key!=='End')return;
+    event.preventDefault();event.stopPropagation();
+    const step=event.altKey ? .01 : event.shiftKey ? 1 : .1;
+    const duration=event.key==='Home'?1:event.key==='End'?180:
+      clamp(Math.round((source.duration+direction*step)*100)/100,1,180);
+    if(duration!==source.duration)onResizeMovieScene(source.id,duration);
+  }
   function insertDropped(event:DragEvent<HTMLDivElement>,track:Track,source:Scene){
     event.preventDefault();setDrop(null);
     if(trackIsLocked(source,track))return;
@@ -267,8 +320,8 @@ export function Timeline({
     const previous=scene.trackSettings?.[track]??{};
     apply({...scene,trackSettings:{...scene.trackSettings,[track]:{...previous,[key]:!previous[key]}}});
   }
-  const percent=(time:number)=>time/movie.duration*100+'%';
-  const ticks=movieTicks(movie.duration,pixelsPerSecond,visibleStart,visibleEnd);
+  const percent=(time:number)=>time/movieView.duration*100+'%';
+  const ticks=movieTicks(movieView.duration,pixelsPerSecond,visibleStart,visibleEnd);
   const lane=(track:Track)=>{
     const Icon=trackIcon[track];
     const {settings,source}=activePacks.get(track)!;
@@ -364,7 +417,7 @@ export function Timeline({
     <header>
       <div className="timeline-title">
         <button className="timeline-fold" onClick={onCompact} aria-label={compact?'Expand timeline':'Collapse timeline'}>{compact?<ChevronUp size={16}/>:<ChevronDown size={16}/>}</button>
-        <h2>Movie timeline</h2><span className="timeline-duration" title="Total movie duration">{clock(movie.duration)}</span>
+        <h2>Movie timeline</h2><span className="timeline-duration" title="Total movie duration">{clock(movieView.duration)}</span>
         <label className="timeline-duration-field" title="Change real scene duration in seconds">Scene duration <input type="number" aria-label="Scene duration in seconds" key={scene.id+'/'+scene.duration} min={1} max={180} step={0.1} defaultValue={scene.duration} onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur();}} onBlur={event=>{const value=Number(event.currentTarget.value);if(Number.isFinite(value)&&value!==scene.duration)onResizeScene(value);else event.currentTarget.value=String(scene.duration);}}/> s</label>
         <button className="quiet mini" title="Shorten the actual scene by five seconds; trim clips that cross the endpoint" onClick={()=>onResizeScene(Math.max(1,scene.duration-5))} disabled={scene.duration<=1}>−5s</button>
         <button className="quiet mini" title="Extend the actual scene by five seconds" onClick={()=>onResizeScene(Math.min(180,scene.duration+5))} disabled={scene.duration>=180}>+5s</button>
@@ -402,7 +455,7 @@ export function Timeline({
       <span>↑ / ↓ · Previous or next clip edge</span><span>← / → · Step one frame. Hold to accelerate</span>
       <span>Shift + ← / → · Step half a second</span><span>+ / − · Timeline zoom</span><span>Escape · Clear selection</span>
       <span>Shift+Click · Select range</span><span>Ctrl/Cmd+Click · Toggle selection</span>
-      <span>Drag edges · Trim</span><span>Right-click clip · Actions</span>
+      <span>Drag clip edges · Trim</span><span>Drag scene boundaries · Resize scenes</span><span>Scene boundary: ← / → 0.1s · Shift + arrows 1s</span><span>Right-click clip · Actions</span>
       <span>Double-click ruler · Add marker</span><span>Right-click marker · Remove marker</span>
       <button className="quiet" onClick={()=>setShortcuts(false)}>Close help</button>
     </div>}
@@ -415,15 +468,26 @@ export function Timeline({
               <IconButton title="Add scene at end of movie" onClick={addScene}><Plus size={15}/></IconButton>
             </div>
             <div className="movie-scenes-strip" aria-label="Movie scenes">
-              {visible.map(span=><button type="button" key={span.scene.id} className="movie-scene-block"
-                aria-current={span.scene.id===scene.id?'step':undefined} data-scene-id={span.scene.id}
-                aria-label={`Scene ${span.index+1}: ${span.scene.name}`}
+              {visible.map(span=><div key={span.scene.id} className="movie-scene-block" data-scene-id={span.scene.id}
                 title={`${span.scene.name} · ${span.scene.backgroundImage?'Custom background':span.scene.environment} · ${clock(span.start)}–${clock(span.end)}`}
-                style={{left:percent(span.start),width:percent(span.scene.duration)}}
-                onClick={()=>seekScene(span.scene.id,0)}>
-                <span className="movie-scene-name">{span.index+1} · {span.scene.name.replace(/^Scene\s+\d+\s*·\s*/i,'').replace(/^Scene\s+\d+$/i,'Scene')}</span>
-                {span.scene.backgroundImage&&<Image className="movie-scene-image" size={13} aria-label="Custom background"/>}
-              </button>)}
+                style={{left:percent(span.start),width:percent(span.scene.duration)}}>
+                <button type="button" className="movie-scene-select"
+                  aria-current={span.scene.id===scene.id?'step':undefined}
+                  aria-label={`Go to Scene ${span.index+1}: ${span.scene.name}`}
+                  onClick={()=>seekScene(span.scene.id,0)}>
+                  <span className="movie-scene-name">{span.index+1} · {span.scene.name.replace(/^Scene\s+\d+\s*·\s*/i,'').replace(/^Scene\s+\d+$/i,'Scene')}</span>
+                  {span.scene.backgroundImage&&<Image className="movie-scene-image" size={13} aria-label="Custom background"/>}
+                </button>
+                <div className="movie-scene-resize-handle" role="slider" tabIndex={0}
+                  aria-label={`Resize Scene ${span.index+1} duration: ${span.scene.name}`}
+                  aria-valuemin={1} aria-valuemax={180} aria-valuenow={span.scene.duration}
+                  aria-valuetext={`${span.scene.duration.toFixed(1)} seconds; later scenes move automatically`}
+                  title={`Drag to change ${span.scene.name} duration. Later scenes move automatically. Arrow keys adjust by 0.1s; Shift + arrows by 1s.`}
+                  onPointerDown={event=>beginSceneResize(event,span.scene)}
+                  onPointerMove={moveSceneResize} onPointerUp={finishSceneResize}
+                  onPointerCancel={cancelSceneResize} onLostPointerCapture={cancelSceneResize}
+                  onKeyDown={event=>keyboardResizeScene(event,span.scene)}/>
+              </div>)}
             </div>
           </div>
           <div className="ruler">
@@ -434,7 +498,7 @@ export function Timeline({
               onPointerUp={()=>{scrub.current=false;}} onPointerCancel={()=>{scrub.current=false;}} onLostPointerCapture={()=>{scrub.current=false;}}
               onDoubleClick={event=>{
                 const at=timeAt(event);
-                const span=movie.spans.find(entry=>at<entry.end)??movie.spans.at(-1)!;
+                const span=movieView.spans.find(entry=>at<entry.end)??movieView.spans.at(-1)!;
                 const target=span.scene,markers=target.markers??[];
                 const local=clamp(at-span.start,0,target.duration);
                 seekScene(target.id,local);

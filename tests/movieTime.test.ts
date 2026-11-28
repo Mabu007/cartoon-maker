@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { locate } from '../src/engine/evaluate.ts';
 import { movieTicks, movieTiming, nextClipEdge } from '../src/engine/movieTime.ts';
+import { resizeSceneTimeline } from '../src/engine/timelineEditing.ts';
 import { makeScene } from '../src/engine/presets.ts';
 
 test('the scene strip and playback use the same half-open movie times after reordering and resizing', () => {
@@ -14,6 +15,23 @@ test('the scene strip and playback use the same half-open movie times after reor
     assert.equal(timing.byId.get(span.scene.id),span);
   }
   assert.equal(locate(order,timing.duration).local,7);
+});
+
+
+test('scene durations remain independent and resizing one scene ripples later scene starts', () => {
+  const scenes=[{...makeScene(),duration:9},{...makeScene(),duration:30},{...makeScene(),duration:4}];
+  const resized=scenes.map(scene=>scene.id===scenes[1].id?resizeSceneTimeline(scene,12.5):scene);
+  const timing=movieTiming(resized);
+  assert.deepEqual(resized.map(scene=>scene.duration),[9,12.5,4]);
+  assert.deepEqual(timing.spans.map(span=>[span.start,span.end]),[[0,9],[9,21.5],[21.5,25.5]]);
+  assert.equal(timing.duration,25.5);
+  assert.equal(scenes[1].duration,30,'the original project snapshot is not mutated');
+
+  const extended=resized.map(scene=>scene.id===scenes[0].id?resizeSceneTimeline(scene,11):scene);
+  const next=movieTiming(extended);
+  assert.deepEqual(extended.map(scene=>scene.duration),[11,12.5,4]);
+  assert.deepEqual(next.spans.map(span=>[span.start,span.end]),[[0,11],[11,23.5],[23.5,27.5]]);
+  assert.equal(extended[1].duration,12.5,'resizing a different scene does not alter this scene');
 });
 
 test('zoomed movie ticks cover the visible window without drawing offscreen minutes', () => {

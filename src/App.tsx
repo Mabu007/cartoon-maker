@@ -678,6 +678,22 @@ export default function App() {
     }));
     return false;
   }
+  function resizeMovieScene(sceneId:string,duration:number) {
+    pause();
+    try {
+      const before=useStudio.getState();
+      const target=before.project.scenes.find(item=>item.id===sceneId);
+      if(!target)throw new Error('The scene no longer exists.');
+      const resized=resizeSceneTimeline(target,duration);
+      if(JSON.stringify(resized)===JSON.stringify(target))return;
+      before.edit(project=>({...project,scenes:project.scenes.map(item=>item.id===sceneId?resized:item)}));
+      const after=useStudio.getState();
+      const active=currentScene(after);
+      const local=time.current.scene.id===active.id?clamp(time.current.local,0,active.duration):0;
+      const timing=movieTiming(after.project.scenes);
+      updateCursor(active,local,true,(timing.byId.get(active.id)?.start??0)+local,true);
+    } catch(error) { showError(error); }
+  }
   async function uploadWorld(file: File) {
     try {
       const imported = await prepareArtwork(file, 'world');
@@ -1461,7 +1477,7 @@ export default function App() {
       selectClips={useStudio.getState().selectClips} selectKeyframe={useStudio.getState().selectKeyframe}
       seek={seek} seekMovie={seekMovie} seekScene={seekScene} addScene={createDirectScene} deleteScene={dropDirectScene} tall={timelineTall} onTall={toggleTimelineHeight} onPropAction={(actor,action,start)=>showClip('body',action,undefined,actor,start)} onPath={(actor,gait,start)=>beginPath(gait,actor,'move',undefined,start)} onPoint={(actor,action,start)=>beginPlacement({kind:'point',sceneId:currentScene(useStudio.getState()).id,start,id:actor,action})} manageScenes={()=>showDialog('scenes')} add={showClip} onPerformance={()=>{pause();showDialog('performance');}} remove={()=>run(deleteTimelineSelection)} duplicate={duplicateTimelineSelection}
       copy={copyTimelineSelection} cut={()=>run(cutTimelineSelection)} paste={pasteTimelineSelection} split={splitTimelineSelection}
-      apply={editTimeline} compact={compact} playing={playing} onResizeScene={duration => { editScene(current => resizeSceneTimeline(current,duration)); const updated=currentScene(useStudio.getState()); if(time.current.local>updated.duration)seek(updated.duration); }} playhead={time.current.movie} onCompact={() => {setTimelineTall(false);setCompact(value => !value);}}/></>}
+      apply={editTimeline} compact={compact} playing={playing} onSceneResizeStart={pause} onResizeMovieScene={resizeMovieScene} onResizeScene={duration=>resizeMovieScene(scene.id,duration)} playhead={time.current.movie} onCompact={() => {setTimelineTall(false);setCompact(value => !value);}}/></>}
     {backupInput}
     <OfflineStatus status={saveStatus} save={()=>useStudio.getState().dirty?persist():Promise.resolve(true)}/>
     {noticeToast}
