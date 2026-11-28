@@ -34,7 +34,7 @@ type Entity = { group: Container; art: Graphics; face?: Container; facialArt?:Gr
 type RenderTiming={evaluateMs:number;characterPhysicsMs:number;worldPhysicsMs:number;paintMs:number;submissionMs:number};
 export type RenderOptions = { onTiming?:(timing:RenderTiming)=>void; onResolvedArtworkPose?:(frame:ResolvedArtworkPose)=>void; characterPreview?: boolean; previewFocus?: { x: number; y: number };
   previewHead?: import('./headDeformation.ts').HeadAudition;
-  previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>; stagedScale?:Record<string,number>;
+  previewCamera?: boolean; previewViseme?: import('./visemes.ts').Viseme; selected?: string; hovered?: string; staged?: Record<string, { x: number; y: number }>;
   edit?: boolean; subtitles?: boolean; amplitude?: (id: string, time: number) => number };
 export async function createRenderer(format: Format = '16:9', resolution = 1, capture = false) {
   const app = new Application();
@@ -225,13 +225,8 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
     ?[actor.heldItems?.left?.id,actor.heldItems?.right?.id,actor.held?.id].filter((value):value is string=>Boolean(value))
     :[]));
     const sourceActorById = new Map(scene.actors.map(actor => [actor.id, actor]));
-    const sourcePropById = new Map(scene.objects.map(prop=>[prop.id,prop]));
     for (const rawProp of options.edit ? scene.objects : lastFrame.objects) {
-      const sourceProp=sourcePropById.get(rawProp.id)??rawProp;
-      const requestedScale=options.stagedScale?.[rawProp.id];
-      const stagedRatio=requestedScale===undefined?1:requestedScale/Math.max(.0001,sourceProp.scale);
-      const stagedProp=stagedRatio===1?rawProp:{...rawProp,scale:rawProp.scale*stagedRatio};
-      const prop=options.edit?{...stagedProp,scale:stagedProp.scale*(stagedProp.visual?.perspective===false?1:perspectiveScale(stagedProp.y,scene.visual?.perspective))}:stagedProp;
+      const prop=options.edit?{...rawProp,scale:rawProp.scale*(rawProp.visual?.perspective===false?1:perspectiveScale(rawProp.y,scene.visual?.perspective))}:rawProp;
       const key = entityKey(prop.id, false);
       used.add(key);
       const entity = get(prop.id);
@@ -294,16 +289,14 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
       hitboxes.push({ id: prop.id, rect, bounds: worldEntityBounds(rect), depth: entity.group.zIndex });
     }
     for (const evaluatedActor of actors) {
-      const source=sourceActorById.get(evaluatedActor.id)??evaluatedActor;
-      const baseActor=options.edit?{...evaluatedActor,scale:source.scale*(evaluatedActor.visual?.perspective===false?1:perspectiveScale(source.y,scene.visual?.perspective))}:evaluatedActor;
-      const requestedScale=options.stagedScale?.[evaluatedActor.id];
-      const actor=requestedScale===undefined?baseActor:{...baseActor,scale:baseActor.scale*requestedScale/Math.max(.0001,source.scale)};
+      const actor=options.edit?{...evaluatedActor,scale:(sourceActorById.get(evaluatedActor.id)??evaluatedActor).scale*(evaluatedActor.visual?.perspective===false?1:perspectiveScale((sourceActorById.get(evaluatedActor.id)??evaluatedActor).y,scene.visual?.perspective))}:evaluatedActor;
       const character = characterById.get(actor.characterId);
       if (!character) continue;
       used.add(entityKey(actor.id, true));
       const entity = get(actor.id, true);
       entity.group.visible = actor.visible || Boolean(options.edit);
       if (!entity.group.visible) continue;
+      const source = sourceActorById.get(actor.id) ?? actor;
       const point = options.staged?.[actor.id] ?? (options.edit ? source : actor);
       const lift = options.edit ? 0 : actor.lift;
       entity.group.position.set(point.x, point.y);
@@ -484,16 +477,6 @@ export async function createRenderer(format: Format = '16:9', resolution = 1, ca
   }
   return { canvas: app.canvas, draw, pick, width, height, prepareImages, volumeMetrics:()=>({swatches:volumeCache.size,textureBytes:volumeCache.textureBytes}),secondaryMetrics:()=>dynamics.instrumentation(),worldMetrics:()=>worldDynamics.instrumentation(),
     projectPoint: (point:{x:number;y:number})=>worldToScreen(point,currentCamera,{width,height},format),
-    projectedEntityBounds: (id:string) => {
-      const bounds=hitboxes.find(item=>item.id===id)?.bounds;
-      if(!bounds)return undefined;
-      const points=[
-        {x:bounds.left,y:bounds.top},{x:bounds.right,y:bounds.top},
-        {x:bounds.left,y:bounds.bottom},{x:bounds.right,y:bounds.bottom}
-      ].map(point=>worldToScreen(point,currentCamera,{width,height},format));
-      return {left:Math.min(...points.map(point=>point.x)),right:Math.max(...points.map(point=>point.x)),
-        top:Math.min(...points.map(point=>point.y)),bottom:Math.max(...points.map(point=>point.y))};
-    },
     preloadBackground: (image: string | undefined) => {if (image) void loadImage(image).catch(()=>{});},
     destroy: () => {
       destroyed=true;

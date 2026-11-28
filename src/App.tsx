@@ -428,13 +428,6 @@ export default function App() {
   const select = (value: Selection) => useStudio.getState().select(value);
   function patchActor(value: ActorData) { editScene(current => ({ ...current, actors: current.actors.map(actor => actor.id === value.id ? value : actor) })); }
   function patchObject(value: Prop) { editScene(current => repairOrphanedObjectActions({ ...current, objects: current.objects.map(object => object.id === value.id ? value : object) })); }
-  function resizeEntity(id:string,scale:number) {
-    const current=currentScene(useStudio.getState());
-    const actor=current.actors.find(item=>item.id===id);
-    if(actor){patchActor({...actor,scale});return;}
-    const object=current.objects.find(item=>item.id===id);
-    if(object)patchObject({...object,scale});
-  }
   function patchClip(value: Clip, original?: Clip) {
     if (scene.trackSettings?.[value.track]?.locked) { tell('Unlock the track before editing this clip.',true); return; }
     if((value.track==='body'&&value.action==='pick-up'&&value.target)||
@@ -1434,7 +1427,7 @@ export default function App() {
           edgePlacement={placement?.kind==='path'&&((placement.mode==='enter'&&!placement.points.length)||(placement.mode==='exit'&&placement.points.length>0))} edit={true} format={format} selection={selection} selected={select} subtitles={subtitles} snap={snap} mixer={mixer} quality={quality} onFrame={setShot}
          reorderEntity={reorderSceneLayer}
          flipEntity={id=>{const actor=scene.actors.find(item=>item.id===id);if(actor)patchActor({...actor,flip:!actor.flip});else{const object=scene.objects.find(item=>item.id===id);if(object)patchObject({...object,flip:!object.flip});}}}
-         duplicateEntity={()=>duplicateSelection()} removeEntity={()=>removeSelection()} resizeEntity={resizeEntity} move={(id, coords) => {
+         duplicateEntity={()=>duplicateSelection()} removeEntity={()=>removeSelection()} move={(id, coords) => {
           const actor = scene.actors.find(item => item.id === id), object = scene.objects.find(item => item.id === id);
           if (actor) {
             editScene(current => translateSceneActor(current,id,coords));

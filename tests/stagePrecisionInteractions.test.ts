@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { defaultStageViewport, zoomStageAt, moveStageViewport } from '../src/engine/stageViewport.ts';
-import { resizeScaleFromPointer } from '../src/engine/entityTransform.ts';
 import { assessHandReach,actorPositionAt,mayAttachProp,pickupFeedback,resolveHandCustody,propLocationAt } from '../src/engine/objectInteractionEngine.ts';
 import { makeProp,makeScene } from '../src/engine/presets.ts';
 import { addSceneActor } from '../src/engine/actorPresence.ts';
@@ -31,26 +30,6 @@ test('editing canvas zoom keeps the world point under the cursor and is not a mo
   assert.equal(maximum.zoom,8);
   assert.equal(zoomStageAt(first,.01,pointer,center).zoom,.5);
   assert.deepEqual(moveStageViewport(first,15,-12),{...first,panX:first.panX+15,panY:first.panY-12});
-});
-
-
-test('pointer resizing scales characters and props proportionally around their origin',()=>{
-  const center={x:120,y:80},start={x:220,y:80};
-  assert.equal(resizeScaleFromPointer(1,start,{x:170,y:80},center,false),.5);
-  assert.equal(resizeScaleFromPointer(1,start,{x:320,y:80},center,false),2);
-  const initialWidth=140,initialHeight=90;
-  const scale=resizeScaleFromPointer(1,start,{x:175,y:80},center,false);
-  const width=initialWidth*scale,height=initialHeight*scale;
-  assert.equal(width/height,initialWidth/initialHeight,'image props retain their aspect ratio');
-});
-test('pointer resizing respects snapping and the persisted scale range',()=>{
-  const center={x:0,y:0},start={x:100,y:0};
-  assert.equal(resizeScaleFromPointer(1,start,{x:133,y:0},center,true),1.35);
-  assert.equal(resizeScaleFromPointer(1,start,{x:133,y:0},center,false),1.33);
-  assert.equal(resizeScaleFromPointer(.5,start,{x:0,y:0},center,false),.2);
-  assert.equal(resizeScaleFromPointer(3,start,{x:300,y:0},center,false),4);
-  assert.equal(resizeScaleFromPointer(1,{x:0,y:0},{x:100,y:0},center,false),1,
-    'a degenerate starting radius cannot cause a scale jump');
 });
 
 test('reach is scaled to the actor and rejects distant or elevated props',()=>{

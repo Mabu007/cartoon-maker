@@ -13,7 +13,7 @@ export function resizeScaleFromPointer(
   const startRadius=Math.hypot(startPointer.x-center.x,startPointer.y-center.y);
   if(!Number.isFinite(startRadius)||startRadius<1e-4)return clamp(initialScale,.2,4);
   const radius=Math.hypot(pointer.x-center.x,pointer.y-center.y);
-  const step=snapping?.05:.01;
+  const step=snapping ? 0.05 : 0.01;
   const raw=clamp(initialScale*radius/startRadius,.2,4);
   return Math.round(clamp(Math.round(raw/step)*step,.2,4)*100)/100;
 }
