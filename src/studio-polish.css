@@ -555,3 +555,49 @@
 .stage-transform-guide .stage-scale-handle:focus-visible{fill:#efe4ff;stroke:#4e2395;stroke-width:3.5;}
 .stage-transform-guide .stage-scale-handle:active{cursor:nwse-resize;fill:#d9c3fa;}
 .stage-zoom-world .stage-transform-guide{position:absolute;inset:0;}
+
+/* Clear, forgiving transform controls for stage resizing. */
+.stage-transform-guide {
+  z-index: 9;
+}
+.stage-selection-bounds {
+  fill: #7446c508;
+  stroke: #9b7bd0;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.stage-transform-guide .stage-scale-hit-area {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: all;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.stage-transform-guide .stage-scale-hit-area:focus-visible {
+  stroke: #4e2395;
+  stroke-width: 2.5;
+  outline: none;
+}
+.stage-transform-guide .stage-scale-hit-area:hover + .stage-scale-handle,
+.stage-transform-guide .stage-scale-hit-area:focus-visible + .stage-scale-handle,
+.stage-transform-guide .stage-scale-hit-area:active + .stage-scale-handle {
+  fill: #efe4ff;
+  stroke: #4e2395;
+  stroke-width: 3;
+}
+.stage-transform-guide .stage-scale-handle {
+  pointer-events: none;
+  fill: #fff;
+  stroke: #7446c5;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 2px 4px #20142f99);
+}
+.scale-reset-button {
+  min-height: 28px;
+  margin: 2px 0 8px;
+  font-size: 11px;
+}
