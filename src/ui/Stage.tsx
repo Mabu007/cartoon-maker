@@ -1,6 +1,6 @@
 import { moveEnvironmentHandle, type EnvironmentHandle } from '../engine/environmentEditing.ts';
 import type { EnvironmentVisualData } from '../engine/environmentVisuals.ts';
-import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { AlertCircle, Clapperboard, FlipHorizontal, Copy, Trash2, MousePointer2, ArrowUpToLine, ArrowDownToLine, Eye } from 'lucide-react';
 import { createRenderer, type Format, type Renderer } from '../engine/renderer.ts';
 import { type Project, type Scene, type Prop } from '../engine/schema.ts';
@@ -8,14 +8,17 @@ import { pathNodes,smoothPath } from '../engine/stagePath.ts';
 import { defaultStageViewport,zoomCanvasAt,boundStageViewport,moveStageViewport } from '../engine/stageViewport.ts';
 import { evaluate } from '../engine/evaluate.ts';
 import { clamp } from '../engine/animation.ts';
+import { resizeScaleFromPointer } from '../engine/entityTransform.ts';
 import { prepareDialoguePreview, type Mixer } from '../services/audio.ts';
 import type { LayerMove } from '../engine/sceneLayers.ts';
 import type { Selection } from '../studio.ts';
 
 type Position = { x: number; y: number };
 type Drag = { sceneId: string; id: string; origin: Position; pointer: Position; current: Position; moved: boolean };
+type EntityScaleDrag = { sceneId:string; id:string; pointerId:number; center:Position; startPointer:Position; startScale:number; scale:number };
+type ProjectedBounds = { left:number; right:number; top:number; bottom:number };
 export type PreviewTime = { scene: Scene; local: number; movie: number };
-export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, editPath, smoothGuide, movePathPoint, removePathPoint, edgePlacement, flipEntity, duplicateEntity, removeEntity, reorderEntity, dropProp, recoverActor, finishPathPoint, changeEnvironment }: {
+export function Stage({ project, scene, time, playing, edit, format, selection, selected, move, subtitles, snap, mixer, quality, onFrame, onDestination, pathPoints, editPath, smoothGuide, movePathPoint, removePathPoint, edgePlacement, flipEntity, duplicateEntity, removeEntity, reorderEntity, dropProp, recoverActor, finishPathPoint, changeEnvironment, resizeEntity }: {
   project: Project; scene: Scene; time: MutableRefObject<PreviewTime>; playing: boolean; edit: boolean; format: Format; quality: boolean;
   selection: Selection; selected: (selection: Selection) => void; move: (id: string, position: Position) => void; subtitles: boolean; snap: boolean;
   onDestination?: (position: Position, waypoint?: boolean) => void; pathPoints?: Position[]; editPath?:boolean; smoothGuide?:boolean; movePathPoint?:(index:number,point:Position)=>void; removePathPoint?:(index:number)=>void; edgePlacement?: boolean; mixer: MutableRefObject<Mixer | null>; onFrame?: (label: string) => void;
@@ -24,6 +27,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   recoverActor?:(id:string,position:Position)=>void;
   finishPathPoint?:(index:number,position:Position)=>void;
   flipEntity?: (id: string) => void; duplicateEntity?: (id: string) => void; removeEntity?: (id: string) => void;
+  resizeEntity?: (id:string,scale:number)=>void;
 }) {
   const mount = useRef<HTMLDivElement>(null), engine = useRef<Renderer | null>(null), drag = useRef<Drag | null>(null), hover = useRef<string | undefined>(undefined), repaint = useRef<() => void>(() => {});
   const nodeDrag=useRef<{index:number;pointerId:number;offset:Position}|undefined>(undefined);
@@ -31,6 +35,8 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
   const [viewport,setViewport]=useState(defaultStageViewport);
   const pan=useRef<{pointerId:number;x:number;y:number}|undefined>(undefined);
   const [draggedPath,setDraggedPath]=useState<{index:number;position:Position}|undefined>();
+  const [selectedBounds,setSelectedBounds]=useState<ProjectedBounds|null>(null);
+  const scaleDrag=useRef<EntityScaleDrag|undefined>(undefined);
   const screenTransform={transform:`translate(${viewport.panX}px,${viewport.panY}px) scale(${viewport.zoom})`,
     transformOrigin:'center center'} as const;
   const guide=useRef<SVGSVGElement>(null),environmentGuide=useRef<SVGSVGElement>(null);
@@ -97,12 +103,21 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
           selected: p.selection?.kind !== 'clip' && !p.playing ? p.selection?.id : undefined,
            hovered: !p.playing ? hover.current : undefined,
           ...(drag.current?.moved && drag.current.sceneId === scene.id ? { staged: { [drag.current.id]: drag.current.current } } : {}),
+          ...(scaleDrag.current ? { stagedScale:{[scaleDrag.current.id]:scaleDrag.current.scale} } : {}),
           edit: false, subtitles: p.subtitles,
           amplitude: (id, t) => !p.playing && dialogue.current?.scene === scene
             ? dialogue.current.amplitude(id, t)
             : p.mixer.current?.amplitude(scene, id, t) ?? 0
         });
         renderedFrame.current=frame;
+        const selectedId=!p.playing&&(p.selection?.kind==='actor'||p.selection?.kind==='object')?p.selection.id:undefined;
+        const bounds=selectedId?renderer.projectedEntityBounds(selectedId):undefined;
+        setSelectedBounds(previous=>{
+          if(!bounds)return previous===null?previous:null;
+          if(previous&&Math.abs(previous.left-bounds.left)<.1&&Math.abs(previous.right-bounds.right)<.1&&
+            Math.abs(previous.top-bounds.top)<.1&&Math.abs(previous.bottom-bounds.bottom)<.1)return previous;
+          return bounds;
+        });
         drawGuide(renderer);
         if (frame.shot !== lastShot) { lastShot = frame.shot; p.onFrame?.(frame.shot); }
         } catch (error) { fail(error); }
@@ -166,7 +181,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     });
   }
   useEffect(()=>{if(engine.current)drawGuide(engine.current);},[pathPoints,editPath,smoothGuide,playing,draggedPath,editingEnvironment,scene.visual]);
-  useEffect(()=>{setViewport(defaultStageViewport);setDraggedPath(undefined);},[scene.id,format]);
+  useEffect(()=>{scaleDrag.current=undefined;setSelectedBounds(null);setViewport(defaultStageViewport);setDraggedPath(undefined);},[scene.id,format]);
   useEffect(()=>{
     const element=stage.current;
     if(!element||typeof ResizeObserver==='undefined')return;
@@ -184,6 +199,59 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     const box = renderer.canvas.getBoundingClientRect();
     if (!box.width || !box.height) return;
     return renderer.pick((event.clientX - box.left) * renderer.width / box.width, (event.clientY - box.top) * renderer.height / box.height);
+  }
+  function beginEntityResize(event:PointerEvent<SVGCircleElement>) {
+    if(event.button!==0||playing||!edit||onDestination||editPath||!resizeEntity)return;
+    const entity=selectedActor??selectedObject;
+    const hit=pointer(event);
+    if(!entity||!hit)return;
+    const frame=renderedFrame.current;
+    const origin=(selection?.kind==='actor'?frame?.actors.find(item=>item.id===entity.id):
+      selection?.kind==='object'?frame?.objects.find(item=>item.id===entity.id):undefined)??entity;
+    const center={x:origin.x,y:origin.y};
+    const distance=Math.hypot(hit.x-center.x,hit.y-center.y);
+    if(!Number.isFinite(distance)||distance<1)return;
+    event.preventDefault();event.stopPropagation();
+    scaleDrag.current={sceneId:scene.id,id:entity.id,pointerId:event.pointerId,center,
+      startPointer:{x:hit.x,y:hit.y},startScale:entity.scale,scale:entity.scale};
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveEntityResize(event:PointerEvent<SVGCircleElement>) {
+    const drag=scaleDrag.current;
+    if(!drag||drag.pointerId!==event.pointerId||drag.sceneId!==scene.id)return;
+    const hit=pointer(event);
+    if(!hit)return;
+    event.preventDefault();event.stopPropagation();
+    const next=resizeScaleFromPointer(drag.startScale,drag.startPointer,hit,drag.center,snap);
+    if(next===drag.scale)return;
+    drag.scale=next;
+    repaint.current();
+  }
+  function finishEntityResize(event:PointerEvent<SVGCircleElement>) {
+    const drag=scaleDrag.current;
+    if(!drag||drag.pointerId!==event.pointerId)return;
+    event.preventDefault();event.stopPropagation();
+    scaleDrag.current=undefined;
+    if(drag.sceneId===scene.id&&Math.abs(drag.scale-drag.startScale)>=.005)
+      resizeEntity?.(drag.id,drag.scale);
+    repaint.current();
+  }
+  function cancelEntityResize(event:PointerEvent<SVGCircleElement>) {
+    if(scaleDrag.current?.pointerId!==event.pointerId)return;
+    scaleDrag.current=undefined;
+    repaint.current();
+  }
+  function keyboardResizeEntity(event:ReactKeyboardEvent<SVGCircleElement>) {
+    const entity=selectedActor??selectedObject;
+    if(!entity||!resizeEntity)return;
+    const direction=event.key==='ArrowRight'||event.key==='ArrowUp'?1:
+      event.key==='ArrowLeft'||event.key==='ArrowDown'?-1:0;
+    if(!direction&&event.key!=='Home'&&event.key!=='End')return;
+    event.preventDefault();event.stopPropagation();
+    const step=event.altKey ? 0.01 : event.shiftKey ? 0.25 : snap ? 0.05 : 0.01;
+    const next=event.key==='Home' ? 0.2 : event.key==='End' ? 4 :
+      clamp(Math.round((entity.scale+direction*step)*100)/100,.2,4);
+    if(next!==entity.scale)resizeEntity(entity.id,next);
   }
   useEffect(()=>{
     const handle=(event:Event)=>{
@@ -230,6 +298,9 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       point.y< -45||point.y>renderer.height+45;
   }):[];
   const hiddenSelected=selectedActor&&offstageActors.some(actor=>actor.id===selectedActor.id);
+  const stageWidth=engine.current?.width??960,stageHeight=engine.current?.height??540;
+  const scaleHandle=selectedBounds?{x:clamp(selectedBounds.right,10,stageWidth-10),y:clamp(selectedBounds.bottom,10,stageHeight-10)}:undefined;
+  const transformEntity=selectedActor??selectedObject;
   return <div ref={stage} className={`stage-format format-${format.replace(':', '-')}`}
     onDoubleClick={event=>{
     if(!editPath||(event.target as Element).closest('.stage-path-handle,button'))return;
@@ -293,6 +364,19 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
       onPointerLeave={event => { if (!drag.current) { hover.current = undefined; event.currentTarget.dataset.hoverEntity = 'false'; repaint.current(); } }}
        onPointerCancel={() => { drag.current = null;pan.current=undefined; repaint.current(); }}
       onLostPointerCapture={() => { drag.current = null;pan.current=undefined; repaint.current(); }} />
+    {!playing&&edit&&!onDestination&&!editPath&&resizeEntity&&transformEntity&&scaleHandle&&<svg
+      className="stage-transform-guide" viewBox={`0 0 ${stageWidth} ${stageHeight}`}
+      aria-label="Selected character or object resize controls">
+      <circle className="stage-scale-handle" cx={scaleHandle.x} cy={scaleHandle.y} r="9"
+        role="slider" tabIndex={0} aria-orientation="horizontal"
+        aria-label={`Resize ${selectedName??'selected item'} proportionally`}
+        aria-valuemin={.2} aria-valuemax={4} aria-valuenow={transformEntity.scale}
+        aria-valuetext={`Scale ${transformEntity.scale.toFixed(2)}. Drag to resize proportionally.`}
+        title="Drag to resize proportionally. Arrow keys adjust scale; Shift for larger steps."
+        onPointerDown={beginEntityResize} onPointerMove={moveEntityResize}
+        onPointerUp={finishEntityResize} onPointerCancel={cancelEntityResize}
+        onLostPointerCapture={cancelEntityResize} onKeyDown={keyboardResizeEntity}/>
+    </svg>}
     {!playing&&edit&&!onDestination&&!editPath&&changeEnvironment&&<button type="button" className="stage-environment-toggle" aria-pressed={editingEnvironment} onClick={()=>setEditingEnvironment(value=>!value)}>Edit lights & ground</button>}
     {!playing&&editingEnvironment&&!onDestination&&!editPath&&scene.visual&&<svg className="stage-environment-guide" ref={environmentGuide} aria-label="Scene lighting and perspective handles"
       onPointerMove={event=>{const drag=environmentDrag.current,hit=pointer(event);if(!drag||!hit||drag.scene!==scene)return;try{drag.preview=moveEnvironmentHandle(drag.scene.visual!,drag.handle,hit,drag.time);repaint.current();}catch{/* Keep the last valid calibration. */}}}
