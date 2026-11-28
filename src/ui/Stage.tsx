@@ -249,7 +249,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     if(!direction&&event.key!=='Home'&&event.key!=='End')return;
     event.preventDefault();event.stopPropagation();
     const step=event.altKey ? 0.01 : event.shiftKey ? 0.25 : snap ? 0.05 : 0.01;
-    const next=event.key==='Home' ? 0.2 : event.key==='End' ? 4 :
+    const next=event.key==='0' ? 1 : event.key==='Home' ? 0.2 : event.key==='End' ? 4 :
       clamp(Math.round((entity.scale+direction*step)*100)/100,.2,4);
     if(next!==entity.scale)resizeEntity(entity.id,next);
   }
@@ -367,14 +367,19 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     {!playing&&edit&&!onDestination&&!editPath&&resizeEntity&&transformEntity&&scaleHandle&&<svg
       className="stage-transform-guide" viewBox={`0 0 ${stageWidth} ${stageHeight}`}
       aria-label="Selected character or object resize controls">
-      <circle className="stage-scale-handle" cx={scaleHandle.x} cy={scaleHandle.y} r="9"
+      <rect className="stage-selection-bounds" x={selectedBounds!.left} y={selectedBounds!.top}
+        width={Math.max(1,selectedBounds!.right-selectedBounds!.left)}
+        height={Math.max(1,selectedBounds!.bottom-selectedBounds!.top)} rx="3"/>
+      <circle className="stage-scale-hit-area" cx={scaleHandle.x} cy={scaleHandle.y} r="17"
         role="slider" tabIndex={0} aria-orientation="horizontal"
         aria-label={`Resize ${selectedName??'selected item'} proportionally`}
-        aria-valuemin={.2} aria-valuemax={4} aria-valuenow={transformEntity.scale}
-        aria-valuetext={`Scale ${transformEntity.scale.toFixed(2)}. Drag to resize proportionally.`}
+        aria-valuemin={.2} aria-valuemax={4}
+        aria-valuenow={scaleDrag.current?.sceneId===scene.id&&scaleDrag.current.id===transformEntity.id?scaleDrag.current.scale:transformEntity.scale}
+        aria-valuetext={`Scale ${(scaleDrag.current?.sceneId===scene.id&&scaleDrag.current.id===transformEntity.id?scaleDrag.current.scale:transformEntity.scale).toFixed(2)}. Drag to resize proportionally. Use arrow keys for fine adjustments, Shift+arrows for larger steps, and 0 to reset.`}
         onPointerDown={beginEntityResize} onPointerMove={moveEntityResize}
         onPointerUp={finishEntityResize} onPointerCancel={cancelEntityResize}
         onLostPointerCapture={cancelEntityResize} onKeyDown={keyboardResizeEntity}/>
+      <circle className="stage-scale-handle" cx={scaleHandle.x} cy={scaleHandle.y} r="7" aria-hidden="true"/>
     </svg>}
     {!playing&&edit&&!onDestination&&!editPath&&changeEnvironment&&<button type="button" className="stage-environment-toggle" aria-pressed={editingEnvironment} onClick={()=>setEditingEnvironment(value=>!value)}>Edit lights & ground</button>}
     {!playing&&editingEnvironment&&!onDestination&&!editPath&&scene.visual&&<svg className="stage-environment-guide" ref={environmentGuide} aria-label="Scene lighting and perspective handles"
