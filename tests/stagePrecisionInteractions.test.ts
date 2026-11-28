@@ -41,7 +41,7 @@ test('pointer resizing scales characters and props proportionally around their o
   const initialWidth=140,initialHeight=90;
   const scale=resizeScaleFromPointer(1,start,{x:175,y:80},center,false);
   const width=initialWidth*scale,height=initialHeight*scale;
-  assert.equal(width/height,initialWidth/initialHeight,'image props retain their aspect ratio');
+  assert(Math.abs(width/height-initialWidth/initialHeight)<1e-12,'image props retain their aspect ratio');
 });
 test('pointer resizing respects snapping and the persisted scale range',()=>{
   const center={x:0,y:0},start={x:100,y:0};

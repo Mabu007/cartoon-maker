@@ -372,7 +372,6 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
         aria-label={`Resize ${selectedName??'selected item'} proportionally`}
         aria-valuemin={.2} aria-valuemax={4} aria-valuenow={transformEntity.scale}
         aria-valuetext={`Scale ${transformEntity.scale.toFixed(2)}. Drag to resize proportionally.`}
-        title="Drag to resize proportionally. Arrow keys adjust scale; Shift for larger steps."
         onPointerDown={beginEntityResize} onPointerMove={moveEntityResize}
         onPointerUp={finishEntityResize} onPointerCancel={cancelEntityResize}
         onLostPointerCapture={cancelEntityResize} onKeyDown={keyboardResizeEntity}/>
