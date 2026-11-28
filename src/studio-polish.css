@@ -545,3 +545,13 @@
 .performance-tracking-presets,.performance-tracking-parts small{grid-column:1/-1;}
 .performance-tracking-presets{display:flex;flex-wrap:wrap;gap:5px;}
 .performance-tracking-presets button{padding:6px 9px;border-radius:6px;}
+
+
+/* Proportional resize grip for the selected stage character or object. */
+.stage-transform-guide{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;}
+.stage-transform-guide .stage-scale-handle{pointer-events:all;cursor:nwse-resize;touch-action:none;
+  fill:#fff;stroke:#7446c5;stroke-width:2.5;filter:drop-shadow(0 2px 4px #20142f99);}
+.stage-transform-guide .stage-scale-handle:hover,
+.stage-transform-guide .stage-scale-handle:focus-visible{fill:#efe4ff;stroke:#4e2395;stroke-width:3.5;}
+.stage-transform-guide .stage-scale-handle:active{cursor:nwse-resize;fill:#d9c3fa;}
+.stage-zoom-world .stage-transform-guide{position:absolute;inset:0;}
