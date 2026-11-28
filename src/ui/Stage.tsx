@@ -246,7 +246,7 @@ export function Stage({ project, scene, time, playing, edit, format, selection, 
     if(!entity||!resizeEntity)return;
     const direction=event.key==='ArrowRight'||event.key==='ArrowUp'?1:
       event.key==='ArrowLeft'||event.key==='ArrowDown'?-1:0;
-    if(!direction&&event.key!=='Home'&&event.key!=='End')return;
+    if(!direction&&event.key!=='Home'&&event.key!=='End'&&event.key!=='0')return;
     event.preventDefault();event.stopPropagation();
     const step=event.altKey ? 0.01 : event.shiftKey ? 0.25 : snap ? 0.05 : 0.01;
     const next=event.key==='0' ? 1 : event.key==='Home' ? 0.2 : event.key==='End' ? 4 :
